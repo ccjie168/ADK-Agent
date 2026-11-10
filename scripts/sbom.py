@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Writes a CycloneDX SBOM of the installed Python environment."""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def build_command(out: str) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "pip_audit",
+        "-f",
+        "cyclonedx-json",
+        "-o",
+        out,
+        "--progress-spinner",
+        "off",
+    ]
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Write a CycloneDX SBOM.")
+    parser.add_argument("-o", "--output", default="sbom.json", help="output path")
+    args = parser.parse_args(argv)
+
+    out_path = Path(args.output)
+    if not out_path.is_absolute():
+        out_path = ROOT / out_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    code = subprocess.run(build_command(str(out_path)), cwd=ROOT).returncode
+    print(f"SBOM: {out_path.resolve()}")
+    print(f"Exit code: {code}")
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
