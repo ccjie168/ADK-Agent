@@ -7,9 +7,23 @@ caller opts in explicitly with ``allow_unauthenticated=True``.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def resolve_port(port: int | None, default: int = 8000) -> int:
+    """Resolve the port: explicit value > ``PORT`` env var (Cloud Run) > default."""
+    if port is not None:
+        return port
+    raw = os.environ.get("PORT")
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"PORT must be an integer, got {raw!r}") from exc
 
 
 def resolve_http_auth(
@@ -44,12 +58,20 @@ def build_http_app(
     from starlette.middleware.base import BaseHTTPMiddleware
     from starlette.responses import JSONResponse
 
+    # Health probe for the platform (Cloud Run). Declared as the one open
+    # endpoint and returns no data; MCP itself stays protected.
+    @server.custom_route("/healthz", methods=["GET"], include_in_schema=False)
+    async def _healthz(_request: Any) -> Any:
+        return JSONResponse({"status": "ok"})
+
     app = server.streamable_http_app(host=host, **kwargs)
 
     if auth_token:
 
         class BearerAuthMiddleware(BaseHTTPMiddleware):
             async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
+                if request.url.path == "/healthz":
+                    return await call_next(request)
                 header = request.headers.get("authorization", "")
                 parts = header.split(None, 1)
                 valid = len(parts) == 2 and parts[0].lower() == "bearer" and parts[1] == auth_token
@@ -70,7 +92,7 @@ def run_http(
     server: Any,
     *,
     host: str = "127.0.0.1",
-    port: int = 8000,
+    port: int | None = None,
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
     **kwargs: Any,
@@ -81,4 +103,4 @@ def run_http(
 
     import uvicorn
 
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(app, host=host, port=resolve_port(port), log_level="info")

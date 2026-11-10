@@ -1,0 +1,17 @@
+.venv
+.git
+.gitignore
+.claude
+docs
+tests
+scripts
+**/__pycache__
+**/*.pyc
+.mypy_cache
+.ruff_cache
+.pytest_cache
+*.egg-info
+*.key
+secrets
+.env
+.env.*

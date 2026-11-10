@@ -20,7 +20,7 @@ def serve_agent(
     runner: Any = None,
     instructions: str | None = None,
     host: str = "127.0.0.1",
-    port: int = 8000,
+    port: int | None = None,
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
 ) -> Any:
@@ -62,7 +62,7 @@ def serve_many(
     instructions: str | None = None,
     runner_factory: Callable[[BaseAgent], Any] | None = None,
     host: str = "127.0.0.1",
-    port: int = 8000,
+    port: int | None = None,
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
 ) -> Any:

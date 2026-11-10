@@ -81,7 +81,12 @@ def _scaffold(name: str) -> None:
 
 def _add_http_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--host", default="127.0.0.1", help="HTTP bind host")
-    parser.add_argument("--port", type=int, default=8000, help="HTTP bind port")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="HTTP bind port (defaults to $PORT, then 8000)",
+    )
     parser.add_argument(
         "--auth-token-env",
         default="ADK_MCP_AUTH_TOKEN",

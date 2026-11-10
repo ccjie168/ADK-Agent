@@ -17,6 +17,8 @@ dependencies = [
 # Must stay inside the range ADK's own `extensions` extra declares.
 litellm = ["litellm>=1.84,<1.106.3"]
 gemini = ["google-genai>=2.0"]
+claude = ["anthropic>=0.78"]
+http = ["uvicorn>=0.30"]
 dev = [
     "pytest>=8.0",
     "ruff",
