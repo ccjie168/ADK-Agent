@@ -18,7 +18,7 @@ from .config import (
     ModelConfig,
     load_config,
 )
-from .factory import build_agent, build_framework
+from .factory import build_agent, build_framework, build_runner
 from .mcp.server import serve_agent, serve_many
 from .models import build_model
 
@@ -26,6 +26,7 @@ __all__ = [
     "build_model",
     "build_agent",
     "build_framework",
+    "build_runner",
     "serve_agent",
     "serve_many",
     "load_config",

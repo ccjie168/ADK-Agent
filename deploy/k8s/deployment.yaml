@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-agent
+spec:
+  # Keep 1 replica with SQLite. Switch to Postgres before scaling out.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adk-agent
+  template:
+    metadata:
+      labels:
+        app: adk-agent
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: adk-agent
+          image: adk-agent:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: ADK_AGENT_MODEL
+              value: "claude:deepseek-v4-pro"
+            - name: ANTHROPIC_BASE_URL
+              value: "https://api.deepseek.com/anthropic"
+            - name: SESSION_DB
+              value: "/data/sessions.db"
+            - name: ADK_MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_MCP_AUTH_TOKEN
+            - name: ANTHROPIC_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ANTHROPIC_AUTH_TOKEN
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: adk-agent-data

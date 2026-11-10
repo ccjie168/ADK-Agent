@@ -93,6 +93,8 @@ def main() -> int:
             f"ADK_MCP_AUTH_TOKEN={TOKEN}",
             "-e",
             f"ADK_AGENT_MODEL={MODEL}",
+            "-e",
+            "SESSION_DB=/data/sessions.db",
         ]
         for key in ("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"):
             if os.environ.get(key):
@@ -131,6 +133,21 @@ def main() -> int:
             print(f"[PASS] non-root uid={uid}")
         else:
             failures.append(f"container runs as root (uid={uid!r})")
+
+        db = sh(["docker", "exec", NAME, "printenv", "SESSION_DB"], capture_output=True)
+        if db.stdout.strip() == "/data/sessions.db":
+            print("[PASS] SESSION_DB=/data/sessions.db")
+        else:
+            failures.append(f"SESSION_DB={db.stdout.strip()!r}")
+
+        writable = sh(
+            ["docker", "exec", NAME, "sh", "-c", "touch /data/probe && rm /data/probe"],
+            capture_output=True,
+        )
+        if writable.returncode == 0:
+            print("[PASS] /data writable")
+        else:
+            failures.append("/data not writable")
 
         try:
             refused = sh(

@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import os
 import sys
+from functools import partial
 from pathlib import Path
 from typing import Literal, cast
 
@@ -99,6 +100,14 @@ def _add_http_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_runtime_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--session-db",
+        default=os.environ.get("SESSION_DB"),
+        help="SQLite session DB path (defaults to $SESSION_DB; omit for in-memory)",
+    )
+
+
 def _auth_token(args: argparse.Namespace) -> str | None:
     env_name = getattr(args, "auth_token_env", None)
     return os.environ.get(env_name) if env_name else None
@@ -119,6 +128,7 @@ def main(argv: list[str] | None = None) -> None:
         help="MCP transport to run on (defaults to the config value, else stdio)",
     )
     _add_http_args(p_serve)
+    _add_runtime_args(p_serve)
 
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
     p_many.add_argument(
@@ -134,6 +144,7 @@ def main(argv: list[str] | None = None) -> None:
         help="MCP transport to run on (defaults to stdio)",
     )
     _add_http_args(p_many)
+    _add_runtime_args(p_many)
 
     p_new = sub.add_parser("new", help="scaffold a new agent project")
     p_new.add_argument("name", help="directory / agent name")
@@ -160,6 +171,8 @@ def main(argv: list[str] | None = None) -> None:
         else:
             raise SystemExit("provide --agent <file> or --config <file>")
 
+        from .factory import build_runner
+
         serve_agent(
             agent,
             name=name,
@@ -168,11 +181,16 @@ def main(argv: list[str] | None = None) -> None:
             port=args.port,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
+            runner=build_runner(agent, args.session_db),
         )
     elif args.cmd == "serve-many":
+        from .factory import build_runner
         from .mcp.server import serve_many
 
         agents = _load_agents(args.agents)
+        runner_factory = (
+            partial(build_runner, session_db=args.session_db) if args.session_db else None
+        )
         serve_many(
             agents,
             name=args.name,
@@ -181,6 +199,7 @@ def main(argv: list[str] | None = None) -> None:
             port=args.port,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
+            runner_factory=runner_factory,
         )
     elif args.cmd == "new":
         _scaffold(args.name)

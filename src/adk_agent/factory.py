@@ -12,6 +12,7 @@ from .models import build_model
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
+    from google.adk.runners import Runner
 
 
 def build_agent(spec: AgentConfig) -> BaseAgent:
@@ -36,3 +37,27 @@ def build_agent(spec: AgentConfig) -> BaseAgent:
 def build_framework(cfg: FrameworkConfig) -> dict[str, BaseAgent]:
     """Build every agent named in a :class:`FrameworkConfig`."""
     return {name: build_agent(spec) for name, spec in cfg.agents.items()}
+
+
+def build_runner(agent: BaseAgent, session_db: str | None = None) -> Runner | None:
+    """Return a Runner with a persistent SQLite session store, or ``None``.
+
+    ``None`` means "let ADK use its in-memory default". Supply ``session_db``
+    (the CLI reads ``SESSION_DB``) to keep sessions across restarts, which a
+    real deployment needs. The parent directory is created if missing.
+    """
+    if not session_db:
+        return None
+
+    from pathlib import Path
+
+    from google.adk.runners import Runner
+    from google.adk.sessions.sqlite_session_service import SqliteSessionService
+
+    db_path = Path(session_db)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return Runner(
+        app_name=agent.name,
+        agent=agent,
+        session_service=SqliteSessionService(str(db_path)),
+    )
