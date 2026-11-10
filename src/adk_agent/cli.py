@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import sys
 from pathlib import Path
+from typing import Literal, cast
+
+Transport = Literal["stdio", "streamable-http"]
 
 _AGENT_TEMPLATE = '''"""ADK agent: {name}."""
 
@@ -75,6 +79,26 @@ def _scaffold(name: str) -> None:
     print(f"created {agent_file}")
 
 
+def _add_http_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP bind host")
+    parser.add_argument("--port", type=int, default=8000, help="HTTP bind port")
+    parser.add_argument(
+        "--auth-token-env",
+        default="ADK_MCP_AUTH_TOKEN",
+        help="env var holding the bearer token (never pass tokens on the command line)",
+    )
+    parser.add_argument(
+        "--allow-unauthenticated",
+        action="store_true",
+        help="allow no auth on a loopback host (dev only)",
+    )
+
+
+def _auth_token(args: argparse.Namespace) -> str | None:
+    env_name = getattr(args, "auth_token_env", None)
+    return os.environ.get(env_name) if env_name else None
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="adk-agent")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -89,6 +113,7 @@ def main(argv: list[str] | None = None) -> None:
         choices=["stdio", "streamable-http"],
         help="MCP transport to run on (defaults to the config value, else stdio)",
     )
+    _add_http_args(p_serve)
 
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
     p_many.add_argument(
@@ -103,6 +128,7 @@ def main(argv: list[str] | None = None) -> None:
         choices=["stdio", "streamable-http"],
         help="MCP transport to run on (defaults to stdio)",
     )
+    _add_http_args(p_many)
 
     p_new = sub.add_parser("new", help="scaffold a new agent project")
     p_new.add_argument("name", help="directory / agent name")
@@ -129,7 +155,15 @@ def main(argv: list[str] | None = None) -> None:
         else:
             raise SystemExit("provide --agent <file> or --config <file>")
 
-        serve_agent(agent, name=name, transport=transport)
+        serve_agent(
+            agent,
+            name=name,
+            transport=cast(Transport, transport),
+            host=args.host,
+            port=args.port,
+            auth_token=_auth_token(args),
+            allow_unauthenticated=args.allow_unauthenticated,
+        )
     elif args.cmd == "serve-many":
         from .mcp.server import serve_many
 
@@ -137,7 +171,11 @@ def main(argv: list[str] | None = None) -> None:
         serve_many(
             agents,
             name=args.name,
-            transport=args.transport or "stdio",
+            transport=cast(Transport, args.transport or "stdio"),
+            host=args.host,
+            port=args.port,
+            auth_token=_auth_token(args),
+            allow_unauthenticated=args.allow_unauthenticated,
         )
     elif args.cmd == "new":
         _scaffold(args.name)

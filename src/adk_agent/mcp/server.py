@@ -19,6 +19,10 @@ def serve_agent(
     transport: Literal["stdio", "streamable-http"] = "stdio",
     runner: Any = None,
     instructions: str | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    auth_token: str | None = None,
+    allow_unauthenticated: bool = False,
 ) -> Any:
     """Expose one ADK agent as an MCP server and run it (blocking).
 
@@ -27,13 +31,26 @@ def serve_agent(
     another agent) can call it with a plain ``request`` string.
 
     ``transport`` is ``"stdio"`` for local hosts or ``"streamable-http"`` for a
-    networked deployment. Pass ``runner`` to plug in persistent session /
-    artifact / memory services for a long-lived server.
+    networked deployment. HTTP requires ``auth_token`` (CP-S6); set
+    ``allow_unauthenticated=True`` only for a loopback dev server. Pass
+    ``runner`` to plug in persistent session / artifact / memory services for a
+    long-lived server.
     """
     from google.adk.tools.mcp_tool import to_mcp_server
 
     server = to_mcp_server(agent, name=name, runner=runner, instructions=instructions)
-    server.run(transport=transport)
+    if transport == "stdio":
+        server.run(transport="stdio")
+    else:
+        from .http import run_http
+
+        run_http(
+            server,
+            host=host,
+            port=port,
+            auth_token=auth_token,
+            allow_unauthenticated=allow_unauthenticated,
+        )
     return server
 
 
@@ -44,6 +61,10 @@ def serve_many(
     transport: Literal["stdio", "streamable-http"] = "stdio",
     instructions: str | None = None,
     runner_factory: Callable[[BaseAgent], Any] | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    auth_token: str | None = None,
+    allow_unauthenticated: bool = False,
 ) -> Any:
     """Expose several ADK agents as separate MCP tools in one server.
 
@@ -116,5 +137,16 @@ def serve_many(
             structured_output=False,
         )
 
-    server.run(transport=transport)
+    if transport == "stdio":
+        server.run(transport="stdio")
+    else:
+        from .http import run_http
+
+        run_http(
+            server,
+            host=host,
+            port=port,
+            auth_token=auth_token,
+            allow_unauthenticated=allow_unauthenticated,
+        )
     return server
