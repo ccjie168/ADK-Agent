@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scripts/check.py:*)",
+      "Bash(.venv/Scripts/python.exe scripts/check.py:*)",
+      "Bash(.venv/Scripts/python.exe -m pytest:*)",
+      "Bash(.venv/Scripts/python.exe -m ruff:*)",
+      "Bash(.venv/Scripts/python.exe -m mypy:*)",
+      "Bash(.venv/Scripts/python.exe -m bandit:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git tag:*)",
+      "Bash(rm -rf:*)",
+      "Read(./.env)",
+      "Read(./**/*.key)",
+      "Read(./secrets/**)"
+    ]
+  }
+}

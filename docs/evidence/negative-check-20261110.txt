@@ -1,0 +1,6 @@
+format: injected defect -> RED (ok)
+lint: injected defect -> RED (ok)
+types: injected defect -> RED (ok)
+secrets: injected defect -> RED (ok)
+test: injected defect -> RED (ok)
+restore: ALL PASS (ok)

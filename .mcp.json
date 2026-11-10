@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "adk-minimal": {
+      "command": "C:/AI_System/ADK-Agent/.venv/Scripts/python.exe",
+      "args": [
+        "-m",
+        "adk_agent",
+        "serve",
+        "--agent",
+        "C:/AI_System/ADK-Agent/examples/minimal/agent.py"
+      ],
+      "env": {
+        "ADK_AGENT_MODEL": "claude:deepseek-v4-pro",
+        "ANTHROPIC_AUTH_TOKEN": "${ANTHROPIC_AUTH_TOKEN}",
+        "ANTHROPIC_BASE_URL": "${ANTHROPIC_BASE_URL:-https://api.deepseek.com/anthropic}"
+      }
+    }
+  }
+}
