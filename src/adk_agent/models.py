@@ -28,7 +28,7 @@ Resolution order for ``build_model()`` with no argument:
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .config import ModelConfig
 
@@ -93,6 +93,19 @@ def build_model(spec: str | ModelConfig | None = None) -> BaseLlm:
     if cfg.api_base:
         kwargs.setdefault("api_base", cfg.api_base)
     return LiteLlm(model=cfg.name, **kwargs)
+
+
+def disable_thinking() -> Any:
+    """Return a ``GenerateContentConfig`` with thinking disabled.
+
+    Anthropic-compatible third-party endpoints (DeepSeek's ``/anthropic``, for
+    example) reject ``redacted_thinking`` blocks in the conversation history,
+    so a second turn with the same session fails with 422. Disabling thinking
+    keeps the history to text/tool blocks and multi-turn chat works.
+    """
+    from google.genai import types
+
+    return types.GenerateContentConfig(thinking_config=types.ThinkingConfig(thinking_budget=0))
 
 
 def _normalize(spec: str | ModelConfig | None) -> ModelConfig:

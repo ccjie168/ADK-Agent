@@ -17,7 +17,7 @@ import datetime
 
 from google.adk.agents import LlmAgent
 
-from adk_agent import build_model, serve_agent
+from adk_agent import build_model, disable_thinking, serve_agent
 
 
 def add(a: float, b: float) -> float:
@@ -41,6 +41,7 @@ math_agent = LlmAgent(
     description="Does arithmetic: adds and multiplies two numbers.",
     instruction="Use add/multiply to answer arithmetic questions. Reply with just the result.",
     tools=[add, multiply],
+    generate_content_config=disable_thinking(),
 )
 
 time_agent = LlmAgent(
@@ -49,6 +50,7 @@ time_agent = LlmAgent(
     description="Reports the current date and time.",
     instruction="Use get_time to answer questions about the current time.",
     tools=[get_time],
+    generate_content_config=disable_thinking(),
 )
 
 orchestrator = LlmAgent(
@@ -61,6 +63,7 @@ orchestrator = LlmAgent(
         "answer for the user."
     ),
     sub_agents=[math_agent, time_agent],
+    generate_content_config=disable_thinking(),
 )
 
 # Default entry point for `adk-agent serve --agent examples/multi_agent/agent.py`.

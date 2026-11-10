@@ -13,7 +13,7 @@ import datetime
 
 from google.adk.agents import LlmAgent
 
-from adk_agent import build_model, serve_agent
+from adk_agent import build_model, disable_thinking, serve_agent
 
 
 def get_time() -> str:
@@ -35,6 +35,9 @@ agent = LlmAgent(
         "and echo when asked to repeat something."
     ),
     tools=[get_time, echo],
+    # DeepSeek's Anthropic-compatible endpoint rejects thinking blocks in the
+    # history; disabling thinking makes multi-turn chat work.
+    generate_content_config=disable_thinking(),
 )
 
 

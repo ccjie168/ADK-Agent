@@ -18,17 +18,21 @@ from .config import (
     ModelConfig,
     load_config,
 )
+from .console import build_console_app, run_console
 from .factory import build_agent, build_framework, build_runner
 from .mcp.server import serve_agent, serve_many
-from .models import build_model
+from .models import build_model, disable_thinking
 
 __all__ = [
     "build_model",
+    "disable_thinking",
     "build_agent",
     "build_framework",
     "build_runner",
     "serve_agent",
     "serve_many",
+    "build_console_app",
+    "run_console",
     "load_config",
     "ModelConfig",
     "McpServerConfig",

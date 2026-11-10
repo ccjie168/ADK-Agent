@@ -13,6 +13,19 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/healthz   # 200
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8080/mcp  # 401
 ```
 
+### Web console
+
+The Compose file also runs an authenticated console on port 8081
+(`http://127.0.0.1:8081`). Open it, paste `ADK_MCP_AUTH_TOKEN`, and chat with
+the agents in the browser. `GET /` is a static shell; every `/api/*` call needs
+the bearer token.
+
+```bash
+docker compose up -d --build
+# MCP:      http://127.0.0.1:8080/mcp
+# Console:  http://127.0.0.1:8081
+```
+
 Point Claude Code at it:
 
 ```json

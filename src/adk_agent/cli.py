@@ -62,12 +62,16 @@ def _load_agent(path: str):
 
 
 def _load_agents(path: str) -> dict:
-    """Load an ``agents`` name -> agent mapping from a Python file path."""
+    """Load an ``agents`` mapping, or wrap a single ``agent``/``root_agent``."""
     module = _load_module(path)
     agents = getattr(module, "agents", None)
-    if not isinstance(agents, dict) or not agents:
-        raise SystemExit(f"no non-empty `agents` dict found in {path}")
-    return agents
+    if isinstance(agents, dict) and agents:
+        return agents
+    for attr in ("agent", "root_agent"):
+        candidate = getattr(module, attr, None)
+        if candidate is not None:
+            return {candidate.name: candidate}
+    raise SystemExit(f"no `agents` dict or `agent`/`root_agent` found in {path}")
 
 
 def _scaffold(name: str) -> None:
@@ -146,6 +150,15 @@ def main(argv: list[str] | None = None) -> None:
     _add_http_args(p_many)
     _add_runtime_args(p_many)
 
+    p_console = sub.add_parser("console", help="serve a private web console for agents")
+    p_console.add_argument(
+        "--agents",
+        required=True,
+        help="path to a Python file defining an `agents` dict (name -> agent)",
+    )
+    _add_http_args(p_console)
+    _add_runtime_args(p_console)
+
     p_new = sub.add_parser("new", help="scaffold a new agent project")
     p_new.add_argument("name", help="directory / agent name")
 
@@ -200,6 +213,18 @@ def main(argv: list[str] | None = None) -> None:
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
             runner_factory=runner_factory,
+        )
+    elif args.cmd == "console":
+        from .console import run_console
+
+        agents = _load_agents(args.agents)
+        run_console(
+            agents,
+            host=args.host,
+            port=args.port,
+            auth_token=_auth_token(args),
+            allow_unauthenticated=args.allow_unauthenticated,
+            session_db=args.session_db,
         )
     elif args.cmd == "new":
         _scaffold(args.name)

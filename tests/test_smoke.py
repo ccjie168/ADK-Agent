@@ -48,6 +48,14 @@ def test_build_agent_tree():
     assert agent.sub_agents[0].name == "child"
 
 
+def test_disable_thinking():
+    from adk_agent import disable_thinking
+
+    config = disable_thinking()
+    assert config.thinking_config is not None
+    assert config.thinking_config.thinking_budget == 0
+
+
 def test_build_anthropic_model():
     from adk_agent.models import build_model
 

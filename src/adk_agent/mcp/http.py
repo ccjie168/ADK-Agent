@@ -10,7 +10,41 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp
+
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+OPEN_PATHS = frozenset({"/healthz"})
+
+
+class BearerAuthMiddleware(BaseHTTPMiddleware):
+    """Reject requests without ``Authorization: Bearer <token>``."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        token: str,
+        open_paths: frozenset[str] = OPEN_PATHS,
+    ) -> None:
+        super().__init__(app)
+        self.token = token
+        self.open_paths = open_paths
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.url.path in self.open_paths:
+            return await call_next(request)
+        header = request.headers.get("authorization", "")
+        parts = header.split(None, 1)
+        valid = len(parts) == 2 and parts[0].lower() == "bearer" and parts[1] == self.token
+        if not valid:
+            return JSONResponse(
+                {"error": "unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return await call_next(request)
 
 
 def resolve_port(port: int | None, default: int = 8000) -> int:
@@ -55,11 +89,9 @@ def build_http_app(
     **kwargs: Any,
 ) -> Any:
     """Build the streamable-http ASGI app, wrapping it in bearer auth if set."""
-    from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.responses import JSONResponse
 
-    # Health probe for the platform (Cloud Run). Declared as the one open
-    # endpoint and returns no data; MCP itself stays protected.
+    # Health probe for the platform. Declared as the one open endpoint and
+    # returns no data; MCP itself stays protected.
     @server.custom_route("/healthz", methods=["GET"], include_in_schema=False)
     async def _healthz(_request: Any) -> Any:
         return JSONResponse({"status": "ok"})
@@ -67,23 +99,7 @@ def build_http_app(
     app = server.streamable_http_app(host=host, **kwargs)
 
     if auth_token:
-
-        class BearerAuthMiddleware(BaseHTTPMiddleware):
-            async def dispatch(self, request, call_next):  # type: ignore[no-untyped-def]
-                if request.url.path == "/healthz":
-                    return await call_next(request)
-                header = request.headers.get("authorization", "")
-                parts = header.split(None, 1)
-                valid = len(parts) == 2 and parts[0].lower() == "bearer" and parts[1] == auth_token
-                if not valid:
-                    return JSONResponse(
-                        {"error": "unauthorized"},
-                        status_code=401,
-                        headers={"WWW-Authenticate": "Bearer"},
-                    )
-                return await call_next(request)
-
-        app.add_middleware(BearerAuthMiddleware)
+        app.add_middleware(BearerAuthMiddleware, token=auth_token)
 
     return app
 

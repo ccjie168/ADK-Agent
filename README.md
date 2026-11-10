@@ -36,6 +36,9 @@ export ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 #    (c) Gemini (auto-selected when GOOGLE_API_KEY is present):
 # export GOOGLE_API_KEY=...
 
+# DeepSeek's /anthropic endpoint rejects `redacted_thinking` in history; keep
+# thinking disabled for multi-turn: generate_content_config=disable_thinking().
+
 # 3. run the minimal agent as an MCP server
 .venv/Scripts/python.exe -m adk_agent serve --agent examples/minimal/agent.py
 ```
