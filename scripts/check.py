@@ -32,7 +32,7 @@ FULL = [
 # detect-secrets has no exit-code signal; we parse its JSON and count hits.
 SECRET_EXCLUDES = (
     r"(^|[\\/])(\.venv|\.git|\.mypy_cache|\.ruff_cache|__pycache__|"
-    r"\.pytest_cache|docs[\\/]evidence)([\\/]|$)"
+    r"\.pytest_cache|node_modules|docs[\\/]evidence)([\\/]|$)"
 )
 
 
