@@ -8,6 +8,7 @@ caller opts in explicitly with ``allow_unauthenticated=True``.
 from __future__ import annotations
 
 import os
+import secrets
 from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -37,7 +38,11 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         header = request.headers.get("authorization", "")
         parts = header.split(None, 1)
-        valid = len(parts) == 2 and parts[0].lower() == "bearer" and parts[1] == self.token
+        valid = (
+            len(parts) == 2
+            and parts[0].lower() == "bearer"
+            and secrets.compare_digest(parts[1], self.token)
+        )
         if not valid:
             return JSONResponse(
                 {"error": "unauthorized"},

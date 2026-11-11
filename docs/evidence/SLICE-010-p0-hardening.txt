@@ -1,0 +1,50 @@
+SLICE-010 P0 加固
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/test_config_strictness.py tests/test_console_hardening.py -q
+7 failed, 1 passed
+
+- 四个配置模型接受未知字段。
+- FrameworkConfig(agents={}, expose="missing") 通过。
+- /api/chat 原样使用不存在的 session_id。
+- runner 抛异常时返回 500，但 caplog 为空。
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_config_strictness.py tests/test_console_hardening.py -q
+8 passed in 1.49s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+Contracts: 1 kept, 0 broken.
+54 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+Contracts: 1 kept, 0 broken.
+54 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- 第一版用 assert 做类型收窄，bandit 报 B101。改为 _session_id_for 辅助函数。
+- bearer token 改为 secrets.compare_digest。
+- 控制台异常用 logger.exception 记录 agent 名和 session id，响应仍是通用 500。
+- 前端切换 agent 时重置 sessionId。

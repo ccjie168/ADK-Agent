@@ -7,6 +7,7 @@ it in ``sessionStorage`` for the current tab only.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request
@@ -16,6 +17,8 @@ from .mcp.http import BearerAuthMiddleware, resolve_http_auth, resolve_port
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
+
+logger = logging.getLogger(__name__)
 
 _USER_ID = "console_user"
 _OPEN_PATHS = frozenset({"/", "/healthz"})
@@ -98,6 +101,7 @@ async function send() {
   append("agent", data.reply || "(empty)");
 }
 
+$("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
 $("connect").addEventListener("click", loadAgents);
 $("send").addEventListener("click", send);
 $("msg").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
@@ -119,6 +123,18 @@ def _session_service(session_db: str | None) -> Any:
     from google.adk.sessions import InMemorySessionService
 
     return InMemorySessionService()
+
+
+async def _session_id_for(session_service: Any, app_name: str, raw: object) -> str:
+    """Return an existing session for this agent, or create a new one."""
+    if isinstance(raw, str) and raw:
+        session = await session_service.get_session(
+            app_name=app_name, user_id=_USER_ID, session_id=raw
+        )
+        if session is not None:
+            return str(session.id)
+    session = await session_service.create_session(app_name=app_name, user_id=_USER_ID)
+    return str(session.id)
 
 
 def build_console_app(
@@ -177,10 +193,7 @@ def build_console_app(
         if runner is None:
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
-        session_id = body.get("session_id")
-        if not session_id:
-            session = await session_service.create_session(app_name=name, user_id=_USER_ID)
-            session_id = session.id
+        session_id = await _session_id_for(session_service, name, body.get("session_id"))
 
         new_message = types.Content(role="user", parts=[types.Part(text=message)])
         reply_parts: list[str] = []
@@ -195,6 +208,7 @@ def build_console_app(
                         if not part.thought and part.text:
                             reply_parts.append(part.text)
         except Exception:  # noqa: BLE001
+            logger.exception("agent run failed: agent=%s session=%s", name, session_id)
             return JSONResponse({"error": "agent run failed"}, status_code=500)
 
         return JSONResponse({"session_id": session_id, "reply": "".join(reply_parts).strip()})

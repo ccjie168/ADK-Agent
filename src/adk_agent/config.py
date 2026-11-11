@@ -11,11 +11,13 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelConfig(BaseModel):
     """Which LLM backend an agent runs on."""
+
+    model_config = ConfigDict(extra="forbid")
 
     provider: Literal["gemini", "litellm", "claude", "vertex"] = "litellm"
     # LiteLLM model id (e.g. "deepseek/deepseek-v4-pro", "openai/gpt-4o") or
@@ -32,6 +34,8 @@ class ModelConfig(BaseModel):
 
 class McpServerConfig(BaseModel):
     """How to reach one external MCP server (the *incoming* direction)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     transport: Literal["stdio", "http"] = "stdio"
 
@@ -54,6 +58,8 @@ class McpServerConfig(BaseModel):
 class AgentConfig(BaseModel):
     """Declarative description of one ADK agent."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     description: str = ""
     instruction: str = ""
@@ -65,9 +71,17 @@ class AgentConfig(BaseModel):
 class FrameworkConfig(BaseModel):
     """Top-level config: named agents plus which one to expose over MCP."""
 
+    model_config = ConfigDict(extra="forbid")
+
     agents: dict[str, AgentConfig]
     expose: str | None = None
     transport: Literal["stdio", "streamable-http"] = "stdio"
+
+    @model_validator(mode="after")
+    def _expose_must_exist(self) -> FrameworkConfig:
+        if self.expose is not None and self.expose not in self.agents:
+            raise ValueError(f"expose {self.expose!r} is not in agents")
+        return self
 
 
 AgentConfig.model_rebuild()
