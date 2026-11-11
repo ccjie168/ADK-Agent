@@ -17,14 +17,14 @@ from pathlib import Path
 PY = sys.executable
 ROOT = Path(__file__).resolve().parents[1]
 
-FAST = [
+FAST_STEPS = [
     ("format", "ruff", ["-m", "ruff", "format", "--check", "."]),
     ("lint", "ruff", ["-m", "ruff", "check", "."]),
     ("types", "mypy", ["-m", "mypy", "src"]),
     ("test", "pytest", ["-m", "pytest", "-q"]),
 ]
 
-FULL = [
+FULL_STEPS = FAST_STEPS + [
     ("sast", "bandit", ["-m", "bandit", "-q", "-r", "src"]),
     ("deps", "pip_audit", ["-m", "pip_audit"]),
 ]
@@ -83,8 +83,13 @@ def _run_secrets() -> bool | None:
     return True
 
 
+def select_steps(argv: list[str]) -> list:
+    """Return the steps for the requested gate. ``--full`` is cumulative."""
+    return FULL_STEPS if "--full" in argv else FAST_STEPS
+
+
 def main() -> int:
-    steps = FULL if "--full" in sys.argv else FAST
+    steps = select_steps(sys.argv)
     strict = "--strict" in sys.argv
 
     results: list[bool | None] = []
