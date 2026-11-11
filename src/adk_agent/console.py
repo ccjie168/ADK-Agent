@@ -126,8 +126,12 @@ def build_console_app(
     *,
     auth_token: str | None,
     session_db: str | None = None,
+    host: str = "127.0.0.1",
+    allow_unauthenticated: bool = False,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
+    token = resolve_http_auth(host, auth_token, allow_unauthenticated)
+
     from google.adk.runners import Runner
 
     session_service = _session_service(session_db)
@@ -195,8 +199,8 @@ def build_console_app(
 
         return JSONResponse({"session_id": session_id, "reply": "".join(reply_parts).strip()})
 
-    if auth_token:
-        app.add_middleware(BearerAuthMiddleware, token=auth_token, open_paths=_OPEN_PATHS)
+    if token:
+        app.add_middleware(BearerAuthMiddleware, token=token, open_paths=_OPEN_PATHS)
 
     return app
 
@@ -211,8 +215,13 @@ def run_console(
     session_db: str | None = None,
 ) -> None:
     """Serve the console (blocking)."""
-    token = resolve_http_auth(host, auth_token, allow_unauthenticated)
-    app = build_console_app(agents, auth_token=token, session_db=session_db)
+    app = build_console_app(
+        agents,
+        auth_token=auth_token,
+        session_db=session_db,
+        host=host,
+        allow_unauthenticated=allow_unauthenticated,
+    )
 
     import uvicorn
 

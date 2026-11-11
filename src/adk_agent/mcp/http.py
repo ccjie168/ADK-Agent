@@ -86,9 +86,11 @@ def build_http_app(
     *,
     auth_token: str | None,
     host: str = "127.0.0.1",
+    allow_unauthenticated: bool = False,
     **kwargs: Any,
 ) -> Any:
     """Build the streamable-http ASGI app, wrapping it in bearer auth if set."""
+    token = resolve_http_auth(host, auth_token, allow_unauthenticated)
 
     # Health probe for the platform. Declared as the one open endpoint and
     # returns no data; MCP itself stays protected.
@@ -98,8 +100,8 @@ def build_http_app(
 
     app = server.streamable_http_app(host=host, **kwargs)
 
-    if auth_token:
-        app.add_middleware(BearerAuthMiddleware, token=auth_token)
+    if token:
+        app.add_middleware(BearerAuthMiddleware, token=token)
 
     return app
 
@@ -114,8 +116,13 @@ def run_http(
     **kwargs: Any,
 ) -> None:
     """Serve an MCP server over streamable-http (blocking)."""
-    token = resolve_http_auth(host, auth_token, allow_unauthenticated)
-    app = build_http_app(server, auth_token=token, host=host, **kwargs)
+    app = build_http_app(
+        server,
+        auth_token=auth_token,
+        host=host,
+        allow_unauthenticated=allow_unauthenticated,
+        **kwargs,
+    )
 
     import uvicorn
 
