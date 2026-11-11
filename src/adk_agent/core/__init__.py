@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .audit import AuditEvent
 from .identity import Principal
-from .invocation import Invocation
+from .invocation import Invocation, InvocationResult
 from .manifest import (
     AgentManifest,
     AgentRef,
@@ -37,6 +37,7 @@ __all__ = [
     "EvalSuite",
     "IdentityProvider",
     "Invocation",
+    "InvocationResult",
     "Message",
     "ModelGateway",
     "ModelPolicy",

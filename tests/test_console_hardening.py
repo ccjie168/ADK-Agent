@@ -40,6 +40,24 @@ def test_stale_session_is_replaced(monkeypatch):
     assert response.json()["session_id"] != "missing"
 
 
+def test_chat_returns_trace_ids(monkeypatch):
+    async def empty_run(self, **kwargs):
+        for _ in ():
+            yield
+
+    monkeypatch.setattr("google.adk.runners.Runner.run_async", empty_run)
+    with TestClient(_app()) as client:
+        response = client.post(
+            "/api/chat",
+            json={"agent": "probe", "message": "hi"},
+            headers={**AUTH, "X-Trace-Id": "trace-123"},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trace_id"] == "trace-123"
+    assert body["run_id"]
+
+
 def test_chat_failure_is_logged(monkeypatch, caplog):
     async def boom(self, **kwargs):
         raise RuntimeError("model exploded")

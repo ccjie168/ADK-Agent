@@ -27,3 +27,12 @@ class Invocation(BaseModel):
         if value is not None and (value.tzinfo is None or value.utcoffset() is None):
             raise ValueError("deadline must be timezone-aware")
         return value
+
+
+class InvocationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str = Field(min_length=1)
+    trace_id: str = Field(min_length=1)
+    agent_ref: AgentRef
+    text: str

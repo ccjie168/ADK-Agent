@@ -8,13 +8,17 @@ it in ``sessionStorage`` for the current tab only.
 from __future__ import annotations
 
 import logging
+import re
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from .auth import BearerAuthMiddleware, resolve_http_auth
+from .core import Invocation, Principal
 from .mcp.http import resolve_port
+from .runtime import AgentRuntime, dev_agent_ref
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
@@ -23,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 _USER_ID = "console_user"
 _OPEN_PATHS = frozenset({"/", "/healthz"})
+_CONSOLE_PRINCIPAL = Principal(tenant="local", subject=_USER_ID, kind="human")
+_TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 
 _INDEX_HTML = """<!doctype html>
 <html lang="en">
@@ -100,6 +106,7 @@ async function send() {
   if (!r.ok) { append("system", data.error || ("error " + r.status)); return; }
   sessionId = data.session_id;
   append("agent", data.reply || "(empty)");
+  append("system", "trace " + data.trace_id);
 }
 
 $("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
@@ -138,6 +145,11 @@ async def _session_id_for(session_service: Any, app_name: str, raw: object) -> s
     return str(session.id)
 
 
+def _trace_id(request: Request) -> str:
+    candidate = request.headers.get("x-trace-id", "")
+    return candidate if _TRACE_ID.fullmatch(candidate) else uuid.uuid4().hex
+
+
 def build_console_app(
     agents: dict[str, BaseAgent],
     *,
@@ -156,6 +168,7 @@ def build_console_app(
         name: Runner(app_name=name, agent=agent, session_service=session_service)
         for name, agent in agents.items()
     }
+    runtimes = {name: AgentRuntime(runner) for name, runner in runners.items()}
 
     app = FastAPI(title="ADK Console", docs_url=None, redoc_url=None)
 
@@ -175,8 +188,6 @@ def build_console_app(
 
     @app.post("/api/chat")
     async def chat(request: Request) -> JSONResponse:
-        from google.genai import types
-
         try:
             body = await request.json()
         except ValueError:
@@ -190,29 +201,38 @@ def build_console_app(
         message = str(body.get("message") or "").strip()
         if not message:
             return JSONResponse({"error": "message is required"}, status_code=400)
-        runner = runners.get(name)
-        if runner is None:
+        runtime = runtimes.get(name)
+        if runtime is None:
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
         session_id = await _session_id_for(session_service, name, body.get("session_id"))
 
-        new_message = types.Content(role="user", parts=[types.Part(text=message)])
-        reply_parts: list[str] = []
+        invocation = Invocation(
+            run_id=uuid.uuid4().hex,
+            trace_id=_trace_id(request),
+            principal=_CONSOLE_PRINCIPAL,
+            agent_ref=dev_agent_ref(name),
+            input=message,
+        )
         try:
-            async for event in runner.run_async(
-                user_id=_USER_ID,
-                session_id=session_id,
-                new_message=new_message,
-            ):
-                if event.is_final_response() and event.content and event.content.parts:
-                    for part in event.content.parts:
-                        if not part.thought and part.text:
-                            reply_parts.append(part.text)
+            result = await runtime.run(invocation, user_id=_USER_ID, session_id=session_id)
         except Exception:  # noqa: BLE001
-            logger.exception("agent run failed: agent=%s session=%s", name, session_id)
+            logger.exception(
+                "agent run failed: agent=%s session=%s run=%s",
+                name,
+                session_id,
+                invocation.run_id,
+            )
             return JSONResponse({"error": "agent run failed"}, status_code=500)
 
-        return JSONResponse({"session_id": session_id, "reply": "".join(reply_parts).strip()})
+        return JSONResponse(
+            {
+                "session_id": session_id,
+                "reply": result.text,
+                "run_id": result.run_id,
+                "trace_id": result.trace_id,
+            }
+        )
 
     if token:
         app.add_middleware(BearerAuthMiddleware, token=token, open_paths=_OPEN_PATHS)

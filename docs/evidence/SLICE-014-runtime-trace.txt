@@ -1,0 +1,49 @@
+SLICE-014 运行时注入
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/runtime/test_execution.py -q
+ModuleNotFoundError: No module named 'adk_agent.runtime'
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console_hardening.py -q
+1 failed, 2 passed
+- test_chat_returns_trace_ids: KeyError: 'trace_id'
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/runtime/test_execution.py tests/test_console_hardening.py tests/test_console.py tests/test_auth_builders.py -q
+16 passed in 1.68s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+Contracts: 1 kept, 0 broken.
+84 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+84 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- AgentRuntime 把 run_id、trace_id、principal、agent_ref 写入 RunConfig.custom_metadata。
+- 成功写 agent.run ok 事件；失败写 error 事件后重新抛出。
+- 控制台改用 AgentRuntime，返回 run_id 和 trace_id，并校验 X-Trace-Id。
+- 未发布 agent 使用 dev_agent_ref，version=dev，digest=sha256(name)。
+- 模型网关尚未接入 ADK 的模型循环；model.call 审计目前只覆盖直接调用网关的场景。
