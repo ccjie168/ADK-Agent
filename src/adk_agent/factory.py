@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from google.adk.agents import LlmAgent
+from google.genai import types
 
 from .config import AgentConfig, FrameworkConfig
 from .mcp.client import toolset_from_config
@@ -24,6 +25,12 @@ def build_agent(spec: AgentConfig) -> BaseAgent:
     sub_agents = [build_agent(sub) for sub in spec.sub_agents]
     tools = [toolset_from_config(server) for server in spec.mcp_servers]
 
+    extra: dict[str, Any] = {}
+    if spec.model.thinking_budget is not None:
+        extra["generate_content_config"] = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=spec.model.thinking_budget)
+        )
+
     return LlmAgent(
         name=spec.name,
         model=build_model(spec.model),
@@ -31,6 +38,7 @@ def build_agent(spec: AgentConfig) -> BaseAgent:
         instruction=spec.instruction,
         tools=tools,
         sub_agents=sub_agents,
+        **extra,
     )
 
 

@@ -23,6 +23,9 @@ class ModelConfig(BaseModel):
     name: str = "deepseek/deepseek-v4-pro"
     api_key: str | None = None
     api_base: str | None = None
+    # Set to cap or disable model thinking (0 disables it), e.g. for
+    # Anthropic-compatible endpoints that reject redacted_thinking history.
+    thinking_budget: int | None = None
     # Extra keyword arguments forwarded to the ADK model class.
     kwargs: dict[str, Any] = Field(default_factory=dict)
 
