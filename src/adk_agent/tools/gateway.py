@@ -17,6 +17,7 @@ from ..core import (
     ToolRequest,
     ToolResponse,
 )
+from ..sandbox import ToolSandbox
 from .registry import FunctionRegistry, ToolSpec
 
 
@@ -25,9 +26,15 @@ class ToolDenied(Exception):
 
 
 class FunctionToolGateway:
-    def __init__(self, registry: FunctionRegistry, audit: AuditSink | None = None) -> None:
+    def __init__(
+        self,
+        registry: FunctionRegistry,
+        audit: AuditSink | None = None,
+        sandbox: ToolSandbox | None = None,
+    ) -> None:
         self.registry = registry
         self.audit = audit
+        self.sandbox = sandbox
 
     async def invoke(
         self, invocation: Invocation, request: ToolRequest, policy: PolicyEngine
@@ -73,16 +80,19 @@ class FunctionToolGateway:
             raise ToolDenied("approval required")
 
         try:
-            output = spec.handler(**request.args)
-            if inspect.isawaitable(output):
-                output = await output
+            if self.sandbox is not None:
+                output = self.sandbox.invoke(spec.handler, (), request.args)
+            else:
+                output = spec.handler(**request.args)
+                if inspect.isawaitable(output):
+                    output = await output
         except Exception as exc:
             await self._audit(
                 invocation,
                 request,
                 spec=spec,
                 status="error",
-                error_code=type(exc).__name__,
+                error_code=getattr(exc, "error_code", type(exc).__name__),
                 started=started,
                 args_hash=args_hash,
             )

@@ -24,6 +24,7 @@ from .core import Invocation, ModelPolicy, Principal, ToolGrant
 from .mcp.http import resolve_port
 from .models.gateway_llm import GatewayLlm, provider_for_model
 from .runtime import AgentRuntime, dev_agent_ref
+from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
 from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard, toolset_tool_ids
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -227,6 +228,7 @@ def build_console_app(
     session_db: str | None = None,
     host: str = "127.0.0.1",
     allow_unauthenticated: bool = False,
+    sandbox: SandboxPolicy | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated)
@@ -235,8 +237,10 @@ def build_console_app(
 
     session_service = _session_service(session_db)
     audit = ListAuditSink()
+    sandbox_policy = sandbox or SandboxPolicy()
     for agent in agents.values():
         _wrap_model(agent, audit)
+        install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
         _install_tool_guard(agent, audit)
     runners = {
         name: Runner(app_name=name, agent=agent, session_service=session_service)
@@ -327,6 +331,7 @@ def run_console(
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
     session_db: str | None = None,
+    sandbox: SandboxPolicy | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -335,6 +340,7 @@ def run_console(
         session_db=session_db,
         host=host,
         allow_unauthenticated=allow_unauthenticated,
+        sandbox=sandbox,
     )
 
     import uvicorn

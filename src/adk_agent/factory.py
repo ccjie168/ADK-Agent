@@ -11,12 +11,28 @@ from .config import AgentConfig, FrameworkConfig
 from .core import SecretProvider
 from .mcp.client import toolset_from_config
 from .models import build_model
+from .sandbox import check_url
 from .secretstore import EnvSecretProvider
-from .tools.sources import openapi_toolset_from_config
+from .tools.sources import load_openapi_spec, openapi_toolset_from_config
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
     from google.adk.runners import Runner
+
+
+def _check_egress(spec: AgentConfig) -> None:
+    """Deny HTTP tool sources outside the configured host allowlist."""
+    for server in spec.mcp_servers:
+        if server.transport == "http" and server.url:
+            check_url(server.url, spec.sandbox)
+    if spec.sandbox.allowed_hosts is None:
+        return
+    for api in spec.openapi:
+        document = load_openapi_spec(api.spec_path)
+        for server in document.get("servers", []) or []:
+            url = server.get("url") if isinstance(server, dict) else None
+            if isinstance(url, str):
+                check_url(url, spec.sandbox)
 
 
 def build_agent(spec: AgentConfig, secrets: SecretProvider | None = None) -> BaseAgent:
@@ -25,8 +41,10 @@ def build_agent(spec: AgentConfig, secrets: SecretProvider | None = None) -> Bas
     Sub-agents are attached via ``sub_agents`` (ADK's hierarchical delegation),
     every configured external MCP server becomes a ``McpToolset`` tool, and
     every OpenAPI document becomes an ``OpenAPIToolset``. Header secrets default
-    to :class:`EnvSecretProvider` and the same provider reaches sub-agents.
+    to :class:`EnvSecretProvider` and the same provider reaches sub-agents. HTTP
+    tool sources are checked against the sandbox host allowlist first.
     """
+    _check_egress(spec)
     provider = secrets if secrets is not None else EnvSecretProvider()
     sub_agents = [build_agent(sub, provider) for sub in spec.sub_agents]
     tools = [toolset_from_config(server, provider) for server in spec.mcp_servers]

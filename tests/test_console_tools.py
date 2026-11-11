@@ -78,6 +78,12 @@ def test_console_installs_tool_guard():
             assert isinstance(getattr(callback, "__self__", None), ToolGuard)
 
 
+def test_console_wraps_tools_in_sandbox():
+    agent = _agent()
+    build_console_app({"probe": agent}, auth_token="secret")
+    assert getattr(agent.tools[0], "__sandboxed__", False) is True
+
+
 def test_console_grants_declared_tools():
     agent = _agent()
     build_console_app({"probe": agent}, auth_token="secret")

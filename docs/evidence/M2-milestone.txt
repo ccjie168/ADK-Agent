@@ -1,0 +1,57 @@
+M2 工具与策略 里程碑
+日期: 2026-11-12
+状态: done
+
+包含切片
+--------
+- SLICE-019 工具网关与策略
+- SLICE-020 ADK 工具守卫接入
+- SLICE-021 密钥与外部工具源
+- SLICE-022 工具沙箱
+
+出口能力
+--------
+- 工具网关：FunctionRegistry、GrantPolicyEngine、FunctionToolGateway，tool.call 审计。
+- ADK 接入：before/after/on_error 工具回调，拒绝的工具不执行，允许和异常都留痕。
+- 密钥：EnvSecretProvider、MappingSecretProvider，配置只存引用，认证头请求时解析。
+- 工具源：OpenAPI JSON 转 ADK 工具集，MCP HTTP 支持 header_secrets。
+- 出口白名单：MCP URL 和 OpenAPI servers 在建 agent 时检查。
+- 沙箱：POSIX 子进程、RLIMIT_CPU、RLIMIT_AS、环境清空、socket 守卫、超时终止。
+- 控制台：工具守卫和沙箱一起装，审计面板能看到 tool.call。
+
+完整门禁
+--------
+$ .venv/Scripts/python.exe scripts/check.py --full
+182 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+Linux 容器
+----------
+POSIX 沙箱测试 18 passed。
+全量 182 passed, 1 failed。失败项是 tests/test_security_gate.py::test_install_hooks_sets_hooks_path，
+容器没有 git。不是代码问题。
+
+已知边界
+--------
+- Windows 的进程启动失败时退化为守护线程，没有网络和资源隔离。
+- fork 子进程共享父进程内存映像，继承的文件描述符还在。强隔离排在 M5。
+- 沙箱执行期间阻塞事件循环，最长 timeout_seconds。
+- MCP stdio 子进程的资源限制没有做。
+- BaseTool 实例和工具集不包装。
+- 控制台的 grant 仍按 agent 声明的工具推导，不是已发布 manifest 的 tool_grants。
+- 安全门 Phase B 未做：依赖锁、历史密钥扫描、镜像扫描、SBOM 签名、日志脱敏。
+- 分支保护仍未在 GitHub 上启用。
+
+下一步
+------
+M3：编排。OrchestrationPlan、单 agent/路由/监督者/工作流策略、持久化执行、审批门、trace 树。

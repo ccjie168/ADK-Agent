@@ -14,6 +14,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .sandbox.policy import SandboxPolicy
+
 # Incoming MCP clients use "http". Outgoing servers expose "streamable-http".
 IncomingTransport = Literal["stdio", "http"]
 ExposureTransport = Literal["stdio", "streamable-http"]
@@ -116,6 +118,7 @@ class AgentConfig(BaseModel):
     model: ModelConfig = Field(default_factory=ModelConfig)
     mcp_servers: list[McpServerConfig] = Field(default_factory=list)
     openapi: list[OpenApiConfig] = Field(default_factory=list)
+    sandbox: SandboxPolicy = Field(default_factory=SandboxPolicy)
     sub_agents: list[AgentConfig] = Field(default_factory=list)
 
 

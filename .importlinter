@@ -18,6 +18,7 @@ forbidden_modules =
     adk_agent.mcp
     adk_agent.registry
     adk_agent.runtime
+    adk_agent.sandbox
     adk_agent.secretstore
     adk_agent.templates
     adk_agent.tools

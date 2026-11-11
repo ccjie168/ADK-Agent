@@ -16,7 +16,7 @@
 
 ## 目录地图
 
-- `src/adk_agent`: 框架库（`models` / `config` / `factory` / `mcp` / `cli`）
+- `src/adk_agent`: 框架库（`core` 契约与端口、`models` 模型网关、`tools` 工具网关/守卫/沙箱、`secretstore` 密钥、`registry` 注册表、`runtime` 运行时、`console` 控制台、`mcp`、`cli`）
 - `tests/`: 与 `src` 镜像
 - `examples/`: `minimal`、`multi_agent` 示例
 - `scripts/`: `check.py`、`probe_mcp.py`、`call_tool.py`
@@ -24,10 +24,11 @@
 
 ## 当前在做
 
-- Phase 2: MCP `streamable-http` + 部署（待 `docs/specs/SLICE-001`）
+- M3 编排（M0、M1、M2 已完成，见 `docs/specs/ROADMAP.md`）
 
 ## 项目特有禁区
 
 - 禁止把真实 API Key 写入仓库；`.mcp.json` 只用 `${VAR}`
 - 禁止把未鉴权的 MCP HTTP 端点暴露到非可信网络
 - 禁止未经 ADR 新增模型通道或依赖
+- 测试目录不要命名为 `mcp` 或 `secrets`。前者干扰 ruff 的 import 分类，后者命中读取禁区。密钥包名用 `secretstore`

@@ -1,0 +1,83 @@
+SLICE-022 工具沙箱
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/sandbox tests/tools/test_gateway_sandbox.py tests/test_egress_allowlist.py tests/test_console_tools.py -q
+ModuleNotFoundError: No module named 'adk_agent.sandbox'
+5 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/sandbox tests/tools/test_gateway_sandbox.py tests/test_egress_allowlist.py tests/test_console_tools.py -q
+34 passed, 1 skipped in 32.90s
+
+$ .venv/Scripts/python.exe -m pytest -q
+182 passed, 1 skipped in 34.67s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+182 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+Linux 验证
+----------
+在本机 Docker 的 python:3.13-slim 里跑 POSIX 路径。
+
+$ python -m pytest tests/sandbox/test_tool_sandbox.py tests/sandbox/test_sandbox_policy.py -q
+18 passed
+
+$ python scripts/check.py --full --strict
+182 passed, 1 failed
+失败的是 tests/test_security_gate.py::test_install_hooks_sets_hooks_path。
+原因是容器里没有 git，不是代码问题。
+detect-secrets 在容器里扫挂载盘时卡住，任务被手动停止。
+
+说明
+----
+- SandboxPolicy 校验超时、CPU、内存、主机名和环境变量名。
+- 本地工具在 POSIX 上用 fork 子进程执行。
+- 子进程设置 RLIMIT_CPU 和 RLIMIT_AS。
+- 子进程清空环境变量，默认保留空列表。工具读不到模型 API Key。
+- 子进程安装 socket 守卫，默认拒绝 getaddrinfo、connect、connect_ex。
+- allowed_hosts 放行的主机先解析，解析出的 IP 才允许连接。
+- 异步 handler 先初始化事件循环的 self-pipe，再装守卫。否则 Windows proactor 的自连会被拒。
+- 超时后 terminate，再 kill。结果是 SandboxTimeout。
+- 工具异常保留类名，调用方收到 SandboxToolError。
+- 不可序列化的结果返回 SandboxSerializationError。
+- Windows spawn 失败时退化为守护线程超时。线程模式没有网络和资源隔离。
+- sandboxed_callable 返回 async wrapper，保留工具名和签名。
+- install_tool_sandbox 只包装普通 callable，跳过 BaseTool 和 BaseToolset，递归覆盖子 agent。
+- 网关有 sandbox 参数，超时和网络拒绝都写 error 审计。
+- MCP URL 和 OpenAPI servers 在建 agent 时按 allowed_hosts 检查。
+- allowed_hosts=None 不限制已有 HTTP 工具源。[] 拒绝所有。
+- ADK OpenAPI 私网防护继续保留。
+- framework_config.schema.json 已重新生成。
+
+已知边界
+--------
+- fork 子进程共享父进程内存映像，继承的文件描述符还在。强隔离需要容器或独立解释器，排在 M5。
+- Windows 线程退化没有网络和资源隔离。
+- 沙箱执行期间阻塞事件循环，最长 timeout_seconds。
+- MCP stdio 子进程没有加资源限制。
+- BaseTool 实例和工具集不包装。

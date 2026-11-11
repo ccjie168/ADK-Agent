@@ -35,6 +35,9 @@
           "title": "Openapi",
           "type": "array"
         },
+        "sandbox": {
+          "$ref": "#/$defs/SandboxPolicy"
+        },
         "sub_agents": {
           "items": {
             "$ref": "#/$defs/AgentConfig"
@@ -284,6 +287,74 @@
         "spec_path"
       ],
       "title": "OpenApiConfig",
+      "type": "object"
+    },
+    "SandboxPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_network": {
+          "default": false,
+          "title": "Allow Network",
+          "type": "boolean"
+        },
+        "allowed_hosts": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowed Hosts"
+        },
+        "env_allowlist": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Env Allowlist",
+          "type": "array"
+        },
+        "max_cpu_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 600,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cpu Seconds"
+        },
+        "max_memory_mb": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Memory Mb"
+        },
+        "timeout_seconds": {
+          "default": 10.0,
+          "exclusiveMinimum": 0,
+          "maximum": 600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "title": "SandboxPolicy",
       "type": "object"
     }
   },

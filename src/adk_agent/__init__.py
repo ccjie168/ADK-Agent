@@ -23,6 +23,13 @@ from .console import build_console_app, run_console
 from .factory import build_agent, build_framework, build_runner
 from .mcp.server import serve_agent, serve_many
 from .models import build_model, disable_thinking
+from .sandbox import (
+    SandboxPolicy,
+    SandboxTimeout,
+    SandboxViolation,
+    ToolSandbox,
+    install_tool_sandbox,
+)
 from .secretstore import EnvSecretProvider, MappingSecretProvider, SecretNotFound
 
 __all__ = [
@@ -44,6 +51,11 @@ __all__ = [
     "EnvSecretProvider",
     "MappingSecretProvider",
     "SecretNotFound",
+    "SandboxPolicy",
+    "SandboxTimeout",
+    "SandboxViolation",
+    "ToolSandbox",
+    "install_tool_sandbox",
 ]
 
 __version__ = "0.1.0"
