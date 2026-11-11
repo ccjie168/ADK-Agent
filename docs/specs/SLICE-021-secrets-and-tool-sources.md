@@ -21,7 +21,7 @@
 - `src/adk_agent/tools/sources.py`
 - `tests/secretstore/test_secret_providers.py`
 - `tests/tools/test_sources.py`
-- `tests/mcp/test_client.py`
+- `tests/test_mcp_client.py`
 - `docs/evidence/SLICE-021-secrets-and-tool-sources.txt`
 
 包名用 `secretstore`，不用 `secrets`。仓库的 `.claude/settings.json` 拒绝读取 `secrets/`，代码目录会误触。
@@ -35,6 +35,7 @@
 - `src/adk_agent/console.py`：按工具集发 grant
 - `src/adk_agent/__init__.py`：导出新类型
 - `.importlinter`：`core` 禁止导入 `adk_agent.secretstore`
+- `scripts/check.py`：lint 加 `--no-cache`，避免旧缓存掩盖 import 排序问题
 - `docs/contracts/framework_config.schema.json`：重新生成
 - `docs/specs/ROADMAP.md`：标出 SLICE-021 完成
 
@@ -46,7 +47,7 @@
 - [x] 映射提供者用于测试和注入 -> `::test_mapping_provider`
 - [x] 认证头在请求时解析 -> `::test_secret_header_provider`
 - [x] 非法头名在构建时拒绝 -> `::test_secret_header_provider_rejects_bad_name`
-- [x] MCP HTTP 工具集从 `header_secrets` 解析认证头 -> `tests/mcp/test_client.py::test_http_toolset_resolves_header_secrets`
+- [x] MCP HTTP 工具集从 `header_secrets` 解析认证头 -> `tests/test_mcp_client.py::test_http_toolset_resolves_header_secrets`
 - [x] MCP 配置了 `header_secrets` 但没提供者时构建失败 -> `::test_header_secrets_require_provider`
 - [x] stdio MCP 不允许 `header_secrets` -> `::test_stdio_header_secrets_rejected`
 - [x] `headers` 和 `header_secrets` 同名时配置拒绝 -> `::test_overlapping_headers_rejected`

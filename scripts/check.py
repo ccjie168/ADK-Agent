@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 FAST_STEPS: list[tuple[str, str | None, list[str]]] = [
     ("format", "ruff", ["-m", "ruff", "format", "--check", "."]),
-    ("lint", "ruff", ["-m", "ruff", "check", "."]),
+    ("lint", "ruff", ["-m", "ruff", "check", "--no-cache", "."]),
     ("types", "mypy", ["-m", "mypy", "src"]),
     ("layering", "importlinter", ["scripts/check_layering.py"]),
     ("specs", None, ["scripts/check_specs.py"]),
