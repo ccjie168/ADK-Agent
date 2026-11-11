@@ -26,9 +26,9 @@ def build_agent(spec: AgentConfig) -> BaseAgent:
     tools = [toolset_from_config(server) for server in spec.mcp_servers]
 
     extra: dict[str, Any] = {}
-    if spec.model.thinking_budget is not None:
+    if spec.thinking_budget is not None:
         extra["generate_content_config"] = types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_budget=spec.model.thinking_budget)
+            thinking_config=types.ThinkingConfig(thinking_budget=spec.thinking_budget)
         )
 
     return LlmAgent(

@@ -13,6 +13,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+# Incoming MCP clients use "http". Outgoing servers expose "streamable-http".
+IncomingTransport = Literal["stdio", "http"]
+ExposureTransport = Literal["stdio", "streamable-http"]
+
 
 class ModelConfig(BaseModel):
     """Which LLM backend an agent runs on."""
@@ -25,9 +29,6 @@ class ModelConfig(BaseModel):
     name: str = "deepseek/deepseek-v4-pro"
     api_key: str | None = None
     api_base: str | None = None
-    # Set to cap or disable model thinking (0 disables it), e.g. for
-    # Anthropic-compatible endpoints that reject redacted_thinking history.
-    thinking_budget: int | None = None
     # Extra keyword arguments forwarded to the ADK model class.
     kwargs: dict[str, Any] = Field(default_factory=dict)
 
@@ -37,7 +38,7 @@ class McpServerConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    transport: Literal["stdio", "http"] = "stdio"
+    transport: IncomingTransport = "stdio"
 
     # --- stdio transport ---
     command: str | None = None
@@ -63,6 +64,9 @@ class AgentConfig(BaseModel):
     name: str
     description: str = ""
     instruction: str = ""
+    # Cap or disable model thinking (0 disables it). build_agent applies this
+    # to the agent's GenerateContentConfig.
+    thinking_budget: int | None = None
     model: ModelConfig = Field(default_factory=ModelConfig)
     mcp_servers: list[McpServerConfig] = Field(default_factory=list)
     sub_agents: list[AgentConfig] = Field(default_factory=list)
@@ -75,7 +79,7 @@ class FrameworkConfig(BaseModel):
 
     agents: dict[str, AgentConfig]
     expose: str | None = None
-    transport: Literal["stdio", "streamable-http"] = "stdio"
+    transport: ExposureTransport = "stdio"
 
     @model_validator(mode="after")
     def _expose_must_exist(self) -> FrameworkConfig:

@@ -17,5 +17,6 @@
 - `principal.schema.json`：`Principal`，每次调用的主体。
 - `invocation.schema.json`：`Invocation`，数据面的调用形状。
 - `audit_event.schema.json`：`AuditEvent`，追加审计事件。
+- `framework_config.schema.json`：`FrameworkConfig`，当前配置接口。M1 由 `AgentManifest` 取代，过渡期保留。
 
 `PublishedAgent` 不是独立契约，它是注册表对 `AgentManifest` 加 digest、签名和发布时间的包装。

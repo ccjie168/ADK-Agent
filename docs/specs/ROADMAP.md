@@ -24,7 +24,7 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 
 | 里程碑 | 阶段 | 出口标准 | 状态 |
 | --- | --- | --- | --- |
-| M0 地基 | Phase 0 | 五个契约合并，import-linter 生效，manifest 可往返，P0 加固完成 | planned |
+| M0 地基 | Phase 0 | 五个契约合并，import-linter 生效，manifest 可往返，P0 加固完成 | done |
 | M1 单 agent 闭环 | Phase 1 | 注册、发布、模型网关、审计端到端跑通 | planned |
 | M2 工具与策略 | Phase 2 | 越权工具调用被拒并留痕，沙箱生效 | planned |
 | M3 编排 | Phase 3 | 多 agent 工作流可回放，审批门生效 | planned |
@@ -39,6 +39,8 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 | SLICE-009 | 包骨架、端口与分层门禁 | ADR-0002 第 2 条 | 008 |
 | SLICE-010 | 评审 P0 加固 | ADR-0002 第 5、6 条 | 无 |
 | SLICE-011 | 模型与配置契约收敛 | ADR-0002 第 2、3、8 条 | 008, 009 |
+
+M0 出口证据见 `docs/evidence/M0-milestone.txt`。
 
 M0 出口标准：
 

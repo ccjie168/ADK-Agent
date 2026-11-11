@@ -54,9 +54,10 @@ def build_model(spec: str | ModelConfig | None = None) -> BaseLlm:
     if cfg.provider == "gemini":
         from google.adk.models import Gemini
 
+        kwargs = dict(cfg.kwargs)
         if cfg.api_key:
-            os.environ.setdefault("GOOGLE_API_KEY", cfg.api_key)
-        return Gemini(model=cfg.name, **cfg.kwargs)
+            kwargs.setdefault("client_kwargs", {"api_key": cfg.api_key})
+        return Gemini(model=cfg.name, **kwargs)
 
     if cfg.provider == "claude":
         # NB: google.adk.models.Claude is the *Vertex AI* variant. The plain

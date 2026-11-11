@@ -12,6 +12,7 @@ from pydantic import BaseModel
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from adk_agent.config import FrameworkConfig  # noqa: E402
 from adk_agent.core import (  # noqa: E402
     AgentManifest,
     AgentRef,
@@ -28,6 +29,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "principal.schema.json": Principal,
     "invocation.schema.json": Invocation,
     "audit_event.schema.json": AuditEvent,
+    "framework_config.schema.json": FrameworkConfig,
 }
 
 

@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from .mcp.http import BearerAuthMiddleware, resolve_http_auth, resolve_port
+from .auth import BearerAuthMiddleware, resolve_http_auth
+from .mcp.http import resolve_port
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent

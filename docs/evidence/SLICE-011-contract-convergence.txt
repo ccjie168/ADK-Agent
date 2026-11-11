@@ -1,0 +1,52 @@
+SLICE-011 模型与配置契约收敛
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/test_config_thinking.py tests/test_model_env.py tests/core/test_contracts.py::test_contracts_in_sync -q
+5 failed, 1 passed
+
+$ .venv/Scripts/python.exe -m pytest tests/test_http_auth.py -q
+ModuleNotFoundError: No module named 'adk_agent.auth'
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_config_thinking.py tests/test_model_env.py tests/test_http_auth.py tests/test_smoke.py tests/test_auth_builders.py tests/test_console.py tests/test_layering.py -q
+28 passed
+
+$ .venv/Scripts/python.exe -m pytest tests/core/test_contracts.py -q
+12 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+Contracts: 1 kept, 0 broken.
+57 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+57 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- thinking_budget 从 ModelConfig 移到 AgentConfig，ModelConfig 拒绝该字段。
+- build_model 不再写 os.environ，Gemini 用 client_kwargs 传 key。
+- 入向 IncomingTransport 与出向 ExposureTransport 命名区分。
+- 鉴权抽到 adk_agent.auth，mcp.http 和 console 共用。
+- framework_config.schema.json 加入契约导出。
+- detect-secrets 对测试里的占位 key 使用行内 allowlist，不削弱扫描。

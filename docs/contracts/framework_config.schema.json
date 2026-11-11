@@ -1,0 +1,263 @@
+{
+  "$defs": {
+    "AgentConfig": {
+      "additionalProperties": false,
+      "description": "Declarative description of one ADK agent.",
+      "properties": {
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "instruction": {
+          "default": "",
+          "title": "Instruction",
+          "type": "string"
+        },
+        "mcp_servers": {
+          "items": {
+            "$ref": "#/$defs/McpServerConfig"
+          },
+          "title": "Mcp Servers",
+          "type": "array"
+        },
+        "model": {
+          "$ref": "#/$defs/ModelConfig"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sub_agents": {
+          "items": {
+            "$ref": "#/$defs/AgentConfig"
+          },
+          "title": "Sub Agents",
+          "type": "array"
+        },
+        "thinking_budget": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thinking Budget"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "AgentConfig",
+      "type": "object"
+    },
+    "McpServerConfig": {
+      "additionalProperties": false,
+      "description": "How to reach one external MCP server (the *incoming* direction).",
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Args",
+          "type": "array"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command"
+        },
+        "env": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Env"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Headers"
+        },
+        "sse_read_timeout": {
+          "default": 300.0,
+          "title": "Sse Read Timeout",
+          "type": "number"
+        },
+        "timeout": {
+          "default": 5.0,
+          "title": "Timeout",
+          "type": "number"
+        },
+        "tool_filter": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Filter"
+        },
+        "tool_name_prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name Prefix"
+        },
+        "transport": {
+          "default": "stdio",
+          "enum": [
+            "stdio",
+            "http"
+          ],
+          "title": "Transport",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        }
+      },
+      "title": "McpServerConfig",
+      "type": "object"
+    },
+    "ModelConfig": {
+      "additionalProperties": false,
+      "description": "Which LLM backend an agent runs on.",
+      "properties": {
+        "api_base": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Base"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Api Key"
+        },
+        "kwargs": {
+          "additionalProperties": true,
+          "title": "Kwargs",
+          "type": "object"
+        },
+        "name": {
+          "default": "deepseek/deepseek-v4-pro",
+          "title": "Name",
+          "type": "string"
+        },
+        "provider": {
+          "default": "litellm",
+          "enum": [
+            "gemini",
+            "litellm",
+            "claude",
+            "vertex"
+          ],
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "title": "ModelConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Top-level config: named agents plus which one to expose over MCP.",
+  "properties": {
+    "agents": {
+      "additionalProperties": {
+        "$ref": "#/$defs/AgentConfig"
+      },
+      "title": "Agents",
+      "type": "object"
+    },
+    "expose": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expose"
+    },
+    "transport": {
+      "default": "stdio",
+      "enum": [
+        "stdio",
+        "streamable-http"
+      ],
+      "title": "Transport",
+      "type": "string"
+    }
+  },
+  "required": [
+    "agents"
+  ],
+  "title": "FrameworkConfig",
+  "type": "object"
+}

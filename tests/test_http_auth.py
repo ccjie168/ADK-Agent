@@ -16,7 +16,8 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp.server.mcpserver import MCPServer
 from starlette.testclient import TestClient
 
-from adk_agent.mcp.http import build_http_app, resolve_http_auth
+from adk_agent.auth import resolve_http_auth
+from adk_agent.mcp.http import build_http_app
 
 
 def _app(token: str):

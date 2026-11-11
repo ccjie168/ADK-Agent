@@ -8,6 +8,7 @@ type = forbidden
 source_modules =
     adk_agent.core
 forbidden_modules =
+    adk_agent.auth
     adk_agent.cli
     adk_agent.config
     adk_agent.console
