@@ -22,7 +22,7 @@ M2 工具与策略 里程碑
 完整门禁
 --------
 $ .venv/Scripts/python.exe scripts/check.py --full
-182 passed, 1 skipped
+183 passed, 1 skipped
 [PASS] format
 [PASS] lint
 [PASS] types
@@ -39,7 +39,8 @@ Linux 容器
 ----------
 POSIX 沙箱测试 18 passed。
 全量 182 passed, 1 failed。失败项是 tests/test_security_gate.py::test_install_hooks_sets_hooks_path，
-容器没有 git。不是代码问题。
+容器没有 git。不是代码问题。这轮在新增 Windows fallback 测试之前跑。
+新增后 Linux 沙箱测试 23 passed。
 
 已知边界
 --------

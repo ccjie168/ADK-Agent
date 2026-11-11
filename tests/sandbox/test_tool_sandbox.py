@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import os
 import socket
+import sys
 import threading
 
 import helpers
@@ -95,3 +97,17 @@ def test_sandbox_unsendable_result():
     with pytest.raises(SandboxToolError) as raised:
         _sandbox().invoke(helpers.unsendable, (), {})
     assert raised.value.error_code == "SandboxSerializationError"
+
+
+def test_sandbox_handles_module_outside_sys_path(tmp_path):
+    path = tmp_path / "outside.py"
+    path.write_text("def answer():\n    return 42\n", encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("outside_sandbox_module", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    try:
+        assert _sandbox().invoke(module.answer, (), {}) == 42
+    finally:
+        sys.modules.pop(spec.name, None)

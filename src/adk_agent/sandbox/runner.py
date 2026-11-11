@@ -7,6 +7,7 @@ import functools
 import inspect
 import multiprocessing
 import os
+import sys
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -14,6 +15,25 @@ from typing import Any
 from .errors import SandboxTimeout, SandboxToolError, SandboxViolation
 from .policy import SandboxPolicy
 from .worker import child_entry
+
+
+def _module_importable(handler: Callable[..., Any]) -> bool:
+    """Whether a spawn child can import the handler's module by its name."""
+    name = getattr(handler, "__module__", "")
+    if not name or name == "__main__":
+        return False
+    module = sys.modules.get(name)
+    file = getattr(module, "__file__", None) if module is not None else None
+    if not isinstance(file, str):
+        return False
+    absolute = os.path.abspath(file)
+    expected = os.path.join(*name.split(".")) + ".py"
+    expected_package = os.path.join(*name.split("."), "__init__.py")
+    if not (absolute.endswith(expected) or absolute.endswith(expected_package)):
+        return False
+    return any(
+        bool(entry) and absolute.startswith(os.path.abspath(entry) + os.sep) for entry in sys.path
+    )
 
 
 class ToolSandbox:
@@ -29,6 +49,8 @@ class ToolSandbox:
         kwargs = kwargs or {}
         if os.name == "posix":
             return self._invoke_process(handler, args, kwargs, "fork")
+        if not _module_importable(handler):
+            return self._invoke_thread(handler, args, kwargs)
         try:
             return self._invoke_process(handler, args, kwargs, "spawn")
         except (AttributeError, TypeError):

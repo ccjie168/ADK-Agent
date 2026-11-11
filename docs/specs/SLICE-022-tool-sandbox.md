@@ -115,7 +115,7 @@ def install_tool_sandbox(agent: Any, sandbox: ToolSandbox | None = None) -> None
 - POSIX：`fork` 子进程。子进程设置 `RLIMIT_CPU` 和 `RLIMIT_AS`，清空环境，安装 socket 守卫，调用 handler。
 - 子进程默认拒绝 `getaddrinfo`、`connect`、`connect_ex`。AF_UNIX 不受限。
 - 白名单主机先通过 `getaddrinfo` 解析，解析出的 IP 才允许 `connect`。
-- Windows：先试 `spawn`。handler 不可 pickle 时退化为守护线程超时。线程模式没有网络和资源隔离。
+- Windows：模块能在子进程按名字导入时用 `spawn`。否则退化为守护线程超时。线程模式没有网络和资源隔离。
 - 子进程结果是 pickle 的。不可序列化的结果返回 `SandboxSerializationError`。
 - handler 异常返回原异常类名，调用方收到 `SandboxToolError`，`error_code` 是原类名。
 - 超时后 `terminate`，再 `kill`。进程退出但没回结果时返回 `SandboxViolation`。
@@ -145,7 +145,7 @@ def check_url(url: str, policy: SandboxPolicy) -> None: ...
 ### 已知边界
 
 - `fork` 子进程共享父进程的内存映像。环境变量已清空，网络连接被守卫拦住，但继承的文件描述符还在。强隔离需要容器或独立解释器，排在 M5。
-- Windows 的线程退化没有网络和资源隔离。CI 在 Linux 上验证进程路径。
+- Windows 的线程退化没有网络和资源隔离。从文件路径加载的 agent 模块（例如控制台）走这条路径。CI 在 Linux 上验证进程路径。
 - 沙箱期间阻塞事件循环，最长 `timeout_seconds`。这是为了避开线程里 `fork` 的风险。
 - MCP stdio 子进程的资源限制没有做。它由外部命令自己管理。
 - `BaseTool` 实例和工具集不包装。OpenAPI/MCP 的隔离靠出口白名单和 ADK 私网防护。
@@ -153,8 +153,8 @@ def check_url(url: str, policy: SandboxPolicy) -> None: ...
 ## 证据
 
 - 反例红: `ModuleNotFoundError: No module named 'adk_agent.sandbox'`，5 个测试模块收集失败
-- 实现后绿: 目标测试 34 passed, 1 skipped
-- `check.py --fast` -> 182 passed, 1 skipped，7 步全 PASS
-- `check.py --full` -> 182 passed, 1 skipped，9 步全 PASS
-- Linux 容器: POSIX 沙箱测试 18 passed。全量 182 passed，1 个环境失败，容器没有 git
+- 实现后绿: 目标测试 35 passed, 1 skipped
+- `check.py --fast` -> 183 passed, 1 skipped，7 步全 PASS
+- `check.py --full` -> 183 passed, 1 skipped，9 步全 PASS
+- Linux 容器: 沙箱测试 23 passed。全量 182 passed，1 个环境失败，容器没有 git
 - 详见 `docs/evidence/SLICE-022-tool-sandbox.txt`
