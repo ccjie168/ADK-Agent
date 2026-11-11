@@ -1,0 +1,49 @@
+SLICE-016 审计闭环与控制台 v0
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/audit/test_memory_sink.py -q
+ModuleNotFoundError: No module named 'adk_agent.audit'
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console_audit.py -q
+1 failed, 1 passed
+- test_chat_writes_audit_event: GET /api/audit -> 404
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/audit/test_memory_sink.py tests/test_console_audit.py -q
+4 passed in 1.58s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+Contracts: 1 kept, 0 broken.
+96 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+96 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- ListAuditSink 用有界 deque 保留最近事件，maxlen 必须为正。
+- 控制台所有 AgentRuntime 共用一个 sink。
+- GET /api/audit 需要 bearer token，limit 上限 200，按时间正序返回。
+- 页面新增 Recent audit 面板，每次发送后自动刷新。
+- 控制台 HTTP 契约写入 docs/contracts/console.md。

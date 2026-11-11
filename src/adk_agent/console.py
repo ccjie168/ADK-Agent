@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from .audit import ListAuditSink
 from .auth import BearerAuthMiddleware, resolve_http_auth
 from .core import Invocation, Principal
 from .mcp.http import resolve_port
@@ -45,6 +46,8 @@ _INDEX_HTML = """<!doctype html>
   .you { color: #0b5; }
   .agent { color: #246; }
   .system { color: #a00; }
+  #audit { border: 1px solid #ccc; border-radius: 6px; padding: .5rem .75rem; max-height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; }
+  #audit div { white-space: pre-wrap; margin: .15rem 0; }
   small { color: #666; }
 </style>
 </head>
@@ -60,6 +63,11 @@ _INDEX_HTML = """<!doctype html>
 <div class="row">
   <input id="msg" placeholder="Ask the agent..." autocomplete="off">
   <button id="send">Send</button>
+</div>
+<h3>Recent audit</h3>
+<div id="audit"></div>
+<div class="row">
+  <button id="refresh">Refresh audit</button>
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -107,9 +115,26 @@ async function send() {
   sessionId = data.session_id;
   append("agent", data.reply || "(empty)");
   append("system", "trace " + data.trace_id);
+  loadAudit();
+}
+
+async function loadAudit() {
+  const r = await fetch("/api/audit?limit=20", { headers: { Authorization: "Bearer " + token() } });
+  if (!r.ok) { append("system", "audit failed (" + r.status + ")"); return; }
+  const rows = await r.json();
+  const box = $("audit");
+  box.innerHTML = "";
+  for (const e of rows.slice().reverse()) {
+    const line = document.createElement("div");
+    line.textContent = e.action + " " + e.target + " " + e.status + " " +
+      (e.latency_ms ?? "-") + "ms run=" + e.run_id.slice(0, 8) +
+      " trace=" + e.trace_id.slice(0, 8);
+    box.appendChild(line);
+  }
 }
 
 $("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
+$("refresh").addEventListener("click", loadAudit);
 $("connect").addEventListener("click", loadAgents);
 $("send").addEventListener("click", send);
 $("msg").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
@@ -164,11 +189,12 @@ def build_console_app(
     from google.adk.runners import Runner
 
     session_service = _session_service(session_db)
+    audit = ListAuditSink()
     runners = {
         name: Runner(app_name=name, agent=agent, session_service=session_service)
         for name, agent in agents.items()
     }
-    runtimes = {name: AgentRuntime(runner) for name, runner in runners.items()}
+    runtimes = {name: AgentRuntime(runner, audit=audit) for name, runner in runners.items()}
 
     app = FastAPI(title="ADK Console", docs_url=None, redoc_url=None)
 
@@ -185,6 +211,11 @@ def build_console_app(
         return [
             {"name": name, "description": agent.description or ""} for name, agent in agents.items()
         ]
+
+    @app.get("/api/audit")
+    async def list_audit(limit: int = 50) -> list[dict]:
+        limit = min(max(limit, 1), 200)
+        return [event.model_dump(mode="json") for event in audit.recent(limit)]
 
     @app.post("/api/chat")
     async def chat(request: Request) -> JSONResponse:

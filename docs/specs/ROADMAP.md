@@ -56,6 +56,10 @@ M0 出口标准：
 - SLICE-013 模型网关：provider 白名单、token 与成本审计、vLLM 适配器。
 - SLICE-014 运行时注入：principal、run_id、trace_id 贯通。
 - SLICE-015 基础模板：模板生成器与校验。
+- SLICE-016 审计闭环与控制台 v0：内存审计、`/api/audit`、页面审计面板。
+- SLICE-017 模型网关接入：把网关接到 ADK 模型循环，agent run 产生 `model.call` 事件。
+
+M1 出口以 SLICE-017 完成为准。在此之前，模型调用还没有经过网关。
 
 进入每个切片时再写详细 spec。
 
