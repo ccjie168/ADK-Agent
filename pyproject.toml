@@ -26,6 +26,7 @@ dev = [
     "pip-audit",
     "detect-secrets",
     "bandit",
+    "import-linter>=2.0",
 ]
 
 [project.scripts]

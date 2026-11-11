@@ -21,6 +21,7 @@ FAST_STEPS = [
     ("format", "ruff", ["-m", "ruff", "format", "--check", "."]),
     ("lint", "ruff", ["-m", "ruff", "check", "."]),
     ("types", "mypy", ["-m", "mypy", "src"]),
+    ("layering", "importlinter", ["scripts/check_layering.py"]),
     ("test", "pytest", ["-m", "pytest", "-q"]),
 ]
 
@@ -32,7 +33,7 @@ FULL_STEPS = FAST_STEPS + [
 # detect-secrets has no exit-code signal; we parse its JSON and count hits.
 SECRET_EXCLUDES = (
     r"(^|[\\/])(\.venv|\.git|\.mypy_cache|\.ruff_cache|__pycache__|"
-    r"\.pytest_cache|node_modules|docs[\\/]evidence)([\\/]|$)"
+    r"\.pytest_cache|\.import_linter_cache|node_modules|docs[\\/]evidence)([\\/]|$)"
 )
 
 

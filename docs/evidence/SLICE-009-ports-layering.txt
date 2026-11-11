@@ -1,0 +1,53 @@
+SLICE-009 包骨架、端口与分层门禁
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/test_layering.py -q
+2 failed, 1 passed
+
+test_ports_defined:
+    ModuleNotFoundError: No module named 'adk_agent.core.ports'
+
+test_core_isolation:
+    AssertionError: Import Linter could not read any configuration
+
+test_contract_catches_violation:
+    passed. 临时 badpkg 中 core 导入 adapter，lint-imports 非零退出。
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_layering.py -q
+3 passed in 2.37s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+Contracts: 1 kept, 0 broken.
+46 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+Contracts: 1 kept, 0 broken.
+46 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- 门禁以 --no-cache 运行 import-linter，避免在仓库生成缓存文件。
+- .import_linter_cache/ 已加入 .gitignore 和 check.py 的 SECRET_EXCLUDES。
+- adk-agent 0.1.0 被 pip-audit 跳过，因为它未发布到 PyPI。
