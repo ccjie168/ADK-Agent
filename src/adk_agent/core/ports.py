@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Protocol
+from typing import Literal, Protocol
 
 from .audit import AuditEvent
 from .identity import Principal
 from .invocation import Invocation
-from .manifest import AgentRef, PublishedAgent
+from .manifest import AgentRef, ModelPolicy, PublishedAgent
+from .model import ModelRequest, ModelResponse
 from .policy import PolicyDecision
 
 
@@ -38,10 +39,25 @@ class TemplateSource(Protocol):
     async def render(self, template_id: str, params: Mapping[str, str]) -> Mapping[str, str]: ...
 
 
+class ModelProvider(Protocol):
+    name: str
+    egress: Literal["none", "third_party"]
+
+    async def complete(self, request: ModelRequest) -> ModelResponse: ...
+
+
+class ModelGateway(Protocol):
+    async def complete(
+        self, invocation: Invocation, request: ModelRequest, policy: ModelPolicy
+    ) -> ModelResponse: ...
+
+
 __all__ = [
     "AgentRegistry",
     "AuditSink",
     "IdentityProvider",
+    "ModelGateway",
+    "ModelProvider",
     "PolicyEngine",
     "SecretProvider",
     "TemplateSource",

@@ -1,0 +1,47 @@
+SLICE-013 模型网关
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/models/test_gateway.py tests/models/test_providers.py -q
+ImportError: cannot import name 'ModelRequest' from 'adk_agent.core'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/models/test_gateway.py tests/models/test_providers.py tests/test_smoke.py -q
+14 passed in 4.65s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+Contracts: 1 kept, 0 broken.
+78 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+78 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- models.py 改为 models/ 包，from adk_agent.models import build_model 不变。
+- PolicyModelGateway 按 ModelPolicy.provider_allowlist 放行，成功/拒绝/失败都写审计。
+- LiteLlmProvider 标记 third_party，VllmProvider 标记 none。
+- litellm 惰性导入，测试用 sys.modules 假模块，不需要安装第三方依赖。
+- 审计事件只存消息 hash 和回复 hash，不存原文。
+- detect-secrets 对测试占位 key 使用行内 allowlist。

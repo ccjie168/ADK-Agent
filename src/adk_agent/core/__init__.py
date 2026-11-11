@@ -14,11 +14,14 @@ from .manifest import (
     Slo,
     manifest_digest,
 )
+from .model import Message, ModelRequest, ModelResponse
 from .policy import DataClass, PolicyDecision, ToolGrant
 from .ports import (
     AgentRegistry,
     AuditSink,
     IdentityProvider,
+    ModelGateway,
+    ModelProvider,
     PolicyEngine,
     SecretProvider,
     TemplateSource,
@@ -34,7 +37,12 @@ __all__ = [
     "EvalSuite",
     "IdentityProvider",
     "Invocation",
+    "Message",
+    "ModelGateway",
     "ModelPolicy",
+    "ModelProvider",
+    "ModelRequest",
+    "ModelResponse",
     "PolicyDecision",
     "PolicyEngine",
     "Principal",

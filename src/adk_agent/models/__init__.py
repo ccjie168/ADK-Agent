@@ -30,7 +30,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
-from .config import ModelConfig
+from ..config import ModelConfig
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.models import BaseLlm
