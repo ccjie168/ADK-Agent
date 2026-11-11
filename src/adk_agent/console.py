@@ -15,13 +15,15 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from google.adk.models import BaseLlm
+from google.adk.tools import BaseTool
 
 from .audit import ListAuditSink
 from .auth import BearerAuthMiddleware, resolve_http_auth
-from .core import Invocation, ModelPolicy, Principal
+from .core import Invocation, ModelPolicy, Principal, ToolGrant
 from .mcp.http import resolve_port
 from .models.gateway_llm import GatewayLlm, provider_for_model
 from .runtime import AgentRuntime, dev_agent_ref
+from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
@@ -193,6 +195,30 @@ def _wrap_model(agent: Any, audit: ListAuditSink) -> None:
         _wrap_model(sub, audit)
 
 
+def _declared_tool_ids(agent: Any) -> set[str]:
+    """Collect the tool names an agent tree declares.
+
+    Toolset names are only known at runtime, so they are not granted here.
+    """
+    tool_ids: set[str] = set()
+    for tool in getattr(agent, "tools", None) or ():
+        if isinstance(tool, BaseTool):
+            tool_ids.add(tool.name)
+            continue
+        name = getattr(tool, "__name__", None)
+        if isinstance(name, str):
+            tool_ids.add(name)
+    for sub in getattr(agent, "sub_agents", None) or ():
+        tool_ids |= _declared_tool_ids(sub)
+    return tool_ids
+
+
+def _install_tool_guard(agent: Any, audit: ListAuditSink) -> None:
+    """Allow the agent's declared tools and deny everything else."""
+    grants = [ToolGrant(tool_id=tool_id) for tool_id in sorted(_declared_tool_ids(agent))]
+    install_tool_guard(agent, ToolGuard(GrantPolicyEngine(grants), audit=audit))
+
+
 def build_console_app(
     agents: dict[str, BaseAgent],
     *,
@@ -210,6 +236,7 @@ def build_console_app(
     audit = ListAuditSink()
     for agent in agents.values():
         _wrap_model(agent, audit)
+        _install_tool_guard(agent, audit)
     runners = {
         name: Runner(app_name=name, agent=agent, session_service=session_service)
         for name, agent in agents.items()

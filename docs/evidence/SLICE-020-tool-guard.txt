@@ -1,0 +1,56 @@
+SLICE-020 ADK 工具守卫接入
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/tools/test_guard.py tests/test_console_tools.py -q
+ImportError while importing test module 'tests/tools/test_guard.py'
+E   ModuleNotFoundError: No module named 'adk_agent.tools.guard'
+ImportError while importing test module 'tests/test_console_tools.py'
+E   ModuleNotFoundError: No module named 'adk_agent.tools.guard'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/tools/test_guard.py tests/test_console_tools.py -q
+10 passed in 1.80s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+129 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+129 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- ToolGuard 接 ADK 的 before、after、on_tool_error 三个回调。
+- 允许：工具执行，写 tool.call ok，带参数 hash、结果 hash、延迟。
+- 拒绝：工具不执行，before 返回 {"error": "tool_denied"}，写 denied，error_code=policy_denied。
+- 拒绝调用不会重复写 ok 事件。
+- 工具异常：写 error，error_code 是异常类名，异常继续抛出。
+- 没有 invocation 上下文：抛 ToolDenied，不执行工具。
+- data_classes 来自 tool.custom_metadata，审计只存 hash，不存原文。
+- install_tool_guard 递归覆盖 sub_agents，保留已有回调并放在守卫之后。
+- 控制台按 agent 声明的工具生成 grants。未声明工具被拒。
+- 工具集（BaseToolset）的工具名运行时才知道，本切片不放行，留给 SLICE-021。
+- 端到端用脚本化模型触发真实 ADK 工具循环，覆盖允许和拒绝两条路径。

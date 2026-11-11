@@ -14,3 +14,11 @@ def hash_text(text: str) -> str:
 def hash_json(payload: Any) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hash_text(canonical)
+
+
+def safe_hash_json(payload: Any) -> str:
+    """Hash JSON, falling back to the string form for unserializable values."""
+    try:
+        return hash_json(payload)
+    except (TypeError, ValueError):
+        return hash_json(str(payload))

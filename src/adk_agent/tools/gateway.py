@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from ..audit.hashing import hash_json
+from ..audit.hashing import hash_json, safe_hash_json
 from ..core import (
     AuditEvent,
     AuditSink,
@@ -22,13 +22,6 @@ from .registry import FunctionRegistry, ToolSpec
 
 class ToolDenied(Exception):
     """The tool call is not allowed."""
-
-
-def _output_hash(output: Any) -> str:
-    try:
-        return hash_json(output)
-    except (TypeError, ValueError):
-        return hash_json(str(output))
 
 
 class FunctionToolGateway:
@@ -131,7 +124,7 @@ class FunctionToolGateway:
             action="tool.call",
             target=request.tool_id,
             args_hash=args_hash,
-            result_hash=_output_hash(output) if output is not None else None,
+            result_hash=safe_hash_json(output) if output is not None else None,
             data_classes=list(spec.data_classes) if spec is not None else [],
             latency_ms=int((time.perf_counter() - started) * 1000),
             egress="none",
