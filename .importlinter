@@ -15,3 +15,4 @@ forbidden_modules =
     adk_agent.factory
     adk_agent.models
     adk_agent.mcp
+    adk_agent.registry

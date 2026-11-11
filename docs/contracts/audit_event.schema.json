@@ -10,11 +10,13 @@
         },
         "id": {
           "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
           "title": "Id",
           "type": "string"
         },
         "version": {
           "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
           "title": "Version",
           "type": "string"
         }

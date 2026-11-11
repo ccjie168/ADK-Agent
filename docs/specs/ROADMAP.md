@@ -25,7 +25,7 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 | 里程碑 | 阶段 | 出口标准 | 状态 |
 | --- | --- | --- | --- |
 | M0 地基 | Phase 0 | 五个契约合并，import-linter 生效，manifest 可往返，P0 加固完成 | done |
-| M1 单 agent 闭环 | Phase 1 | 注册、发布、模型网关、审计端到端跑通 | planned |
+| M1 单 agent 闭环 | Phase 1 | 注册、发布、模型网关、审计端到端跑通 | in_progress |
 | M2 工具与策略 | Phase 2 | 越权工具调用被拒并留痕，沙箱生效 | planned |
 | M3 编排 | Phase 3 | 多 agent 工作流可回放，审批门生效 | planned |
 | M4 平台加固 | Phase 4 | 两租户隔离，配额生效，评测不过不能发布 | planned |
@@ -50,15 +50,14 @@ M0 出口标准：
 4. 评审 P0 加固完成，`--fast` 全绿。
 5. `check.py --full` 结果写入 `docs/evidence/`。
 
-## M1 候选切片
+## M1 切片
 
-进入 M1 时细化，不提前实现。
+- SLICE-012 注册表与发布：文件注册表、不可变版本、digest 钉住、`validate` / `publish` CLI、id/version 路径安全。
+- SLICE-013 模型网关：provider 白名单、token 与成本审计、vLLM 适配器。
+- SLICE-014 运行时注入：principal、run_id、trace_id 贯通。
+- SLICE-015 基础模板：模板生成器与校验。
 
-- 注册表：文件或 Postgres，版本不可变，按 digest 拉取。
-- manifest 校验与 `adk-agent validate` / `adk-agent publish`。
-- 模型网关：provider 白名单、token 与成本审计、vLLM 适配器。
-- 运行时注入 principal、run_id、trace_id。
-- 基础模板生成器。
+进入每个切片时再写详细 spec。
 
 ## M2 候选切片
 

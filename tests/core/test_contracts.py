@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -60,7 +60,7 @@ def _audit(**overrides):
         "action": "model.call",
         "target": "litellm",
         "status": "ok",
-        "timestamp": datetime(2026, 1, 1, tzinfo=UTC),
+        "timestamp": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
     data.update(overrides)
     return AuditEvent(**data)
@@ -134,7 +134,7 @@ def test_audit_required():
             action="model.call",
             target="litellm",
             status="ok",
-            timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+            timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
 
 
@@ -174,3 +174,18 @@ def test_contracts_in_sync():
     for name, text in export.render().items():
         on_disk = (ROOT / "docs" / "contracts" / name).read_text(encoding="utf-8")
         assert on_disk == text, f"{name} is out of sync; run scripts/export_contracts.py"
+
+
+def test_manifest_rejects_unsafe_id():
+    with pytest.raises(ValidationError):
+        _manifest(id="../evil")
+
+
+def test_manifest_rejects_unsafe_version():
+    with pytest.raises(ValidationError):
+        _manifest(version="1/2")
+
+
+def test_agent_ref_rejects_unsafe_id():
+    with pytest.raises(ValidationError):
+        _agent_ref(id="../evil")

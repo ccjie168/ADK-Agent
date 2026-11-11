@@ -1,0 +1,54 @@
+SLICE-012 注册表与发布
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/core/test_contracts.py -q
+3 failed, 12 passed
+- test_manifest_rejects_unsafe_id / test_manifest_rejects_unsafe_version /
+  test_agent_ref_rejects_unsafe_id: DID NOT RAISE ValidationError
+
+$ .venv/Scripts/python.exe -m pytest tests/registry/test_file_registry.py -q
+ModuleNotFoundError: No module named 'adk_agent.registry'
+
+$ .venv/Scripts/python.exe -m pytest tests/test_registry_cli.py -q
+4 failed
+- argparse: invalid choice: 'validate' / 'publish'
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/core/test_contracts.py tests/registry/test_file_registry.py tests/test_registry_cli.py -q
+26 passed in 1.70s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+Contracts: 1 kept, 0 broken.
+71 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+71 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- id/version 限制为 ^[A-Za-z0-9][A-Za-z0-9._+-]*\Z，阻止路径穿越。
+- FileAgentRegistry 用同目录临时文件加 os.link 原子创建，不覆盖已有版本。
+- 读取时复核 manifest digest，篡改文件抛 RegistryIntegrityError。
+- M1 signature 是 sha256:<digest> 完整性标记，不是密钥签名。
+- 契约 schema 已重新生成，manifest 和 agent_ref 增加 pattern。

@@ -13,6 +13,8 @@ from .policy import DataClass, ToolGrant
 
 Exposure = Literal["none", "mcp", "http", "a2a"]
 
+_SAFE_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
+
 
 class ModelPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -41,8 +43,8 @@ class Slo(BaseModel):
 class AgentManifest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: str = Field(min_length=1)
-    version: str = Field(min_length=1)
+    id: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
+    version: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
     owner: str = Field(min_length=1)
     description: str = ""
     model_policy: ModelPolicy
@@ -56,8 +58,8 @@ class AgentManifest(BaseModel):
 class AgentRef(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: str = Field(min_length=1)
-    version: str = Field(min_length=1)
+    id: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
+    version: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
     digest: str = Field(min_length=1)
 
 

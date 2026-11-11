@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import importlib.util
 import os
 import sys
@@ -162,6 +163,17 @@ def main(argv: list[str] | None = None) -> None:
     p_new = sub.add_parser("new", help="scaffold a new agent project")
     p_new.add_argument("name", help="directory / agent name")
 
+    p_validate = sub.add_parser("validate", help="validate an agent manifest")
+    p_validate.add_argument("path", help="path to an AgentManifest JSON file")
+
+    p_publish = sub.add_parser("publish", help="publish an agent manifest")
+    p_publish.add_argument("path", help="path to an AgentManifest JSON file")
+    p_publish.add_argument(
+        "--registry",
+        default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
+        help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.cmd == "serve":
@@ -226,6 +238,27 @@ def main(argv: list[str] | None = None) -> None:
             allow_unauthenticated=args.allow_unauthenticated,
             session_db=args.session_db,
         )
+    elif args.cmd == "validate":
+        from .core import manifest_digest
+        from .registry import load_manifest
+
+        try:
+            manifest = load_manifest(args.path)
+        except Exception as exc:  # noqa: BLE001
+            print(f"invalid manifest: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        print(f"{manifest.id}@{manifest.version} sha256:{manifest_digest(manifest)}")
+    elif args.cmd == "publish":
+        from .registry import FileAgentRegistry, load_manifest, published_from
+
+        try:
+            manifest = load_manifest(args.path)
+            registry = FileAgentRegistry(args.registry)
+            stored = asyncio.run(registry.publish(published_from(manifest)))
+        except Exception as exc:  # noqa: BLE001
+            print(f"publish failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        print(f"published {stored.manifest.id}@{stored.manifest.version} sha256:{stored.digest}")
     elif args.cmd == "new":
         _scaffold(args.name)
 
