@@ -58,8 +58,11 @@ M0 出口标准：
 - SLICE-015 基础模板：模板生成器与校验。
 - SLICE-016 审计闭环与控制台 v0：内存审计、`/api/audit`、页面审计面板。
 - SLICE-017 模型网关接入：把网关接到 ADK 模型循环，agent run 产生 `model.call` 事件。
+- SLICE-018 安全门强制 Phase A：pre-commit hook、CI 必需检查、bandit 覆盖 scripts、spec 威胁模型门禁。
 
-M1 出口以 SLICE-017 完成为准。在此之前，模型调用还没有经过网关。
+M1 出口以 SLICE-017 和 SLICE-018 Phase A 完成为准。在此之前，模型调用还没有经过网关，安全检查也还不是提交前强制。
+
+SLICE-018 Phase B 需要新 ADR 或工具决策，排在 M2：依赖锁、历史密钥扫描、镜像扫描、SBOM 校验、日志脱敏。
 
 进入每个切片时再写详细 spec。
 
