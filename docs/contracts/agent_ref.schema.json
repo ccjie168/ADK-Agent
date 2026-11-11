@@ -1,0 +1,27 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "digest": {
+      "minLength": 1,
+      "title": "Digest",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "digest"
+  ],
+  "title": "AgentRef",
+  "type": "object"
+}

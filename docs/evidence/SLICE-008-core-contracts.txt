@@ -1,0 +1,48 @@
+SLICE-008 核心契约与领域类型
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/core/test_contracts.py -q
+ERROR collecting tests/core/test_contracts.py
+E   ModuleNotFoundError: No module named 'adk_agent.core'
+1 error in 2.11s
+
+契约生成
+--------
+$ .venv/Scripts/python.exe scripts/export_contracts.py
+wrote docs/contracts/manifest.schema.json
+wrote docs/contracts/agent_ref.schema.json
+wrote docs/contracts/principal.schema.json
+wrote docs/contracts/invocation.schema.json
+wrote docs/contracts/audit_event.schema.json
+
+第二次运行输出一致，schema 稳定。
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/core/test_contracts.py -q
+12 passed in 1.74s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] test
+[PASS] secrets
+ALL PASS
+43 passed in 6.28s
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+43 passed in 4.71s
+No known vulnerabilities found
+adk-agent 0.1.0 skipped by pip-audit because it is not published on PyPI.

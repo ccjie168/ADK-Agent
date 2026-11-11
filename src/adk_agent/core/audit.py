@@ -1,0 +1,49 @@
+"""Append-only audit event. One state transition, one record."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from .identity import Principal
+from .manifest import AgentRef
+from .policy import DataClass
+
+
+class AuditEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event_id: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    trace_id: str = Field(min_length=1)
+    tenant: str = Field(min_length=1)
+    principal: Principal
+    agent_ref: AgentRef
+    action: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    args_hash: str | None = None
+    result_hash: str | None = None
+    policy_decision_id: str | None = None
+    data_classes: list[DataClass] = Field(default_factory=list)
+    latency_ms: int | None = Field(default=None, ge=0)
+    tokens: int | None = Field(default=None, ge=0)
+    cost_usd: float | None = Field(default=None, ge=0)
+    egress: Literal["none", "third_party"] = "none"
+    status: Literal["ok", "error", "denied"]
+    error_code: str | None = None
+    timestamp: datetime
+
+    @field_validator("timestamp")
+    @classmethod
+    def _timezone_aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("timestamp must be timezone-aware")
+        return value
+
+    @model_validator(mode="after")
+    def _tenant_matches_principal(self) -> AuditEvent:
+        if self.tenant != self.principal.tenant:
+            raise ValueError("tenant must equal principal.tenant")
+        return self

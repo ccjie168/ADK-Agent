@@ -1,0 +1,236 @@
+{
+  "$defs": {
+    "EvalSuite": {
+      "additionalProperties": false,
+      "properties": {
+        "pass_threshold": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Pass Threshold",
+          "type": "number"
+        },
+        "suite_id": {
+          "minLength": 1,
+          "title": "Suite Id",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "suite_id",
+        "version",
+        "pass_threshold"
+      ],
+      "title": "EvalSuite",
+      "type": "object"
+    },
+    "ModelPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "budget_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Budget Usd"
+        },
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Output Tokens"
+        },
+        "model_allowlist": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Model Allowlist",
+          "type": "array"
+        },
+        "provider_allowlist": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Provider Allowlist",
+          "type": "array"
+        }
+      },
+      "required": [
+        "provider_allowlist"
+      ],
+      "title": "ModelPolicy",
+      "type": "object"
+    },
+    "Slo": {
+      "additionalProperties": false,
+      "properties": {
+        "max_cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cost Usd"
+        },
+        "max_latency_ms": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Latency Ms"
+        }
+      },
+      "title": "Slo",
+      "type": "object"
+    },
+    "ToolGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "data_classes": {
+          "items": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "type": "string"
+          },
+          "title": "Data Classes",
+          "type": "array"
+        },
+        "requires_approval": {
+          "default": false,
+          "title": "Requires Approval",
+          "type": "boolean"
+        },
+        "tool_id": {
+          "minLength": 1,
+          "title": "Tool Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_id"
+      ],
+      "title": "ToolGrant",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "data_scopes": {
+      "items": {
+        "enum": [
+          "public",
+          "internal",
+          "confidential",
+          "restricted"
+        ],
+        "type": "string"
+      },
+      "title": "Data Scopes",
+      "type": "array"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "eval_suite": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvalSuite"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "exposure": {
+      "default": "none",
+      "enum": [
+        "none",
+        "mcp",
+        "http",
+        "a2a"
+      ],
+      "title": "Exposure",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "model_policy": {
+      "$ref": "#/$defs/ModelPolicy"
+    },
+    "owner": {
+      "minLength": 1,
+      "title": "Owner",
+      "type": "string"
+    },
+    "slo": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Slo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tool_grants": {
+      "items": {
+        "$ref": "#/$defs/ToolGrant"
+      },
+      "title": "Tool Grants",
+      "type": "array"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "owner",
+    "model_policy"
+  ],
+  "title": "AgentManifest",
+  "type": "object"
+}
