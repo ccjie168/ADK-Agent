@@ -18,4 +18,15 @@
 - 默认注册表目录是 `$ADK_REGISTRY_DIR`，否则 `./registry`。
 - 存储布局是 `<registry>/<id>/<version>.json`。
 
+## `adk-agent new <name> [--template minimal]`
+
+生成一个模板项目。
+
+- 名字必须匹配 `^[A-Za-z0-9][A-Za-z0-9._+-]*$`。
+- 生成 `agent.py`、`manifest.json`、`README.md`、`tests/test_agent.py`。
+- 生成的 `manifest.json` 必须通过 `AgentManifest` 校验。
+- `agent.py` 已存在时退出 1。
+- 未知模板退出 1。
+- 成功时逐行输出 `created <path>`，退出 0。
+
 M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名，M4 会替换。

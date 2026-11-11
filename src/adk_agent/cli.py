@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import importlib.util
 import os
+import re
 import sys
 from functools import partial
 from pathlib import Path
@@ -13,30 +14,7 @@ from typing import Literal, cast
 
 Transport = Literal["stdio", "streamable-http"]
 
-_AGENT_TEMPLATE = '''"""ADK agent: {name}."""
-
-from google.adk.agents import LlmAgent
-
-from adk_agent import build_model, serve_agent
-
-
-def ping(text: str) -> str:
-    """Echo the given text back."""
-    return text
-
-
-agent = LlmAgent(
-    name="{name}",
-    model=build_model(),
-    description="{name} agent.",
-    instruction="You are a helpful assistant.",
-    tools=[ping],
-)
-
-
-if __name__ == "__main__":
-    serve_agent(agent, transport="stdio")
-'''
+_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 
 
 def _load_module(path: str):
@@ -75,14 +53,31 @@ def _load_agents(path: str) -> dict:
     raise SystemExit(f"no `agents` dict or `agent`/`root_agent` found in {path}")
 
 
-def _scaffold(name: str) -> None:
+def _scaffold(name: str, template: str = "minimal") -> None:
+    if not _NAME.fullmatch(name):
+        print(f"invalid agent name: {name!r}", file=sys.stderr)
+        raise SystemExit(1)
+
+    from .templates import BuiltinTemplateSource, TemplateNotFound
+
+    source = BuiltinTemplateSource()
+    try:
+        files = asyncio.run(source.render(template, {"name": name}))
+    except TemplateNotFound as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
+
     target = Path(name)
+    if (target / "agent.py").exists():
+        print(f"{target / 'agent.py'} already exists", file=sys.stderr)
+        raise SystemExit(1)
+
     target.mkdir(parents=True, exist_ok=True)
-    agent_file = target / "agent.py"
-    if agent_file.exists():
-        raise SystemExit(f"{agent_file} already exists")
-    agent_file.write_text(_AGENT_TEMPLATE.format(name=target.name), encoding="utf-8")
-    print(f"created {agent_file}")
+    for relative, content in files.items():
+        path = target / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        print(f"created {path}")
 
 
 def _add_http_args(parser: argparse.ArgumentParser) -> None:
@@ -161,7 +156,12 @@ def main(argv: list[str] | None = None) -> None:
     _add_runtime_args(p_console)
 
     p_new = sub.add_parser("new", help="scaffold a new agent project")
-    p_new.add_argument("name", help="directory / agent name")
+    p_new.add_argument("name", help="agent name, created as a directory")
+    p_new.add_argument(
+        "--template",
+        default="minimal",
+        help="template id (default: minimal)",
+    )
 
     p_validate = sub.add_parser("validate", help="validate an agent manifest")
     p_validate.add_argument("path", help="path to an AgentManifest JSON file")
@@ -260,7 +260,7 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
         print(f"published {stored.manifest.id}@{stored.manifest.version} sha256:{stored.digest}")
     elif args.cmd == "new":
-        _scaffold(args.name)
+        _scaffold(args.name, args.template)
 
 
 if __name__ == "__main__":  # pragma: no cover
