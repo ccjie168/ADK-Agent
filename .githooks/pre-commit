@@ -1,0 +1,6 @@
+#!/bin/sh
+# Run the full gate before every commit. CI and branch protection are the
+# second layer when this is bypassed with --no-verify.
+PY=python
+if [ -x ".venv/Scripts/python.exe" ]; then PY=".venv/Scripts/python.exe"; fi
+exec "$PY" scripts/check.py --full

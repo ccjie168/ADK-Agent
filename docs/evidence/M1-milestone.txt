@@ -1,0 +1,49 @@
+M1 单 agent 闭环 里程碑
+日期: 2026-11-12
+状态: done
+
+包含切片
+--------
+- SLICE-012 注册表与发布
+- SLICE-013 模型网关
+- SLICE-014 运行时注入
+- SLICE-015 基础模板
+- SLICE-016 审计闭环与控制台 v0
+- SLICE-017 模型网关接入
+- SLICE-018 安全门强制 Phase A
+
+出口能力
+--------
+- 注册与发布：FileAgentRegistry，不可变版本，digest 校验，validate / publish CLI。
+- 模型网关：PolicyModelGateway，GatewayLlm，provider 白名单，model.call 审计。
+- 运行时：run_id、trace_id、principal 注入，agent.run 审计。
+- 审计：控制台 /api/audit 和 Recent audit 面板。
+- 模板：adk-agent new 生成 agent.py、manifest.json、README.md、测试。
+- 安全门：pre-commit hook、CI --full --strict、spec 威胁模型门禁、bandit 覆盖 scripts。
+
+完整门禁
+--------
+$ .venv/Scripts/python.exe scripts/check.py --full
+110 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+已知边界
+--------
+- MCP serve_agent 路径仍未经过 GatewayLlm，模型调用网关接入移到 M2。
+- 控制台 dev 策略按当前 provider 推导，是宽松白名单，不是最小权限。
+- 安全门 Phase B 未做：依赖锁、历史密钥扫描、镜像扫描、SBOM 签名、日志脱敏。
+- manifest 签名仍是完整性标记，密钥签名在 M4。
+
+下一步
+------
+M2：工具网关、策略引擎、密钥提供者、工具沙箱。

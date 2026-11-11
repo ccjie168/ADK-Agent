@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
+import subprocess  # nosec B404  # runs pip-audit
 import sys
 from pathlib import Path
 
@@ -35,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
         out_path = ROOT / out_path
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    code = subprocess.run(build_command(str(out_path)), cwd=ROOT).returncode
+    code = subprocess.run(build_command(str(out_path)), cwd=ROOT).returncode  # nosec B603
     print(f"SBOM: {out_path.resolve()}")
     print(f"Exit code: {code}")
     return code

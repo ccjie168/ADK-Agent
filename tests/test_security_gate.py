@@ -1,0 +1,73 @@
+"""SLICE-018: the security gate is enforced, not just available."""
+
+from __future__ import annotations
+
+import importlib.util
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "scripts"
+
+
+def _load(name: str, filename: str):
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / filename)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_pre_commit_calls_full_gate():
+    text = (ROOT / ".githooks" / "pre-commit").read_text(encoding="utf-8")
+    assert "check.py --full" in text
+    assert ".venv/Scripts/python.exe" in text
+
+
+def test_install_hooks_sets_hooks_path(tmp_path):
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    hooks = _load("install_hooks", "install_hooks.py")
+    assert hooks.install(tmp_path) == 0
+
+    result = subprocess.run(
+        ["git", "config", "core.hooksPath"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.strip() == ".githooks"
+
+
+def test_spec_without_threat_model_fails():
+    specs = _load("check_specs", "check_specs.py")
+    text = "状态: planned\n## 意图\n## 完成判据\n## 反例\n## 证据\n"
+    assert "threat-model" in specs.missing_sections(text)
+
+
+def test_complete_spec_passes():
+    specs = _load("check_specs", "check_specs.py")
+    text = "状态: planned\n## 意图\n## 完成判据\n## 反例\n## 5 问威胁建模\n## 证据\n"
+    assert specs.missing_sections(text) == []
+
+
+def test_merged_slice_is_grandfathered(tmp_path):
+    specs = _load("check_specs", "check_specs.py")
+    (tmp_path / "SLICE-999.md").write_text("状态: merged\n## 意图\n", encoding="utf-8")
+    assert specs.check_dir(tmp_path) == []
+
+
+def test_active_slice_is_checked(tmp_path):
+    specs = _load("check_specs", "check_specs.py")
+    (tmp_path / "SLICE-999.md").write_text("状态: planned\n## 意图\n", encoding="utf-8")
+    failures = specs.check_dir(tmp_path)
+    assert failures
+    assert failures[0][0].name == "SLICE-999.md"
+
+
+def test_gate_includes_security_steps():
+    gate = _load("check_gate_security", "check.py")
+    fast = [name for name, _module, _args in gate.FAST_STEPS]
+    assert "specs" in fast
+    sast = {name: args for name, _module, args in gate.FULL_STEPS}["sast"]
+    assert "scripts" in sast

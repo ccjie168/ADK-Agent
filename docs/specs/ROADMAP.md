@@ -25,7 +25,7 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 | 里程碑 | 阶段 | 出口标准 | 状态 |
 | --- | --- | --- | --- |
 | M0 地基 | Phase 0 | 五个契约合并，import-linter 生效，manifest 可往返，P0 加固完成 | done |
-| M1 单 agent 闭环 | Phase 1 | 注册、发布、模型网关、审计端到端跑通 | in_progress |
+| M1 单 agent 闭环 | Phase 1 | 注册、发布、模型网关、审计端到端跑通 | done |
 | M2 工具与策略 | Phase 2 | 越权工具调用被拒并留痕，沙箱生效 | planned |
 | M3 编排 | Phase 3 | 多 agent 工作流可回放，审批门生效 | planned |
 | M4 平台加固 | Phase 4 | 两租户隔离，配额生效，评测不过不能发布 | planned |
@@ -60,7 +60,7 @@ M0 出口标准：
 - SLICE-017 模型网关接入：把网关接到 ADK 模型循环，agent run 产生 `model.call` 事件。
 - SLICE-018 安全门强制 Phase A：pre-commit hook、CI 必需检查、bandit 覆盖 scripts、spec 威胁模型门禁。
 
-M1 出口以 SLICE-017 和 SLICE-018 Phase A 完成为准。在此之前，模型调用还没有经过网关，安全检查也还不是提交前强制。
+M1 出口证据见 `docs/evidence/M1-milestone.txt`。MCP `serve_agent` 路径的网关接入移到 M2。
 
 SLICE-018 Phase B 需要新 ADR 或工具决策，排在 M2：依赖锁、历史密钥扫描、镜像扫描、SBOM 校验、日志脱敏。
 

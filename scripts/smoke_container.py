@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
+import subprocess  # nosec B404  # docker CLI smoke test
 import sys
 import time
 
@@ -28,7 +28,7 @@ from mcp.client.streamable_http import streamable_http_client
 IMAGE = "adk-agent-mcp:smoke"
 NAME = "adk-agent-mcp-smoke"
 HOST_PORT = 18080
-TOKEN = "smoke-secret"
+TOKEN = "smoke-secret"  # nosec B105  # ephemeral test token, not a credential
 MODEL = "claude:deepseek-v4-pro"
 
 
@@ -49,7 +49,7 @@ def _redact(cmd: list[str]) -> list[str]:
 
 def sh(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     print("+", " ".join(_redact(cmd)))
-    return subprocess.run(cmd, text=True, **kwargs)
+    return subprocess.run(cmd, text=True, **kwargs)  # nosec B603  # fixed argv, no shell
 
 
 def wait_health(url: str, timeout: float = 90.0) -> bool:
@@ -59,7 +59,7 @@ def wait_health(url: str, timeout: float = 90.0) -> bool:
             with httpx.Client(trust_env=False, timeout=2.0) as client:
                 if client.get(url).status_code == 200:
                     return True
-        except Exception:
+        except Exception:  # nosec B110  # polling loop retries until timeout
             pass
         time.sleep(0.5)
     return False

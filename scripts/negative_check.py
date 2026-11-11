@@ -10,7 +10,7 @@ after the probe is removed. Usage:
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # nosec B404  # runs the gate
 import sys
 from pathlib import Path
 
@@ -33,7 +33,7 @@ CASES = [
 
 
 def _run_gate() -> tuple[int, str]:
-    proc = subprocess.run(
+    proc = subprocess.run(  # nosec B603  # fixed gate command, no shell
         [PY, "scripts/check.py", "--fast"],
         cwd=ROOT,
         capture_output=True,

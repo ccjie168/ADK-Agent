@@ -10,39 +10,40 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import subprocess
+import subprocess  # nosec B404  # runs the gate tools
 import sys
 from pathlib import Path
 
 PY = sys.executable
 ROOT = Path(__file__).resolve().parents[1]
 
-FAST_STEPS = [
+FAST_STEPS: list[tuple[str, str | None, list[str]]] = [
     ("format", "ruff", ["-m", "ruff", "format", "--check", "."]),
     ("lint", "ruff", ["-m", "ruff", "check", "."]),
     ("types", "mypy", ["-m", "mypy", "src"]),
     ("layering", "importlinter", ["scripts/check_layering.py"]),
+    ("specs", None, ["scripts/check_specs.py"]),
     ("test", "pytest", ["-m", "pytest", "-q"]),
 ]
 
-FULL_STEPS = FAST_STEPS + [
-    ("sast", "bandit", ["-m", "bandit", "-q", "-r", "src"]),
+FULL_STEPS: list[tuple[str, str | None, list[str]]] = FAST_STEPS + [
+    ("sast", "bandit", ["-m", "bandit", "-q", "-r", "src", "scripts"]),
     ("deps", "pip_audit", ["-m", "pip_audit"]),
 ]
 
 # detect-secrets has no exit-code signal; we parse its JSON and count hits.
 SECRET_EXCLUDES = (
-    r"(^|[\\/])(\.venv|\.git|\.mypy_cache|\.ruff_cache|__pycache__|"
+    r"(^|[\\/])(\.venv|\.git|\.mypy_cache|\.ruff_cache|__pycache__|"  # nosec B105  # path regex
     r"\.pytest_cache|\.import_linter_cache|node_modules|docs[\\/]evidence)([\\/]|$)"
 )
 
 
-def _available(module: str) -> bool:
-    return importlib.util.find_spec(module) is not None
+def _available(module: str | None) -> bool:
+    return module is None or importlib.util.find_spec(module) is not None
 
 
 def _run(name: str, args: list[str]) -> bool:
-    proc = subprocess.run([PY, *args], cwd=ROOT)
+    proc = subprocess.run([PY, *args], cwd=ROOT)  # nosec B603  # fixed argv, no shell
     ok = proc.returncode == 0
     print(f"[{'PASS' if ok else 'FAIL'}] {name}")
     return ok
@@ -63,7 +64,7 @@ def _run_secrets() -> bool | None:
         SECRET_EXCLUDES,
         ".",
     ]
-    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)  # nosec B603  # fixed argv
     if proc.returncode != 0:
         print(proc.stderr.strip())
         print("[FAIL] secrets")

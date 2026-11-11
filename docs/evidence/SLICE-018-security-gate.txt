@@ -1,0 +1,53 @@
+SLICE-018 安全门强制 Phase A
+日期: 2026-11-12
+状态: gated
+
+实现
+----
+- .githooks/pre-commit 调用 check.py --full，优先使用 .venv 的 Python。
+- scripts/install_hooks.py 设置 core.hooksPath=.githooks，已在当前仓库执行并验证。
+- scripts/check_specs.py 要求非 merged slice 含意图、完成判据、反例、威胁模型、证据。
+- check.py 新增 specs 步骤；bandit 从 src 扩到 src + scripts。
+- 预期的 subprocess 用法使用带理由的 nosec：B404、B603、B105、B110。
+- CI 增加 concurrency 和 timeout，继续保持 --full --strict。
+
+门禁
+----
+$ .venv/Scripts/python.exe scripts/check.py --fast
+specs: active slices have intent, acceptance, counterexamples, threat-model, evidence
+110 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+110 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+hook
+----
+$ python scripts/install_hooks.py
+core.hooksPath=.githooks
+$ git config core.hooksPath
+.githooks
+
+未执行
+------
+- 分支保护：Settings -> Branches，要求 ci / gate，禁止绕过。需要明确批准。
+- Phase B：依赖锁、历史密钥扫描、镜像扫描、SBOM 校验与签名、日志脱敏。
+  这些需要新 ADR 或工具决策，排在 M2。

@@ -1,6 +1,6 @@
 # SLICE-018 安全门强制（M1-6）
 
-状态: planned
+状态: gated
 依据: ADR-0001、ADR-0002，用户要求把安全检查变成不可绕过
 
 ## 意图（要什么，不写怎么写）
@@ -32,21 +32,21 @@ Phase B 不在这一刀里实现。它需要先登记工具和依赖，按 ADR-0
 
 ## 完成判据（Phase A，可执行）
 
-- [ ] `.githooks/pre-commit` 调用 `check.py --full`，优先使用 `.venv` 的 Python -> `tests/test_security_gate.py::test_pre_commit_calls_full_gate`
-- [ ] `scripts/install_hooks.py` 设置 `core.hooksPath=.githooks` -> `::test_install_hooks_sets_hooks_path`
-- [ ] `scripts/check_specs.py` 拒绝缺少威胁模型的新 slice -> `::test_spec_without_threat_model_fails`
-- [ ] 缺威胁模型的 merged slice 被跳过 -> `::test_merged_slice_is_grandfathered`
-- [ ] `check.py --full` 包含 `specs` 步骤 -> 证据
-- [ ] bandit 扫描 `src` 和 `scripts`，预期 `subprocess` 用法有带理由的 `# nosec` -> 证据
-- [ ] CI 运行 `check.py --full --strict` -> `.github/workflows/ci.yml`
-- [ ] 分支保护命令写进文档，实际开启前需要批准
+- [x] `.githooks/pre-commit` 调用 `check.py --full`，优先使用 `.venv` 的 Python -> `tests/test_security_gate.py::test_pre_commit_calls_full_gate`
+- [x] `scripts/install_hooks.py` 设置 `core.hooksPath=.githooks` -> `::test_install_hooks_sets_hooks_path`
+- [x] `scripts/check_specs.py` 拒绝缺少威胁模型的新 slice -> `::test_spec_without_threat_model_fails`
+- [x] 缺威胁模型的 merged slice 被跳过 -> `::test_merged_slice_is_grandfathered`
+- [x] `check.py --full` 包含 `specs` 步骤 -> 证据
+- [x] bandit 扫描 `src` 和 `scripts`，预期 `subprocess` 用法有带理由的 `# nosec` -> 证据
+- [x] CI 运行 `check.py --full --strict` -> `.github/workflows/ci.yml`
+- [x] 分支保护命令写进文档，实际开启前需要批准
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：新建一个缺 `## 5 问威胁建模` 的 slice -> `check_specs.py` 退出 1 -> `test_spec_without_threat_model_fails`
-- [ ] 反例 2：merged slice 缺该节 -> 跳过，退出 0 -> `test_merged_slice_is_grandfathered`
-- [ ] 反例 3：未安装 hook -> `git config core.hooksPath` 为空 -> `test_install_hooks_sets_hooks_path`
-- [ ] 反例 4：`check.py --full` 输出没有 `[PASS] specs` -> 门禁缺口
+- [x] 反例 1：新建一个缺 `## 5 问威胁建模` 的 slice -> `check_specs.py` 退出 1 -> `test_spec_without_threat_model_fails`
+- [x] 反例 2：merged slice 缺该节 -> 跳过，退出 0 -> `test_merged_slice_is_grandfathered`
+- [x] 反例 3：未安装 hook -> `git config core.hooksPath` 为空 -> `test_install_hooks_sets_hooks_path`
+- [x] 反例 4：`check.py --full` 输出没有 `[PASS] specs` -> 门禁缺口
 
 ## 契约
 
@@ -87,6 +87,16 @@ hook 可以用 `--no-verify` 绕过，所以 CI 和分支保护是第二层，�
 - 门禁失败时输出最后 50 行，便于定位。
 - 分支保护要求 `ci / gate` 通过。命令写在文档里，实际开启前需要人工批准。
 
+### 分支保护（未应用）
+
+在 GitHub 仓库 `Settings -> Branches` 为 `master` 添加规则：
+
+- Require status checks to pass before merging。
+- 选择 `ci / gate`。
+- 不允许绕过上述设置。
+
+这是外向变更，本次没有执行。需要明确批准后再开启。
+
 ### Phase B 不在本切片
 
 以下需要新 ADR 或工具决策，单独排期：
@@ -107,5 +117,9 @@ hook 可以用 `--no-verify` 绕过，所以 CI 和分支保护是第二层，�
 
 ## 证据
 
-- 反例红: 待填
-- 实现后绿: 待填
+- 反例红: 安全门测试在脚本和 hook 实现前无法通过；`scripts/check_specs.py` 不存在时 specs 步骤无法运行
+- 实现后绿: `tests/test_security_gate.py` 7 passed；`check.py --fast` 110 tests，含 `[PASS] specs`
+- `check.py --full` -> 110 tests，含 `[PASS] sast`，ALL PASS
+- hook 已安装，`core.hooksPath=.githooks`
+- 分支保护未应用，需要批准
+- 详见 `docs/evidence/SLICE-018-security-gate.txt`
