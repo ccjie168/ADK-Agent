@@ -48,7 +48,7 @@
 
 - [x] 反例 1：`ModelConfig(..., thinking_budget=0)` -> 当前接受，期望 `ValidationError` -> `test_model_config_rejects_thinking_budget`
 - [x] 反例 2：`AgentConfig(..., thinking_budget=0)` -> 当前被 `extra="forbid"` 拒绝，期望接受并生效 -> `test_thinking_budget_is_applied`
-- [x] 反例 3：`build_model(ModelConfig(api_key="secret"))` -> 当前写入 `GOOGLE_API_KEY`，期望不写 -> `test_gemini_key_does_not_mutate_env`
+- [x] 反例 3：`build_model(ModelConfig(api_key=...))` -> 当前写入 `GOOGLE_API_KEY`，期望不写 -> `test_gemini_key_does_not_mutate_env`
 - [x] 反例 4：`from adk_agent.auth import resolve_http_auth` -> 当前 `ModuleNotFoundError` -> `tests/test_http_auth.py` 收集失败
 - [x] 反例 5：`framework_config.schema.json` 缺失 -> `test_contracts_in_sync` 失败
 

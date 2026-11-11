@@ -99,7 +99,7 @@ class ModelGateway(Protocol):
 ### 适配器
 
 - `LiteLlmProvider(*, api_key=None, api_base=None)`：用 `litellm.acompletion`，`model=request.model`。
-- `VllmProvider(base_url, *, api_key="not-needed")`：用 `litellm.acompletion`，`model=f"openai/{request.model}"`，`api_base=base_url`。
+- `VllmProvider(base_url, *, api_key=...)`：默认 `not-needed`。用 `litellm.acompletion`，`model=f"openai/{request.model}"`，`api_base=base_url`。
 - 两者都惰性导入 `litellm`，未安装时只在调用时失败。
 
 ## 5 问威胁建模（10 分钟）
