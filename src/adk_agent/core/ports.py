@@ -11,6 +11,7 @@ from .invocation import Invocation
 from .manifest import AgentRef, ModelPolicy, PublishedAgent
 from .model import ModelRequest, ModelResponse
 from .policy import PolicyDecision
+from .tool import ToolRequest, ToolResponse
 
 
 class AgentRegistry(Protocol):
@@ -52,6 +53,12 @@ class ModelGateway(Protocol):
     ) -> ModelResponse: ...
 
 
+class ToolGateway(Protocol):
+    async def invoke(
+        self, invocation: Invocation, request: ToolRequest, policy: PolicyEngine
+    ) -> ToolResponse: ...
+
+
 __all__ = [
     "AgentRegistry",
     "AuditSink",
@@ -61,4 +68,5 @@ __all__ = [
     "PolicyEngine",
     "SecretProvider",
     "TemplateSource",
+    "ToolGateway",
 ]

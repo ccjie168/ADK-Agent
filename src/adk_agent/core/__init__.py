@@ -25,7 +25,9 @@ from .ports import (
     PolicyEngine,
     SecretProvider,
     TemplateSource,
+    ToolGateway,
 )
+from .tool import ToolRequest, ToolResponse
 
 __all__ = [
     "AgentManifest",
@@ -51,6 +53,9 @@ __all__ = [
     "SecretProvider",
     "Slo",
     "TemplateSource",
+    "ToolGateway",
     "ToolGrant",
+    "ToolRequest",
+    "ToolResponse",
     "manifest_digest",
 ]

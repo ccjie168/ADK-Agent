@@ -1,0 +1,50 @@
+SLICE-019 工具网关与策略
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/tools -q
+ModuleNotFoundError: No module named 'adk_agent.tools'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/tools tests/models tests/core/test_contracts.py -q
+36 passed in 2.09s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+specs: active slices have intent, acceptance, counterexamples, threat-model, evidence
+119 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+119 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- ToolRequest、ToolResponse、ToolGateway 端口。
+- FunctionRegistry + ToolSpec；重复 tool_id 在注册时拒绝。
+- GrantPolicyEngine 按 agent 的 ToolGrant 放行。
+- FunctionToolGateway 写 tool.call 审计：ok、denied、error，含数据分级和参数/结果 hash。
+- 未注册、策略拒绝、需要审批、函数异常都不会静默通过。
+- 共享 hash 抽到 audit/hashing.py。
+- ADK 工具循环的接入是 SLICE-020，本切片没有覆盖 agent 的实际工具调用。

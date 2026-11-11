@@ -10,6 +10,7 @@ from google.adk.models import BaseLlm
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 
+from ..audit.hashing import hash_json, hash_text
 from ..core import ModelPolicy
 from ..core.context import current_invocation
 from .gateway import (
@@ -17,8 +18,6 @@ from .gateway import (
     check_provider,
     egress_for,
     emit_model_audit,
-    hash_json,
-    hash_text,
 )
 
 _PROVIDERS = {

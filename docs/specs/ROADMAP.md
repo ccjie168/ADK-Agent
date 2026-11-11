@@ -26,7 +26,7 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 | --- | --- | --- | --- |
 | M0 地基 | Phase 0 | 五个契约合并，import-linter 生效，manifest 可往返，P0 加固完成 | done |
 | M1 单 agent 闭环 | Phase 1 | 注册、发布、模型网关、审计端到端跑通 | done |
-| M2 工具与策略 | Phase 2 | 越权工具调用被拒并留痕，沙箱生效 | planned |
+| M2 工具与策略 | Phase 2 | 越权工具调用被拒并留痕，沙箱生效 | in_progress |
 | M3 编排 | Phase 3 | 多 agent 工作流可回放，审批门生效 | planned |
 | M4 平台加固 | Phase 4 | 两租户隔离，配额生效，评测不过不能发布 | planned |
 | M5 拆分 | Phase 5 | 网关与 worker 独立部署，故障隔离 | planned |
@@ -66,12 +66,14 @@ SLICE-018 Phase B 需要新 ADR 或工具决策，排在 M2：依赖锁、历史
 
 进入每个切片时再写详细 spec。
 
-## M2 候选切片
+## M2 切片
 
-- 工具网关：函数注册表、OpenAPI 导入、MCP 代理。
-- 策略引擎：先 Python 端口，后接 OPA 或 Cedar。
-- 密钥提供者：manifest 只放引用。
-- 工具沙箱：资源与网络限制。
+- SLICE-019 工具网关与策略：函数注册、GrantPolicyEngine、tool.call 审计。
+- SLICE-020 ADK 工具守卫接入：before/after tool callback，agent 工具调用经过网关。
+- SLICE-021 密钥提供者与工具源：SecretProvider、OpenAPI 导入、MCP 代理。
+- SLICE-022 工具沙箱：资源与网络限制。
+
+进入每个切片时再写详细 spec。
 
 ## M3 候选切片
 
