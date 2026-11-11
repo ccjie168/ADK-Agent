@@ -16,12 +16,14 @@ from .config import (
     FrameworkConfig,
     McpServerConfig,
     ModelConfig,
+    OpenApiConfig,
     load_config,
 )
 from .console import build_console_app, run_console
 from .factory import build_agent, build_framework, build_runner
 from .mcp.server import serve_agent, serve_many
 from .models import build_model, disable_thinking
+from .secretstore import EnvSecretProvider, MappingSecretProvider, SecretNotFound
 
 __all__ = [
     "build_model",
@@ -36,8 +38,12 @@ __all__ = [
     "load_config",
     "ModelConfig",
     "McpServerConfig",
+    "OpenApiConfig",
     "AgentConfig",
     "FrameworkConfig",
+    "EnvSecretProvider",
+    "MappingSecretProvider",
+    "SecretNotFound",
 ]
 
 __version__ = "0.1.0"

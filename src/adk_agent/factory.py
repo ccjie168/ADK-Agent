@@ -8,22 +8,29 @@ from google.adk.agents import LlmAgent
 from google.genai import types
 
 from .config import AgentConfig, FrameworkConfig
+from .core import SecretProvider
 from .mcp.client import toolset_from_config
 from .models import build_model
+from .secretstore import EnvSecretProvider
+from .tools.sources import openapi_toolset_from_config
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
     from google.adk.runners import Runner
 
 
-def build_agent(spec: AgentConfig) -> BaseAgent:
+def build_agent(spec: AgentConfig, secrets: SecretProvider | None = None) -> BaseAgent:
     """Recursively build an ``LlmAgent`` from an :class:`AgentConfig`.
 
     Sub-agents are attached via ``sub_agents`` (ADK's hierarchical delegation),
-    and every configured external MCP server becomes a ``McpToolset`` tool.
+    every configured external MCP server becomes a ``McpToolset`` tool, and
+    every OpenAPI document becomes an ``OpenAPIToolset``. Header secrets default
+    to :class:`EnvSecretProvider` and the same provider reaches sub-agents.
     """
-    sub_agents = [build_agent(sub) for sub in spec.sub_agents]
-    tools = [toolset_from_config(server) for server in spec.mcp_servers]
+    provider = secrets if secrets is not None else EnvSecretProvider()
+    sub_agents = [build_agent(sub, provider) for sub in spec.sub_agents]
+    tools = [toolset_from_config(server, provider) for server in spec.mcp_servers]
+    tools += [openapi_toolset_from_config(cfg, provider) for cfg in spec.openapi]
 
     extra: dict[str, Any] = {}
     if spec.thinking_budget is not None:

@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from google.adk.agents import LlmAgent
 from google.adk.tools import BaseTool
 
+from adk_agent.config import McpServerConfig, OpenApiConfig
 from adk_agent.console import build_console_app
 from adk_agent.core import AgentRef, Invocation, Principal
 from adk_agent.core.context import reset_invocation, set_invocation
+from adk_agent.mcp.client import toolset_from_config
+from adk_agent.secretstore import MappingSecretProvider
 from adk_agent.tools.guard import ToolGuard
+from adk_agent.tools.sources import openapi_toolset_from_config
 
 
 class FakeContext:
@@ -89,5 +94,83 @@ def test_console_grants_declared_tools():
 
     allowed, denied = asyncio.run(scenario())
     assert allowed is True
+    assert denied is not None
+    assert denied["error"] == "tool_denied"
+
+
+def _write_openapi(tmp_path) -> str:
+    path = tmp_path / "openapi.json"
+    path.write_text(
+        json.dumps(
+            {
+                "openapi": "3.0.3",
+                "info": {"title": "Demo API", "version": "1.0.0"},
+                "servers": [{"url": "https://api.example.com"}],
+                "paths": {
+                    "/users": {
+                        "get": {
+                            "operationId": "getUser",
+                            "responses": {"200": {"description": "ok"}},
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return str(path)
+
+
+def _decide(guard: ToolGuard, allowed_name: str, denied_name: str):
+    async def scenario():
+        token = set_invocation(_invocation())
+        try:
+            allowed = await guard.before(FakeTool(allowed_name), {}, FakeContext("call-1"))
+            denied = await guard.before(FakeTool(denied_name), {}, FakeContext("call-2"))
+            return allowed, denied
+        finally:
+            reset_invocation(token)
+
+    return asyncio.run(scenario())
+
+
+def test_console_grants_openapi_toolset_tools(tmp_path):
+    toolset = openapi_toolset_from_config(
+        OpenApiConfig(spec_path=_write_openapi(tmp_path)),
+        MappingSecretProvider({}),
+    )
+    agent = LlmAgent(
+        name="probe",
+        model="gemini-2.5-pro",
+        instruction="x",
+        tools=[toolset],
+    )
+    build_console_app({"probe": agent}, auth_token="secret")
+
+    allowed, denied = _decide(_guard_for(agent), "get_user", "delete_user")
+    assert allowed is None
+    assert denied is not None
+    assert denied["error"] == "tool_denied"
+
+
+def test_console_grants_mcp_filter_tools():
+    toolset = toolset_from_config(
+        McpServerConfig(
+            transport="http",
+            url="https://mcp.example.com/mcp",
+            tool_filter=["read_file"],
+        ),
+        MappingSecretProvider({}),
+    )
+    agent = LlmAgent(
+        name="probe",
+        model="gemini-2.5-pro",
+        instruction="x",
+        tools=[toolset],
+    )
+    build_console_app({"probe": agent}, auth_token="secret")
+
+    allowed, denied = _decide(_guard_for(agent), "read_file", "write_file")
+    assert allowed is None
     assert denied is not None
     assert denied["error"] == "tool_denied"

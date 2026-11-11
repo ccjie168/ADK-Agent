@@ -16,6 +16,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from google.adk.models import BaseLlm
 from google.adk.tools import BaseTool
+from google.adk.tools.base_toolset import BaseToolset
 
 from .audit import ListAuditSink
 from .auth import BearerAuthMiddleware, resolve_http_auth
@@ -23,7 +24,7 @@ from .core import Invocation, ModelPolicy, Principal, ToolGrant
 from .mcp.http import resolve_port
 from .models.gateway_llm import GatewayLlm, provider_for_model
 from .runtime import AgentRuntime, dev_agent_ref
-from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard
+from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard, toolset_tool_ids
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
@@ -196,14 +197,14 @@ def _wrap_model(agent: Any, audit: ListAuditSink) -> None:
 
 
 def _declared_tool_ids(agent: Any) -> set[str]:
-    """Collect the tool names an agent tree declares.
-
-    Toolset names are only known at runtime, so they are not granted here.
-    """
+    """Collect the tool names an agent tree declares."""
     tool_ids: set[str] = set()
     for tool in getattr(agent, "tools", None) or ():
         if isinstance(tool, BaseTool):
             tool_ids.add(tool.name)
+            continue
+        if isinstance(tool, BaseToolset):
+            tool_ids |= toolset_tool_ids(tool)
             continue
         name = getattr(tool, "__name__", None)
         if isinstance(name, str):

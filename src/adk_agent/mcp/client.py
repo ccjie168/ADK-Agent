@@ -5,13 +5,16 @@ from __future__ import annotations
 from typing import Any
 
 from ..config import McpServerConfig
+from ..core import SecretProvider
+from ..secretstore import secret_header_provider
 
 
-def toolset_from_config(cfg: McpServerConfig):
+def toolset_from_config(cfg: McpServerConfig, secrets: SecretProvider | None = None):
     """Build an ``McpToolset`` from an :class:`McpServerConfig`.
 
     ``transport="stdio"`` launches a local process; ``transport="http"``
-    reaches a streamable-HTTP MCP server over the network.
+    reaches a streamable-HTTP MCP server over the network. ``header_secrets``
+    are resolved per request through ``secrets``.
     """
     from google.adk.tools.mcp_tool import (
         McpToolset,
@@ -48,5 +51,9 @@ def toolset_from_config(cfg: McpServerConfig):
         kwargs["tool_filter"] = cfg.tool_filter
     if cfg.tool_name_prefix:
         kwargs["tool_name_prefix"] = cfg.tool_name_prefix
+    if cfg.header_secrets:
+        if secrets is None:
+            raise ValueError("header_secrets need a SecretProvider")
+        kwargs["header_provider"] = secret_header_provider(secrets, cfg.header_secrets)
 
     return McpToolset(**kwargs)

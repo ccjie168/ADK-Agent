@@ -8,14 +8,27 @@ factory, the agent factory, and (later) the CLI's ``new``/``serve`` commands.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Incoming MCP clients use "http". Outgoing servers expose "streamable-http".
 IncomingTransport = Literal["stdio", "http"]
 ExposureTransport = Literal["stdio", "streamable-http"]
+
+_HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
+_SECRET_REF = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validate_secret_headers(value: dict[str, str]) -> dict[str, str]:
+    for header, reference in value.items():
+        if not _HEADER_NAME.fullmatch(header):
+            raise ValueError(f"invalid header name {header!r}")
+        if not _SECRET_REF.fullmatch(reference):
+            raise ValueError(f"invalid secret reference {reference!r}")
+    return value
 
 
 class ModelConfig(BaseModel):
@@ -55,6 +68,39 @@ class McpServerConfig(BaseModel):
     tool_filter: list[str] | None = None
     tool_name_prefix: str | None = None
 
+    # Header name -> secret reference, resolved per request. HTTP only.
+    header_secrets: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("header_secrets")
+    @classmethod
+    def _valid_secret_headers(cls, value: dict[str, str]) -> dict[str, str]:
+        return _validate_secret_headers(value)
+
+    @model_validator(mode="after")
+    def _secret_headers_are_http_only(self) -> McpServerConfig:
+        if self.transport == "stdio" and self.header_secrets:
+            raise ValueError("header_secrets require http transport")
+        overlap = set(self.headers or {}) & set(self.header_secrets)
+        if overlap:
+            raise ValueError(f"headers and header_secrets overlap: {sorted(overlap)}")
+        return self
+
+
+class OpenApiConfig(BaseModel):
+    """How to turn one OpenAPI JSON document into ADK tools."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    spec_path: str = Field(min_length=1)
+    tool_filter: list[str] | None = None
+    tool_name_prefix: str | None = None
+    header_secrets: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("header_secrets")
+    @classmethod
+    def _valid_secret_headers(cls, value: dict[str, str]) -> dict[str, str]:
+        return _validate_secret_headers(value)
+
 
 class AgentConfig(BaseModel):
     """Declarative description of one ADK agent."""
@@ -69,6 +115,7 @@ class AgentConfig(BaseModel):
     thinking_budget: int | None = None
     model: ModelConfig = Field(default_factory=ModelConfig)
     mcp_servers: list[McpServerConfig] = Field(default_factory=list)
+    openapi: list[OpenApiConfig] = Field(default_factory=list)
     sub_agents: list[AgentConfig] = Field(default_factory=list)
 
 

@@ -28,6 +28,13 @@
           "title": "Name",
           "type": "string"
         },
+        "openapi": {
+          "items": {
+            "$ref": "#/$defs/OpenApiConfig"
+          },
+          "title": "Openapi",
+          "type": "array"
+        },
         "sub_agents": {
           "items": {
             "$ref": "#/$defs/AgentConfig"
@@ -91,6 +98,13 @@
           ],
           "default": null,
           "title": "Env"
+        },
+        "header_secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Header Secrets",
+          "type": "object"
         },
         "headers": {
           "anyOf": [
@@ -220,6 +234,56 @@
         }
       },
       "title": "ModelConfig",
+      "type": "object"
+    },
+    "OpenApiConfig": {
+      "additionalProperties": false,
+      "description": "How to turn one OpenAPI JSON document into ADK tools.",
+      "properties": {
+        "header_secrets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Header Secrets",
+          "type": "object"
+        },
+        "spec_path": {
+          "minLength": 1,
+          "title": "Spec Path",
+          "type": "string"
+        },
+        "tool_filter": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Filter"
+        },
+        "tool_name_prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Name Prefix"
+        }
+      },
+      "required": [
+        "spec_path"
+      ],
+      "title": "OpenApiConfig",
       "type": "object"
     }
   },

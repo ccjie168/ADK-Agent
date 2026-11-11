@@ -73,7 +73,7 @@ SLICE-018 Phase B 需要新 ADR 或工具决策，排在 M2：依赖锁、历史
 - SLICE-021 密钥提供者与工具源：SecretProvider、OpenAPI 导入、MCP 代理。
 - SLICE-022 工具沙箱：资源与网络限制。
 
-SLICE-019 和 SLICE-020 已完成。M2 仍进行中，等 SLICE-021 和 SLICE-022。
+SLICE-019、SLICE-020、SLICE-021 已完成。M2 仍进行中，等 SLICE-022 工具沙箱。
 
 进入每个切片时再写详细 spec。
 
