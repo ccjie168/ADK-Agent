@@ -1,0 +1,49 @@
+SLICE-017 模型网关接入
+日期: 2026-11-11
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/models/test_gateway_llm.py tests/test_console_gateway.py -q
+ModuleNotFoundError: No module named 'adk_agent.models.gateway_llm'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/models/test_gateway_llm.py tests/models/test_gateway.py tests/models/test_providers.py tests/test_console_gateway.py tests/runtime/test_execution.py tests/test_console_audit.py -q
+21 passed in 1.98s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+Contracts: 1 kept, 0 broken.
+103 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+103 passed
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- GatewayLlm 包装 BaseLlm，读取 contextvar 中的 Invocation。
+- provider 不在 ModelPolicy 白名单时拒绝，且不调用原模型。
+- 成功/拒绝/失败都写 model.call 审计，token 来自 usage_metadata，egress 按 provider。
+- AgentRuntime 在模型循环前设置 contextvar，finally 重置。
+- 控制台在构建 Runner 前包装 BaseLlm 模型；字符串模型交给 ADK 自己解析，本切片不包装。
+- 控制台 dev 策略是 provider_allowlist=[当前 provider]，只保证路径和审计，不是最小权限。
+- MCP serve_agent 路径仍未经过网关，这是后续切片。
+- 流式调用只审计最后一个响应的 usage，属于 M1 的近似。

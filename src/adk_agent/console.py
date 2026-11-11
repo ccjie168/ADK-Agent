@@ -14,11 +14,13 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from google.adk.models import BaseLlm
 
 from .audit import ListAuditSink
 from .auth import BearerAuthMiddleware, resolve_http_auth
-from .core import Invocation, Principal
+from .core import Invocation, ModelPolicy, Principal
 from .mcp.http import resolve_port
+from .models.gateway_llm import GatewayLlm, provider_for_model
 from .runtime import AgentRuntime, dev_agent_ref
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -175,6 +177,22 @@ def _trace_id(request: Request) -> str:
     return candidate if _TRACE_ID.fullmatch(candidate) else uuid.uuid4().hex
 
 
+def _wrap_model(agent: Any, audit: ListAuditSink) -> None:
+    """Route an agent's ADK model through the policy gateway."""
+    model = getattr(agent, "model", None)
+    if isinstance(model, BaseLlm):
+        provider = provider_for_model(model)
+        agent.model = GatewayLlm(
+            model=model.model,
+            delegate=model,
+            provider=provider,
+            policy=ModelPolicy(provider_allowlist=[provider]),
+            audit=audit,
+        )
+    for sub in getattr(agent, "sub_agents", None) or ():
+        _wrap_model(sub, audit)
+
+
 def build_console_app(
     agents: dict[str, BaseAgent],
     *,
@@ -190,6 +208,8 @@ def build_console_app(
 
     session_service = _session_service(session_db)
     audit = ListAuditSink()
+    for agent in agents.values():
+        _wrap_model(agent, audit)
     runners = {
         name: Runner(app_name=name, agent=agent, session_service=session_service)
         for name, agent in agents.items()

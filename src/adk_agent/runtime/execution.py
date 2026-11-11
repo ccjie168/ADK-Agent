@@ -12,6 +12,7 @@ from google.adk.agents.run_config import RunConfig
 from google.genai import types
 
 from ..core import AgentRef, AuditEvent, AuditSink, Invocation, InvocationResult
+from ..core.context import reset_invocation, set_invocation
 
 
 class AgentRuntime:
@@ -35,6 +36,7 @@ class AgentRuntime:
         )
         new_message = types.Content(role="user", parts=[types.Part(text=invocation.input)])
         reply_parts: list[str] = []
+        token = set_invocation(invocation)
         try:
             async for event in self.runner.run_async(
                 user_id=user_id,
@@ -54,6 +56,8 @@ class AgentRuntime:
                 started=started,
             )
             raise
+        finally:
+            reset_invocation(token)
 
         text = "".join(reply_parts).strip()
         await self._audit(

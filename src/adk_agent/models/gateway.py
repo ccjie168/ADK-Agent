@@ -8,7 +8,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from ..core import (
     AuditEvent,
@@ -25,17 +25,66 @@ class ModelDenied(Exception):
     """The request is not allowed by the agent's model policy."""
 
 
-def _hash_text(text: str) -> str:
+def egress_for(provider: str) -> Literal["none", "third_party"]:
+    return "none" if provider == "vllm" else "third_party"
+
+
+def check_provider(provider: str, policy: ModelPolicy) -> None:
+    if provider not in policy.provider_allowlist:
+        raise ModelDenied(f"provider {provider!r} is not allowed by policy")
+
+
+def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _hash_messages(request: ModelRequest) -> str:
-    payload = json.dumps(
-        [message.model_dump() for message in request.messages],
-        sort_keys=True,
-        separators=(",", ":"),
+def hash_json(payload: Any) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hash_text(canonical)
+
+
+def hash_messages(request: ModelRequest) -> str:
+    return hash_json([message.model_dump() for message in request.messages])
+
+
+async def emit_model_audit(
+    audit: AuditSink | None,
+    invocation: Invocation,
+    *,
+    provider: str,
+    model: str,
+    args_hash: str,
+    result_hash: str | None,
+    tokens: int | None,
+    cost_usd: float | None,
+    egress: Literal["none", "third_party"],
+    status: Literal["ok", "error", "denied"],
+    error_code: str | None,
+    started: float,
+) -> None:
+    if audit is None:
+        return
+    event = AuditEvent(
+        event_id=uuid.uuid4().hex,
+        run_id=invocation.run_id,
+        trace_id=invocation.trace_id,
+        tenant=invocation.principal.tenant,
+        principal=invocation.principal,
+        agent_ref=invocation.agent_ref,
+        action="model.call",
+        target=f"{provider}:{model}",
+        args_hash=args_hash,
+        result_hash=result_hash,
+        data_classes=[],
+        latency_ms=int((time.perf_counter() - started) * 1000),
+        tokens=tokens,
+        cost_usd=cost_usd,
+        egress=egress,
+        status=status,
+        error_code=error_code,
+        timestamp=datetime.now(timezone.utc),
     )
-    return _hash_text(payload)
+    await audit.emit(event)
 
 
 class PolicyModelGateway:
@@ -61,25 +110,40 @@ class PolicyModelGateway:
         policy: ModelPolicy,
     ) -> ModelResponse:
         started = time.perf_counter()
-        if request.provider not in policy.provider_allowlist:
-            await self._audit(
+        args_hash = hash_messages(request)
+        try:
+            check_provider(request.provider, policy)
+        except ModelDenied:
+            await emit_model_audit(
+                self.audit,
                 invocation,
-                request,
+                provider=request.provider,
+                model=request.model,
+                args_hash=args_hash,
+                result_hash=None,
+                tokens=None,
+                cost_usd=None,
+                egress="none",
                 status="denied",
                 error_code="provider_not_allowed",
-                egress="none",
                 started=started,
             )
-            raise ModelDenied(f"provider {request.provider!r} is not allowed by policy")
+            raise
 
         provider = self.providers.get(request.provider)
         if provider is None:
-            await self._audit(
+            await emit_model_audit(
+                self.audit,
                 invocation,
-                request,
+                provider=request.provider,
+                model=request.model,
+                args_hash=args_hash,
+                result_hash=None,
+                tokens=None,
+                cost_usd=None,
+                egress="none",
                 status="denied",
                 error_code="provider_unavailable",
-                egress="none",
                 started=started,
             )
             raise ModelDenied(f"provider {request.provider!r} is not configured")
@@ -87,60 +151,34 @@ class PolicyModelGateway:
         try:
             response = await provider.complete(request)
         except Exception as exc:
-            await self._audit(
+            await emit_model_audit(
+                self.audit,
                 invocation,
-                request,
+                provider=request.provider,
+                model=request.model,
+                args_hash=args_hash,
+                result_hash=None,
+                tokens=None,
+                cost_usd=None,
+                egress=provider.egress,
                 status="error",
                 error_code=type(exc).__name__,
-                egress=provider.egress,
                 started=started,
             )
             raise
 
-        await self._audit(
+        await emit_model_audit(
+            self.audit,
             invocation,
-            request,
+            provider=request.provider,
+            model=request.model,
+            args_hash=args_hash,
+            result_hash=hash_text(response.text),
+            tokens=response.input_tokens + response.output_tokens,
+            cost_usd=response.cost_usd,
+            egress=provider.egress,
             status="ok",
             error_code=None,
-            egress=provider.egress,
             started=started,
-            response=response,
         )
         return response
-
-    async def _audit(
-        self,
-        invocation: Invocation,
-        request: ModelRequest,
-        *,
-        status: Literal["ok", "error", "denied"],
-        error_code: str | None,
-        egress: Literal["none", "third_party"],
-        started: float,
-        response: ModelResponse | None = None,
-    ) -> None:
-        if self.audit is None:
-            return
-        event = AuditEvent(
-            event_id=uuid.uuid4().hex,
-            run_id=invocation.run_id,
-            trace_id=invocation.trace_id,
-            tenant=invocation.principal.tenant,
-            principal=invocation.principal,
-            agent_ref=invocation.agent_ref,
-            action="model.call",
-            target=f"{request.provider}:{request.model}",
-            args_hash=_hash_messages(request),
-            result_hash=_hash_text(response.text) if response is not None else None,
-            data_classes=[],
-            latency_ms=int((time.perf_counter() - started) * 1000),
-            tokens=(
-                response.input_tokens + response.output_tokens if response is not None else None
-            ),
-            cost_usd=response.cost_usd if response is not None else None,
-            egress=egress,
-            status=status,
-            error_code=error_code,
-            timestamp=datetime.now(timezone.utc),
-        )
-        await self.audit.emit(event)
