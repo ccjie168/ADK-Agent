@@ -5,6 +5,7 @@ from __future__ import annotations
 from .cancel import CancellationToken
 from .errors import (
     BudgetExceeded,
+    NoRoute,
     PlanCancelled,
     PlanDenied,
     PlanError,
@@ -21,6 +22,7 @@ __all__ = [
     "AgentGrantPolicyEngine",
     "BudgetExceeded",
     "CancellationToken",
+    "NoRoute",
     "PlanCancelled",
     "PlanDenied",
     "PlanError",

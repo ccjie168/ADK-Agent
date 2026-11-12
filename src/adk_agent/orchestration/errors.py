@@ -15,6 +15,10 @@ class UnknownAgent(PlanError):
     """The plan references an agent the executor cannot resolve."""
 
 
+class NoRoute(PlanError):
+    """No routing step matched the input and there is no default."""
+
+
 class PlanCancelled(PlanError):
     """The caller cancelled the plan."""
 

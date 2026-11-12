@@ -20,7 +20,7 @@ from .config import (
     load_config,
 )
 from .console import build_console_app, run_console
-from .core import OrchestrationPlan, PlanResult, PlanStep, plan_digest, plan_ref
+from .core import OrchestrationPlan, PlanResult, PlanStep, RouteWhen, plan_digest, plan_ref
 from .factory import build_agent, build_framework, build_runner
 from .mcp.server import serve_agent, serve_many
 from .models import build_model, disable_thinking
@@ -28,6 +28,7 @@ from .orchestration import (
     AgentGrantPolicyEngine,
     BudgetExceeded,
     CancellationToken,
+    NoRoute,
     PlanCancelled,
     PlanDenied,
     PlanExecutionError,
@@ -72,11 +73,13 @@ __all__ = [
     "OrchestrationPlan",
     "PlanResult",
     "PlanStep",
+    "RouteWhen",
     "plan_digest",
     "plan_ref",
     "AgentGrantPolicyEngine",
     "BudgetExceeded",
     "CancellationToken",
+    "NoRoute",
     "PlanCancelled",
     "PlanDenied",
     "PlanExecutionError",

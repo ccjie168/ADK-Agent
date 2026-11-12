@@ -19,6 +19,7 @@ from .orchestration import (
     OrchestrationPlan,
     PlanResult,
     PlanStep,
+    RouteWhen,
     plan_digest,
     plan_ref,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "PolicyEngine",
     "Principal",
     "PublishedAgent",
+    "RouteWhen",
     "SecretProvider",
     "Slo",
     "TemplateSource",

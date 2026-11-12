@@ -87,6 +87,17 @@
           "title": "Retry Backoff Seconds",
           "type": "number"
         },
+        "route_when": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RouteWhen"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "timeout_seconds": {
           "anyOf": [
             {
@@ -108,10 +119,60 @@
       ],
       "title": "PlanStep",
       "type": "object"
+    },
+    "RouteWhen": {
+      "additionalProperties": false,
+      "properties": {
+        "contains": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contains"
+        },
+        "equals": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Equals"
+        },
+        "prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prefix"
+        }
+      },
+      "title": "RouteWhen",
+      "type": "object"
     }
   },
   "additionalProperties": false,
   "properties": {
+    "max_parallel": {
+      "default": 1,
+      "maximum": 16,
+      "minimum": 1,
+      "title": "Max Parallel",
+      "type": "integer"
+    },
     "plan_id": {
       "minLength": 1,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
@@ -130,7 +191,9 @@
       "default": "single",
       "enum": [
         "single",
-        "sequential"
+        "sequential",
+        "routing",
+        "fan_out"
       ],
       "title": "Strategy",
       "type": "string"

@@ -7,7 +7,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, cast
 
 from ..audit.hashing import hash_text
 from ..core import (
@@ -25,6 +25,7 @@ from ..core import (
 from .cancel import CancellationToken
 from .errors import (
     BudgetExceeded,
+    NoRoute,
     PlanCancelled,
     PlanDenied,
     PlanExecutionError,
@@ -42,6 +43,8 @@ def _error_code(error: BaseException) -> str:
         return "policy_denied"
     if isinstance(error, UnknownAgent):
         return "unknown_agent"
+    if isinstance(error, NoRoute):
+        return "no_route"
     if isinstance(error, PlanCancelled):
         return "cancelled"
     if isinstance(error, PlanTimeout):
@@ -71,6 +74,18 @@ class PlanExecutor:
         plan: OrchestrationPlan,
         invocation: Invocation,
         cancel: CancellationToken | None = None,
+    ) -> PlanResult:
+        if plan.strategy == "routing":
+            return await self._run_routing(plan, invocation, cancel)
+        if plan.strategy == "fan_out":
+            return await self._run_fan_out(plan, invocation, cancel)
+        return await self._run_sequential(plan, invocation, cancel)
+
+    async def _run_sequential(
+        self,
+        plan: OrchestrationPlan,
+        invocation: Invocation,
+        cancel: CancellationToken | None,
     ) -> PlanResult:
         started = time.perf_counter()
         reference = plan_ref(plan)
@@ -118,6 +133,176 @@ class PlanExecutor:
             final_text=final_text,
             cost_usd=spent_usd,
         )
+
+    async def _run_routing(
+        self,
+        plan: OrchestrationPlan,
+        invocation: Invocation,
+        cancel: CancellationToken | None,
+    ) -> PlanResult:
+        started = time.perf_counter()
+        reference = plan_ref(plan)
+        step = self._select_route(plan, invocation.input)
+        if step is None:
+            await self._audit_run(
+                invocation,
+                reference,
+                plan,
+                status="error",
+                error_code="no_route",
+                result_text=None,
+                started=started,
+            )
+            raise NoRoute(f"no route matched plan {plan.plan_id!r}")
+
+        outputs: dict[str, str] = {}
+        try:
+            self._check_cancelled(cancel)
+            self._check_deadline(invocation)
+            self._check_budget(invocation, 0.0)
+            cost = await self._run_step(step, invocation, outputs, 0.0, cancel)
+        except Exception as exc:
+            status: Status = "denied" if isinstance(exc, (PlanDenied, BudgetExceeded)) else "error"
+            await self._audit_run(
+                invocation,
+                reference,
+                plan,
+                status=status,
+                error_code=_error_code(exc),
+                result_text=None,
+                started=started,
+            )
+            raise
+
+        final_text = outputs[step.id]
+        await self._audit_run(
+            invocation,
+            reference,
+            plan,
+            status="ok",
+            error_code=None,
+            result_text=final_text,
+            started=started,
+        )
+        return PlanResult(
+            plan_id=plan.plan_id,
+            version=plan.version,
+            run_id=invocation.run_id,
+            trace_id=invocation.trace_id,
+            outputs=outputs,
+            final_text=final_text,
+            cost_usd=cost,
+        )
+
+    async def _run_fan_out(
+        self,
+        plan: OrchestrationPlan,
+        invocation: Invocation,
+        cancel: CancellationToken | None,
+    ) -> PlanResult:
+        started = time.perf_counter()
+        reference = plan_ref(plan)
+        outputs: dict[str, str] = {}
+        spent_usd = 0.0
+        completed: set[str] = set()
+        pending = list(plan.order())
+
+        try:
+            while pending:
+                self._check_cancelled(cancel)
+                self._check_deadline(invocation)
+                self._check_budget(invocation, spent_usd)
+                ready = [
+                    step
+                    for step in pending
+                    if all(dependency in completed for dependency in step.depends_on)
+                ]
+                if not ready:
+                    raise PlanExecutionError("plan", RuntimeError("no ready steps"))
+                batch = ready[: plan.max_parallel]
+                for step, cost in await self._run_batch(
+                    batch, invocation, outputs, spent_usd, cancel
+                ):
+                    spent_usd += cost
+                    completed.add(step.id)
+                    if invocation.budget_usd is not None and spent_usd > invocation.budget_usd:
+                        raise BudgetExceeded("plan budget exceeded")
+                pending = [step for step in pending if step.id not in completed]
+        except Exception as exc:
+            status: Status = "denied" if isinstance(exc, (PlanDenied, BudgetExceeded)) else "error"
+            await self._audit_run(
+                invocation,
+                reference,
+                plan,
+                status=status,
+                error_code=_error_code(exc),
+                result_text=None,
+                started=started,
+            )
+            raise
+
+        final_text = outputs.get(self._sink_id(plan), "")
+        await self._audit_run(
+            invocation,
+            reference,
+            plan,
+            status="ok",
+            error_code=None,
+            result_text=final_text,
+            started=started,
+        )
+        return PlanResult(
+            plan_id=plan.plan_id,
+            version=plan.version,
+            run_id=invocation.run_id,
+            trace_id=invocation.trace_id,
+            outputs=outputs,
+            final_text=final_text,
+            cost_usd=spent_usd,
+        )
+
+    async def _run_batch(
+        self,
+        batch: list[PlanStep],
+        parent: Invocation,
+        outputs: dict[str, str],
+        spent_usd: float,
+        cancel: CancellationToken | None,
+    ) -> list[tuple[PlanStep, float]]:
+        if len(batch) == 1:
+            step = batch[0]
+            cost = await self._run_step(step, parent, outputs, spent_usd, cancel)
+            return [(step, cost)]
+
+        tasks = [
+            asyncio.create_task(self._run_step(step, parent, outputs, spent_usd, cancel))
+            for step in batch
+        ]
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+        costs = cast(list[float], results)
+        return list(zip(batch, costs, strict=True))
+
+    def _select_route(self, plan: OrchestrationPlan, text: str) -> PlanStep | None:
+        for step in plan.steps:
+            if step.route_when is None or step.route_when.matches(text):
+                return step
+        return None
+
+    def _sink_id(self, plan: OrchestrationPlan) -> str:
+        for step in plan.steps:
+            if not any(step.id in other.depends_on for other in plan.steps):
+                return step.id
+        raise PlanExecutionError("plan", RuntimeError("fan_out plan has no sink"))
 
     async def _run_step(
         self,
