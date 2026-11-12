@@ -35,10 +35,12 @@ from .ports import (
     ModelGateway,
     ModelProvider,
     PolicyEngine,
+    QuotaManager,
     SecretProvider,
     TemplateSource,
     ToolGateway,
 )
+from .quota import QuotaExceeded, QuotaPolicy
 from .tool import ToolRequest, ToolResponse
 
 __all__ = [
@@ -68,6 +70,9 @@ __all__ = [
     "PolicyEngine",
     "Principal",
     "PublishedAgent",
+    "QuotaExceeded",
+    "QuotaManager",
+    "QuotaPolicy",
     "RouteWhen",
     "SecretProvider",
     "Slo",

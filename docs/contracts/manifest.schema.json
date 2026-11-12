@@ -213,6 +213,12 @@
       ],
       "default": null
     },
+    "tenant": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+      "title": "Tenant",
+      "type": "string"
+    },
     "tool_grants": {
       "items": {
         "$ref": "#/$defs/ToolGrant"
@@ -230,6 +236,7 @@
   "required": [
     "id",
     "version",
+    "tenant",
     "owner",
     "model_policy"
   ],

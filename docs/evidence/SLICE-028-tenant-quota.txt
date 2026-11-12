@@ -1,0 +1,63 @@
+SLICE-028 租户隔离与配额
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/runtime/test_quota.py tests/orchestration/test_quota_gate.py -q
+ImportError: cannot import name 'QuotaPolicy' from 'adk_agent.core'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/runtime/test_quota.py tests/orchestration/test_quota_gate.py -q
+11 passed in 1.47s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+256 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+256 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- AgentManifest 增加必填 tenant，模式与 id / version 相同。
+- AgentRegistry.get 增加 tenant 参数。跨租户查询返回 None，不区分不存在和无权访问。
+- FileAgentRegistry 存 <root>/<tenant>/<id>/<version>.json。租户来自 manifest。
+- 注册表路径每段都校验，路径穿越值被拒绝。
+- 模板默认 tenant=local。CLI new 支持 --tenant，validate / publish 输出带租户。
+- QuotaPolicy 是冻结模型。必须设置 max_runs 或 max_concurrent 之一。
+- QuotaManager 端口返回异步上下文管理器。InMemoryQuotaManager 单进程实现。
+- 窗口计数按 max_runs 和 window_seconds。并发槽在退出时释放，异常路径同样释放。
+- 先检查再提交：并发检查失败不消耗运行计数。
+- AgentRuntime.run 和 PlanExecutor.run 接受 quota 与 quota_policy。
+- 超额写审计：agent.run 或 orchestration.run，status=denied，error_code=quota_exceeded。
+- manifest.schema.json 已重新生成。cli.md 已更新。
+- 旧注册表布局 <id>/<version>.json 不自动迁移，重新发布即可。
+
+已知边界
+--------
+- 配额只在单进程内存生效。多副本需要共享后端，排在 M5。
+- 租户身份来自 Principal.tenant 和 manifest，没有接 OIDC 或网关注入。
+- 配额按运行次数和并发数计，不按 token 或金额计。
+- 配额还没有从配置或控制台装配。接口已就绪，装配排在后续切片。
+- 审计哈希链和篡改检测仍未做。

@@ -12,8 +12,9 @@ from adk_agent.core import AgentManifest
 from adk_agent.templates import BuiltinTemplateSource, TemplateNotFound
 
 
-def _render(template: str = "minimal", name: str = "support-bot"):
-    return asyncio.run(BuiltinTemplateSource().render(template, {"name": name}))
+def _render(template: str = "minimal", name: str = "support-bot", tenant: str = "local"):
+    params = {"name": name, "tenant": tenant}
+    return asyncio.run(BuiltinTemplateSource().render(template, params))
 
 
 def test_render_minimal_project():
@@ -28,7 +29,14 @@ def test_rendered_manifest_is_valid():
     manifest = AgentManifest.model_validate(json.loads(files["manifest.json"]))
     assert manifest.id == "support-bot"
     assert manifest.version == "0.1.0"
+    assert manifest.tenant == "local"
     assert manifest.model_policy.provider_allowlist == ["litellm"]
+
+
+def test_rendered_manifest_uses_requested_tenant():
+    files = _render(tenant="acme")
+    manifest = AgentManifest.model_validate(json.loads(files["manifest.json"]))
+    assert manifest.tenant == "acme"
 
 
 def test_unknown_template_is_rejected():

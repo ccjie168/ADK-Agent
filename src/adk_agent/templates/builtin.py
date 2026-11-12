@@ -84,9 +84,11 @@ class BuiltinTemplateSource:
         if template_id != "minimal":
             raise TemplateNotFound(f"unknown template {template_id!r}")
         name = params["name"]
+        tenant = params.get("tenant", "local")
         manifest = AgentManifest(
             id=name,
             version="0.1.0",
+            tenant=tenant,
             owner="change-me",
             description=f"{name} agent.",
             model_policy=ModelPolicy(provider_allowlist=["litellm"]),

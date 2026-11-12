@@ -13,6 +13,7 @@ def _manifest_data() -> dict:
     return {
         "id": "support-bot",
         "version": "1.0.0",
+        "tenant": "team-a",
         "owner": "team-a",
         "description": "support",
         "model_policy": {"provider_allowlist": ["litellm"]},
@@ -32,7 +33,7 @@ def test_validate_ok(tmp_path, capsys):
     path = _write(tmp_path, _manifest_data())
     cli.main(["validate", str(path)])
     out = capsys.readouterr().out
-    assert "support-bot@1.0.0" in out
+    assert "team-a/support-bot@1.0.0" in out
     assert "sha256:" in out
 
 
@@ -51,8 +52,8 @@ def test_publish_writes_registry(tmp_path, capsys):
     registry_dir = tmp_path / "registry"
     cli.main(["publish", str(path), "--registry", str(registry_dir)])
     out = capsys.readouterr().out
-    assert "published support-bot@1.0.0" in out
-    assert (registry_dir / "support-bot" / "1.0.0.json").is_file()
+    assert "published team-a/support-bot@1.0.0" in out
+    assert (registry_dir / "team-a" / "support-bot" / "1.0.0.json").is_file()
 
 
 def test_publish_conflict_exits_one(tmp_path, capsys):

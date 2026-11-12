@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import AbstractAsyncContextManager
 from typing import Literal, Protocol
 
 from .approval import ApprovalDecision, ApprovalRequest
@@ -12,17 +13,22 @@ from .invocation import Invocation
 from .manifest import AgentRef, ModelPolicy, PublishedAgent
 from .model import ModelRequest, ModelResponse
 from .policy import PolicyDecision
+from .quota import QuotaPolicy
 from .tool import ToolRequest, ToolResponse
 
 
 class AgentRegistry(Protocol):
-    async def get(self, ref: AgentRef) -> PublishedAgent | None: ...
+    async def get(self, ref: AgentRef, tenant: str) -> PublishedAgent | None: ...
 
-    async def publish(self, agent: PublishedAgent) -> None: ...
+    async def publish(self, agent: PublishedAgent) -> PublishedAgent: ...
 
 
 class IdentityProvider(Protocol):
     async def resolve(self, credential: str) -> Principal: ...
+
+
+class QuotaManager(Protocol):
+    def reserve(self, tenant: str, policy: QuotaPolicy) -> AbstractAsyncContextManager[None]: ...
 
 
 class ApprovalGate(Protocol):
@@ -72,6 +78,7 @@ __all__ = [
     "ModelGateway",
     "ModelProvider",
     "PolicyEngine",
+    "QuotaManager",
     "SecretProvider",
     "TemplateSource",
     "ToolGateway",

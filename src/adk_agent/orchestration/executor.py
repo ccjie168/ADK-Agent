@@ -23,6 +23,9 @@ from ..core import (
     PlanResult,
     PlanStep,
     PolicyEngine,
+    QuotaExceeded,
+    QuotaManager,
+    QuotaPolicy,
     SupervisorDecision,
     plan_ref,
 )
@@ -75,6 +78,8 @@ def _error_code(error: BaseException) -> str:
         return "supervisor_protocol"
     if isinstance(error, SupervisorLimit):
         return "round_limit"
+    if isinstance(error, QuotaExceeded):
+        return "quota_exceeded"
     if isinstance(error, PlanExecutionError):
         return getattr(error.error, "error_code", type(error.error).__name__)
     return getattr(error, "error_code", type(error).__name__)
@@ -97,6 +102,35 @@ class PlanExecutor:
         invocation: Invocation,
         cancel: CancellationToken | None = None,
         approvals: ApprovalGate | None = None,
+        *,
+        quota: QuotaManager | None = None,
+        quota_policy: QuotaPolicy | None = None,
+    ) -> PlanResult:
+        if quota is None or quota_policy is None:
+            return await self._dispatch(plan, invocation, cancel, approvals)
+
+        started = time.perf_counter()
+        try:
+            async with quota.reserve(invocation.principal.tenant, quota_policy):
+                return await self._dispatch(plan, invocation, cancel, approvals)
+        except QuotaExceeded:
+            await self._audit_run(
+                invocation,
+                plan_ref(plan),
+                plan,
+                status="denied",
+                error_code="quota_exceeded",
+                result_text=None,
+                started=started,
+            )
+            raise
+
+    async def _dispatch(
+        self,
+        plan: OrchestrationPlan,
+        invocation: Invocation,
+        cancel: CancellationToken | None,
+        approvals: ApprovalGate | None,
     ) -> PlanResult:
         if plan.strategy == "routing":
             return await self._run_routing(plan, invocation, cancel, approvals)

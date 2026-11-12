@@ -11,7 +11,16 @@ from typing import Any, Literal
 from google.adk.agents.run_config import RunConfig
 from google.genai import types
 
-from ..core import AgentRef, AuditEvent, AuditSink, Invocation, InvocationResult
+from ..core import (
+    AgentRef,
+    AuditEvent,
+    AuditSink,
+    Invocation,
+    InvocationResult,
+    QuotaExceeded,
+    QuotaManager,
+    QuotaPolicy,
+)
 from ..core.context import reset_invocation, set_invocation
 
 
@@ -23,9 +32,36 @@ class AgentRuntime:
         self.audit = audit
 
     async def run(
-        self, invocation: Invocation, *, user_id: str, session_id: str
+        self,
+        invocation: Invocation,
+        *,
+        user_id: str,
+        session_id: str,
+        quota: QuotaManager | None = None,
+        quota_policy: QuotaPolicy | None = None,
     ) -> InvocationResult:
         started = time.perf_counter()
+        if quota is None or quota_policy is None:
+            return await self._run(invocation, user_id, session_id, started)
+        try:
+            async with quota.reserve(invocation.principal.tenant, quota_policy):
+                return await self._run(invocation, user_id, session_id, started)
+        except QuotaExceeded:
+            await self._audit(
+                invocation,
+                status="denied",
+                error_code="quota_exceeded",
+                started=started,
+            )
+            raise
+
+    async def _run(
+        self,
+        invocation: Invocation,
+        user_id: str,
+        session_id: str,
+        started: float,
+    ) -> InvocationResult:
         run_config = RunConfig(
             custom_metadata={
                 "run_id": invocation.run_id,

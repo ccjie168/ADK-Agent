@@ -26,6 +26,7 @@ def _manifest(**overrides):
     data = {
         "id": "support-bot",
         "version": "1.0.0",
+        "tenant": "team-a",
         "owner": "team-a",
         "description": "support",
         "model_policy": {"provider_allowlist": ["litellm"]},
@@ -81,7 +82,7 @@ def test_rejects_unknown_field():
 
 
 def test_manifest_required():
-    for missing in ("id", "version", "owner"):
+    for missing in ("id", "version", "tenant", "owner"):
         data = _manifest().model_dump()
         data.pop(missing)
         with pytest.raises(ValidationError):

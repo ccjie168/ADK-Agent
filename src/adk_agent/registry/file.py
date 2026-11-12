@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
 from ..core import AgentRef, PublishedAgent, manifest_digest
+
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
 
 class RegistryError(Exception):
@@ -23,21 +26,25 @@ class RegistryIntegrityError(RegistryError):
 
 
 class FileAgentRegistry:
-    """Store published agents under ``<root>/<id>/<version>.json``."""
+    """Store published agents under ``<root>/<tenant>/<id>/<version>.json``."""
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
 
-    def _path(self, agent_id: str, version: str) -> Path:
-        return self.root / agent_id / f"{version}.json"
+    def _path(self, tenant: str, agent_id: str, version: str) -> Path:
+        for value in (tenant, agent_id, version):
+            if not _SAFE_NAME.fullmatch(value):
+                raise ValueError(f"unsafe registry path component {value!r}")
+        return self.root / tenant / agent_id / f"{version}.json"
 
-    async def get(self, ref: AgentRef) -> PublishedAgent | None:
-        path = self._path(ref.id, ref.version)
+    async def get(self, ref: AgentRef, tenant: str) -> PublishedAgent | None:
+        path = self._path(tenant, ref.id, ref.version)
         if not path.is_file():
             return None
         published = self._load(path)
         if (
-            published.manifest.id != ref.id
+            published.manifest.tenant != tenant
+            or published.manifest.id != ref.id
             or published.manifest.version != ref.version
             or published.digest != ref.digest
         ):
@@ -45,7 +52,7 @@ class FileAgentRegistry:
         return published
 
     async def publish(self, agent: PublishedAgent) -> PublishedAgent:
-        path = self._path(agent.manifest.id, agent.manifest.version)
+        path = self._path(agent.manifest.tenant, agent.manifest.id, agent.manifest.version)
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             return self._resolve_existing(path, agent)
@@ -76,7 +83,7 @@ class FileAgentRegistry:
         existing = self._load(path)
         if existing.digest != agent.digest:
             raise RegistryConflict(
-                f"{agent.manifest.id}@{agent.manifest.version} already published "
-                f"with digest {existing.digest}"
+                f"{agent.manifest.tenant}/{agent.manifest.id}@{agent.manifest.version} "
+                f"already published with digest {existing.digest}"
             )
         return existing

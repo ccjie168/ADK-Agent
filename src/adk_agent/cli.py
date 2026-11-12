@@ -53,16 +53,19 @@ def _load_agents(path: str) -> dict:
     raise SystemExit(f"no `agents` dict or `agent`/`root_agent` found in {path}")
 
 
-def _scaffold(name: str, template: str = "minimal") -> None:
+def _scaffold(name: str, template: str = "minimal", tenant: str = "local") -> None:
     if not _NAME.fullmatch(name):
         print(f"invalid agent name: {name!r}", file=sys.stderr)
+        raise SystemExit(1)
+    if not _NAME.fullmatch(tenant):
+        print(f"invalid tenant name: {tenant!r}", file=sys.stderr)
         raise SystemExit(1)
 
     from .templates import BuiltinTemplateSource, TemplateNotFound
 
     source = BuiltinTemplateSource()
     try:
-        files = asyncio.run(source.render(template, {"name": name}))
+        files = asyncio.run(source.render(template, {"name": name, "tenant": tenant}))
     except TemplateNotFound as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from None
@@ -162,6 +165,11 @@ def main(argv: list[str] | None = None) -> None:
         default="minimal",
         help="template id (default: minimal)",
     )
+    p_new.add_argument(
+        "--tenant",
+        default="local",
+        help="tenant the agent belongs to (default: local)",
+    )
 
     p_validate = sub.add_parser("validate", help="validate an agent manifest")
     p_validate.add_argument("path", help="path to an AgentManifest JSON file")
@@ -247,7 +255,9 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as exc:  # noqa: BLE001
             print(f"invalid manifest: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
-        print(f"{manifest.id}@{manifest.version} sha256:{manifest_digest(manifest)}")
+        print(
+            f"{manifest.tenant}/{manifest.id}@{manifest.version} sha256:{manifest_digest(manifest)}"
+        )
     elif args.cmd == "publish":
         from .registry import FileAgentRegistry, load_manifest, published_from
 
@@ -258,9 +268,12 @@ def main(argv: list[str] | None = None) -> None:
         except Exception as exc:  # noqa: BLE001
             print(f"publish failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
-        print(f"published {stored.manifest.id}@{stored.manifest.version} sha256:{stored.digest}")
+        print(
+            f"published {stored.manifest.tenant}/{stored.manifest.id}@{stored.manifest.version} "
+            f"sha256:{stored.digest}"
+        )
     elif args.cmd == "new":
-        _scaffold(args.name, args.template)
+        _scaffold(args.name, args.template, args.tenant)
 
 
 if __name__ == "__main__":  # pragma: no cover

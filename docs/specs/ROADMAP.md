@@ -28,7 +28,7 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 | M1 单 agent 闭环 | Phase 1 | 注册、发布、模型网关、审计端到端跑通 | done |
 | M2 工具与策略 | Phase 2 | 越权工具调用被拒并留痕，沙箱生效 | done |
 | M3 编排 | Phase 3 | 多 agent 工作流可回放，审批门生效 | done |
-| M4 平台加固 | Phase 4 | 两租户隔离，配额生效，评测不过不能发布 | planned |
+| M4 平台加固 | Phase 4 | 两租户隔离，配额生效，评测不过不能发布 | in_progress |
 | M5 拆分 | Phase 5 | 网关与 worker 独立部署，故障隔离 | planned |
 
 ## M0 切片
@@ -93,12 +93,14 @@ M3 出口证据见 `docs/evidence/M3-milestone.txt`。
 
 进入每个切片时再写详细 spec。
 
-## M4 候选切片
+## M4 切片
 
-- 多租户与配额。
+- SLICE-028 租户隔离与配额：manifest 带租户、注册表按租户分目录、查询带租户、每租户运行与并发配额。已完成。
 - RBAC 与策略管理界面。
 - 评测门禁与灰度。
 - A2A 消费方与提供方评估。
+
+进入每个切片时再写详细 spec。
 
 ## M5 候选切片
 

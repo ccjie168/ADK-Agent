@@ -45,6 +45,7 @@ class AgentManifest(BaseModel):
 
     id: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
     version: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
+    tenant: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
     owner: str = Field(min_length=1)
     description: str = ""
     model_policy: ModelPolicy
