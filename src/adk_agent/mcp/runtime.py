@@ -47,6 +47,7 @@ class AuditedMcpRunner:
         audit: AuditSink | None,
         quota: QuotaManager | None,
         quota_policy: QuotaPolicy | None,
+        trace_id: str | None = None,
     ) -> None:
         self._inner = inner
         self._agent_name = agent_name
@@ -55,6 +56,7 @@ class AuditedMcpRunner:
         self._audit = audit
         self._quota = quota
         self._quota_policy = quota_policy
+        self._trace_id = trace_id
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
@@ -62,7 +64,7 @@ class AuditedMcpRunner:
     async def run_async(self, **kwargs: Any):
         started = time.perf_counter()
         run_id = uuid.uuid4().hex
-        trace_id = uuid.uuid4().hex
+        trace_id = self._trace_id or uuid.uuid4().hex
 
         stack = AsyncExitStack()
         if self._quota is not None and self._quota_policy is not None:

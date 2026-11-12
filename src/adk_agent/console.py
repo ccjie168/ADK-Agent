@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from google.adk.models import BaseLlm
 from google.adk.tools import BaseTool
 from google.adk.tools.base_toolset import BaseToolset
@@ -43,6 +43,7 @@ from .core import (
     ToolGrant,
 )
 from .mcp.http import resolve_port
+from .metrics import MetricsRegistry
 from .models.gateway_llm import GatewayLlm, provider_for_model
 from .rbac import FilePolicyStore, RolePolicyEngine
 from .registry import RegistryIntegrityError
@@ -50,6 +51,7 @@ from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
 from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard, toolset_tool_ids
+from .tracing import resolve_trace_id
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
@@ -692,8 +694,10 @@ async def _session_id_for(session_service: Any, app_name: str, raw: object, user
 
 
 def _trace_id(request: Request) -> str:
-    candidate = request.headers.get("x-trace-id", "")
-    return candidate if _TRACE_ID.fullmatch(candidate) else uuid.uuid4().hex
+    return resolve_trace_id(
+        request.headers.get("x-trace-id"),
+        request.headers.get("traceparent"),
+    )
 
 
 _ACTION_KINDS = {
@@ -889,9 +893,11 @@ def build_console_app(
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
     approvals: FileApprovalInbox | None = None,
+    metrics: MetricsRegistry | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
+    metrics = metrics if metrics is not None else MetricsRegistry()
     principal = Principal(
         tenant="local", subject=_USER_ID, kind="human", roles=list(roles or ["admin"])
     )
@@ -916,7 +922,10 @@ def build_console_app(
         name: Runner(app_name=name, agent=agent, session_service=service)
         for name, agent in agents.items()
     }
-    runtimes = {name: AgentRuntime(runner, audit=audit) for name, runner in runners.items()}
+    runtimes = {
+        name: AgentRuntime(runner, audit=audit, metrics=metrics, source="console")
+        for name, runner in runners.items()
+    }
 
     async def allowed(invocation: Invocation, name: str) -> bool:
         if policy_engine is None:
@@ -947,6 +956,12 @@ def build_console_app(
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/metrics")
+    async def metrics_endpoint() -> PlainTextResponse:
+        return PlainTextResponse(
+            metrics.render(), media_type="text/plain; version=0.0.4; charset=utf-8"
+        )
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
@@ -1403,6 +1418,7 @@ def run_console(
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
     approvals: FileApprovalInbox | None = None,
+    metrics: MetricsRegistry | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -1420,6 +1436,7 @@ def run_console(
         quota=quota,
         quota_config=quota_config,
         approvals=approvals,
+        metrics=metrics,
     )
 
     import uvicorn

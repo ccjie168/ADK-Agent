@@ -1,0 +1,95 @@
+SLICE-047 metrics and trace propagation evidence
+date: 2026-11-12T23:00:36Z
+
+== red: new tests before implementation ==
+tests\test_tracing.py:7: in <module>
+    from adk_agent.tracing import resolve_trace_id, trace_id_from_traceparent
+E   ModuleNotFoundError: No module named 'adk_agent.tracing'
+_______________ ERROR collecting tests/test_console_metrics.py ________________
+ImportError while importing test module 'C:\AI_System\ADK-Agent\tests\test_console_metrics.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Python314\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_console_metrics.py:10: in <module>
+    from adk_agent.metrics import MetricsRegistry
+E   ModuleNotFoundError: No module named 'adk_agent.metrics'
+_______________ ERROR collecting tests/test_runtime_metrics.py ________________
+ImportError while importing test module 'C:\AI_System\ADK-Agent\tests\test_runtime_metrics.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Python314\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_runtime_metrics.py:19: in <module>
+    from adk_agent.metrics import MetricsRegistry
+E   ModuleNotFoundError: No module named 'adk_agent.metrics'
+=========================== short test summary info ===========================
+ERROR tests/test_metrics.py
+ERROR tests/test_tracing.py
+ERROR tests/test_console_metrics.py
+ERROR tests/test_runtime_metrics.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 4 errors during collection !!!!!!!!!!!!!!!!!!!
+4 errors in 1.66s
+
+== red: behavior probes that do not need the new modules ==
+tests\test_gateway_trace_headers.py:87: AssertionError
+__________ test_model_gateway_without_token_still_sends_trace_header __________
+
+    def test_model_gateway_without_token_still_sends_trace_header():
+        payload = ModelResponse(
+            text="ok", provider="fake", model="m", input_tokens=1, output_tokens=1, egress="none"
+        ).model_dump(mode="json")
+        client = FakeClient(payload)
+        gateway = HttpModelGateway("http://gateway", client=client)
+    
+        asyncio.run(
+            gateway.complete(
+                _invocation(),
+                ModelRequest(provider="fake", model="m", messages=[Message(role="user", content="hi")]),
+                ModelPolicy(provider_allowlist=["fake"]),
+            )
+        )
+    
+>       assert client.headers == {"X-Trace-Id": "tr1"}
+E       AssertionError: assert None == {'X-Trace-Id': 'tr1'}
+E        +  where None = <test_gateway_trace_headers.FakeClient object at 0x000002B95973EE90>.headers
+
+tests\test_gateway_trace_headers.py:107: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_console_traceparent.py::test_traceparent_used - AssertionEr...
+FAILED tests/test_mcp_trace.py::test_audit_uses_traceparent - AssertionError:...
+FAILED tests/test_gateway_trace_headers.py::test_model_gateway_sends_trace_header
+FAILED tests/test_gateway_trace_headers.py::test_tool_gateway_sends_trace_header
+FAILED tests/test_gateway_trace_headers.py::test_model_gateway_without_token_still_sends_trace_header
+5 failed, 3 passed in 2.78s
+
+== red: /metrics route is absent ==
+/metrics 404 {'detail': 'Not Found'}
+
+== green: targeted tests ==
+tests/test_metrics.py tests/test_tracing.py tests/test_console_metrics.py
+tests/test_runtime_metrics.py tests/test_console_traceparent.py tests/test_mcp_trace.py
+tests/test_gateway_trace_headers.py tests/test_console_trace.py
+tests/test_mcp_runtime_wiring.py tests/models/test_http_gateway.py
+tests/tools/test_http_tool_gateway.py -> 48 passed in 2.34s
+
+== live: console traceparent and metrics ==
+POST /api/chat with traceparent 00-0123456789abcdef0123456789abcdef-00f000f000f000f0-01
+  -> HTTP 200, trace_id=0123456789abcdef0123456789abcdef (real model reply "ok")
+second POST (quota max_runs=1) -> HTTP 429 quota_exceeded
+GET /metrics without token -> HTTP 401
+GET /metrics with token ->
+  adk_agent_runs_total{agent="minimal_agent",source="console",status="ok",tenant="local"} 1
+  adk_agent_runs_total{agent="minimal_agent",source="console",status="denied",tenant="local"} 1
+  adk_agent_run_duration_seconds_count{agent="minimal_agent",tenant="local"} 2
+  adk_agent_quota_denials_total{limit="max_runs",tenant="local"} 1
+
+== live: MCP audit trace ==
+serve --transport streamable-http with traceparent header from the client
+call minimal_agent -> isError=False text="ok"
+audit -> agent.run 0123456789abcdef0123456789abcdef ok minimal_agent@dev args_hash=7c6ed24f5437
+
+== gate ==
+check.py --fast -> ALL PASS (547 passed, 9 skipped), 7 steps

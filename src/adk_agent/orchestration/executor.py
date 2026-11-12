@@ -29,6 +29,7 @@ from ..core import (
     SupervisorDecision,
     plan_ref,
 )
+from ..metrics import MetricsRegistry
 from .cancel import CancellationToken
 from .errors import (
     ApprovalDenied,
@@ -91,10 +92,12 @@ class PlanExecutor:
         agents: Mapping[str, AgentCall],
         policy: PolicyEngine,
         audit: AuditSink | None = None,
+        metrics: MetricsRegistry | None = None,
     ) -> None:
         self.agents = dict(agents)
         self.policy = policy
         self.audit = audit
+        self.metrics = metrics
 
     async def run(
         self,
@@ -106,24 +109,63 @@ class PlanExecutor:
         quota: QuotaManager | None = None,
         quota_policy: QuotaPolicy | None = None,
     ) -> PlanResult:
-        if quota is None or quota_policy is None:
-            return await self._dispatch(plan, invocation, cancel, approvals)
-
         started = time.perf_counter()
         try:
-            async with quota.reserve(invocation.principal.tenant, quota_policy):
-                return await self._dispatch(plan, invocation, cancel, approvals)
-        except QuotaExceeded:
-            await self._audit_run(
-                invocation,
-                plan_ref(plan),
-                plan,
-                status="denied",
-                error_code="quota_exceeded",
-                result_text=None,
-                started=started,
-            )
+            if quota is None or quota_policy is None:
+                result = await self._dispatch(plan, invocation, cancel, approvals)
+            else:
+                try:
+                    async with quota.reserve(invocation.principal.tenant, quota_policy):
+                        result = await self._dispatch(plan, invocation, cancel, approvals)
+                except QuotaExceeded:
+                    await self._audit_run(
+                        invocation,
+                        plan_ref(plan),
+                        plan,
+                        status="denied",
+                        error_code="quota_exceeded",
+                        result_text=None,
+                        started=started,
+                    )
+                    raise
+        except QuotaExceeded as exc:
+            self._record_run(plan, invocation, "denied", started)
+            self._record_quota_denial(invocation, exc.limit)
             raise
+        except Exception:
+            self._record_run(plan, invocation, "error", started)
+            raise
+
+        self._record_run(plan, invocation, "ok", started)
+        return result
+
+    def _record_run(
+        self,
+        plan: OrchestrationPlan,
+        invocation: Invocation,
+        status: str,
+        started: float,
+    ) -> None:
+        if self.metrics is None:
+            return
+        tenant = invocation.principal.tenant
+        self.metrics.inc(
+            "adk_agent_plan_runs_total",
+            {"plan": plan.plan_id, "tenant": tenant, "status": status},
+        )
+        self.metrics.observe(
+            "adk_plan_duration_seconds",
+            time.perf_counter() - started,
+            {"plan": plan.plan_id, "tenant": tenant},
+        )
+
+    def _record_quota_denial(self, invocation: Invocation, limit: str) -> None:
+        if self.metrics is None:
+            return
+        self.metrics.inc(
+            "adk_agent_quota_denials_total",
+            {"tenant": invocation.principal.tenant, "limit": limit},
+        )
 
     async def _dispatch(
         self,

@@ -59,7 +59,9 @@ class HttpToolGateway:
         payload = ToolGatewayRequest(
             invocation=invocation, request=request, grants=_grants(policy)
         ).model_dump(mode="json")
-        headers = {"Authorization": f"Bearer {self.auth_token}"} if self.auth_token else None
+        headers = {"X-Trace-Id": invocation.trace_id}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
         response = await self._http().post(
             f"{self.base_url}/v1/invoke", json=payload, headers=headers
         )

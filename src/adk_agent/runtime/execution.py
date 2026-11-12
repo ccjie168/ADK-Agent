@@ -26,6 +26,7 @@ from ..core import (
     QuotaPolicy,
 )
 from ..core.context import reset_invocation, set_invocation
+from ..metrics import MetricsRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +77,17 @@ class _Progress:
 class AgentRuntime:
     """Wrap an ADK Runner and carry run identity into the agent."""
 
-    def __init__(self, runner: Any, audit: AuditSink | None = None) -> None:
+    def __init__(
+        self,
+        runner: Any,
+        audit: AuditSink | None = None,
+        metrics: MetricsRegistry | None = None,
+        source: str = "agent",
+    ) -> None:
         self.runner = runner
         self.audit = audit
+        self.metrics = metrics
+        self.source = source
 
     async def run(
         self,
@@ -94,20 +103,55 @@ class AgentRuntime:
         progress = _Progress(on_progress, invocation, started)
         await progress.emit("run.started")
 
-        if quota is None or quota_policy is None:
-            return await self._run(invocation, user_id, session_id, started, progress)
         try:
-            async with quota.reserve(invocation.principal.tenant, quota_policy):
-                return await self._run(invocation, user_id, session_id, started, progress)
-        except QuotaExceeded:
-            await self._audit(
-                invocation,
-                status="denied",
-                error_code="quota_exceeded",
-                started=started,
-            )
-            await progress.emit("run.failed", detail="QuotaExceeded")
+            if quota is None or quota_policy is None:
+                result = await self._run(invocation, user_id, session_id, started, progress)
+            else:
+                try:
+                    async with quota.reserve(invocation.principal.tenant, quota_policy):
+                        result = await self._run(invocation, user_id, session_id, started, progress)
+                except QuotaExceeded:
+                    await self._audit(
+                        invocation,
+                        status="denied",
+                        error_code="quota_exceeded",
+                        started=started,
+                    )
+                    await progress.emit("run.failed", detail="QuotaExceeded")
+                    raise
+        except QuotaExceeded as exc:
+            self._record_run(invocation, "denied", started)
+            self._record_quota_denial(invocation, exc.limit)
             raise
+        except Exception:
+            self._record_run(invocation, "error", started)
+            raise
+
+        self._record_run(invocation, "ok", started)
+        return result
+
+    def _record_run(self, invocation: Invocation, status: str, started: float) -> None:
+        if self.metrics is None:
+            return
+        tenant = invocation.principal.tenant
+        agent = invocation.agent_ref.id
+        self.metrics.inc(
+            "adk_agent_runs_total",
+            {"source": self.source, "tenant": tenant, "agent": agent, "status": status},
+        )
+        self.metrics.observe(
+            "adk_agent_run_duration_seconds",
+            time.perf_counter() - started,
+            {"agent": agent, "tenant": tenant},
+        )
+
+    def _record_quota_denial(self, invocation: Invocation, limit: str) -> None:
+        if self.metrics is None:
+            return
+        self.metrics.inc(
+            "adk_agent_quota_denials_total",
+            {"tenant": invocation.principal.tenant, "limit": limit},
+        )
 
     async def _run(
         self,

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from google.adk.dependencies._mcp import Context, ServerSession
 
 from ..core import Principal
+from ..tracing import trace_id_from_traceparent
 from .runtime import wrap_runner
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -27,6 +28,17 @@ def _principal_from_ctx(ctx: Any) -> Principal | None:
     except Exception:
         return None
     return getattr(getattr(request, "state", None), "principal", None)
+
+
+def _trace_id_from_ctx(ctx: Any) -> str | None:
+    try:
+        request = ctx.request_context.request
+        headers = getattr(request, "headers", None)
+        if headers is None:
+            return None
+        return trace_id_from_traceparent(headers.get("traceparent"))
+    except Exception:
+        return None
 
 
 class _PrincipalSessionService:
@@ -313,6 +325,7 @@ def serve_many(
                         audit=_audit,
                         quota=_quota,
                         quota_policy=policy,
+                        trace_id=_trace_id_from_ctx(ctx),
                     )
                 return await _run_agent(
                     scoped_runner,
