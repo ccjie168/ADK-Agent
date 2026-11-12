@@ -1,0 +1,70 @@
+SLICE-037 把审计客户端接进两个网关
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/test_audit_sink_wiring.py -q
+... adk-agent: error: unrecognized arguments: --audit-url http://10.1.2.3:9999
+5 failed, 3 passed in 2.29s
+
+失败的是 test_model_gateway_wires_http_audit_sink、test_tool_gateway_wires_http_audit_sink、
+test_audit_url_reads_token_from_env、test_non_loopback_audit_url_with_token_is_allowed、
+test_non_loopback_audit_url_without_token_is_refused。
+前四个因为 --audit-url 未知而失败。最后一个还额外命中消息断言，str(SystemExit(2)) 是 '2'。
+test_audit_flags_are_mutually_exclusive 在实现前也退出 2，但原因是参数未知，实现后才断言真正的互斥。
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_audit_sink_wiring.py -q
+8 passed in 1.71s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+365 passed, 2 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+365 passed, 2 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实服务验证
+------------
+审计服务:
+$ adk-agent serve-audit --out audit.jsonl --host 127.0.0.1 --port 18097 --allow-unauthenticated
+
+工具网关:
+$ ADK_MCP_AUTH_TOKEN=secret adk-agent serve-tool-gateway \
+    --tools tools.py --host 127.0.0.1 --port 18098 \
+    --audit-url http://127.0.0.1:18097
+
+健康检查:
+GET /healthz -> {"status":"ok"}（两个进程）
+
+工具调用:
+POST /v1/invoke -> {"output":"hello","data_classes":[]} HTTP 200
+
+审计链:
+$ adk-agent verify-audit audit.jsonl
+ok 1 records
+
+落盘记录: tenant t1, action tool.call, target echo, prev_hash "", hash 64a57d8a...
+
+说明: 工具网关进程用 --audit-url 把 tool.call 事件投递到独立审计服务，服务落盘后
+链路可通过 verify-audit 校验。这验证了装配，不只是单元测试的 mock。

@@ -1,6 +1,6 @@
 # SLICE-037 把审计客户端接进两个网关
 
-状态: in_progress
+状态: gated
 依据: ADR-0006 第 1、4、6 条，ADR-0004 第 7 条
 
 ## 意图（要什么，不写怎么写）
@@ -16,18 +16,18 @@
 
 ## 完成判据（可执行）
 
-- [ ] `--audit-url` 让模型网关拿到 `HttpAuditSink` -> `tests/test_audit_sink_wiring.py::test_model_gateway_wires_http_audit_sink`
-- [ ] `--audit-url` 让工具网关拿到 `HttpAuditSink` -> `tests/test_audit_sink_wiring.py::test_tool_gateway_wires_http_audit_sink`
-- [ ] `--audit-file` 仍得到 `JsonlAuditSink` -> `tests/test_audit_sink_wiring.py::test_gateway_keeps_jsonl_sink`
-- [ ] 两个审计参数都不给时网关不审计 -> `tests/test_audit_sink_wiring.py::test_gateway_without_audit_has_no_sink`
-- [ ] token 从指定环境变量注入 -> `tests/test_audit_sink_wiring.py::test_audit_url_reads_token_from_env`
-- [ ] 非回环 URL 带 token 时可以启动 -> `tests/test_audit_sink_wiring.py::test_non_loopback_audit_url_with_token_is_allowed`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] `--audit-url` 让模型网关拿到 `HttpAuditSink` -> `tests/test_audit_sink_wiring.py::test_model_gateway_wires_http_audit_sink`
+- [x] `--audit-url` 让工具网关拿到 `HttpAuditSink` -> `tests/test_audit_sink_wiring.py::test_tool_gateway_wires_http_audit_sink`
+- [x] `--audit-file` 仍得到 `JsonlAuditSink` -> `tests/test_audit_sink_wiring.py::test_gateway_keeps_jsonl_sink`
+- [x] 两个审计参数都不给时网关不审计 -> `tests/test_audit_sink_wiring.py::test_gateway_without_audit_has_no_sink`
+- [x] token 从指定环境变量注入 -> `tests/test_audit_sink_wiring.py::test_audit_url_reads_token_from_env`
+- [x] 非回环 URL 带 token 时可以启动 -> `tests/test_audit_sink_wiring.py::test_non_loopback_audit_url_with_token_is_allowed`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`--audit-file` 和 `--audit-url` 同时给 -> argparse 退出 2 -> `tests/test_audit_sink_wiring.py::test_audit_flags_are_mutually_exclusive`
-- [ ] 反例 2：非回环 `--audit-url` 没有 token -> 退出 1，提示缺少的环境变量名 -> `tests/test_audit_sink_wiring.py::test_non_loopback_audit_url_without_token_is_refused`
+- [x] 反例 1：`--audit-file` 和 `--audit-url` 同时给 -> argparse 退出 2 -> `tests/test_audit_sink_wiring.py::test_audit_flags_are_mutually_exclusive`
+- [x] 反例 2：非回环 `--audit-url` 没有 token -> 退出 1，提示缺少的环境变量名 -> `tests/test_audit_sink_wiring.py::test_non_loopback_audit_url_without_token_is_refused`
 
 ## 契约
 
@@ -44,5 +44,5 @@
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-037-audit-sink-wiring.txt`，5 个用例因 `--audit-url` 未知失败
+- 实现后绿: 同文件，8 个用例通过，`check.py --fast` 与 `--full` 均 ALL PASS，另做真实服务投递与 `verify-audit` 校验

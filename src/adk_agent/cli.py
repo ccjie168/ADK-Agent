@@ -11,7 +11,11 @@ import sys
 import uuid
 from functools import partial
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
+from urllib.parse import urlsplit
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .core import AuditSink
 
 Transport = Literal["stdio", "streamable-http"]
 
@@ -139,6 +143,24 @@ def _auth_token(args: argparse.Namespace) -> str | None:
     return os.environ.get(env_name) if env_name else None
 
 
+def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
+    from .audit import HttpAuditSink, JsonlAuditSink
+    from .auth import LOOPBACK_HOSTS
+
+    if args.audit_url:
+        host = urlsplit(args.audit_url).hostname
+        token = os.environ.get(args.audit_token_env) if args.audit_token_env else None
+        if host not in LOOPBACK_HOSTS and token is None:
+            raise SystemExit(
+                f"refusing a non-loopback audit URL without a token: set "
+                f"{args.audit_token_env} or use a loopback --audit-url"
+            )
+        return HttpAuditSink(args.audit_url, auth_token=token)
+    if args.audit_file:
+        return JsonlAuditSink(args.audit_file)
+    return None
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="adk-agent")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -194,7 +216,19 @@ def main(argv: list[str] | None = None) -> None:
     p_gateway.add_argument(
         "--vllm-url", default=None, help="vLLM base URL (defaults to $VLLM_BASE_URL)"
     )
-    p_gateway.add_argument("--audit-file", default=None, help="append JSONL audit events here")
+    gateway_audit = p_gateway.add_mutually_exclusive_group()
+    gateway_audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
+    gateway_audit.add_argument(
+        "--audit-url", default=None, help="send audit events to this audit service URL"
+    )
+    p_gateway.add_argument(
+        "--audit-token-env",
+        default="ADK_AUDIT_AUTH_TOKEN",
+        help=(
+            "env var holding the audit bearer token (only used with --audit-url; "
+            "never pass tokens on the command line)"
+        ),
+    )
     _add_http_args(p_gateway)
 
     p_tools = sub.add_parser(
@@ -205,7 +239,19 @@ def main(argv: list[str] | None = None) -> None:
         required=True,
         help="path to a Python file defining a `tools` mapping (tool_id -> callable or ToolSpec)",
     )
-    p_tools.add_argument("--audit-file", default=None, help="append JSONL audit events here")
+    tools_audit = p_tools.add_mutually_exclusive_group()
+    tools_audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
+    tools_audit.add_argument(
+        "--audit-url", default=None, help="send audit events to this audit service URL"
+    )
+    p_tools.add_argument(
+        "--audit-token-env",
+        default="ADK_AUDIT_AUTH_TOKEN",
+        help=(
+            "env var holding the audit bearer token (only used with --audit-url; "
+            "never pass tokens on the command line)"
+        ),
+    )
     _add_http_args(p_tools)
 
     p_audit = sub.add_parser("serve-audit", help="serve the audit pipeline as a standalone service")
@@ -347,7 +393,6 @@ def main(argv: list[str] | None = None) -> None:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from None
     elif args.cmd == "serve-model-gateway":
-        from .audit import JsonlAuditSink
         from .mcp.http import resolve_port
         from .models.gateway import PolicyModelGateway
         from .models.service import build_model_gateway_app, build_providers
@@ -358,7 +403,7 @@ def main(argv: list[str] | None = None) -> None:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from None
 
-        sink = JsonlAuditSink(args.audit_file) if args.audit_file else None
+        sink = _audit_sink(args)
         app = build_model_gateway_app(
             PolicyModelGateway(providers, audit=sink),
             host=args.host,
@@ -370,13 +415,12 @@ def main(argv: list[str] | None = None) -> None:
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "serve-tool-gateway":
-        from .audit import JsonlAuditSink
         from .mcp.http import resolve_port
         from .tools import FunctionToolGateway
         from .tools.service import build_tool_gateway_app
 
         registry = _load_tools(args.tools)
-        sink = JsonlAuditSink(args.audit_file) if args.audit_file else None
+        sink = _audit_sink(args)
         app = build_tool_gateway_app(
             FunctionToolGateway(registry, audit=sink),
             host=args.host,
