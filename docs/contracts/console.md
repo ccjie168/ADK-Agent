@@ -2,6 +2,10 @@
 
 `GET /` 和 `GET /healthz` 开放。其余 `/api/*` 需要 `Authorization: Bearer <token>`。
 
+鉴权有两种模式。静态 token 模式比较启动时给的单一 token。OIDC 模式验证 JWT，把解析出的 `Principal` 挂到请求上。OIDC 模式下 token 不合法返回 401 `{"error":"unauthorized"}`，签发方不可达返回 503 `{"error":"identity_unavailable"}`。
+
+OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份只能读自己租户的注册表，越权返回 403 `{"error":"tenant_forbidden"}`。策略更新仍由 `policy.update` 的 RBAC 判定，角色来自 token。
+
 ## `GET /api/agents` -> `[{name, description}]`
 
 ## `POST /api/chat`
@@ -56,6 +60,7 @@
 ```
 
 - 非法租户返回 400 `unsafe_tenant`。
+- OIDC 模式下，非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
 - 记录损坏返回 500 `registry_corrupt`，响应不含文件路径。
 - 未配置注册表返回 404 `registry_not_configured`。
 
@@ -100,4 +105,5 @@
 ```
 
 - 不返回 `state` 和 `events`。
+- 只列当前 principal `subject` 的会话。
 - 未知 agent 返回 400 `unknown_agent`。

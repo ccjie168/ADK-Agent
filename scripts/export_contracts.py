@@ -30,6 +30,7 @@ from adk_agent.core import (  # noqa: E402
     SupervisorDecision,
     ToolGatewayRequest,
 )
+from adk_agent.identity.oidc import OidcConfig  # noqa: E402
 
 CONTRACTS = ROOT / "docs" / "contracts"
 
@@ -50,6 +51,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "model_gateway_request.schema.json": ModelGatewayRequest,
     "tool_gateway_request.schema.json": ToolGatewayRequest,
     "progress_event.schema.json": ProgressEvent,
+    "oidc_config.schema.json": OidcConfig,
 }
 
 

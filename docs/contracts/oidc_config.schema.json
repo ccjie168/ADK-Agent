@@ -1,0 +1,62 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "algorithms": {
+      "default": [
+        "RS256",
+        "ES256"
+      ],
+      "items": {
+        "type": "string"
+      },
+      "title": "Algorithms",
+      "type": "array"
+    },
+    "audience": {
+      "minLength": 1,
+      "title": "Audience",
+      "type": "string"
+    },
+    "issuer": {
+      "minLength": 1,
+      "title": "Issuer",
+      "type": "string"
+    },
+    "jwks_url": {
+      "minLength": 1,
+      "title": "Jwks Url",
+      "type": "string"
+    },
+    "kind_claim": {
+      "default": "kind",
+      "minLength": 1,
+      "title": "Kind Claim",
+      "type": "string"
+    },
+    "leeway_seconds": {
+      "default": 60,
+      "minimum": 0,
+      "title": "Leeway Seconds",
+      "type": "integer"
+    },
+    "roles_claim": {
+      "default": "roles",
+      "minLength": 1,
+      "title": "Roles Claim",
+      "type": "string"
+    },
+    "tenant_claim": {
+      "default": "tenant",
+      "minLength": 1,
+      "title": "Tenant Claim",
+      "type": "string"
+    }
+  },
+  "required": [
+    "issuer",
+    "audience",
+    "jwks_url"
+  ],
+  "title": "OidcConfig",
+  "type": "object"
+}

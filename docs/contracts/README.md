@@ -1,6 +1,6 @@
 # 契约
 
-本目录是对外接口的机器可读契约。文件由 `scripts/export_contracts.py` 从 `src/adk_agent/core/` 的 Pydantic 模型生成，不手改。
+本目录是对外接口的机器可读契约。文件由 `scripts/export_contracts.py` 从 `src/adk_agent/core/` 和身份适配器的 Pydantic 模型生成，不手改。
 
 ## 规则
 
@@ -20,5 +20,6 @@
 - `framework_config.schema.json`：`FrameworkConfig`，当前配置接口。M1 由 `AgentManifest` 取代，过渡期保留。
 - `cli.md`：`adk-agent validate`、`adk-agent publish`、`adk-agent new` 的命令契约。
 - `console.md`：控制台 `/api/agents`、`/api/chat`、`/api/audit` 的 HTTP 契约。
+- `oidc_config.schema.json`：`OidcConfig`，OIDC 身份适配器的配置。它是唯一从 `identity` 适配器导出的契约。
 
 `PublishedAgent` 不是独立契约，它是注册表对 `AgentManifest` 加 digest、签名和发布时间的包装。
