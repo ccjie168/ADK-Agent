@@ -68,6 +68,8 @@ class PlanStep(BaseModel):
     budget_usd: float | None = Field(default=None, ge=0)
     max_attempts: int = Field(default=1, ge=1, le=5)
     retry_backoff_seconds: float = Field(default=0.0, ge=0, le=60)
+    requires_approval: bool = False
+    approval_reason: str = ""
 
     @field_validator("depends_on", "inputs_from")
     @classmethod
@@ -199,6 +201,18 @@ class PlanResult(BaseModel):
     cost_usd: float = Field(default=0.0, ge=0)
 
 
+class TraceNode(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    kind: Literal["plan", "step", "supervisor", "approval"]
+    status: Literal["ok", "error", "denied"]
+    error_code: str | None = None
+    latency_ms: int | None = None
+    cost_usd: float | None = None
+    children: list[TraceNode] = Field(default_factory=list)
+
+
 def plan_digest(plan: OrchestrationPlan) -> str:
     """Hash the plan's canonical JSON. The digest is not part of the plan."""
     payload = plan.model_dump(mode="json")
@@ -208,3 +222,6 @@ def plan_digest(plan: OrchestrationPlan) -> str:
 
 def plan_ref(plan: OrchestrationPlan) -> AgentRef:
     return AgentRef(id=plan.plan_id, version=plan.version, digest=plan_digest(plan))
+
+
+TraceNode.model_rebuild()

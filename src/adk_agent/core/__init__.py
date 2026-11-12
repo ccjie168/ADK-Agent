@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .approval import ApprovalDecision, ApprovalRequest
 from .audit import AuditEvent
 from .identity import Principal
 from .invocation import Invocation, InvocationResult
@@ -21,12 +22,14 @@ from .orchestration import (
     PlanStep,
     RouteWhen,
     SupervisorDecision,
+    TraceNode,
     plan_digest,
     plan_ref,
 )
 from .policy import DataClass, PolicyDecision, ToolGrant
 from .ports import (
     AgentRegistry,
+    ApprovalGate,
     AuditSink,
     IdentityProvider,
     ModelGateway,
@@ -42,6 +45,9 @@ __all__ = [
     "AgentManifest",
     "AgentRef",
     "AgentRegistry",
+    "ApprovalDecision",
+    "ApprovalGate",
+    "ApprovalRequest",
     "AuditEvent",
     "AuditSink",
     "DataClass",
@@ -67,6 +73,7 @@ __all__ = [
     "Slo",
     "SupervisorDecision",
     "TemplateSource",
+    "TraceNode",
     "ToolGateway",
     "ToolGrant",
     "ToolRequest",

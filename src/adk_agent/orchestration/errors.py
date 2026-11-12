@@ -19,6 +19,22 @@ class NoRoute(PlanError):
     """No routing step matched the input and there is no default."""
 
 
+class ApprovalRequired(PlanError):
+    error_code = "approval_required"
+
+
+class ApprovalDenied(PlanError):
+    error_code = "approval_denied"
+
+
+class ApprovalTimeout(PlanError):
+    error_code = "approval_timeout"
+
+
+class ApprovalProtocolError(PlanError):
+    error_code = "approval_protocol"
+
+
 class SupervisorProtocolError(PlanError):
     error_code = "supervisor_protocol"
 

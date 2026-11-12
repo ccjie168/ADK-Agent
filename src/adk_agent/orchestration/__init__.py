@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from .approval import ApprovalCallback, CallbackApprovalGate
 from .cancel import CancellationToken
 from .errors import (
+    ApprovalDenied,
+    ApprovalProtocolError,
+    ApprovalRequired,
+    ApprovalTimeout,
     BudgetExceeded,
     NoRoute,
     PlanCancelled,
@@ -18,11 +23,18 @@ from .errors import (
 )
 from .executor import AgentCall, PlanExecutor
 from .policy import AgentGrantPolicyEngine
+from .trace import build_trace
 
 __all__ = [
     "AgentCall",
     "AgentGrantPolicyEngine",
+    "ApprovalCallback",
+    "ApprovalDenied",
+    "ApprovalProtocolError",
+    "ApprovalRequired",
+    "ApprovalTimeout",
     "BudgetExceeded",
+    "CallbackApprovalGate",
     "CancellationToken",
     "NoRoute",
     "PlanCancelled",
@@ -35,4 +47,5 @@ __all__ = [
     "SupervisorLimit",
     "SupervisorProtocolError",
     "UnknownAgent",
+    "build_trace",
 ]

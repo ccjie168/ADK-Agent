@@ -21,11 +21,15 @@ from .config import (
 )
 from .console import build_console_app, run_console
 from .core import (
+    ApprovalDecision,
+    ApprovalGate,
+    ApprovalRequest,
     OrchestrationPlan,
     PlanResult,
     PlanStep,
     RouteWhen,
     SupervisorDecision,
+    TraceNode,
     plan_digest,
     plan_ref,
 )
@@ -34,7 +38,12 @@ from .mcp.server import serve_agent, serve_many
 from .models import build_model, disable_thinking
 from .orchestration import (
     AgentGrantPolicyEngine,
+    ApprovalDenied,
+    ApprovalProtocolError,
+    ApprovalRequired,
+    ApprovalTimeout,
     BudgetExceeded,
+    CallbackApprovalGate,
     CancellationToken,
     NoRoute,
     PlanCancelled,
@@ -46,6 +55,7 @@ from .orchestration import (
     SupervisorLimit,
     SupervisorProtocolError,
     UnknownAgent,
+    build_trace,
 )
 from .sandbox import (
     SandboxPolicy,
@@ -80,15 +90,24 @@ __all__ = [
     "SandboxViolation",
     "ToolSandbox",
     "install_tool_sandbox",
+    "ApprovalDecision",
+    "ApprovalGate",
+    "ApprovalRequest",
     "OrchestrationPlan",
     "PlanResult",
     "PlanStep",
     "RouteWhen",
     "SupervisorDecision",
+    "TraceNode",
     "plan_digest",
     "plan_ref",
     "AgentGrantPolicyEngine",
+    "ApprovalDenied",
+    "ApprovalProtocolError",
+    "ApprovalRequired",
+    "ApprovalTimeout",
     "BudgetExceeded",
+    "CallbackApprovalGate",
     "CancellationToken",
     "NoRoute",
     "PlanCancelled",
@@ -100,6 +119,7 @@ __all__ = [
     "SupervisorLimit",
     "SupervisorProtocolError",
     "UnknownAgent",
+    "build_trace",
 ]
 
 __version__ = "0.1.0"

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal, Protocol
 
+from .approval import ApprovalDecision, ApprovalRequest
 from .audit import AuditEvent
 from .identity import Principal
 from .invocation import Invocation
@@ -22,6 +23,10 @@ class AgentRegistry(Protocol):
 
 class IdentityProvider(Protocol):
     async def resolve(self, credential: str) -> Principal: ...
+
+
+class ApprovalGate(Protocol):
+    async def request(self, request: ApprovalRequest) -> ApprovalDecision: ...
 
 
 class SecretProvider(Protocol):
@@ -61,6 +66,7 @@ class ToolGateway(Protocol):
 
 __all__ = [
     "AgentRegistry",
+    "ApprovalGate",
     "AuditSink",
     "IdentityProvider",
     "ModelGateway",

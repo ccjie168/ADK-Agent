@@ -1,0 +1,68 @@
+SLICE-027 人工审批与 trace 树
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/orchestration/test_approval.py tests/orchestration/test_trace.py -q
+ImportError: cannot import name 'build_trace' from 'adk_agent.orchestration'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/orchestration/test_approval.py tests/orchestration/test_trace.py -q
+9 passed
+
+$ .venv/Scripts/python.exe -m pytest tests/orchestration -q
+58 passed in 2.13s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+241 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+241 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- ApprovalRequest 和 ApprovalDecision 是数据。审批门是 ApprovalGate 协议。
+- PlanStep 增加 requires_approval 和 approval_reason。
+- 审批在策略检查、未知 agent 检查之后，agent 调用之前。
+- 没有审批门时 fail closed，写 approval_required。
+- 审批拒绝写 orchestration.approval denied 和 orchestration.step denied，不执行。
+- 审批请求和响应的 request_id 必须一致。不一致写 approval_protocol。
+- 审批等待受父 deadline 限制，超时写 approval_timeout。
+- 审批等待可被 CancellationToken 取消。
+- AuditEvent 增加 approver。审批事件带 approver 和 policy_decision_id。
+- 计划和步骤审计写 cost_usd。
+- TraceNode 是递归模型。build_trace 从审计事件构建树。
+- 根节点是 orchestration.run。子节点是 step、supervisor、approval。
+- 监督者轮次按时间区间嵌套 worker 和审批事件。
+- 找不到 run 事件时返回 trace_not_found 节点。
+- audit_event.schema.json 和 orchestration_plan.schema.json 已重新生成。
+
+已知边界
+--------
+- 审批 UI 没做。ApprovalGate 是接口，测试用 CallbackApprovalGate。
+- 审批人是字符串，没有接 OIDC。
+- trace 树依赖时间戳排序。跨进程时钟偏差可能影响嵌套。
+- 审计哈希链和篡改检测排在 M4。
+- 成本仍依赖 InvocationResult.cost_usd。当前 AgentRuntime 默认 0.0。

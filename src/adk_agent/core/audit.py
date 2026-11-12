@@ -20,6 +20,7 @@ class AuditEvent(BaseModel):
     trace_id: str = Field(min_length=1)
     tenant: str = Field(min_length=1)
     principal: Principal
+    approver: str | None = None
     agent_ref: AgentRef
     action: str = Field(min_length=1)
     target: str = Field(min_length=1)

@@ -1,0 +1,55 @@
+M3 编排 里程碑
+日期: 2026-11-12
+状态: done
+
+包含切片
+--------
+- SLICE-023 编排计划与执行器
+- SLICE-024 执行韧性
+- SLICE-025 路由与扇出扇入
+- SLICE-026 监督者策略
+- SLICE-027 人工审批与 trace 树
+
+出口能力
+--------
+- 编排计划是数据：OrchestrationPlan、PlanStep、PlanResult、稳定 digest。
+- 策略：single、sequential、routing、fan_out、supervisor。
+- 路由规则：equals、contains、prefix。默认步骤最后。
+- 扇出：唯一汇合点，max_parallel，批次后预算检查。
+- 监督者：结构化 JSON 决策，worker 名校验，轮次上限，历史拼接。
+- 执行韧性：重试、步骤超时、父 deadline、预算、取消。
+- 审批门：ApprovalGate、ApprovalRequest、ApprovalDecision。没有审批不执行。
+- 审计：orchestration.run、orchestration.step、orchestration.supervisor、
+  orchestration.retry、orchestration.approval。
+- trace 树：build_trace 从审计事件构建，监督者轮次嵌套 worker。
+- 所有 agent 调用经过 agent.invoke 策略检查。
+
+完整门禁
+--------
+$ .venv/Scripts/python.exe scripts/check.py --full
+241 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+已知边界
+--------
+- 控制台和 CLI 还没有计划入口。执行器是库接口。
+- 审批 UI 没做。审批人是字符串，没有接 OIDC。
+- 预算依赖 InvocationResult.cost_usd。当前 AgentRuntime 默认 0.0。
+- trace 树依赖时间戳排序，跨进程时钟偏差可能影响嵌套。
+- 审计哈希链和篡改检测排在 M4。
+- supervisor 决策是模型输出，worker 输出进入历史，存在提示注入风险。
+- Windows 工具沙箱退化为线程，没有网络和资源隔离。
+
+下一步
+------
+M4：多租户与配额、RBAC 与策略管理界面、评测门禁与灰度、A2A 评估。

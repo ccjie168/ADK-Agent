@@ -85,6 +85,18 @@
     "agent_ref": {
       "$ref": "#/$defs/AgentRef"
     },
+    "approver": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Approver"
+    },
     "args_hash": {
       "anyOf": [
         {

@@ -24,7 +24,7 @@
 
 ## 当前在做
 
-- M3 编排（M0、M1、M2 已完成，见 `docs/specs/ROADMAP.md`）
+- M4 平台加固（M0、M1、M2、M3 已完成，见 `docs/specs/ROADMAP.md`）
 
 ## 项目特有禁区
 

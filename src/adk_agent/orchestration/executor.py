@@ -12,6 +12,9 @@ from typing import Literal, cast
 from ..audit.hashing import hash_text
 from ..core import (
     AgentRef,
+    ApprovalDecision,
+    ApprovalGate,
+    ApprovalRequest,
     AuditEvent,
     AuditSink,
     Invocation,
@@ -25,6 +28,10 @@ from ..core import (
 )
 from .cancel import CancellationToken
 from .errors import (
+    ApprovalDenied,
+    ApprovalProtocolError,
+    ApprovalRequired,
+    ApprovalTimeout,
     BudgetExceeded,
     NoRoute,
     PlanCancelled,
@@ -56,6 +63,14 @@ def _error_code(error: BaseException) -> str:
         return "StepTimeout"
     if isinstance(error, BudgetExceeded):
         return "budget_exceeded"
+    if isinstance(error, ApprovalRequired):
+        return "approval_required"
+    if isinstance(error, ApprovalDenied):
+        return "approval_denied"
+    if isinstance(error, ApprovalTimeout):
+        return "approval_timeout"
+    if isinstance(error, ApprovalProtocolError):
+        return "approval_protocol"
     if isinstance(error, SupervisorProtocolError):
         return "supervisor_protocol"
     if isinstance(error, SupervisorLimit):
@@ -81,20 +96,22 @@ class PlanExecutor:
         plan: OrchestrationPlan,
         invocation: Invocation,
         cancel: CancellationToken | None = None,
+        approvals: ApprovalGate | None = None,
     ) -> PlanResult:
         if plan.strategy == "routing":
-            return await self._run_routing(plan, invocation, cancel)
+            return await self._run_routing(plan, invocation, cancel, approvals)
         if plan.strategy == "fan_out":
-            return await self._run_fan_out(plan, invocation, cancel)
+            return await self._run_fan_out(plan, invocation, cancel, approvals)
         if plan.strategy == "supervisor":
-            return await self._run_supervisor(plan, invocation, cancel)
-        return await self._run_sequential(plan, invocation, cancel)
+            return await self._run_supervisor(plan, invocation, cancel, approvals)
+        return await self._run_sequential(plan, invocation, cancel, approvals)
 
     async def _run_sequential(
         self,
         plan: OrchestrationPlan,
         invocation: Invocation,
         cancel: CancellationToken | None,
+        approvals: ApprovalGate | None,
     ) -> PlanResult:
         started = time.perf_counter()
         reference = plan_ref(plan)
@@ -107,11 +124,17 @@ class PlanExecutor:
                 self._check_cancelled(cancel)
                 self._check_deadline(invocation)
                 self._check_budget(invocation, spent_usd)
-                spent_usd += await self._run_step(step, invocation, outputs, spent_usd, cancel)
+                spent_usd += await self._run_step(
+                    step, invocation, outputs, spent_usd, cancel, approvals=approvals
+                )
                 if invocation.budget_usd is not None and spent_usd > invocation.budget_usd:
                     raise BudgetExceeded("plan budget exceeded")
         except Exception as exc:
-            status: Status = "denied" if isinstance(exc, (PlanDenied, BudgetExceeded)) else "error"
+            status: Status = (
+                "denied"
+                if isinstance(exc, (PlanDenied, BudgetExceeded, ApprovalDenied, ApprovalRequired))
+                else "error"
+            )
             await self._audit_run(
                 invocation,
                 reference,
@@ -120,6 +143,7 @@ class PlanExecutor:
                 error_code=_error_code(exc),
                 result_text=None,
                 started=started,
+                cost_usd=spent_usd,
             )
             raise
 
@@ -132,6 +156,7 @@ class PlanExecutor:
             error_code=None,
             result_text=final_text,
             started=started,
+            cost_usd=spent_usd,
         )
         return PlanResult(
             plan_id=plan.plan_id,
@@ -148,6 +173,7 @@ class PlanExecutor:
         plan: OrchestrationPlan,
         invocation: Invocation,
         cancel: CancellationToken | None,
+        approvals: ApprovalGate | None,
     ) -> PlanResult:
         started = time.perf_counter()
         reference = plan_ref(plan)
@@ -165,13 +191,20 @@ class PlanExecutor:
             raise NoRoute(f"no route matched plan {plan.plan_id!r}")
 
         outputs: dict[str, str] = {}
+        spent_usd = 0.0
         try:
             self._check_cancelled(cancel)
             self._check_deadline(invocation)
             self._check_budget(invocation, 0.0)
-            cost = await self._run_step(step, invocation, outputs, 0.0, cancel)
+            spent_usd = await self._run_step(
+                step, invocation, outputs, 0.0, cancel, approvals=approvals
+            )
         except Exception as exc:
-            status: Status = "denied" if isinstance(exc, (PlanDenied, BudgetExceeded)) else "error"
+            status: Status = (
+                "denied"
+                if isinstance(exc, (PlanDenied, BudgetExceeded, ApprovalDenied, ApprovalRequired))
+                else "error"
+            )
             await self._audit_run(
                 invocation,
                 reference,
@@ -180,6 +213,7 @@ class PlanExecutor:
                 error_code=_error_code(exc),
                 result_text=None,
                 started=started,
+                cost_usd=spent_usd,
             )
             raise
 
@@ -192,6 +226,7 @@ class PlanExecutor:
             error_code=None,
             result_text=final_text,
             started=started,
+            cost_usd=spent_usd,
         )
         return PlanResult(
             plan_id=plan.plan_id,
@@ -200,7 +235,7 @@ class PlanExecutor:
             trace_id=invocation.trace_id,
             outputs=outputs,
             final_text=final_text,
-            cost_usd=cost,
+            cost_usd=spent_usd,
         )
 
     async def _run_fan_out(
@@ -208,6 +243,7 @@ class PlanExecutor:
         plan: OrchestrationPlan,
         invocation: Invocation,
         cancel: CancellationToken | None,
+        approvals: ApprovalGate | None,
     ) -> PlanResult:
         started = time.perf_counter()
         reference = plan_ref(plan)
@@ -230,7 +266,7 @@ class PlanExecutor:
                     raise PlanExecutionError("plan", RuntimeError("no ready steps"))
                 batch = ready[: plan.max_parallel]
                 for step, cost in await self._run_batch(
-                    batch, invocation, outputs, spent_usd, cancel
+                    batch, invocation, outputs, spent_usd, cancel, approvals
                 ):
                     spent_usd += cost
                     completed.add(step.id)
@@ -238,7 +274,11 @@ class PlanExecutor:
                         raise BudgetExceeded("plan budget exceeded")
                 pending = [step for step in pending if step.id not in completed]
         except Exception as exc:
-            status: Status = "denied" if isinstance(exc, (PlanDenied, BudgetExceeded)) else "error"
+            status: Status = (
+                "denied"
+                if isinstance(exc, (PlanDenied, BudgetExceeded, ApprovalDenied, ApprovalRequired))
+                else "error"
+            )
             await self._audit_run(
                 invocation,
                 reference,
@@ -247,6 +287,7 @@ class PlanExecutor:
                 error_code=_error_code(exc),
                 result_text=None,
                 started=started,
+                cost_usd=spent_usd,
             )
             raise
 
@@ -259,6 +300,7 @@ class PlanExecutor:
             error_code=None,
             result_text=final_text,
             started=started,
+            cost_usd=spent_usd,
         )
         return PlanResult(
             plan_id=plan.plan_id,
@@ -277,14 +319,19 @@ class PlanExecutor:
         outputs: dict[str, str],
         spent_usd: float,
         cancel: CancellationToken | None,
+        approvals: ApprovalGate | None,
     ) -> list[tuple[PlanStep, float]]:
         if len(batch) == 1:
             step = batch[0]
-            cost = await self._run_step(step, parent, outputs, spent_usd, cancel)
+            cost = await self._run_step(
+                step, parent, outputs, spent_usd, cancel, approvals=approvals
+            )
             return [(step, cost)]
 
         tasks = [
-            asyncio.create_task(self._run_step(step, parent, outputs, spent_usd, cancel))
+            asyncio.create_task(
+                self._run_step(step, parent, outputs, spent_usd, cancel, approvals=approvals)
+            )
             for step in batch
         ]
         try:
@@ -318,6 +365,7 @@ class PlanExecutor:
         plan: OrchestrationPlan,
         invocation: Invocation,
         cancel: CancellationToken | None,
+        approvals: ApprovalGate | None,
     ) -> PlanResult:
         started = time.perf_counter()
         reference = plan_ref(plan)
@@ -351,6 +399,7 @@ class PlanExecutor:
                         error_code=None,
                         result_text=final_text,
                         started=started,
+                        cost_usd=spent_usd,
                     )
                     return PlanResult(
                         plan_id=plan.plan_id,
@@ -375,6 +424,7 @@ class PlanExecutor:
                     cancel,
                     input_override=worker_input,
                     output_key=output_key,
+                    approvals=approvals,
                 )
                 history.append((worker.id, worker_input, outputs[output_key]))
                 if invocation.budget_usd is not None and spent_usd > invocation.budget_usd:
@@ -382,7 +432,11 @@ class PlanExecutor:
 
             raise SupervisorLimit(f"plan {plan.plan_id!r} exceeded {plan.max_rounds} rounds")
         except Exception as exc:
-            status: Status = "denied" if isinstance(exc, (PlanDenied, BudgetExceeded)) else "error"
+            status: Status = (
+                "denied"
+                if isinstance(exc, (PlanDenied, BudgetExceeded, ApprovalDenied, ApprovalRequired))
+                else "error"
+            )
             await self._audit_run(
                 invocation,
                 reference,
@@ -391,6 +445,7 @@ class PlanExecutor:
                 error_code=_error_code(exc),
                 result_text=None,
                 started=started,
+                cost_usd=spent_usd,
             )
             raise
 
@@ -474,7 +529,15 @@ class PlanExecutor:
             raise SupervisorProtocolError(f"invalid supervisor decision: {exc}") from exc
 
         await self._audit_supervisor(
-            child, supervisor, round_no, state, result.text, "ok", None, started
+            child,
+            supervisor,
+            round_no,
+            state,
+            result.text,
+            "ok",
+            None,
+            started,
+            cost_usd=result.cost_usd,
         )
         return parsed, result.cost_usd
 
@@ -532,6 +595,8 @@ class PlanExecutor:
         status: Status,
         error_code: str | None,
         started: float,
+        *,
+        cost_usd: float | None = None,
     ) -> None:
         if self.audit is None:
             return
@@ -548,6 +613,7 @@ class PlanExecutor:
             result_hash=hash_text(output_text) if output_text is not None else None,
             data_classes=[],
             latency_ms=int((time.perf_counter() - started) * 1000),
+            cost_usd=cost_usd,
             egress="none",
             status=status,
             error_code=error_code,
@@ -565,6 +631,7 @@ class PlanExecutor:
         *,
         input_override: str | None = None,
         output_key: str | None = None,
+        approvals: ApprovalGate | None = None,
     ) -> float:
         decision = await self.policy.decide(parent, "agent.invoke", step.agent_ref.id)
         input_text = (
@@ -598,6 +665,11 @@ class PlanExecutor:
                 child, step, input_text, None, "error", "unknown_agent", step_started
             )
             raise UnknownAgent(f"agent {step.agent_ref.id!r} is not registered")
+
+        if step.requires_approval:
+            await self._require_approval(
+                step, child, input_text, approvals, remaining, cancel, step_started
+            )
 
         for attempt in range(1, step.max_attempts + 1):
             attempt_started = time.perf_counter()
@@ -640,10 +712,155 @@ class PlanExecutor:
                 raise BudgetExceeded(f"step {step.id!r} exceeded its budget", step_id=step.id)
 
             outputs[output_key or step.id] = result.text
-            await self._audit_step(child, step, input_text, result.text, "ok", None, step_started)
+            await self._audit_step(
+                child,
+                step,
+                input_text,
+                result.text,
+                "ok",
+                None,
+                step_started,
+                cost_usd=result.cost_usd,
+            )
             return result.cost_usd
 
         raise PlanExecutionError(step.id, RuntimeError("retry loop exhausted"))
+
+    async def _require_approval(
+        self,
+        step: PlanStep,
+        child: Invocation,
+        input_text: str,
+        approvals: ApprovalGate | None,
+        timeout: float | None,
+        cancel: CancellationToken | None,
+        step_started: float,
+    ) -> None:
+        request = ApprovalRequest(
+            request_id=uuid.uuid4().hex,
+            run_id=child.run_id,
+            trace_id=child.trace_id,
+            step_id=step.id,
+            agent_ref=step.agent_ref,
+            principal=child.principal,
+            input=input_text,
+            reason=step.approval_reason,
+            requested_at=datetime.now(timezone.utc),
+        )
+        if approvals is None:
+            await self._audit_step(
+                child, step, input_text, None, "denied", "approval_required", step_started
+            )
+            raise ApprovalRequired(f"step {step.id!r} needs approval")
+
+        started = time.perf_counter()
+        try:
+            decision = await self._await_approval(approvals, request, timeout, cancel)
+        except PlanCancelled:
+            await self._audit_step(
+                child, step, input_text, None, "error", "cancelled", step_started
+            )
+            raise
+        except ApprovalTimeout:
+            await self._audit_step(
+                child, step, input_text, None, "error", "approval_timeout", step_started
+            )
+            raise
+        except Exception as exc:
+            await self._audit_step(
+                child, step, input_text, None, "error", _error_code(exc), step_started
+            )
+            raise PlanExecutionError("approval", exc) from exc
+
+        if decision.request_id != request.request_id:
+            await self._audit_approval(
+                child,
+                step,
+                input_text,
+                decision,
+                request.request_id,
+                "denied",
+                "approval_protocol",
+                started,
+            )
+            await self._audit_step(
+                child, step, input_text, None, "error", "approval_protocol", step_started
+            )
+            raise ApprovalProtocolError("approval response does not match request")
+
+        if not decision.approved:
+            await self._audit_approval(
+                child,
+                step,
+                input_text,
+                decision,
+                request.request_id,
+                "denied",
+                "approval_denied",
+                started,
+            )
+            await self._audit_step(
+                child, step, input_text, None, "denied", "approval_denied", step_started
+            )
+            raise ApprovalDenied(f"step {step.id!r} was not approved")
+
+        await self._audit_approval(
+            child,
+            step,
+            input_text,
+            decision,
+            request.request_id,
+            "ok",
+            None,
+            started,
+        )
+
+    async def _await_approval(
+        self,
+        gate: ApprovalGate,
+        request: ApprovalRequest,
+        timeout: float | None,
+        cancel: CancellationToken | None,
+    ) -> ApprovalDecision:
+        async def invoke() -> ApprovalDecision:
+            return await gate.request(request)
+
+        task: asyncio.Task[ApprovalDecision] = asyncio.create_task(invoke())
+        waiter: asyncio.Task[None] | None = (
+            asyncio.create_task(cancel.wait()) if cancel is not None else None
+        )
+        waiters = {task, waiter} if waiter is not None else {task}
+        try:
+            done, _ = await asyncio.wait(
+                waiters, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+            )
+        except asyncio.CancelledError:
+            task.cancel()
+            if waiter is not None:
+                waiter.cancel()
+            await asyncio.gather(
+                task, *([waiter] if waiter is not None else []), return_exceptions=True
+            )
+            raise
+
+        if not done:
+            task.cancel()
+            if waiter is not None:
+                waiter.cancel()
+            await asyncio.gather(
+                task, *([waiter] if waiter is not None else []), return_exceptions=True
+            )
+            raise ApprovalTimeout(f"approval for step {request.step_id!r} timed out")
+
+        if task in done:
+            if waiter is not None:
+                waiter.cancel()
+                await asyncio.gather(waiter, return_exceptions=True)
+            return task.result()
+
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        raise PlanCancelled(f"plan cancelled during approval for step {request.step_id!r}")
 
     async def _retry_wait(
         self,
@@ -783,6 +1000,41 @@ class PlanExecutor:
             budget_usd=budget,
         )
 
+    async def _audit_approval(
+        self,
+        child: Invocation,
+        step: PlanStep,
+        input_text: str,
+        decision: ApprovalDecision,
+        request_id: str,
+        status: Status,
+        error_code: str | None,
+        started: float,
+    ) -> None:
+        if self.audit is None:
+            return
+        event = AuditEvent(
+            event_id=uuid.uuid4().hex,
+            run_id=child.run_id,
+            trace_id=child.trace_id,
+            tenant=child.principal.tenant,
+            principal=child.principal,
+            approver=decision.approver,
+            agent_ref=step.agent_ref,
+            action="orchestration.approval",
+            target=step.id,
+            args_hash=hash_text(input_text),
+            result_hash=None,
+            policy_decision_id=request_id,
+            data_classes=[],
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            egress="none",
+            status=status,
+            error_code=error_code,
+            timestamp=datetime.now(timezone.utc),
+        )
+        await self.audit.emit(event)
+
     async def _audit_step(
         self,
         child: Invocation,
@@ -792,6 +1044,8 @@ class PlanExecutor:
         status: Status,
         error_code: str | None,
         started: float,
+        *,
+        cost_usd: float | None = None,
     ) -> None:
         if self.audit is None:
             return
@@ -808,6 +1062,7 @@ class PlanExecutor:
             result_hash=hash_text(output_text) if output_text is not None else None,
             data_classes=[],
             latency_ms=int((time.perf_counter() - started) * 1000),
+            cost_usd=cost_usd,
             egress="none",
             status=status,
             error_code=error_code,
@@ -856,6 +1111,7 @@ class PlanExecutor:
         error_code: str | None,
         result_text: str | None,
         started: float,
+        cost_usd: float | None = None,
     ) -> None:
         if self.audit is None:
             return
@@ -872,6 +1128,7 @@ class PlanExecutor:
             result_hash=hash_text(result_text) if result_text is not None else None,
             data_classes=[],
             latency_ms=int((time.perf_counter() - started) * 1000),
+            cost_usd=cost_usd,
             egress="none",
             status=status,
             error_code=error_code,

@@ -35,6 +35,11 @@
         "agent_ref": {
           "$ref": "#/$defs/AgentRef"
         },
+        "approval_reason": {
+          "default": "",
+          "title": "Approval Reason",
+          "type": "string"
+        },
         "budget_usd": {
           "anyOf": [
             {
@@ -79,6 +84,11 @@
           "minimum": 1,
           "title": "Max Attempts",
           "type": "integer"
+        },
+        "requires_approval": {
+          "default": false,
+          "title": "Requires Approval",
+          "type": "boolean"
         },
         "retry_backoff_seconds": {
           "default": 0.0,
