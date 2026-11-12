@@ -26,6 +26,7 @@ from adk_agent.core import (  # noqa: E402
     ModelGatewayRequest,
     OrchestrationPlan,
     Principal,
+    ProgressEvent,
     SupervisorDecision,
     ToolGatewayRequest,
 )
@@ -48,6 +49,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "canary_policy.schema.json": CanaryPolicy,
     "model_gateway_request.schema.json": ModelGatewayRequest,
     "tool_gateway_request.schema.json": ToolGatewayRequest,
+    "progress_event.schema.json": ProgressEvent,
 }
 
 

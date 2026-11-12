@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -17,11 +19,58 @@ from ..core import (
     AuditSink,
     Invocation,
     InvocationResult,
+    ProgressEvent,
+    ProgressKind,
     QuotaExceeded,
     QuotaManager,
     QuotaPolicy,
 )
 from ..core.context import reset_invocation, set_invocation
+
+logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[ProgressEvent], Awaitable[None]]
+
+
+class _Progress:
+    """Build progress events and deliver them without breaking the run."""
+
+    def __init__(
+        self,
+        callback: ProgressCallback | None,
+        invocation: Invocation,
+        started: float,
+    ) -> None:
+        self._callback = callback
+        self._invocation = invocation
+        self._started = started
+
+    async def emit(
+        self,
+        kind: ProgressKind,
+        *,
+        author: str | None = None,
+        tool: str | None = None,
+        text: str | None = None,
+        detail: str | None = None,
+    ) -> None:
+        if self._callback is None:
+            return
+        event = ProgressEvent(
+            kind=kind,
+            run_id=self._invocation.run_id,
+            trace_id=self._invocation.trace_id,
+            author=author,
+            tool=tool,
+            text=text,
+            detail=detail,
+            elapsed_ms=int((time.perf_counter() - self._started) * 1000),
+            timestamp=datetime.now(timezone.utc),
+        )
+        try:
+            await self._callback(event)
+        except Exception:  # noqa: BLE001
+            logger.exception("progress callback failed")
 
 
 class AgentRuntime:
@@ -39,13 +88,17 @@ class AgentRuntime:
         session_id: str,
         quota: QuotaManager | None = None,
         quota_policy: QuotaPolicy | None = None,
+        on_progress: ProgressCallback | None = None,
     ) -> InvocationResult:
         started = time.perf_counter()
+        progress = _Progress(on_progress, invocation, started)
+        await progress.emit("run.started")
+
         if quota is None or quota_policy is None:
-            return await self._run(invocation, user_id, session_id, started)
+            return await self._run(invocation, user_id, session_id, started, progress)
         try:
             async with quota.reserve(invocation.principal.tenant, quota_policy):
-                return await self._run(invocation, user_id, session_id, started)
+                return await self._run(invocation, user_id, session_id, started, progress)
         except QuotaExceeded:
             await self._audit(
                 invocation,
@@ -53,6 +106,7 @@ class AgentRuntime:
                 error_code="quota_exceeded",
                 started=started,
             )
+            await progress.emit("run.failed", detail="QuotaExceeded")
             raise
 
     async def _run(
@@ -61,6 +115,7 @@ class AgentRuntime:
         user_id: str,
         session_id: str,
         started: float,
+        progress: _Progress,
     ) -> InvocationResult:
         run_config = RunConfig(
             custom_metadata={
@@ -80,6 +135,7 @@ class AgentRuntime:
                 new_message=new_message,
                 run_config=run_config,
             ):
+                await self._emit_progress(progress, event)
                 if event.is_final_response() and event.content and event.content.parts:
                     for part in event.content.parts:
                         if not part.thought and part.text:
@@ -91,6 +147,7 @@ class AgentRuntime:
                 error_code=type(exc).__name__,
                 started=started,
             )
+            await progress.emit("run.failed", detail=type(exc).__name__)
             raise
         finally:
             reset_invocation(token)
@@ -103,12 +160,29 @@ class AgentRuntime:
             started=started,
             text=text,
         )
+        await progress.emit("run.finished", text=text)
         return InvocationResult(
             run_id=invocation.run_id,
             trace_id=invocation.trace_id,
             agent_ref=invocation.agent_ref,
             text=text,
         )
+
+    async def _emit_progress(self, progress: _Progress, event: Any) -> None:
+        author = getattr(event, "author", None)
+        content = getattr(event, "content", None)
+        for part in getattr(content, "parts", None) or ():
+            if getattr(part, "thought", False):
+                continue
+            call = getattr(part, "function_call", None)
+            if call is not None and getattr(call, "name", None):
+                await progress.emit("tool.call", author=author, tool=call.name)
+            response = getattr(part, "function_response", None)
+            if response is not None and getattr(response, "name", None):
+                await progress.emit("tool.result", author=author, tool=response.name)
+            text = getattr(part, "text", None)
+            if text:
+                await progress.emit("model.text", author=author, text=text)
 
     async def _audit(
         self,

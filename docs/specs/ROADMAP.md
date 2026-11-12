@@ -106,6 +106,10 @@ M4 出口证据见 `docs/evidence/M4-milestone.txt`。
 
 进入每个切片时再写详细 spec。
 
+## UI 切片
+
+- SLICE-036 控制台运行进度与 trace 视图：SSE 进度事件、时间线、trace 面板。已完成。
+
 ## M5 切片
 
 - SLICE-032 模型网关独立部署：跨进程契约、HTTP 服务、鉴权、JSONL 审计、`HttpModelGateway` 客户端。已完成。

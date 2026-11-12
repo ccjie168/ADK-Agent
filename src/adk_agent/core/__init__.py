@@ -43,6 +43,7 @@ from .ports import (
     TemplateSource,
     ToolGateway,
 )
+from .progress import ProgressEvent, ProgressKind
 from .quota import QuotaExceeded, QuotaPolicy
 from .rbac import AccessPolicy, RoleBinding
 from .tool import ToolGatewayRequest, ToolRequest, ToolResponse
@@ -81,6 +82,8 @@ __all__ = [
     "PolicyDecision",
     "PolicyEngine",
     "Principal",
+    "ProgressEvent",
+    "ProgressKind",
     "PublishedAgent",
     "QuotaExceeded",
     "QuotaManager",

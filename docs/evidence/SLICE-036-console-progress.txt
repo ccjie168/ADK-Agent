@@ -1,0 +1,81 @@
+SLICE-036 控制台运行进度与 trace 视图
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/runtime/test_progress.py tests/test_console_stream.py tests/test_console_trace.py -q
+ImportError: cannot import name 'ProgressEvent' from 'adk_agent.core'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/runtime/test_progress.py tests/test_console_stream.py tests/test_console_trace.py -q
+12 passed in 1.66s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+357 passed, 2 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+357 passed, 2 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实控制台验证
+--------------
+脚本化模型: 先调用 ping 工具，再回复 "pong from tool"。
+
+页面: 有 "Run progress" 文本，有 /api/chat/stream 和 /api/traces/ 调用。
+
+POST /api/chat/stream:
+progress: {'kind': 'run.started', 'elapsed_ms': 0}
+progress: {'kind': 'tool.call', 'tool': 'ping', 'elapsed_ms': 487}
+progress: {'kind': 'tool.result', 'tool': 'ping', 'elapsed_ms': 489}
+progress: {'kind': 'model.text', 'elapsed_ms': 491}
+progress: {'kind': 'run.finished', 'elapsed_ms': 492}
+done: {'session_id': '61c9d90c-...', 'reply': 'pong from tool',
+       'run_id': '5e42ebf2...', 'trace_id': 'demo-trace'}
+
+GET /api/traces/demo-trace:
+root: agent progress_bot@dev ok
+child: tool ping ok 0
+child: model scriptedllm:scripted ok 4
+child: model scriptedllm:scripted ok 0
+
+POST /api/chat（旧接口）: 200 pong from tool
+
+说明
+----
+- ProgressEvent 是契约，六种 kind。runtime 在 ADK 事件循环里发出。
+- 进度回调抛异常只记日志，不中断运行。测试覆盖。
+- 配额拒绝也发 run.failed。
+- SSE 端点在鉴权和策略检查之后建立。拒绝返回普通 JSON。
+- 队列加后台任务的实现保证进度、done、error 的顺序。
+- trace 端点用审计事件构建，根优先取 agent.run 或 orchestration.run。
+- 页面有状态行、时间线、trace 面板。旧 /api/chat 保留。
+- progress_event.schema.json 已生成。console.md 已更新。
+
+已知边界
+--------
+- SSE 队列在进程内存，多副本需要粘性会话或共享事件流。
+- 进度只覆盖 agent 运行，不含编排计划逐步可视化。
+- trace 子节点是平铺的，编排嵌套没有接 UI。
+- 没有运行列表分页、搜索和历史回放。
+- 工具参数不推送，只推工具名。
