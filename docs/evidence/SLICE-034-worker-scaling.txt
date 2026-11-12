@@ -1,0 +1,75 @@
+SLICE-034 运行时 worker 横向扩容
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/runtime/test_sessions.py -q
+ModuleNotFoundError: No module named 'adk_agent.runtime.sessions'
+1 error during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/runtime/test_sessions.py -q
+7 passed, 1 skipped in 1.69s
+
+$ TEST_POSTGRES_URL='postgresql+asyncpg://...@127.0.0.1:55432/adk' \
+  .venv/Scripts/python.exe -m pytest tests/runtime/test_sessions.py -q
+8 passed in 2.84s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+332 passed, 2 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+332 passed, 2 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+双 worker 实测
+--------------
+环境: 本地 Postgres 17（Docker），两个控制台进程共用 SESSION_URL，
+脚本化模型固定返回 "hello from worker"。
+
+worker A: 200 hello from worker session: 55932db4-025c-4f1f-88d2-c41f329357fe
+worker B: 200 hello from worker session: 55932db4-025c-4f1f-88d2-c41f329357fe
+same session: True
+
+共享会话读出:
+events in shared session: 4
+roles: ['user', 'scaled_bot', 'user', 'scaled_bot']
+
+说明
+----
+- SESSION_URL 选择共享会话存储。postgresql:// 归一化为 postgresql+asyncpg://。
+- 未设置且无 session_db 时 configured_session_service 返回 None，保留 ADK 内存默认。
+- 只有 memory:// 和 postgres DSN 合法。其他 scheme 抛 ValueError，提示用 --session-db。
+- 缺 sqlalchemy/asyncpg 时抛 SessionStoreUnavailable，带安装命令，不静默退回内存。
+- SESSION_URL 优先于 SESSION_DB。
+- 控制台、serve、serve-many 走同一个工厂。
+- deploy/selfhosted.md 更新多副本说明，DSN 从 secret 文件读取。
+- ADR-0005 记录决策，状态 Proposed。
+
+已知边界
+--------
+- 配额和 RBAC 状态仍按进程，多副本各自计数。
+- 没有数据库就绪探测，只有进程级 /healthz。
+- 没有会话清理和保留期。
+- 驱动是可选依赖，未写进 pyproject，CI 跳过 Postgres 用例。
+- K8s 清单没有改副本数和反亲和。

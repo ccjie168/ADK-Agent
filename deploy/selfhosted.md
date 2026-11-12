@@ -48,32 +48,24 @@ loopback. Never expose port 8080 directly to an untrusted network.
 | Deployment | Session store | Notes |
 | --- | --- | --- |
 | Single node | `SqliteSessionService` via `SESSION_DB=/data/sessions.db` | Default in the image; mount a volume at `/data` |
-| Multi node | `DatabaseSessionService` (Postgres) | `pip install "google-adk[db]"` + `asyncpg`; use the same DSN on every replica |
+| Multi node | `DatabaseSessionService` (Postgres) via `SESSION_URL` | `pip install "sqlalchemy[asyncio]>=2" asyncpg` in the image; every replica uses the same DSN |
 
 The Compose file mounts the `adk-data` volume at `/data`, so sessions survive a
 container restart. `SESSION_DB` is read by the CLI (`--session-db` overrides it).
 
-For multi-node, build a custom entrypoint that injects a Postgres-backed
-`Runner`:
+For multi-node, set the same `SESSION_URL` on every replica. A configured URL
+wins over `SESSION_DB`; missing drivers fail at startup with the install command
+instead of silently falling back to process memory (ADR-0005).
 
-```python
-from google.adk.runners import Runner
-from google.adk.sessions import DatabaseSessionService
-from adk_agent import serve_agent
-
-runner = Runner(
-    app_name=agent.name,
-    agent=agent,
-    session_service=DatabaseSessionService("postgresql+asyncpg://user:pass@db:5432/adk"),
-)
-serve_agent(
-    agent,
-    transport="streamable-http",
-    host="0.0.0.0",
-    auth_token=os.environ["ADK_MCP_AUTH_TOKEN"],
-    runner=runner,
-)
+```bash
+# keep the DSN in your secret manager; it contains database credentials
+export SESSION_URL="$(cat /run/secrets/session_url)"
+python -m adk_agent console --agents agents.py --host 0.0.0.0 --port 8081
+# repeat on each replica, all pointing at the same DSN and behind one load balancer
 ```
+
+The console, `serve`, and `serve-many` all use the same store, so a session
+started on one replica can continue on any other.
 
 ## Kubernetes
 

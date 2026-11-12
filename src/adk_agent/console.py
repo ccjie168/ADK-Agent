@@ -185,13 +185,11 @@ $("msg").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
 
 
 def _session_service(session_db: str | None) -> Any:
-    if session_db:
-        from pathlib import Path
+    from .runtime.sessions import configured_session_service
 
-        from google.adk.sessions.sqlite_session_service import SqliteSessionService
-
-        Path(session_db).parent.mkdir(parents=True, exist_ok=True)
-        return SqliteSessionService(session_db)
+    service = configured_session_service(session_db)
+    if service is not None:
+        return service
 
     from google.adk.sessions import InMemorySessionService
 

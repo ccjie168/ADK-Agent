@@ -73,24 +73,19 @@ def build_framework(cfg: FrameworkConfig) -> dict[str, BaseAgent]:
 
 
 def build_runner(agent: BaseAgent, session_db: str | None = None) -> Runner | None:
-    """Return a Runner with a persistent SQLite session store, or ``None``.
+    """Return a Runner with the configured session store, or ``None``.
 
-    ``None`` means "let ADK use its in-memory default". Supply ``session_db``
-    (the CLI reads ``SESSION_DB``) to keep sessions across restarts, which a
-    real deployment needs. The parent directory is created if missing.
+    ``None`` means "let ADK use its in-memory default". ``SESSION_URL`` selects
+    a shared store (Postgres) for horizontally scaled workers; ``session_db``
+    (the CLI reads ``SESSION_DB``) keeps sessions in SQLite for single-node
+    demos. See ADR-0005.
     """
-    if not session_db:
+    from .runtime.sessions import configured_session_service
+
+    service = configured_session_service(session_db)
+    if service is None:
         return None
 
-    from pathlib import Path
-
     from google.adk.runners import Runner
-    from google.adk.sessions.sqlite_session_service import SqliteSessionService
 
-    db_path = Path(session_db)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    return Runner(
-        app_name=agent.name,
-        agent=agent,
-        session_service=SqliteSessionService(str(db_path)),
-    )
+    return Runner(app_name=agent.name, agent=agent, session_service=service)

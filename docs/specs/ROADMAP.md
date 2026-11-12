@@ -110,7 +110,7 @@ M4 出口证据见 `docs/evidence/M4-milestone.txt`。
 
 - SLICE-032 模型网关独立部署：跨进程契约、HTTP 服务、鉴权、JSONL 审计、`HttpModelGateway` 客户端。已完成。
 - SLICE-033 工具网关独立部署：grants 契约、HTTP 服务、鉴权、客户端、工具文件加载。已完成。
-- 运行时 worker 横向扩容。
+- SLICE-034 运行时 worker 横向扩容：`SESSION_URL` 共享 Postgres 会话、缺驱动显式失败、控制台与 MCP 共用存储。已完成。
 - 审计管线独立部署。
 
 进入每个切片时再写详细 spec。

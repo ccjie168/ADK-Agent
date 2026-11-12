@@ -127,7 +127,10 @@ def _add_runtime_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--session-db",
         default=os.environ.get("SESSION_DB"),
-        help="SQLite session DB path (defaults to $SESSION_DB; omit for in-memory)",
+        help=(
+            "SQLite session DB path for single-node demos (defaults to $SESSION_DB); "
+            "$SESSION_URL selects a shared Postgres store instead"
+        ),
     )
 
 
