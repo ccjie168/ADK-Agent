@@ -100,6 +100,18 @@
 - OIDC 模式下，agent 运行的用户 id 是 token 的 `subject`，会话按 subject 隔离。创建会话时把 `principal` 写进会话 state，键名是 `principal`。
 - 静态 token 和未鉴权模式仍使用 ADK 的 `mcp_user`。
 
+## `adk-agent serve` / `serve-many` 的审计与配额
+
+两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR` 和 `--quota-config FILE`。
+
+- 每次 MCP 工具调用在 agent 运行前后写一条 `agent.run` 审计。`target` 是 `<agent>@dev`，`args_hash` 是请求文本的哈希，成功时写 `result_hash`。
+- 运行失败写 `status=error`，`error_code` 是异常类名。配额用尽写 `status=denied`、`error_code=quota_exceeded`，并且不运行 agent。
+- tenant 取 token 的 principal。没有 principal 的模式（stdio 和静态 token）用 `local`，principal 是 `local` 下的 `mcp_user`。
+- `--quota-config` 见 `quota_config.schema.json`，只有列出的租户受限制。`QUOTA_URL` 选择共享后端，规则同控制台。缺 `asyncpg` 时退出 1。
+- `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。审计 token 规则同模型网关。
+- 配置了审计或配额时，`serve` 改用 `serve-many` 的单 agent 形态，以获得同样的运行包装。
+- `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
+
 ## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
 
 把一个 agent 暴露成 A2A 端点。
