@@ -1,6 +1,6 @@
 # ADR-0005 运行时 worker 横向扩容靠外部化状态
 
-状态: Proposed   日期: 2026-11-12   签字: 待 Jie CAO 确认
+状态: Accepted   日期: 2026-11-12   批准: Jie CAO（会话确认）
 
 ## 背景
 

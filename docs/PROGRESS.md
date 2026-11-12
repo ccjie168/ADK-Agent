@@ -72,7 +72,7 @@ python -m adk_agent console --agents examples/minimal/agent.py \
 
 ## 未决事项（恢复时先看）
 
-1. ADR-0003、ADR-0004、ADR-0005、ADR-0006 状态都是 Proposed，等确认后把可选依赖写进 `pyproject.toml`。
+1. ADR-0003、ADR-0004、ADR-0005、ADR-0006 已于 2026-11-12 接受。四份 ADR 都决定可选依赖不进 `pyproject.toml`，需要时按各自文档安装。
 2. 本地 venv 为验证装了 `a2a-sdk`、`sqlalchemy`、`asyncpg`、`greenlet`，都不在项目依赖里。换环境要先装。
 3. 未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`package.json`、`package-lock.json` 是本地工具，不要加进仓库。
 
