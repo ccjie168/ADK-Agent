@@ -136,7 +136,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-043 MCP principal 注入：把 token 主体带进 ADK 的 MCP 运行和会话归属。已完成。
 - SLICE-044 共享配额：`QuotaConfig`、Postgres 配额后端，控制台按租户限流。已完成。
 - SLICE-045 审批收件箱与计划可视化（UI-2）：目录收件箱、审批接口、Approvals 和 Plans 面板。已完成。
-- SLICE-046 MCP 运行路径审计与配额：包装 `_run_agent` 的 runner，补 `agent.run` 审计和租户配额。进行中。
+- SLICE-046 MCP 运行路径审计与配额：包装 `_run_agent` 的 runner，补 `agent.run` 审计和租户配额。已完成。
 
 ## 完成定义
 
