@@ -20,6 +20,7 @@ from ..core import (
     PlanResult,
     PlanStep,
     PolicyEngine,
+    SupervisorDecision,
     plan_ref,
 )
 from .cancel import CancellationToken
@@ -31,6 +32,8 @@ from .errors import (
     PlanExecutionError,
     PlanTimeout,
     StepTimeout,
+    SupervisorLimit,
+    SupervisorProtocolError,
     UnknownAgent,
 )
 
@@ -53,6 +56,10 @@ def _error_code(error: BaseException) -> str:
         return "StepTimeout"
     if isinstance(error, BudgetExceeded):
         return "budget_exceeded"
+    if isinstance(error, SupervisorProtocolError):
+        return "supervisor_protocol"
+    if isinstance(error, SupervisorLimit):
+        return "round_limit"
     if isinstance(error, PlanExecutionError):
         return getattr(error.error, "error_code", type(error.error).__name__)
     return getattr(error, "error_code", type(error).__name__)
@@ -79,6 +86,8 @@ class PlanExecutor:
             return await self._run_routing(plan, invocation, cancel)
         if plan.strategy == "fan_out":
             return await self._run_fan_out(plan, invocation, cancel)
+        if plan.strategy == "supervisor":
+            return await self._run_supervisor(plan, invocation, cancel)
         return await self._run_sequential(plan, invocation, cancel)
 
     async def _run_sequential(
@@ -304,6 +313,248 @@ class PlanExecutor:
                 return step.id
         raise PlanExecutionError("plan", RuntimeError("fan_out plan has no sink"))
 
+    async def _run_supervisor(
+        self,
+        plan: OrchestrationPlan,
+        invocation: Invocation,
+        cancel: CancellationToken | None,
+    ) -> PlanResult:
+        started = time.perf_counter()
+        reference = plan_ref(plan)
+        supervisor = plan.supervisor
+        if supervisor is None:
+            raise PlanExecutionError("plan", RuntimeError("supervisor missing"))
+        outputs: dict[str, str] = {}
+        history: list[tuple[str, str, str]] = []
+        spent_usd = 0.0
+
+        try:
+            for round_no in range(1, plan.max_rounds + 1):
+                self._check_cancelled(cancel)
+                self._check_deadline(invocation)
+                self._check_budget(invocation, spent_usd)
+                state = self._supervisor_state(plan, invocation, history, round_no)
+                decision, supervisor_cost = await self._supervisor_decision(
+                    plan, invocation, state, round_no, spent_usd, cancel
+                )
+                spent_usd += supervisor_cost
+                if invocation.budget_usd is not None and spent_usd > invocation.budget_usd:
+                    raise BudgetExceeded("plan budget exceeded")
+
+                if decision.action == "done":
+                    final_text = decision.final or (history[-1][2] if history else "")
+                    await self._audit_run(
+                        invocation,
+                        reference,
+                        plan,
+                        status="ok",
+                        error_code=None,
+                        result_text=final_text,
+                        started=started,
+                    )
+                    return PlanResult(
+                        plan_id=plan.plan_id,
+                        version=plan.version,
+                        run_id=invocation.run_id,
+                        trace_id=invocation.trace_id,
+                        outputs=outputs,
+                        final_text=final_text,
+                        cost_usd=spent_usd,
+                    )
+
+                worker = self._worker_for(plan, decision.worker or "")
+                if worker is None:
+                    raise SupervisorProtocolError(f"unknown worker {decision.worker!r}")
+                worker_input = decision.input or invocation.input
+                output_key = f"{worker.id}#{round_no}"
+                spent_usd += await self._run_step(
+                    worker,
+                    invocation,
+                    outputs,
+                    spent_usd,
+                    cancel,
+                    input_override=worker_input,
+                    output_key=output_key,
+                )
+                history.append((worker.id, worker_input, outputs[output_key]))
+                if invocation.budget_usd is not None and spent_usd > invocation.budget_usd:
+                    raise BudgetExceeded("plan budget exceeded")
+
+            raise SupervisorLimit(f"plan {plan.plan_id!r} exceeded {plan.max_rounds} rounds")
+        except Exception as exc:
+            status: Status = "denied" if isinstance(exc, (PlanDenied, BudgetExceeded)) else "error"
+            await self._audit_run(
+                invocation,
+                reference,
+                plan,
+                status=status,
+                error_code=_error_code(exc),
+                result_text=None,
+                started=started,
+            )
+            raise
+
+    async def _supervisor_decision(
+        self,
+        plan: OrchestrationPlan,
+        parent: Invocation,
+        state: str,
+        round_no: int,
+        spent_usd: float,
+        cancel: CancellationToken | None,
+    ) -> tuple[SupervisorDecision, float]:
+        supervisor = plan.supervisor
+        if supervisor is None:
+            raise PlanExecutionError("plan", RuntimeError("supervisor missing"))
+        decision = await self.policy.decide(parent, "agent.invoke", supervisor.id)
+        child = self._supervisor_invocation(supervisor, parent, state, spent_usd)
+        started = time.perf_counter()
+
+        if decision.decision != "allow":
+            await self._audit_supervisor(
+                child,
+                supervisor,
+                round_no,
+                state,
+                None,
+                "denied",
+                "policy_denied",
+                started,
+            )
+            raise PlanDenied(f"agent {supervisor.id!r} is not allowed")
+
+        call = self.agents.get(supervisor.id)
+        if call is None:
+            await self._audit_supervisor(
+                child,
+                supervisor,
+                round_no,
+                state,
+                None,
+                "error",
+                "unknown_agent",
+                started,
+            )
+            raise UnknownAgent(f"agent {supervisor.id!r} is not registered")
+
+        try:
+            result = await self._call_with_controls(
+                call, child, supervisor.id, self._remaining_seconds(parent), cancel
+            )
+        except PlanCancelled:
+            await self._audit_supervisor(
+                child, supervisor, round_no, state, None, "error", "cancelled", started
+            )
+            raise
+        except StepTimeout:
+            await self._audit_supervisor(
+                child, supervisor, round_no, state, None, "error", "plan_timeout", started
+            )
+            raise PlanTimeout("plan deadline exceeded during supervisor call") from None
+        except Exception as exc:
+            code = _error_code(exc)
+            await self._audit_supervisor(
+                child, supervisor, round_no, state, None, "error", code, started
+            )
+            raise PlanExecutionError("supervisor", exc) from exc
+
+        try:
+            parsed = SupervisorDecision.model_validate_json(result.text)
+        except ValueError as exc:
+            await self._audit_supervisor(
+                child,
+                supervisor,
+                round_no,
+                state,
+                None,
+                "error",
+                "supervisor_protocol",
+                started,
+            )
+            raise SupervisorProtocolError(f"invalid supervisor decision: {exc}") from exc
+
+        await self._audit_supervisor(
+            child, supervisor, round_no, state, result.text, "ok", None, started
+        )
+        return parsed, result.cost_usd
+
+    def _supervisor_invocation(
+        self,
+        supervisor: AgentRef,
+        parent: Invocation,
+        state: str,
+        spent_usd: float,
+    ) -> Invocation:
+        budget = parent.budget_usd - spent_usd if parent.budget_usd is not None else None
+        return Invocation(
+            run_id=uuid.uuid4().hex,
+            trace_id=parent.trace_id,
+            principal=parent.principal,
+            agent_ref=supervisor,
+            input=state,
+            deadline=parent.deadline,
+            budget_usd=budget,
+        )
+
+    def _supervisor_state(
+        self,
+        plan: OrchestrationPlan,
+        parent: Invocation,
+        history: list[tuple[str, str, str]],
+        round_no: int,
+    ) -> str:
+        lines = [
+            f"Task: {parent.input}",
+            f"Round: {round_no}/{plan.max_rounds}",
+            "Workers: " + ", ".join(step.id for step in plan.steps),
+            'Reply with JSON: {"action":"call","worker":"<id>","input":"..."} '
+            'or {"action":"done","final":"..."}.',
+        ]
+        if history:
+            lines.append("History:")
+            for index, (worker, text, output) in enumerate(history, start=1):
+                lines.append(f"[{index}] worker={worker} input={text!r} output={output!r}")
+        return "\n".join(lines)
+
+    def _worker_for(self, plan: OrchestrationPlan, worker_id: str) -> PlanStep | None:
+        for step in plan.steps:
+            if step.id == worker_id:
+                return step
+        return None
+
+    async def _audit_supervisor(
+        self,
+        child: Invocation,
+        supervisor: AgentRef,
+        round_no: int,
+        input_text: str,
+        output_text: str | None,
+        status: Status,
+        error_code: str | None,
+        started: float,
+    ) -> None:
+        if self.audit is None:
+            return
+        event = AuditEvent(
+            event_id=uuid.uuid4().hex,
+            run_id=child.run_id,
+            trace_id=child.trace_id,
+            tenant=child.principal.tenant,
+            principal=child.principal,
+            agent_ref=supervisor,
+            action="orchestration.supervisor",
+            target=f"round:{round_no}",
+            args_hash=hash_text(input_text),
+            result_hash=hash_text(output_text) if output_text is not None else None,
+            data_classes=[],
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            egress="none",
+            status=status,
+            error_code=error_code,
+            timestamp=datetime.now(timezone.utc),
+        )
+        await self.audit.emit(event)
+
     async def _run_step(
         self,
         step: PlanStep,
@@ -311,9 +562,16 @@ class PlanExecutor:
         outputs: dict[str, str],
         spent_usd: float,
         cancel: CancellationToken | None,
+        *,
+        input_override: str | None = None,
+        output_key: str | None = None,
     ) -> float:
         decision = await self.policy.decide(parent, "agent.invoke", step.agent_ref.id)
-        input_text = self._step_input(step, parent, outputs)
+        input_text = (
+            input_override
+            if input_override is not None
+            else self._step_input(step, parent, outputs)
+        )
         remaining = self._remaining_seconds(parent)
         if remaining is not None and remaining <= 0:
             raise PlanTimeout("plan deadline exceeded")
@@ -381,7 +639,7 @@ class PlanExecutor:
                 )
                 raise BudgetExceeded(f"step {step.id!r} exceeded its budget", step_id=step.id)
 
-            outputs[step.id] = result.text
+            outputs[output_key or step.id] = result.text
             await self._audit_step(child, step, input_text, result.text, "ok", None, step_started)
             return result.cost_usd
 

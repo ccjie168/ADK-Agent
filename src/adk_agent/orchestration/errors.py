@@ -19,6 +19,14 @@ class NoRoute(PlanError):
     """No routing step matched the input and there is no default."""
 
 
+class SupervisorProtocolError(PlanError):
+    error_code = "supervisor_protocol"
+
+
+class SupervisorLimit(PlanError):
+    error_code = "round_limit"
+
+
 class PlanCancelled(PlanError):
     """The caller cancelled the plan."""
 

@@ -20,6 +20,7 @@ from .orchestration import (
     PlanResult,
     PlanStep,
     RouteWhen,
+    SupervisorDecision,
     plan_digest,
     plan_ref,
 )
@@ -64,6 +65,7 @@ __all__ = [
     "RouteWhen",
     "SecretProvider",
     "Slo",
+    "SupervisorDecision",
     "TemplateSource",
     "ToolGateway",
     "ToolGrant",

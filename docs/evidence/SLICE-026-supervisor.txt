@@ -1,0 +1,68 @@
+SLICE-026 监督者策略
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/orchestration/test_supervisor.py -q
+ImportError: cannot import name 'SupervisorDecision' from 'adk_agent.core'
+1 error during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/orchestration/test_supervisor.py -q
+9 passed
+
+$ .venv/Scripts/python.exe -m pytest tests/orchestration -q
+49 passed in 1.96s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+232 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+232 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- PlanStrategy 增加 supervisor。
+- OrchestrationPlan 增加 supervisor 和 max_rounds。
+- SupervisorDecision 是 action=call 或 action=done 的结构化 JSON。
+- supervisor 输入包含任务、轮次、worker 列表、回复格式和已执行历史。
+- 决策解析严格用 model_validate_json。非 JSON 写 supervisor_protocol。
+- worker 必须是计划的 step id。未知 worker 写 supervisor_protocol。
+- done 的 final 为空时用最后一次 worker 输出。
+- max_rounds 是 supervisor 决策次数上限。用尽写 round_limit。
+- supervisor 调用经过 agent.invoke 策略检查。
+- worker 调用复用已有的策略、重试、超时、预算、取消和审计。
+- worker 输出按 step_id#round 存入 PlanResult.outputs。
+- 审计动作 orchestration.supervisor，target 是 round:<n>。
+- supervisor 成本计入 PlanResult.cost_usd。
+- supervisor_decision.schema.json 和 orchestration_plan.schema.json 已生成。
+
+已知边界
+--------
+- supervisor 决策是模型输出。worker 输出进入历史，存在提示注入风险。
+  决策被限制在计划的 worker 集合内，动作和执行都由执行器校验。
+- 审批门没做。高风险动作在 SLICE-027 补。
+- supervisor 调用没有重试。worker 调用有。
+- 成本仍依赖 InvocationResult.cost_usd。当前 AgentRuntime 默认 0.0。
+- trace 树没做。

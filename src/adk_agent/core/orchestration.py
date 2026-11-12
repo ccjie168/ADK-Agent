@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .manifest import AgentRef
 
-PlanStrategy = Literal["single", "sequential", "routing", "fan_out"]
+PlanStrategy = Literal["single", "sequential", "routing", "fan_out", "supervisor"]
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -36,6 +36,23 @@ class RouteWhen(BaseModel):
         if self.contains is not None:
             return self.contains in text
         return text.startswith(self.prefix or "")
+
+
+class SupervisorDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    action: Literal["call", "done"]
+    worker: str | None = None
+    input: str = ""
+    final: str = ""
+
+    @model_validator(mode="after")
+    def _shape(self) -> SupervisorDecision:
+        if self.action == "call" and not self.worker:
+            raise ValueError("call needs a worker")
+        if self.action == "done" and self.worker is not None:
+            raise ValueError("done cannot name a worker")
+        return self
 
 
 class PlanStep(BaseModel):
@@ -98,6 +115,8 @@ class OrchestrationPlan(BaseModel):
     version: str = Field(min_length=1, pattern=_SAFE_NAME.pattern)
     strategy: PlanStrategy = "single"
     max_parallel: int = Field(default=1, ge=1, le=16)
+    supervisor: AgentRef | None = None
+    max_rounds: int = Field(default=5, ge=1, le=20)
     steps: list[PlanStep] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -148,6 +167,18 @@ class OrchestrationPlan(BaseModel):
             ]
             if len(sinks) != 1:
                 raise ValueError("fan_out needs exactly one sink")
+
+        if self.strategy == "supervisor":
+            if self.supervisor is None:
+                raise ValueError("supervisor strategy needs a supervisor")
+            worker_ids = {step.id for step in self.steps}
+            worker_agents = {step.agent_ref.id for step in self.steps}
+            if self.supervisor.id in worker_ids or self.supervisor.id in worker_agents:
+                raise ValueError("supervisor id must differ from worker ids")
+            if any(step.depends_on or step.inputs_from for step in self.steps):
+                raise ValueError("supervisor workers cannot have dependencies")
+        elif self.supervisor is not None:
+            raise ValueError("supervisor is only allowed for supervisor plans")
 
         _topological_order(self.steps)
         return self

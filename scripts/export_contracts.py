@@ -20,6 +20,7 @@ from adk_agent.core import (  # noqa: E402
     Invocation,
     OrchestrationPlan,
     Principal,
+    SupervisorDecision,
 )
 
 CONTRACTS = ROOT / "docs" / "contracts"
@@ -32,6 +33,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "audit_event.schema.json": AuditEvent,
     "framework_config.schema.json": FrameworkConfig,
     "orchestration_plan.schema.json": OrchestrationPlan,
+    "supervisor_decision.schema.json": SupervisorDecision,
 }
 
 

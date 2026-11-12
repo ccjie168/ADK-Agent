@@ -12,6 +12,8 @@ from .errors import (
     PlanExecutionError,
     PlanTimeout,
     StepTimeout,
+    SupervisorLimit,
+    SupervisorProtocolError,
     UnknownAgent,
 )
 from .executor import AgentCall, PlanExecutor
@@ -30,5 +32,7 @@ __all__ = [
     "PlanExecutor",
     "PlanTimeout",
     "StepTimeout",
+    "SupervisorLimit",
+    "SupervisorProtocolError",
     "UnknownAgent",
 ]

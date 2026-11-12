@@ -84,10 +84,10 @@ M2 出口证据见 `docs/evidence/M2-milestone.txt`。
 - SLICE-023 编排计划与执行器：OrchestrationPlan、单 agent、顺序、agent.invoke 策略、审计。已完成。
 - SLICE-024 执行韧性：重试、超时、预算、取消。已完成。
 - SLICE-025 路由与扇出扇入：RouteWhen、唯一汇合点、max_parallel。已完成。
-- SLICE-026 监督者：监督 agent 选择 worker，轮次上限，结构化决策。
+- SLICE-026 监督者：监督 agent 选择 worker，轮次上限，结构化决策。已完成。
 - SLICE-027 人工审批与 trace 树。
 
-M3 仍进行中，等 SLICE-026 和 SLICE-027。
+M3 仍进行中，等 SLICE-027。
 
 进入每个切片时再写详细 spec。
 

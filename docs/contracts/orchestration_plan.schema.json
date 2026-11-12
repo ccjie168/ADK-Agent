@@ -173,6 +173,13 @@
       "title": "Max Parallel",
       "type": "integer"
     },
+    "max_rounds": {
+      "default": 5,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Max Rounds",
+      "type": "integer"
+    },
     "plan_id": {
       "minLength": 1,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
@@ -193,10 +200,22 @@
         "single",
         "sequential",
         "routing",
-        "fan_out"
+        "fan_out",
+        "supervisor"
       ],
       "title": "Strategy",
       "type": "string"
+    },
+    "supervisor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgentRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "version": {
       "minLength": 1,

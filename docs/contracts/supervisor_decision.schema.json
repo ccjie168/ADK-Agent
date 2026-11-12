@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "call",
+        "done"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "final": {
+      "default": "",
+      "title": "Final",
+      "type": "string"
+    },
+    "input": {
+      "default": "",
+      "title": "Input",
+      "type": "string"
+    },
+    "worker": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Worker"
+    }
+  },
+  "required": [
+    "action"
+  ],
+  "title": "SupervisorDecision",
+  "type": "object"
+}
