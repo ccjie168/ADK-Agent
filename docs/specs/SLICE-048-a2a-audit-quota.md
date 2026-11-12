@@ -1,6 +1,6 @@
 # SLICE-048 A2A 路径接入审计与配额
 
-状态: spec'd
+状态: gated
 依据: SLICE-031，SLICE-046，SLICE-047，`docs/contracts/cli.md`，`docs/contracts/tracing.md`
 
 ## 意图（要什么，不写怎么写）
@@ -51,6 +51,8 @@ A2A:
   trace_id = lambda: _trace_id_var.get()
 ```
 
+ADK 2.14 的 A2A executor 用 `isinstance(runner, Runner)` 检查。`AuditedRunner` 的 `__class__` property 返回内层 runner 的类型，属性访问仍走 `__getattr__`。升级 ADK 时复核这个检查。
+
 纯 ASGI 中间件：
 
 ```text
@@ -61,26 +63,26 @@ _TraceContextMiddleware(app):
 
 ## 完成判据（可执行）
 
-- [ ] A2A 调用写 ok 审计 -> `tests/test_a2a_runtime.py::test_a2a_audits_run`
-- [ ] 审计带消息文本哈希和回复哈希 -> `tests/test_a2a_runtime.py::test_a2a_audits_run`
-- [ ] 配额用尽写 denied 且不调用模型 -> `tests/test_a2a_runtime.py::test_a2a_quota_denies`
-- [ ] 审计 trace_id 取 traceparent -> `tests/test_a2a_runtime.py::test_a2a_uses_traceparent`
-- [ ] 没有 traceparent 时生成 32 位十六进制 -> `tests/test_a2a_runtime.py::test_a2a_generates_trace_id`
-- [ ] MCP 包装器行为不变 -> `tests/test_mcp_runtime.py` 全部通过
-- [ ] MCP 接线行为不变 -> `tests/test_mcp_runtime_wiring.py` 全部通过
-- [ ] CLI `serve-a2a` 转发审计和配额 -> `tests/test_cli_a2a_runtime.py::test_serve_a2a_forwards_audit_and_quota`
-- [ ] 非法配额配置退出 1 -> `tests/test_cli_a2a_runtime.py::test_bad_quota_config_exits_1`
-- [ ] 默认关闭 -> `tests/test_cli_a2a_runtime.py::test_runtime_flags_default_off`
-- [ ] 两个审计参数互斥 -> `tests/test_cli_a2a_runtime.py::test_audit_flags_are_exclusive`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] A2A 调用写 ok 审计 -> `tests/test_a2a_runtime.py::test_a2a_audits_run`
+- [x] 审计带消息文本哈希和回复哈希 -> `tests/test_a2a_runtime.py::test_a2a_audits_run`
+- [x] 配额用尽写 denied 且不调用模型 -> `tests/test_a2a_runtime.py::test_a2a_quota_denies`
+- [x] 审计 trace_id 取 traceparent -> `tests/test_a2a_runtime.py::test_a2a_uses_traceparent`
+- [x] 没有 traceparent 时生成 32 位十六进制 -> `tests/test_a2a_runtime.py::test_a2a_generates_trace_id`
+- [x] MCP 包装器行为不变 -> `tests/test_mcp_runtime.py` 全部通过
+- [x] MCP 接线行为不变 -> `tests/test_mcp_runtime_wiring.py` 全部通过
+- [x] CLI `serve-a2a` 转发审计和配额 -> `tests/test_cli_a2a_runtime.py::test_serve_a2a_forwards_audit_and_quota`
+- [x] 非法配额配置退出 1 -> `tests/test_cli_a2a_runtime.py::test_bad_quota_config_exits_1`
+- [x] 默认关闭 -> `tests/test_cli_a2a_runtime.py::test_runtime_flags_default_off`
+- [x] 两个审计参数互斥 -> `tests/test_cli_a2a_runtime.py::test_audit_flags_are_exclusive`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.runtime.audit_proxy import AuditedRunner` -> 当前 `ImportError`
-- [ ] 反例 2：`build_a2a_app(agent, audit=sink)` -> 当前 `TypeError`，不认识 `audit`
-- [ ] 反例 3：A2A `message/send` 跑完后审计缓冲为空 -> 当前确实为空
-- [ ] 反例 4：配额用尽时 A2A 仍然运行 agent -> 当前没有配额检查
-- [ ] 反例 5：`serve-a2a --audit-file FILE` -> 当前 argparse 退出 2
+- [x] 反例 1：`from adk_agent.runtime.audit_proxy import AuditedRunner` -> 当前 `ImportError`
+- [x] 反例 2：`build_a2a_app(agent, audit=sink)` -> 当前 `TypeError`，不认识 `audit`
+- [x] 反例 3：A2A `message/send` 跑完后审计缓冲为空 -> 当前确实为空
+- [x] 反例 4：配额用尽时 A2A 仍然运行 agent -> 当前没有配额检查
+- [x] 反例 5：`serve-a2a --audit-file FILE` -> 当前 argparse 退出 2
 
 ## 契约（如涉及对外接口）
 
@@ -106,5 +108,6 @@ _TraceContextMiddleware(app):
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-048-a2a-audit-quota.txt`，`runtime.audit_proxy` ImportError，`build_a2a_app` 不认识 audit，`serve-a2a` 两个参数 argparse 退出 2
+- 实现后绿: 同文件，26 passed；`check.py --fast` ALL PASS（555 passed, 9 skipped），`--full` ALL PASS
+- 真实 A2A: 同文件，带 traceparent 的请求返回 completed 和模型回复，第二次请求 task failed 且审计 denied，拒绝的请求没有触发模型

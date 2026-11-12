@@ -1,0 +1,59 @@
+SLICE-048 A2A runtime audit and quota evidence
+date: 2026-11-12T23:33:29Z
+
+== red: new tests before implementation ==
+                 {serve,serve-many,serve-a2a,serve-model-gateway,serve-tool-gateway,serve-audit,verify-audit,console,new,validate,publish,eval} ...
+adk-agent: error: unrecognized arguments: --quota-config C:\Users\Jie\AppData\Local\Temp\pytest-of-Jie\pytest-1902\test_bad_quota_config_exits_10\bad.json
+_______________________ test_runtime_flags_default_off ________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001E11784F680>
+
+    def test_runtime_flags_default_off(monkeypatch):
+        captured = _patch_serve(monkeypatch)
+    
+        cli.main(["serve-a2a", "--agent", "x.py"])
+    
+>       assert captured["audit"] is None
+               ^^^^^^^^^^^^^^^^^
+E       KeyError: 'audit'
+
+tests\test_cli_a2a_runtime.py:87: KeyError
+=========================== short test summary info ===========================
+FAILED tests/test_a2a_runtime.py::test_a2a_audits_run - TypeError: build_a2a_...
+FAILED tests/test_a2a_runtime.py::test_a2a_quota_denies - TypeError: build_a2...
+FAILED tests/test_a2a_runtime.py::test_a2a_uses_traceparent - TypeError: buil...
+FAILED tests/test_a2a_runtime.py::test_a2a_generates_trace_id - TypeError: bu...
+FAILED tests/test_cli_a2a_runtime.py::test_serve_a2a_forwards_audit_and_quota
+FAILED tests/test_cli_a2a_runtime.py::test_bad_quota_config_exits_1 - assert ...
+FAILED tests/test_cli_a2a_runtime.py::test_runtime_flags_default_off - KeyErr...
+7 failed, 1 passed in 1.97s
+
+== red: counterexample 1 and 5 ==
+ModuleNotFoundError: No module named 'adk_agent.runtime.audit_proxy'
+adk-agent: error: unrecognized arguments: --audit-file a.jsonl
+exit=2
+
+== green: targeted tests ==
+tests/test_a2a_runtime.py tests/test_cli_a2a_runtime.py tests/test_a2a.py
+tests/test_mcp_runtime.py tests/test_mcp_runtime_wiring.py -> 26 passed in 2.73s
+
+== live: real A2A server with audit, quota and traceparent ==
+serve-a2a --host 127.0.0.1 --port 8092 --audit-file /tmp/adk-048-live/audit.jsonl
+  --quota-config /tmp/adk-048-live/quota.json   (tenant local, max_runs=1)
+agent card -> HTTP 200
+send 1 with traceparent 00-0123456789abcdef0123456789abcdef-00f000f000f000f0-01
+  -> HTTP 200, task state completed, artifact text "ok"
+send 2 -> HTTP 200, task state failed, message "tenant 'local' exceeded max_runs"
+audit line 1 -> agent.run local a2a_user minimal_agent@dev ok None
+  trace_id=0123456789abcdef0123456789abcdef args_hash=7c6ed24f5437 result_hash=2689367b205c
+audit line 2 -> agent.run local a2a_user minimal_agent@dev denied quota_exceeded
+  trace_id=c24c01a064f24c6a8f1401d21e914499 args_hash=7c6ed24f5437 result_hash=None
+The denied request never reached the model.
+
+== implementation note ==
+ADK 2.14's A2A executor checks isinstance(runner, Runner). AuditedRunner exposes a
+__class__ property returning the inner runner's class so the proxy passes that
+check; attribute access still delegates through __getattr__.
+
+== gate ==
+check.py --fast -> ALL PASS (555 passed, 9 skipped), 7 steps

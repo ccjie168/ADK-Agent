@@ -123,6 +123,7 @@
 - 审计和配额规则同 MCP 一节。tenant 固定 `local`，principal 是 `local` 下的 `a2a_user`，kind 是 `service`。
 - 审计的 `args_hash` 取 A2A 消息里文本 part 的拼接，`result_hash` 取最终回复文本。
 - 审计的 `trace_id` 取请求头 `traceparent` 的 trace-id，规则见 `tracing.md`。
+- 配额拒绝在 A2A 里表现为 task 的 `status.state="failed"`，消息是 `tenant '<name>' exceeded <limit>`，HTTP 状态仍是 200。审计里是 `status=denied`、`error_code=quota_exceeded`。
 - 配置了审计或配额且没有传入 runner 时，服务自行构建默认 runner 并包一层。`--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
 
 ## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR]`
