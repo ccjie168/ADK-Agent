@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from typing import Any, TypeGuard
+from typing import Any, Literal, TypeGuard
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -15,7 +15,8 @@ ASYMMETRIC_ALGORITHMS = frozenset(
     {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256", "PS384", "PS512"}
 )
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
-KINDS = frozenset({"human", "service", "agent"})
+IdentityKind = Literal["human", "service", "agent"]
+KINDS: frozenset[str] = frozenset({"human", "service", "agent"})
 
 MALFORMED_CREDENTIAL = "invalid token"
 DISALLOWED_ALGORITHM = "algorithm not allowed"
@@ -85,6 +86,10 @@ def _is_text(value: object) -> TypeGuard[str]:
     return isinstance(value, str) and bool(value)
 
 
+def _is_kind(value: object) -> TypeGuard[IdentityKind]:
+    return isinstance(value, str) and value in KINDS
+
+
 def _to_principal(config: OidcConfig, claims: dict[str, Any]) -> Principal:
     subject = claims.get("sub")
     tenant = claims.get(config.tenant_claim)
@@ -96,7 +101,7 @@ def _to_principal(config: OidcConfig, claims: dict[str, Any]) -> Principal:
         raise InvalidIdentity(INVALID_CLAIMS)
 
     kind = claims.get(config.kind_claim, "human")
-    if kind not in KINDS:
+    if not _is_kind(kind):
         raise InvalidIdentity(INVALID_CLAIMS)
 
     return Principal(

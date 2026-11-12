@@ -108,6 +108,9 @@ def test_kind_mapping(rsa_key: Any) -> None:
     with pytest.raises(InvalidIdentity):
         _resolve(_provider(rsa_key), _token(rsa_key, _claims(kind="robot")))
 
+    with pytest.raises(InvalidIdentity):
+        _resolve(_provider(rsa_key), _token(rsa_key, _claims(kind=[])))
+
 
 def test_wrong_issuer_is_rejected(rsa_key: Any) -> None:
     token = _token(rsa_key, _claims(iss="https://evil.example.test"))
@@ -132,6 +135,38 @@ def test_missing_exp_is_rejected(rsa_key: Any) -> None:
     del claims["exp"]
     with pytest.raises(InvalidIdentity):
         _resolve(_provider(rsa_key), _token(rsa_key, claims))
+
+
+def test_missing_iat_is_rejected(rsa_key: Any) -> None:
+    claims = _claims()
+    del claims["iat"]
+    with pytest.raises(InvalidIdentity):
+        _resolve(_provider(rsa_key), _token(rsa_key, claims))
+
+
+def test_default_resolver_uses_jwk_client(rsa_key: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: dict[str, Any] = {}
+
+    class FakeJWK:
+        def __init__(self, key: Any) -> None:
+            self.key = key
+
+    class FakeClient:
+        def __init__(self, url: str, **kwargs: Any) -> None:
+            calls["url"] = url
+            calls["kwargs"] = kwargs
+
+        def get_signing_key(self, kid: str) -> FakeJWK:
+            calls["kid"] = kid
+            return FakeJWK(rsa_key.public_key())
+
+    monkeypatch.setattr(jwt, "PyJWKClient", FakeClient)
+    principal = _resolve(OidcIdentityProvider(_config()), _token(rsa_key, _claims()))
+
+    assert principal.subject == "user-1"
+    assert calls["url"] == "https://issuer.example.test/jwks"
+    assert calls["kid"] == "k1"
+    assert calls["kwargs"] == {"cache_keys": True, "lifespan": 300}
 
 
 def test_tampered_signature_is_rejected(rsa_key: Any) -> None:
