@@ -1,0 +1,53 @@
+SLICE-042 MCP HTTP OIDC 认证
+日期: 2026-11-12
+状态: gated
+
+反例红（实现前，由实现代理运行）
+--------------------------------
+$ .venv/Scripts/python.exe -m pytest tests/test_mcp_oidc.py -q
+FAILED ...::test_healthz_open - ValueError: refusing to serve MCP over HTTP without auth ...
+FAILED ...::test_missing_token_is_401 - ValueError: refusing ...
+FAILED ...::test_invalid_token_is_401 - ValueError: refusing ...
+FAILED ...::test_provider_outage_is_503 - ValueError: refusing ...
+FAILED ...::test_valid_token_reaches_mcp_app - ValueError: refusing ...
+FAILED ...::test_cli_serve_passes_oidc - SystemExit: 2
+FAILED ...::test_cli_serve_many_passes_oidc - SystemExit: 2
+FAILED ...::test_cli_rejects_oidc_on_stdio - assert 2 == 1
+FAILED ...::test_cli_rejects_oidc_with_unauthenticated
+9 failed in 1.82s
+
+HTTP 用例因缺少 `oidc=` 关键字触发静态 token 检查。CLI 用例因 `--oidc-config` 未知退出 2。
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_mcp_oidc.py -q
+9 passed in 1.60s
+
+$ .venv/Scripts/python.exe -m pytest -q
+450 passed, 2 skipped in 38.31s
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实 MCP 验证
+-------------
+本地 JWKS 提供公钥，RS256 token 与配置一致。uvicorn 运行
+`build_http_app(MCPServer, auth_token=None, oidc=OidcIdentityProvider(config))`。
+客户端用 MCP SDK 的 `streamable_http_client` 调用 `ping` 工具。
+
+valid token: {'result': 'pong'}
+no token http: 401 {"error":"unauthorized"}
+
+说明: 真实 MCP 协议和真实签名。认证通过后工具可调用，无 token 被中间件拒绝。
+principal 注入没有做，agent 运行仍使用 ADK 的 `mcp_user`，这一项排在 SLICE-043。
+实验已确认工具能读到 `ctx.request_context.request.state.principal`，为 043 铺路。

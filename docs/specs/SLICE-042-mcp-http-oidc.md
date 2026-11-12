@@ -1,6 +1,6 @@
 # SLICE-042 MCP HTTP OIDC 认证
 
-状态: in_progress
+状态: gated
 依据: ADR-0002 第 7 条，ADR-0007
 
 ## 意图（要什么，不写怎么写）
@@ -31,23 +31,23 @@
 
 ## 完成判据（可执行）
 
-- [ ] OIDC 模式下 `/healthz` 开放 -> `tests/test_mcp_oidc.py::test_healthz_open`
-- [ ] 缺 token 返回 401 -> `tests/test_mcp_oidc.py::test_missing_token_is_401`
-- [ ] 非法 token 返回 401 -> `tests/test_mcp_oidc.py::test_invalid_token_is_401`
-- [ ] 签发方不可达返回 503 -> `tests/test_mcp_oidc.py::test_provider_outage_is_503`
-- [ ] 合法 token 放行到 MCP 应用 -> `tests/test_mcp_oidc.py::test_valid_token_reaches_mcp_app`
-- [ ] `serve` 把 `oidc` 传给 `serve_agent` -> `tests/test_mcp_oidc.py::test_cli_serve_passes_oidc`
-- [ ] `serve-many` 把 `oidc` 传给 `serve_many` -> `tests/test_mcp_oidc.py::test_cli_serve_many_passes_oidc`
-- [ ] stdio 加 `--oidc-config` 退出 1 -> `tests/test_mcp_oidc.py::test_cli_rejects_oidc_on_stdio`
-- [ ] 配置和 `--allow-unauthenticated` 互斥 -> `tests/test_mcp_oidc.py::test_cli_rejects_oidc_with_unauthenticated`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] OIDC 模式下 `/healthz` 开放 -> `tests/test_mcp_oidc.py::test_healthz_open`
+- [x] 缺 token 返回 401 -> `tests/test_mcp_oidc.py::test_missing_token_is_401`
+- [x] 非法 token 返回 401 -> `tests/test_mcp_oidc.py::test_invalid_token_is_401`
+- [x] 签发方不可达返回 503 -> `tests/test_mcp_oidc.py::test_provider_outage_is_503`
+- [x] 合法 token 放行到 MCP 应用 -> `tests/test_mcp_oidc.py::test_valid_token_reaches_mcp_app`
+- [x] `serve` 把 `oidc` 传给 `serve_agent` -> `tests/test_mcp_oidc.py::test_cli_serve_passes_oidc`
+- [x] `serve-many` 把 `oidc` 传给 `serve_many` -> `tests/test_mcp_oidc.py::test_cli_serve_many_passes_oidc`
+- [x] stdio 加 `--oidc-config` 退出 1 -> `tests/test_mcp_oidc.py::test_cli_rejects_oidc_on_stdio`
+- [x] 配置和 `--allow-unauthenticated` 互斥 -> `tests/test_mcp_oidc.py::test_cli_rejects_oidc_with_unauthenticated`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`build_http_app(server, oidc=provider)` -> 当前 `TypeError`
-- [ ] 反例 2：`serve --oidc-config FILE --transport streamable-http` -> 当前 argparse 退出 2
-- [ ] 反例 3：`serve --oidc-config FILE` 用 stdio -> 期望退出 1
-- [ ] 反例 4：JWKS 不可达 -> 期望 503 `identity_unavailable`
+- [x] 反例 1：`build_http_app(server, oidc=provider)` -> 当前 `TypeError`
+- [x] 反例 2：`serve --oidc-config FILE --transport streamable-http` -> 当前 argparse 退出 2
+- [x] 反例 3：`serve --oidc-config FILE` 用 stdio -> 期望退出 1
+- [x] 反例 4：JWKS 不可达 -> 期望 503 `identity_unavailable`
 
 ## 契约（如涉及对外接口）
 
@@ -76,5 +76,5 @@
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-042-mcp-http-oidc.txt`，9 个用例失败，缺少 `oidc=` 和 `--oidc-config`
+- 实现后绿: 同文件，9 个目标测试通过，全量 450 passed 2 skipped，`check.py --full` ALL PASS，另做真实 MCP 客户端验证

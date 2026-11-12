@@ -11,6 +11,8 @@ from google.adk.dependencies._mcp import Context, ServerSession
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
 
+    from ..core import IdentityProvider
+
 
 def serve_agent(
     agent: BaseAgent,
@@ -23,6 +25,7 @@ def serve_agent(
     port: int | None = None,
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
+    oidc: IdentityProvider | None = None,
 ) -> Any:
     """Expose one ADK agent as an MCP server and run it (blocking).
 
@@ -50,6 +53,7 @@ def serve_agent(
             port=port,
             auth_token=auth_token,
             allow_unauthenticated=allow_unauthenticated,
+            oidc=oidc,
         )
     return server
 
@@ -65,6 +69,7 @@ def serve_many(
     port: int | None = None,
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
+    oidc: IdentityProvider | None = None,
 ) -> Any:
     """Expose several ADK agents as separate MCP tools in one server.
 
@@ -148,5 +153,6 @@ def serve_many(
             port=port,
             auth_token=auth_token,
             allow_unauthenticated=allow_unauthenticated,
+            oidc=oidc,
         )
     return server

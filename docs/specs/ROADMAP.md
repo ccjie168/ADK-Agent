@@ -132,7 +132,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-039 OIDC 身份解析器核心：验证 JWT 并映射成 `Principal`，只做解析器，不接 HTTP。已完成。
 - SLICE-040 OIDC 接线，控制台与中间件：`OidcAuthMiddleware`、`console --oidc-config`、按 subject 的会话和读视图的租户隔离。已完成。
 - SLICE-041 OIDC 接线，服务面：模型网关、工具网关和审计服务。已完成。
-- SLICE-042 MCP HTTP OIDC 认证：`serve` 和 `serve-many` 的 streamable-http 鉴权。进行中。
+- SLICE-042 MCP HTTP OIDC 认证：`serve` 和 `serve-many` 的 streamable-http 鉴权。已完成。
 - SLICE-043 MCP principal 注入：把 token 主体带进 ADK 的 MCP 运行和会话归属。计划中。
 
 ## 完成定义

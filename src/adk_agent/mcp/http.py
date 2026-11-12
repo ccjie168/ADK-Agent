@@ -12,7 +12,8 @@ from typing import Any
 
 from starlette.responses import JSONResponse
 
-from ..auth import BearerAuthMiddleware, resolve_http_auth
+from ..auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
+from ..core import IdentityProvider
 
 
 def resolve_port(port: int | None, default: int = 8000) -> int:
@@ -34,10 +35,11 @@ def build_http_app(
     auth_token: str | None,
     host: str = "127.0.0.1",
     allow_unauthenticated: bool = False,
+    oidc: IdentityProvider | None = None,
     **kwargs: Any,
 ) -> Any:
     """Build the streamable-http ASGI app, wrapping it in bearer auth if set."""
-    token = resolve_http_auth(host, auth_token, allow_unauthenticated)
+    token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
 
     # Health probe for the platform. Declared as the one open endpoint and
     # returns no data; MCP itself stays protected.
@@ -47,7 +49,9 @@ def build_http_app(
 
     app = server.streamable_http_app(host=host, **kwargs)
 
-    if token:
+    if oidc is not None:
+        app.add_middleware(OidcAuthMiddleware, provider=oidc)
+    elif token:
         app.add_middleware(BearerAuthMiddleware, token=token)
 
     return app
@@ -60,6 +64,7 @@ def run_http(
     port: int | None = None,
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
+    oidc: IdentityProvider | None = None,
     **kwargs: Any,
 ) -> None:
     """Serve an MCP server over streamable-http (blocking)."""
@@ -68,6 +73,7 @@ def run_http(
         auth_token=auth_token,
         host=host,
         allow_unauthenticated=allow_unauthenticated,
+        oidc=oidc,
         **kwargs,
     )
 

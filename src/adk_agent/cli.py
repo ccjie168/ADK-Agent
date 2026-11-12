@@ -192,6 +192,13 @@ def main(argv: list[str] | None = None) -> None:
         help="MCP transport to run on (defaults to the config value, else stdio)",
     )
     _add_http_args(p_serve)
+    p_serve.add_argument(
+        "--oidc-config",
+        default=None,
+        help=(
+            "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
+        ),
+    )
     _add_runtime_args(p_serve)
 
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
@@ -208,6 +215,13 @@ def main(argv: list[str] | None = None) -> None:
         help="MCP transport to run on (defaults to stdio)",
     )
     _add_http_args(p_many)
+    p_many.add_argument(
+        "--oidc-config",
+        default=None,
+        help=(
+            "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
+        ),
+    )
     _add_runtime_args(p_many)
 
     p_a2a = sub.add_parser("serve-a2a", help="serve an ADK agent over A2A (needs a2a-sdk)")
@@ -395,6 +409,11 @@ def main(argv: list[str] | None = None) -> None:
         else:
             raise SystemExit("provide --agent <file> or --config <file>")
 
+        oidc = _identity_provider(args)
+        if oidc is not None and transport != "streamable-http":
+            print("oidc config requires streamable-http", file=sys.stderr)
+            raise SystemExit(1)
+
         from .factory import build_runner
 
         serve_agent(
@@ -405,6 +424,7 @@ def main(argv: list[str] | None = None) -> None:
             port=args.port,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
+            oidc=oidc,
             runner=build_runner(agent, args.session_db),
         )
     elif args.cmd == "serve-many":
@@ -412,17 +432,23 @@ def main(argv: list[str] | None = None) -> None:
         from .mcp.server import serve_many
 
         agents = _load_agents(args.agents)
+        transport = args.transport or "stdio"
+        oidc = _identity_provider(args)
+        if oidc is not None and transport != "streamable-http":
+            print("oidc config requires streamable-http", file=sys.stderr)
+            raise SystemExit(1)
         runner_factory = (
             partial(build_runner, session_db=args.session_db) if args.session_db else None
         )
         serve_many(
             agents,
             name=args.name,
-            transport=cast(Transport, args.transport or "stdio"),
+            transport=cast(Transport, transport),
             host=args.host,
             port=args.port,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
+            oidc=oidc,
             runner_factory=runner_factory,
         )
     elif args.cmd == "serve-a2a":
