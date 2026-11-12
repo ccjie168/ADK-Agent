@@ -276,6 +276,7 @@ def main(argv: list[str] | None = None) -> None:
         help="mount the RPC and agent-card routes under this path prefix",
     )
     _add_http_args(p_a2a)
+    _add_audit_quota_args(p_a2a)
 
     p_gateway = sub.add_parser(
         "serve-model-gateway", help="serve the model gateway as a standalone service"
@@ -519,6 +520,8 @@ def main(argv: list[str] | None = None) -> None:
         from .a2a import A2aUnavailable, serve_a2a
 
         agent = _load_agent(args.agent)
+        audit = _audit_sink(args)
+        quota, quota_config = _quota_settings(args)
         try:
             serve_a2a(
                 agent,
@@ -527,6 +530,9 @@ def main(argv: list[str] | None = None) -> None:
                 rpc_path=args.rpc_path,
                 auth_token=_auth_token(args),
                 allow_unauthenticated=args.allow_unauthenticated,
+                audit=audit,
+                quota=quota,
+                quota_config=quota_config,
             )
         except A2aUnavailable as exc:
             print(str(exc), file=sys.stderr)

@@ -9,19 +9,33 @@ bearer middleware the MCP HTTP transport uses, including the agent card.
 from __future__ import annotations
 
 import importlib
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Receive, Scope, Send
+
 from .auth import BearerAuthMiddleware, resolve_http_auth
+from .core import Principal
 from .mcp.http import resolve_port
+from .runtime.audit_proxy import wrap_runner
+from .tracing import resolve_trace_id
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
+
+    from .core import AuditSink, QuotaConfig, QuotaManager
 
 _INSTALL_HINT = (
     "A2A support needs the optional dependency; install it with "
     "`pip install 'a2a-sdk[http-server]>=0.3.4,<2'` "
     "(the range ADK 2.x declares for its a2a extra)."
 )
+
+_A2A_USER_ID = "a2a_user"
+_A2A_TENANT = "local"
+
+_current_trace_id: ContextVar[str | None] = ContextVar("a2a_trace_id", default=None)
 
 
 class A2aUnavailable(RuntimeError):
@@ -47,6 +61,24 @@ def _remote_a2a_agent() -> Any:
         raise A2aUnavailable(_INSTALL_HINT) from exc
 
 
+class _TraceContextMiddleware:
+    """Expose the request's trace id to the wrapped runner through a ContextVar."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        trace_id = resolve_trace_id(None, Headers(scope=scope).get("traceparent"))
+        token = _current_trace_id.set(trace_id)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _current_trace_id.reset(token)
+
+
 def build_a2a_app(
     agent: BaseAgent,
     *,
@@ -55,8 +87,27 @@ def build_a2a_app(
     rpc_path: str = "",
     runner: Any = None,
     auth_token: str | None = None,
+    audit: AuditSink | None = None,
+    quota: QuotaManager | None = None,
+    quota_config: QuotaConfig | None = None,
 ) -> Any:
     """Build the A2A Starlette app. A token protects every path, card included."""
+    audited = audit is not None or quota is not None
+    if audited:
+        if runner is None:
+            from google.adk.tools.mcp_tool._agent_to_mcp import _build_runner
+
+            runner = _build_runner(agent)
+        runner = wrap_runner(
+            runner,
+            agent_name=agent.name,
+            principal=Principal(tenant=_A2A_TENANT, subject=_A2A_USER_ID, kind="service"),
+            input_text=None,
+            audit=audit,
+            quota=quota,
+            quota_policy=quota_config.tenants.get(_A2A_TENANT) if quota_config else None,
+            trace_id=lambda: _current_trace_id.get(),
+        )
     app = _to_a2a()(
         agent,
         host=host,
@@ -66,6 +117,8 @@ def build_a2a_app(
     )
     if auth_token:
         app.add_middleware(BearerAuthMiddleware, token=auth_token, open_paths=frozenset())
+    if audited:
+        app.add_middleware(_TraceContextMiddleware)
     return app
 
 
@@ -78,6 +131,9 @@ def serve_a2a(
     runner: Any = None,
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
+    audit: AuditSink | None = None,
+    quota: QuotaManager | None = None,
+    quota_config: QuotaConfig | None = None,
 ) -> None:
     """Serve an agent over A2A (blocking). Network binds require a token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated)
@@ -89,6 +145,9 @@ def serve_a2a(
         rpc_path=rpc_path,
         runner=runner,
         auth_token=token,
+        audit=audit,
+        quota=quota,
+        quota_config=quota_config,
     )
 
     import uvicorn
