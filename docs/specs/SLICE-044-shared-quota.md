@@ -1,6 +1,6 @@
 # SLICE-044 共享配额
 
-状态: spec'd
+状态: gated
 依据: SLICE-041，SLICE-042，`docs/contracts/cli.md`，`docs/contracts/console.md`
 
 ## 意图（要什么，不写怎么写）
@@ -67,32 +67,32 @@ PostgresQuotaManager:
 
 ## 完成判据（可执行）
 
-- [ ] 租户键为空被拒 -> `tests/runtime/test_quota_config.py::test_empty_tenant_rejected`
-- [ ] 缺省不限额 -> `tests/runtime/test_quota_config.py::test_unlisted_tenant_is_unlimited`
-- [ ] 空 URL 返回内存实现 -> `tests/runtime/test_quota_postgres.py::test_build_in_memory`
-- [ ] 非 Postgres 前缀和缺驱动抛 `QuotaStoreUnavailable` -> `tests/runtime/test_quota_postgres.py::test_build_rejects_unknown_dsn`
-- [ ] 两个管理器共享运行上限 -> `tests/runtime/test_quota_postgres.py::test_run_limit_is_shared`
-- [ ] 窗口过期后放行 -> `tests/runtime/test_quota_postgres.py::test_window_expiry`
-- [ ] 两个管理器共享并发上限 -> `tests/runtime/test_quota_postgres.py::test_concurrent_limit_is_shared`
-- [ ] 退出时释放并发槽 -> `tests/runtime/test_quota_postgres.py::test_release_on_exit`
-- [ ] 崩溃副本的租约过期后回收 -> `tests/runtime/test_quota_postgres.py::test_expired_lease_is_reclaimed`
-- [ ] 并发被拒时不消费运行槽 -> `tests/runtime/test_quota_postgres.py::test_denied_concurrency_does_not_consume_run`
-- [ ] 租户隔离 -> `tests/runtime/test_quota_postgres.py::test_tenants_are_isolated`
-- [ ] 控制台超限返回 429 -> `tests/test_console_quota.py::test_chat_quota_exceeded`
-- [ ] 控制台超限写 `denied` 审计 -> `tests/test_console_quota.py::test_quota_denial_is_audited`
-- [ ] 流式超限发出错误事件 -> `tests/test_console_quota.py::test_stream_quota_exceeded`
-- [ ] 未列出的租户不限额 -> `tests/test_console_quota.py::test_unlisted_tenant_unlimited`
-- [ ] 配额后端不可用返回 503 -> `tests/test_console_quota.py::test_quota_store_unavailable`
-- [ ] `console --quota-config` 文件缺失退出 1 -> `tests/test_cli_quota.py::test_quota_config_missing_file`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 租户键为空被拒 -> `tests/runtime/test_quota_config.py::test_empty_tenant_rejected`
+- [x] 缺省不限额 -> `tests/runtime/test_quota_config.py::test_unlisted_tenant_is_unlimited`
+- [x] 空 URL 返回内存实现 -> `tests/runtime/test_quota_postgres.py::test_build_in_memory`
+- [x] 非 Postgres 前缀和缺驱动抛 `QuotaStoreUnavailable` -> `tests/runtime/test_quota_postgres.py::test_build_rejects_unknown_dsn`
+- [x] 两个管理器共享运行上限 -> `tests/runtime/test_quota_postgres.py::test_run_limit_is_shared`
+- [x] 窗口过期后放行 -> `tests/runtime/test_quota_postgres.py::test_window_expiry`
+- [x] 两个管理器共享并发上限 -> `tests/runtime/test_quota_postgres.py::test_concurrent_limit_is_shared`
+- [x] 退出时释放并发槽 -> `tests/runtime/test_quota_postgres.py::test_release_on_exit`
+- [x] 崩溃副本的租约过期后回收 -> `tests/runtime/test_quota_postgres.py::test_expired_lease_is_reclaimed`
+- [x] 并发被拒时不消费运行槽 -> `tests/runtime/test_quota_postgres.py::test_denied_concurrency_does_not_consume_run`
+- [x] 租户隔离 -> `tests/runtime/test_quota_postgres.py::test_tenants_are_isolated`
+- [x] 控制台超限返回 429 -> `tests/test_console_quota.py::test_chat_quota_exceeded`
+- [x] 控制台超限写 `denied` 审计 -> `tests/test_console_quota.py::test_quota_denial_is_audited`
+- [x] 流式超限发出错误事件 -> `tests/test_console_quota.py::test_stream_quota_exceeded`
+- [x] 未列出的租户不限额 -> `tests/test_console_quota.py::test_unlisted_tenant_unlimited`
+- [x] 配额后端不可用返回 503 -> `tests/test_console_quota.py::test_quota_store_unavailable`
+- [x] `console --quota-config` 文件缺失退出 1 -> `tests/test_cli_quota.py::test_quota_config_missing_file`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.runtime.quota_postgres import PostgresQuotaManager` -> 当前 `ImportError`
-- [ ] 反例 2：`console --quota-config FILE` -> 当前 argparse 退出 2，不认识该参数
-- [ ] 反例 3：配置 `max_runs=1` 后连发两次聊天 -> 当前两次都 200，期望第二次 429
-- [ ] 反例 4：两个 `PostgresQuotaManager` 连同一个库，`max_runs=1`，各保留一次 -> 当前没有共享实现，期望第二次 `QuotaExceeded`
-- [ ] 反例 5：没有 `asyncpg` 时 `build_quota_manager("postgresql://...")` -> 当前没有该函数，期望 `QuotaStoreUnavailable`
+- [x] 反例 1：`from adk_agent.runtime.quota_postgres import PostgresQuotaManager` -> 当前 `ImportError`
+- [x] 反例 2：`console --quota-config FILE` -> 当前 argparse 退出 2，不认识该参数
+- [x] 反例 3：配置 `max_runs=1` 后连发两次聊天 -> 实现前控制台没有 quota 参数（签名探针为空），期望第二次 429
+- [x] 反例 4：两个 `PostgresQuotaManager` 连同一个库，`max_runs=1`，各保留一次 -> 实现前没有共享实现（模块不存在），期望第二次 `QuotaExceeded`
+- [x] 反例 5：没有 `asyncpg` 时 `build_quota_manager("postgresql://...")` -> 当前没有该函数，期望 `QuotaStoreUnavailable`
 
 ## 契约（如涉及对外接口）
 
@@ -122,5 +122,7 @@ PostgresQuotaManager:
 
 ## 证据
 
-- 反例红: 待补
+- 反例红: `docs/evidence/SLICE-044-shared-quota.txt`，新模块 ImportError，`--quota-config` argparse 退出 2，控制台签名里没有 quota 参数
+- 实现后绿: 同文件，17 passed 7 skipped（无库）；`TEST_POSTGRES_URL` 下 11 个 Postgres 用例全过；8 个进程抢 `max_runs=3` 得到 3 ok / 5 denied；`check.py --fast` ALL PASS
+- 真实控制台: 同文件，`QUOTA_URL` 连本地 Postgres 15，第一次聊天 200，第二次 429 `quota_exceeded`，审计出现 `agent.run denied quota_exceeded`，`adk_quota_leases` 无残留
 - 实现后绿: 待补

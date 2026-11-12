@@ -36,6 +36,9 @@ from .core import (
     ModelPolicy,
     Principal,
     ProgressEvent,
+    QuotaConfig,
+    QuotaExceeded,
+    QuotaManager,
     ToolGrant,
 )
 from .mcp.http import resolve_port
@@ -43,6 +46,7 @@ from .models.gateway_llm import GatewayLlm, provider_for_model
 from .rbac import FilePolicyStore, RolePolicyEngine
 from .registry import RegistryIntegrityError
 from .runtime import AgentRuntime, dev_agent_ref
+from .runtime.quota_postgres import QuotaStoreUnavailable
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
 from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard, toolset_tool_ids
 
@@ -726,6 +730,8 @@ def build_console_app(
     session_service: Any | None = None,
     audit_sink: ListAuditSink | None = None,
     oidc: IdentityProvider | None = None,
+    quota: QuotaManager | None = None,
+    quota_config: QuotaConfig | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -982,8 +988,20 @@ def build_console_app(
         )
         if not await allowed(invocation, name):
             return JSONResponse({"error": "policy_denied"}, status_code=403)
+        quota_policy = quota_config.tenants.get(caller.tenant) if quota_config else None
         try:
-            result = await runtime.run(invocation, user_id=caller.subject, session_id=session_id)
+            result = await runtime.run(
+                invocation,
+                user_id=caller.subject,
+                session_id=session_id,
+                quota=quota,
+                quota_policy=quota_policy,
+            )
+        except QuotaExceeded:
+            return JSONResponse({"error": "quota_exceeded"}, status_code=429)
+        except QuotaStoreUnavailable:
+            logger.exception("quota store unavailable: agent=%s run=%s", name, invocation.run_id)
+            return JSONResponse({"error": "quota_unavailable"}, status_code=503)
         except Exception:  # noqa: BLE001
             logger.exception(
                 "agent run failed: agent=%s session=%s run=%s",
@@ -1032,6 +1050,7 @@ def build_console_app(
         )
         if not await allowed(invocation, name):
             return JSONResponse({"error": "policy_denied"}, status_code=403)
+        quota_policy = quota_config.tenants.get(caller.tenant) if quota_config else None
 
         async def events():
             queue: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()
@@ -1046,7 +1065,18 @@ def build_console_app(
                         user_id=caller.subject,
                         session_id=session_id,
                         on_progress=on_progress,
+                        quota=quota,
+                        quota_policy=quota_policy,
                     )
+                except QuotaExceeded:
+                    await queue.put(("error", {"error": "quota_exceeded"}))
+                except QuotaStoreUnavailable:
+                    logger.exception(
+                        "quota store unavailable: agent=%s run=%s",
+                        name,
+                        invocation.run_id,
+                    )
+                    await queue.put(("error", {"error": "quota_unavailable"}))
                 except Exception:  # noqa: BLE001
                     logger.exception(
                         "agent run failed: agent=%s session=%s run=%s",
@@ -1117,6 +1147,8 @@ def run_console(
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
     oidc: IdentityProvider | None = None,
+    quota: QuotaManager | None = None,
+    quota_config: QuotaConfig | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -1131,6 +1163,8 @@ def run_console(
         registry=registry,
         eval_reports=eval_reports,
         oidc=oidc,
+        quota=quota,
+        quota_config=quota_config,
     )
 
     import uvicorn

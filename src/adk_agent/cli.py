@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .core import AuditSink, IdentityProvider
+    from .core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
 
 Transport = Literal["stdio", "streamable-http"]
 
@@ -175,6 +175,31 @@ def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
     if args.audit_file:
         return JsonlAuditSink(args.audit_file)
     return None
+
+
+def _console_quota(
+    args: argparse.Namespace,
+) -> tuple[QuotaManager | None, QuotaConfig | None]:
+    path = getattr(args, "quota_config", None)
+    if not path:
+        return None, None
+
+    from .core import QuotaConfig
+
+    try:
+        config = QuotaConfig.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"invalid quota config: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+    from .runtime.quota_postgres import QuotaStoreUnavailable, build_quota_manager
+
+    try:
+        manager = build_quota_manager(os.environ.get("QUOTA_URL"))
+    except QuotaStoreUnavailable as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
+    return manager, config
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -341,6 +366,11 @@ def main(argv: list[str] | None = None) -> None:
         help=(
             "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
         ),
+    )
+    p_console.add_argument(
+        "--quota-config",
+        default=None,
+        help="JSON QuotaConfig file",
     )
     _add_http_args(p_console)
     _add_runtime_args(p_console)
@@ -547,6 +577,7 @@ def main(argv: list[str] | None = None) -> None:
         from .registry import FileAgentRegistry, FileEvalReportStore
 
         oidc = _identity_provider(args)
+        quota, quota_config = _console_quota(args)
 
         agents = _load_agents(args.agents)
         run_console(
@@ -561,6 +592,8 @@ def main(argv: list[str] | None = None) -> None:
             registry=FileAgentRegistry(args.registry),
             eval_reports=FileEvalReportStore(args.registry),
             oidc=oidc,
+            quota=quota,
+            quota_config=quota_config,
         )
     elif args.cmd == "validate":
         from .core import manifest_digest
