@@ -97,7 +97,8 @@
 - 和 `--allow-unauthenticated` 互斥，同时给退出 1。
 - 没有 token 或 token 不合法返回 401 `{"error":"unauthorized"}`，签发方不可达返回 503 `{"error":"identity_unavailable"}`。
 - `/healthz` 保持开放。
-- 这一版只做认证。agent 运行仍使用 ADK 的 `mcp_user`，principal 注入排在 SLICE-043。
+- OIDC 模式下，agent 运行的用户 id 是 token 的 `subject`，会话按 subject 隔离。创建会话时把 `principal` 写进会话 state，键名是 `principal`。
+- 静态 token 和未鉴权模式仍使用 ADK 的 `mcp_user`。
 
 ## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
 
