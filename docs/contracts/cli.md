@@ -16,6 +16,8 @@
 - 成功：stdout 输出 `published tenant/id@version sha256:<digest>`，退出 0。
 - 重复发布相同内容：幂等成功，返回已存记录。
 - 同版本不同内容：stderr 输出 `publish failed: <原因>`，退出 1。
+- 通过门禁的报告写到 `<registry>/<tenant>/<id>/<version>.eval.json`。相同报告重复发布幂等，不同报告退出 1。
+- 报告写失败退出 1，版本可能已写入；重新发布同一 manifest 会把报告补上。
 - 默认注册表目录是 `$ADK_REGISTRY_DIR`，否则 `./registry`。
 - 存储布局是 `<registry>/<tenant>/<id>/<version>.json`。租户目录来自 manifest，不受调用方控制。
 
@@ -88,10 +90,11 @@
 - 非回环地址必须提供 `--auth-token-env` 指向的 token。loopback 可以 `--allow-unauthenticated`（仅开发）。
 - token 保护所有路径，包括 `/.well-known/agent-card.json` 和 JSON-RPC。
 
-## `adk-agent console --agents FILE [--policy FILE] [--role ROLE]`
+## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR]`
 
 启动私有控制台。
 
+- `--registry` 指向注册表根目录，默认 `$ADK_REGISTRY_DIR`，否则 `./registry`。只读运营视图从这里读已发布 agent 和评测报告。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
 - `--role` 可重复，设置控制台 principal 的角色。默认 `admin`。
 - `GET /api/policy` 返回当前策略。`PUT /api/policy` 校验、原子落盘、热替换并写 `policy.update` 审计。
