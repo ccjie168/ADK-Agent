@@ -1,13 +1,13 @@
 # 项目进度登记
 
-更新日期: 2026-11-12
+更新日期: 2026-11-13
 分支: master
-最新提交: `9568f5c` feat(mcp): run agents as the OIDC subject (SLICE-043)
+最新提交: `091dc4e` feat(quota): share tenant quotas through Postgres (SLICE-044)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
 
-企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线、服务面 OIDC 接线、MCP HTTP 认证和 MCP principal 注入八个切片。本地门禁全绿。OIDC 身份链路完整。可做内部试点，未达对外多租户生产标准。
+企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线、服务面 OIDC 接线、MCP HTTP 认证、MCP principal 注入和共享配额九个切片。本地门禁全绿。OIDC 身份链路完整，多副本配额已在 Postgres 上共享。可做内部试点，未达对外多租户生产标准。
 
 ## 里程碑
 
@@ -43,6 +43,7 @@
 | SLICE-041 | OIDC 服务面接线与 principal 绑定 | `6c775b2` |
 | SLICE-042 | MCP HTTP OIDC 认证 | `6d3bd45` |
 | SLICE-043 | MCP principal 注入与会话隔离 | `9568f5c` |
+| SLICE-044 | 共享配额（Postgres 运行计数与并发租约） | `091dc4e` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
@@ -50,11 +51,11 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 458 passed, 2 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 458 passed, 2 skipped，9 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 475 passed, 9 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 475 passed, 9 skipped，9 步全 PASS
 - 本轮未推送，CI 未运行。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
-两个 skip 是：Postgres 会话用例（需 `TEST_POSTGRES_URL`）、以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。CI 不装 `a2a-sdk`，另有 4 条 A2A 用例按条件跳过。
+9 个 skip 是：7 条 Postgres 配额用例、1 条 Postgres 会话用例（都需 `TEST_POSTGRES_URL`）、以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。设 `TEST_POSTGRES_URL` 后配额 7 条会跑，SLICE-044 用本地 `postgres:15-alpine` 验证过 11 条全过。CI 不装 `a2a-sdk`，另有 4 条 A2A 用例按条件跳过。
 
 ## 怎么跑
 
@@ -66,6 +67,11 @@ python scripts/check.py --full
 # 控制台（本地开发）
 python -m adk_agent console --agents examples/minimal/agent.py \
   --host 127.0.0.1 --port 8081 --allow-unauthenticated
+
+# 控制台带共享配额（多副本时 QUOTA_URL 指向同一个库）
+QUOTA_URL=postgresql://postgres:adk@127.0.0.1:5432/adk \
+  python -m adk_agent console --agents examples/minimal/agent.py \
+  --quota-config quota.json
 ```
 
 模型通道用 `ADK_AGENT_MODEL`，例如 `claude:deepseek-v4-pro`。
@@ -87,9 +93,11 @@ python -m adk_agent console --agents examples/minimal/agent.py \
 
 按优先级：
 
-1. 共享配额。配额仍是进程内，多副本各自计数。
-2. 控制台审批 UI 与编排计划可视化。
-3. DB 行级隔离、审计轮转和签名、指标与分布式追踪、限流熔断、备份恢复、压力与长稳测试。
+1. 控制台审批 UI 与编排计划可视化（UI-2）。
+2. 指标与分布式追踪。
+3. DB 行级隔离、审计轮转和签名、限流熔断、备份恢复、压力与长稳测试。
+
+注意：MCP 路径仍不经过 `AgentRuntime`，因此没有配额，也没有 `agent.run` 审计。这是 SLICE-044 的范围外缺口。
 
 ## 恢复步骤
 
