@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import weakref
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from google.adk.dependencies._mcp import Context, ServerSession
@@ -11,7 +12,135 @@ from google.adk.dependencies._mcp import Context, ServerSession
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
 
-    from ..core import IdentityProvider
+    from ..core import IdentityProvider, Principal
+
+_MCP_USER_ID = "mcp_user"
+_MAX_REAP_ATTEMPTS = 3
+
+
+def _principal_from_ctx(ctx: Any) -> Principal | None:
+    try:
+        request = ctx.request_context.request
+    except Exception:
+        return None
+    return getattr(getattr(request, "state", None), "principal", None)
+
+
+class _PrincipalSessionService:
+    """Session service proxy that attributes every call to the token subject."""
+
+    def __init__(self, inner: Any, principal: Principal) -> None:
+        self._inner = inner
+        self._principal = principal
+
+    async def create_session(self, *, app_name, user_id, state=None, session_id=None):
+        merged = dict(state or {})
+        merged["principal"] = self._principal.model_dump(mode="json")
+        return await self._inner.create_session(
+            app_name=app_name,
+            user_id=self._principal.subject,
+            state=merged,
+            session_id=session_id,
+        )
+
+    async def get_session(self, *, app_name, user_id, session_id, config=None):
+        return await self._inner.get_session(
+            app_name=app_name,
+            user_id=self._principal.subject,
+            session_id=session_id,
+            config=config,
+        )
+
+    async def delete_session(self, *, app_name, user_id, session_id):
+        return await self._inner.delete_session(
+            app_name=app_name,
+            user_id=self._principal.subject,
+            session_id=session_id,
+        )
+
+    async def list_sessions(self, *, app_name, user_id=None):
+        return await self._inner.list_sessions(
+            app_name=app_name,
+            user_id=self._principal.subject,
+        )
+
+    async def append_event(self, session, event):
+        return await self._inner.append_event(session, event)
+
+    async def get_user_state(self, *, app_name, user_id):
+        return await self._inner.get_user_state(
+            app_name=app_name,
+            user_id=self._principal.subject,
+        )
+
+    async def flush(self):
+        return await self._inner.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+class _PrincipalRunner:
+    """Runner proxy that runs the agent as the token subject."""
+
+    def __init__(self, runner: Any, principal: Principal) -> None:
+        self._runner = runner
+        self._principal = principal
+        self.app_name = runner.app_name
+        self.session_service = _PrincipalSessionService(runner.session_service, principal)
+
+    def run_async(self, *, user_id, **kwargs):
+        return self._runner.run_async(user_id=self._principal.subject, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._runner, name)
+
+
+@dataclass
+class _ScopedState:
+    sessions: Any
+    created: set[str]
+    reap_failures: dict[str, int]
+    locks: Any
+
+
+def _state_for(states: dict[str, _ScopedState], subject: str) -> _ScopedState:
+    state = states.get(subject)
+    if state is None:
+        state = _ScopedState(weakref.WeakKeyDictionary(), set(), {}, weakref.WeakKeyDictionary())
+        states[subject] = state
+    return state
+
+
+async def _reap_as(
+    runner: Any,
+    sessions: Any,
+    created: set[str],
+    reap_failures: dict[str, int],
+) -> None:
+    live = set(sessions.values())
+    for session_id in created - live:
+        if session_id not in created:
+            continue
+        created.discard(session_id)
+        try:
+            # The principal proxy rewrites this user id to the token subject.
+            await runner.session_service.delete_session(
+                app_name=runner.app_name,
+                user_id=_MCP_USER_ID,
+                session_id=session_id,
+            )
+            reap_failures.pop(session_id, None)
+        except Exception:
+            attempts = reap_failures.get(session_id, 0) + 1
+            if attempts < _MAX_REAP_ATTEMPTS:
+                reap_failures[session_id] = attempts
+                created.add(session_id)
+            else:
+                reap_failures.pop(session_id, None)
+        except BaseException:
+            created.add(session_id)
+            raise
 
 
 def serve_agent(
@@ -40,6 +169,21 @@ def serve_agent(
     long-lived server.
     """
     from google.adk.tools.mcp_tool import to_mcp_server
+
+    if transport == "streamable-http" and oidc is not None:
+        tool_name = name or agent.name
+        return serve_many(
+            {tool_name: agent},
+            name=tool_name,
+            transport="streamable-http",
+            instructions=instructions,
+            runner_factory=(lambda _agent: runner) if runner is not None else None,
+            host=host,
+            port=port,
+            auth_token=auth_token,
+            allow_unauthenticated=allow_unauthenticated,
+            oidc=oidc,
+        )
 
     server = to_mcp_server(agent, name=name, runner=runner, instructions=instructions)
     if transport == "stdio":
@@ -104,34 +248,52 @@ def serve_many(
         reap = isinstance(runner.session_service, InMemorySessionService)
 
         # One session map per tool, so separate tools keep separate conversations.
-        sessions: Any = weakref.WeakKeyDictionary()
-        created: set[str] = set()
-        reap_failures: dict[str, int] = {}
-        locks: Any = weakref.WeakKeyDictionary()
+        anonymous_state = _ScopedState(
+            weakref.WeakKeyDictionary(), set(), {}, weakref.WeakKeyDictionary()
+        )
+        state_by_subject: dict[str, _ScopedState] = {}
 
         def _make_tool(
             _runner: Any,
-            _sessions: Any,
-            _created: set[str],
-            _reap_failures: dict[str, int],
-            _locks: Any,
+            _anonymous_state: _ScopedState,
+            _state_by_subject: dict[str, _ScopedState],
             _reap: bool,
         ) -> Callable[..., Any]:
             async def _tool(request: str, ctx: Context[ServerSession, Any]) -> list[Any]:
+                principal = _principal_from_ctx(ctx)
+                if principal is None:
+                    state = _anonymous_state
+                    scoped_runner = _runner
+                else:
+                    state = _state_for(_state_by_subject, principal.subject)
+                    scoped_runner = _PrincipalRunner(_runner, principal)
                 if _reap:
-                    await _reap_orphaned_sessions(_runner, _sessions, _created, _reap_failures)
+                    if principal is None:
+                        await _reap_orphaned_sessions(
+                            _runner,
+                            state.sessions,
+                            state.created,
+                            state.reap_failures,
+                        )
+                    else:
+                        await _reap_as(
+                            scoped_runner,
+                            state.sessions,
+                            state.created,
+                            state.reap_failures,
+                        )
                 return await _run_agent(
-                    _runner,
+                    scoped_runner,
                     request,
                     ctx,
-                    _sessions,
-                    _created if _reap else None,
-                    _locks,
+                    state.sessions,
+                    state.created if _reap else None,
+                    state.locks,
                 )
 
             return _tool
 
-        tool_fn = _make_tool(runner, sessions, created, reap_failures, locks, reap)
+        tool_fn = _make_tool(runner, anonymous_state, state_by_subject, reap)
         tool_fn.__name__ = f"call_{tool_name}"
         description = agent.description or f"Run the {tool_name} agent."
 

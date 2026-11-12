@@ -1,0 +1,46 @@
+SLICE-043 MCP principal 注入
+日期: 2026-11-12
+状态: gated
+
+反例红（实现前，由实现代理运行）
+--------------------------------
+$ .venv/Scripts/python.exe -m pytest tests/test_mcp_principal.py -q
+tests/test_mcp_principal.py:10: in <module>
+    from adk_agent.mcp.server import (
+E   ImportError: cannot import name '_PrincipalRunner' from 'adk_agent.mcp.server'
+1 error in 1.52s
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_mcp_principal.py -q
+8 passed in 1.66s
+
+$ .venv/Scripts/python.exe -m pytest -q
+458 passed, 2 skipped in 37.95s
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实 MCP 验证
+-------------
+假 LLM 返回 "hello"。RecordingSessionService 记录每次 create_session 的 user_id 和 state。
+本地 JWKS，两个 RS256 token，主体分别是 alice 和 bob。MCP 客户端用各自 token
+调用同一个 agent 工具。
+
+alice call: ['hello']
+bob call: ['hello']
+session: alice alice
+session: bob bob
+
+每条会话记录的 user_id 是 token 的 subject，`state.principal.subject` 与之一致。
+说明主体已进入 ADK 运行和会话归属，且不同主体不共享会话。

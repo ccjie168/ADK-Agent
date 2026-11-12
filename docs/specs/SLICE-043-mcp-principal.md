@@ -1,6 +1,6 @@
 # SLICE-043 MCP principal 注入
 
-状态: in_progress
+状态: gated
 依据: ADR-0002 第 7 条，ADR-0007，SLICE-042
 
 ## 意图（要什么，不写怎么写）
@@ -48,22 +48,22 @@ _PrincipalSessionService:
 
 ## 完成判据（可执行）
 
-- [ ] 从 ctx 读到 principal -> `tests/test_mcp_principal.py::test_principal_from_ctx`
-- [ ] ctx 没有请求时返回 None -> `tests/test_mcp_principal.py::test_principal_from_ctx_without_request`
-- [ ] runner 代理把 user_id 换成 subject -> `tests/test_mcp_principal.py::test_runner_rewrites_user_id`
-- [ ] 会话服务把 user_id 换成 subject -> `tests/test_mcp_principal.py::test_session_service_rewrites_user_id`
-- [ ] 创建会话写入 principal state -> `tests/test_mcp_principal.py::test_create_session_injects_principal_state`
-- [ ] 删除会话用 subject -> `tests/test_mcp_principal.py::test_delete_session_uses_subject`
-- [ ] 清理孤儿会话用 subject -> `tests/test_mcp_principal.py::test_reap_uses_subject`
-- [ ] 同一 subject 复用会话，不同 subject 不共享 -> `tests/test_mcp_principal.py::test_sessions_are_scoped_by_subject`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 从 ctx 读到 principal -> `tests/test_mcp_principal.py::test_principal_from_ctx`
+- [x] ctx 没有请求时返回 None -> `tests/test_mcp_principal.py::test_principal_from_ctx_without_request`
+- [x] runner 代理把 user_id 换成 subject -> `tests/test_mcp_principal.py::test_runner_rewrites_user_id`
+- [x] 会话服务把 user_id 换成 subject -> `tests/test_mcp_principal.py::test_session_service_rewrites_user_id`
+- [x] 创建会话写入 principal state -> `tests/test_mcp_principal.py::test_create_session_injects_principal_state`
+- [x] 删除会话用 subject -> `tests/test_mcp_principal.py::test_delete_session_uses_subject`
+- [x] 清理孤儿会话用 subject -> `tests/test_mcp_principal.py::test_reap_uses_subject`
+- [x] 同一 subject 复用会话，不同 subject 不共享 -> `tests/test_mcp_principal.py::test_sessions_are_scoped_by_subject`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.mcp.server import _PrincipalRunner` -> 当前 `ImportError`
-- [ ] 反例 2：OIDC 模式下 agent 运行仍用 `mcp_user` -> 当前确实如此，期望用 token subject
-- [ ] 反例 3：两个 subject 共用一个连接 -> 当前共享会话，期望隔离
-- [ ] 反例 4：会话 state 里没有 `principal` -> 当前没有，期望有
+- [x] 反例 1：`from adk_agent.mcp.server import _PrincipalRunner` -> 当前 `ImportError`
+- [x] 反例 2：OIDC 模式下 agent 运行仍用 `mcp_user` -> 当前确实如此，期望用 token subject
+- [x] 反例 3：两个 subject 共用一个连接 -> 当前共享会话，期望隔离
+- [x] 反例 4：会话 state 里没有 `principal` -> 当前没有，期望有
 
 ## 契约（如涉及对外接口）
 
@@ -89,5 +89,5 @@ _PrincipalSessionService:
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-043-mcp-principal.txt`，代理类不存在，1 个用例收集失败
+- 实现后绿: 同文件，8 个目标测试通过，全量 458 passed 2 skipped，`check.py --full` ALL PASS，另做真实 MCP 双主体验证
