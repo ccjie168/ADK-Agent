@@ -6,7 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .policy import DataClass
+from .invocation import Invocation
+from .policy import DataClass, ToolGrant
 
 
 class ToolRequest(BaseModel):
@@ -21,3 +22,11 @@ class ToolResponse(BaseModel):
 
     output: Any
     data_classes: list[DataClass] = Field(default_factory=list)
+
+
+class ToolGatewayRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    invocation: Invocation
+    request: ToolRequest
+    grants: list[ToolGrant] = Field(default_factory=list)

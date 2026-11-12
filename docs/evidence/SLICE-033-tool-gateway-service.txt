@@ -1,0 +1,79 @@
+SLICE-033 工具网关独立部署
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/tools/test_tool_service.py tests/tools/test_http_tool_gateway.py -q
+ModuleNotFoundError: No module named 'adk_agent.tools.http_gateway'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/tools/test_tool_service.py tests/tools/test_http_tool_gateway.py -q
+14 passed in 2.19s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+325 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+325 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实服务验证
+------------
+启动:
+$ ADK_MCP_AUTH_TOKEN=secret adk_agent serve-tool-gateway --tools tools.py --port 8097 --audit-file audit.jsonl
+
+GET /healthz -> 200 {"status": "ok"}
+
+HttpToolGateway 调用:
+ok: 5 []
+no grant: ToolDenied: tool gateway denied the call
+approval: ToolDenied: tool gateway denied the call
+bad token: tool gateway returned status 401
+
+audit.jsonl:
+{"action":"tool.call","target":"add","status":"ok",...}
+{"action":"tool.call","target":"add","status":"denied","error_code":"policy_denied",...}
+{"action":"tool.call","target":"write_report","status":"denied","error_code":"approval_required",
+ "data_classes":["confidential"],...}
+
+说明
+----
+- ToolGatewayRequest 是 invocation + request + grants。响应复用 ToolResponse。
+- 服务端用 GrantPolicyEngine(call.grants) 判定，调用方不自行放行。
+- 只有 /healthz 开放。/v1/invoke 需要 bearer token，非回环无 token 抛 ValueError。
+- 拒绝和未注册工具返回 403 tool_denied；执行失败 502 tool_call_failed。
+- 输出不可 JSON 序列化返回 502 tool_output_invalid。
+- HttpToolGateway 从 policy.grants 取授权；其他 policy 引擎直接抛 ToolGatewayError。
+- CLI serve-tool-gateway --tools 接受 callable 或 ToolSpec 的映射。
+- tool_gateway_request.schema.json 已生成。cli.md 已更新。
+- ADR-0004 的拆分形态在本切片复用，没有新 ADR。
+
+已知边界
+--------
+- 服务信任调用方送来的 grants，per-caller 权威要等身份映射。
+- 工具输出必须 JSON 可序列化。不可序列化时工具已执行、审计为 ok，HTTP 返回 502。
+- 没有请求大小上限和速率限制。
+- 没有工具注册表服务发现，工具在启动时由文件注册。
+- JSONL 审计单进程，没有轮转。
+- ADK 工具守卫（install_tool_guard）还没切到 HTTP 网关。

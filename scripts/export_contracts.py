@@ -26,6 +26,7 @@ from adk_agent.core import (  # noqa: E402
     OrchestrationPlan,
     Principal,
     SupervisorDecision,
+    ToolGatewayRequest,
 )
 
 CONTRACTS = ROOT / "docs" / "contracts"
@@ -44,6 +45,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "eval_report.schema.json": EvalReport,
     "canary_policy.schema.json": CanaryPolicy,
     "model_gateway_request.schema.json": ModelGatewayRequest,
+    "tool_gateway_request.schema.json": ToolGatewayRequest,
 }
 
 

@@ -109,7 +109,7 @@ M4 出口证据见 `docs/evidence/M4-milestone.txt`。
 ## M5 切片
 
 - SLICE-032 模型网关独立部署：跨进程契约、HTTP 服务、鉴权、JSONL 审计、`HttpModelGateway` 客户端。已完成。
-- 工具网关独立部署。
+- SLICE-033 工具网关独立部署：grants 契约、HTTP 服务、鉴权、客户端、工具文件加载。已完成。
 - 运行时 worker 横向扩容。
 - 审计管线独立部署。
 

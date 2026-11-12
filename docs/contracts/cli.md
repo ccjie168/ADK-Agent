@@ -49,6 +49,16 @@
 - 策略拒绝返回 403 `{"error":"model_denied"}`，provider 失败返回 502 `{"error":"model_call_failed"}`。
 - 给了 `--audit-file` 时每个 `model.call` 事件追加一行 JSON。
 
+## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH]`
+
+把工具网关作为独立服务运行。
+
+- `FILE` 定义 `tools` 映射，值是 callable 或 `ToolSpec`。
+- 只有 `/healthz` 开放。`POST /v1/invoke` 需要 bearer token，非回环地址没 token 拒绝启动。
+- 授权以 grants 过线，服务端用 `GrantPolicyEngine` 判定。拒绝和未注册工具返回 403 `{"error":"tool_denied"}`。
+- 执行失败返回 502 `{"error":"tool_call_failed"}`，输出不可 JSON 序列化返回 502 `{"error":"tool_output_invalid"}`。
+- 给了 `--audit-file` 时每个 `tool.call` 事件追加一行 JSON。
+
 ## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
 
 把一个 agent 暴露成 A2A 端点。

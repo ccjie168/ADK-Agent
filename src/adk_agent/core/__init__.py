@@ -45,7 +45,7 @@ from .ports import (
 )
 from .quota import QuotaExceeded, QuotaPolicy
 from .rbac import AccessPolicy, RoleBinding
-from .tool import ToolRequest, ToolResponse
+from .tool import ToolGatewayRequest, ToolRequest, ToolResponse
 
 __all__ = [
     "AccessPolicy",
@@ -92,6 +92,7 @@ __all__ = [
     "TemplateSource",
     "TraceNode",
     "ToolGateway",
+    "ToolGatewayRequest",
     "ToolGrant",
     "ToolRequest",
     "ToolResponse",

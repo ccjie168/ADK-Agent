@@ -11,7 +11,7 @@ import sys
 import uuid
 from functools import partial
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 Transport = Literal["stdio", "streamable-http"]
 
@@ -52,6 +52,25 @@ def _load_agents(path: str) -> dict:
         if candidate is not None:
             return {candidate.name: candidate}
     raise SystemExit(f"no `agents` dict or `agent`/`root_agent` found in {path}")
+
+
+def _load_tools(path: str) -> Any:
+    """Load a ``tools`` mapping of tool_id to callable or ``ToolSpec``."""
+    from .tools import FunctionRegistry, ToolSpec
+
+    module = _load_module(path)
+    tools = getattr(module, "tools", None)
+    if not isinstance(tools, dict) or not tools:
+        raise SystemExit(f"no `tools` mapping found in {path}")
+    specs = []
+    for tool_id, value in tools.items():
+        if isinstance(value, ToolSpec):
+            specs.append(value)
+        elif callable(value):
+            specs.append(ToolSpec(tool_id=tool_id, handler=value))
+        else:
+            raise SystemExit(f"tool {tool_id!r} is not callable or a ToolSpec")
+    return FunctionRegistry(specs)
 
 
 def _scaffold(name: str, template: str = "minimal", tenant: str = "local") -> None:
@@ -174,6 +193,17 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_gateway.add_argument("--audit-file", default=None, help="append JSONL audit events here")
     _add_http_args(p_gateway)
+
+    p_tools = sub.add_parser(
+        "serve-tool-gateway", help="serve the tool gateway as a standalone service"
+    )
+    p_tools.add_argument(
+        "--tools",
+        required=True,
+        help="path to a Python file defining a `tools` mapping (tool_id -> callable or ToolSpec)",
+    )
+    p_tools.add_argument("--audit-file", default=None, help="append JSONL audit events here")
+    _add_http_args(p_tools)
 
     p_console = sub.add_parser("console", help="serve a private web console for agents")
     p_console.add_argument(
@@ -321,6 +351,24 @@ def main(argv: list[str] | None = None) -> None:
         sink = JsonlAuditSink(args.audit_file) if args.audit_file else None
         app = build_model_gateway_app(
             PolicyModelGateway(providers, audit=sink),
+            host=args.host,
+            auth_token=_auth_token(args),
+            allow_unauthenticated=args.allow_unauthenticated,
+        )
+
+        import uvicorn
+
+        uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+    elif args.cmd == "serve-tool-gateway":
+        from .audit import JsonlAuditSink
+        from .mcp.http import resolve_port
+        from .tools import FunctionToolGateway
+        from .tools.service import build_tool_gateway_app
+
+        registry = _load_tools(args.tools)
+        sink = JsonlAuditSink(args.audit_file) if args.audit_file else None
+        app = build_tool_gateway_app(
+            FunctionToolGateway(registry, audit=sink),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
