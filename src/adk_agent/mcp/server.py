@@ -9,10 +9,13 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from google.adk.dependencies._mcp import Context, ServerSession
 
+from ..core import Principal
+from .runtime import wrap_runner
+
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
 
-    from ..core import IdentityProvider, Principal
+    from ..core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
 
 _MCP_USER_ID = "mcp_user"
 _MAX_REAP_ATTEMPTS = 3
@@ -155,6 +158,9 @@ def serve_agent(
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
+    audit: AuditSink | None = None,
+    quota: QuotaManager | None = None,
+    quota_config: QuotaConfig | None = None,
 ) -> Any:
     """Expose one ADK agent as an MCP server and run it (blocking).
 
@@ -170,12 +176,14 @@ def serve_agent(
     """
     from google.adk.tools.mcp_tool import to_mcp_server
 
-    if transport == "streamable-http" and oidc is not None:
+    if (transport == "streamable-http" and oidc is not None) or (
+        audit is not None or quota is not None or quota_config is not None
+    ):
         tool_name = name or agent.name
         return serve_many(
             {tool_name: agent},
             name=tool_name,
-            transport="streamable-http",
+            transport=transport,
             instructions=instructions,
             runner_factory=(lambda _agent: runner) if runner is not None else None,
             host=host,
@@ -183,6 +191,9 @@ def serve_agent(
             auth_token=auth_token,
             allow_unauthenticated=allow_unauthenticated,
             oidc=oidc,
+            audit=audit,
+            quota=quota,
+            quota_config=quota_config,
         )
 
     server = to_mcp_server(agent, name=name, runner=runner, instructions=instructions)
@@ -214,6 +225,9 @@ def serve_many(
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
+    audit: AuditSink | None = None,
+    quota: QuotaManager | None = None,
+    quota_config: QuotaConfig | None = None,
 ) -> Any:
     """Expose several ADK agents as separate MCP tools in one server.
 
@@ -258,6 +272,10 @@ def serve_many(
             _anonymous_state: _ScopedState,
             _state_by_subject: dict[str, _ScopedState],
             _reap: bool,
+            _agent_name: str,
+            _audit: AuditSink | None,
+            _quota: QuotaManager | None,
+            _quota_config: QuotaConfig | None,
         ) -> Callable[..., Any]:
             async def _tool(request: str, ctx: Context[ServerSession, Any]) -> list[Any]:
                 principal = _principal_from_ctx(ctx)
@@ -282,6 +300,20 @@ def serve_many(
                             state.created,
                             state.reap_failures,
                         )
+                run_principal = principal or Principal(
+                    tenant="local", subject=_MCP_USER_ID, kind="service"
+                )
+                policy = _quota_config.tenants.get(run_principal.tenant) if _quota_config else None
+                if _audit is not None or _quota is not None:
+                    scoped_runner = wrap_runner(
+                        scoped_runner,
+                        agent_name=_agent_name,
+                        principal=run_principal,
+                        input_text=request,
+                        audit=_audit,
+                        quota=_quota,
+                        quota_policy=policy,
+                    )
                 return await _run_agent(
                     scoped_runner,
                     request,
@@ -293,7 +325,16 @@ def serve_many(
 
             return _tool
 
-        tool_fn = _make_tool(runner, anonymous_state, state_by_subject, reap)
+        tool_fn = _make_tool(
+            runner,
+            anonymous_state,
+            state_by_subject,
+            reap,
+            agent.name,
+            audit,
+            quota,
+            quota_config,
+        )
         tool_fn.__name__ = f"call_{tool_name}"
         description = agent.description or f"Run the {tool_name} agent."
 

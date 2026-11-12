@@ -5,6 +5,13 @@
 """
 
 from .client import toolset_from_config
+from .runtime import AuditedMcpRunner, wrap_runner
 from .server import serve_agent, serve_many
 
-__all__ = ["toolset_from_config", "serve_agent", "serve_many"]
+__all__ = [
+    "AuditedMcpRunner",
+    "serve_agent",
+    "serve_many",
+    "toolset_from_config",
+    "wrap_runner",
+]

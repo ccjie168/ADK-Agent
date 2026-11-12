@@ -1,0 +1,59 @@
+SLICE-046 MCP runtime audit and quota evidence
+date: 2026-11-12T22:43:32Z
+
+== red: new tests before implementation ==
+
+=================================== ERRORS ====================================
+_________________ ERROR collecting tests/test_mcp_runtime.py __________________
+ImportError while importing test module 'C:\AI_System\ADK-Agent\tests\test_mcp_runtime.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Python314\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_mcp_runtime.py:13: in <module>
+    from adk_agent.mcp.runtime import AuditedMcpRunner
+E   ModuleNotFoundError: No module named 'adk_agent.mcp.runtime'
+=========================== short test summary info ===========================
+ERROR tests/test_mcp_runtime.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 2.09s
+
+== red: counterexamples 2 and 3, MCP commands lack the flags ==
+                 {serve,serve-many,serve-a2a,serve-model-gateway,serve-tool-gateway,serve-audit,verify-audit,console,new,validate,publish,eval} ...
+adk-agent: error: unrecognized arguments: --audit-file a.jsonl
+exit=0
+                 {serve,serve-many,serve-a2a,serve-model-gateway,serve-tool-gateway,serve-audit,verify-audit,console,new,validate,publish,eval} ...
+adk-agent: error: unrecognized arguments: --quota-config q.json
+exit=0
+
+== red: counterexample 4 and 5, no wrapper in serve_many ==
+serve_agent runtime params: []
+serve_many runtime params: []
+
+== red: corrected exit codes ==
+adk-agent: error: unrecognized arguments: --audit-file a.jsonl
+exit=2
+adk-agent: error: unrecognized arguments: --quota-config q.json
+exit=2
+
+== green: targeted tests ==
+tests/test_mcp_runtime.py tests/test_mcp_runtime_wiring.py tests/test_cli_mcp_runtime.py
+tests/test_mcp_principal.py tests/test_mcp_oidc.py -> 33 passed in 2.63s
+
+Note: the first run of tests/test_mcp_runtime_wiring.py::test_serve_many_wraps_tool
+unpacked one audit event after two tool calls. The implementation correctly writes
+"ok" then "denied"; the test now asserts both events.
+
+== live: real MCP HTTP server with audit and quota ==
+serve --transport streamable-http --audit-file /tmp/adk-046-live/audit.jsonl
+  --quota-config /tmp/adk-046-live/quota.json   (tenant local, max_runs=1)
+GET /healthz -> {"status":"ok"}
+call 1 minimal_agent -> isError=False text="ok"     (real model reply)
+call 2 minimal_agent -> isError=True text="Error executing tool minimal_agent"
+audit line 1 -> agent.run local minimal_agent@dev ok None args_hash=7c6ed24f5437 result_hash=2689367b205c
+audit line 2 -> agent.run local minimal_agent@dev denied quota_exceeded args_hash=7c6ed24f5437
+The denied call never reached the model.
+
+== gate ==
+check.py --fast -> ALL PASS (517 passed, 9 skipped), 7 steps

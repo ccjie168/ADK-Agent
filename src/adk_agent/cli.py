@@ -138,6 +138,23 @@ def _add_runtime_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_audit_quota_args(parser: argparse.ArgumentParser) -> None:
+    audit = parser.add_mutually_exclusive_group()
+    audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
+    audit.add_argument(
+        "--audit-url", default=None, help="send audit events to this audit service URL"
+    )
+    parser.add_argument(
+        "--audit-token-env",
+        default="ADK_AUDIT_AUTH_TOKEN",
+        help=(
+            "env var holding the audit bearer token (only used with --audit-url; "
+            "never pass tokens on the command line)"
+        ),
+    )
+    parser.add_argument("--quota-config", default=None, help="JSON QuotaConfig file")
+
+
 def _auth_token(args: argparse.Namespace) -> str | None:
     env_name = getattr(args, "auth_token_env", None)
     return os.environ.get(env_name) if env_name else None
@@ -177,7 +194,7 @@ def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
     return None
 
 
-def _console_quota(
+def _quota_settings(
     args: argparse.Namespace,
 ) -> tuple[QuotaManager | None, QuotaConfig | None]:
     path = getattr(args, "quota_config", None)
@@ -225,6 +242,7 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     _add_runtime_args(p_serve)
+    _add_audit_quota_args(p_serve)
 
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
     p_many.add_argument(
@@ -248,6 +266,7 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     _add_runtime_args(p_many)
+    _add_audit_quota_args(p_many)
 
     p_a2a = sub.add_parser("serve-a2a", help="serve an ADK agent over A2A (needs a2a-sdk)")
     p_a2a.add_argument("--agent", required=True, help="path to a Python file defining `agent`")
@@ -451,6 +470,8 @@ def main(argv: list[str] | None = None) -> None:
 
         from .factory import build_runner
 
+        audit = _audit_sink(args)
+        quota, quota_config = _quota_settings(args)
         serve_agent(
             agent,
             name=name,
@@ -461,6 +482,9 @@ def main(argv: list[str] | None = None) -> None:
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
             runner=build_runner(agent, args.session_db),
+            audit=audit,
+            quota=quota,
+            quota_config=quota_config,
         )
     elif args.cmd == "serve-many":
         from .factory import build_runner
@@ -475,6 +499,8 @@ def main(argv: list[str] | None = None) -> None:
         runner_factory = (
             partial(build_runner, session_db=args.session_db) if args.session_db else None
         )
+        audit = _audit_sink(args)
+        quota, quota_config = _quota_settings(args)
         serve_many(
             agents,
             name=args.name,
@@ -485,6 +511,9 @@ def main(argv: list[str] | None = None) -> None:
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
             runner_factory=runner_factory,
+            audit=audit,
+            quota=quota,
+            quota_config=quota_config,
         )
     elif args.cmd == "serve-a2a":
         from .a2a import A2aUnavailable, serve_a2a
@@ -582,7 +611,7 @@ def main(argv: list[str] | None = None) -> None:
         from .registry import FileAgentRegistry, FileEvalReportStore
 
         oidc = _identity_provider(args)
-        quota, quota_config = _console_quota(args)
+        quota, quota_config = _quota_settings(args)
         approvals = None
         if args.approval_dir:
             from .approvals import FileApprovalInbox
