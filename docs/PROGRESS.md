@@ -2,12 +2,12 @@
 
 更新日期: 2026-11-12
 分支: master
-最新提交: `4842043` feat(console): authenticate with OIDC and scope reads by tenant (SLICE-040)
+最新提交: `6c775b2` feat(services): verify OIDC tokens and bind principals (SLICE-041)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
 
-企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器和控制台 OIDC 接线五个切片。本地门禁全绿。可做内部试点，未达对外多租户生产标准。
+企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线和服务面 OIDC 接线六个切片。本地门禁全绿。可做内部试点，未达对外多租户生产标准。
 
 ## 里程碑
 
@@ -40,6 +40,7 @@
 | SLICE-038 | 只读运营视图（注册表、run、会话、评测） | `3354ebe` |
 | SLICE-039 | OIDC 身份解析器核心 | `8673e7c` |
 | SLICE-040 | OIDC 控制台接线与租户隔离 | `4842043` |
+| SLICE-041 | OIDC 服务面接线与 principal 绑定 | `6c775b2` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
@@ -47,8 +48,8 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 427 passed, 2 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 427 passed, 2 skipped，9 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 441 passed, 2 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 441 passed, 2 skipped，9 步全 PASS
 - 本轮未推送，CI 未运行。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
 两个 skip 是：Postgres 会话用例（需 `TEST_POSTGRES_URL`）、以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。CI 不装 `a2a-sdk`，另有 4 条 A2A 用例按条件跳过。
@@ -84,7 +85,7 @@ python -m adk_agent console --agents examples/minimal/agent.py \
 
 按优先级：
 
-1. OIDC 接线。解析器 SLICE-039 和控制台接线 SLICE-040 已完成。模型网关、工具网关、审计服务和 MCP HTTP 还没接上（SLICE-041）。
+1. MCP HTTP 的 OIDC 接线（SLICE-042）。解析器、控制台、模型网关、工具网关和审计服务都已接上。MCP HTTP 还差认证和每次调用的 principal 注入。
 2. 共享配额。配额仍是进程内，多副本各自计数。
 3. 控制台审批 UI 与编排计划可视化。
 4. DB 行级隔离、审计轮转和签名、指标与分布式追踪、限流熔断、备份恢复、压力与长稳测试。
