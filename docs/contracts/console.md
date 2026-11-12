@@ -6,6 +6,18 @@
 
 OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份只能读自己租户的注册表，越权返回 403 `{"error":"tenant_forbidden"}`。策略更新仍由 `policy.update` 的 RBAC 判定，角色来自 token。
 
+## `GET /metrics` -> `text/plain`
+
+Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
+
+- `adk_agent_runs_total{source,tenant,agent,status}`：agent 运行计数，`status` 是 `ok`、`error` 或 `denied`。
+- `adk_agent_run_duration_seconds`：summary，只有 `_sum` 和 `_count`。
+- `adk_agent_quota_denials_total{tenant,limit}`：配额拒绝计数，`limit` 是 `max_runs` 或 `max_concurrent`。
+- `adk_agent_plan_runs_total{tenant,plan,status}`：计划运行计数，由 `PlanExecutor` 注入同一个注册表时才出现。
+- `adk_plan_duration_seconds`：计划耗时 summary。
+
+每个控制台进程各自计数，不做跨副本聚合。MCP 和网关的 `/metrics` 不在本契约内。
+
 ## `GET /api/agents` -> `[{name, description}]`
 
 ## `POST /api/chat`
@@ -15,7 +27,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 
 租户配额用尽时返回 429 `{"error":"quota_exceeded"}`，并写一条 `agent.run` 的 `denied` 审计，`error_code` 是 `quota_exceeded`。配额在模型调用前检查，超限的请求不会触发模型。配额后端不可用返回 503 `{"error":"quota_unavailable"}`。
 
-可选请求头 `X-Trace-Id`，必须匹配 `^[A-Za-z0-9._-]{1,128}$`，否则自动生成。
+可选请求头 `X-Trace-Id`，必须匹配 `^[A-Za-z0-9._-]{1,128}$`。没有合法值时读 `traceparent` 的 trace-id，规则见 `tracing.md`。两者都没有时自动生成。
 
 ## `POST /api/chat/stream`
 

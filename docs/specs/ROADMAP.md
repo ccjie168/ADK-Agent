@@ -137,6 +137,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-044 共享配额：`QuotaConfig`、Postgres 配额后端，控制台按租户限流。已完成。
 - SLICE-045 审批收件箱与计划可视化（UI-2）：目录收件箱、审批接口、Approvals 和 Plans 面板。已完成。
 - SLICE-046 MCP 运行路径审计与配额：包装 `_run_agent` 的 runner，补 `agent.run` 审计和租户配额。已完成。
+- SLICE-047 指标与 trace 传播：`MetricsRegistry`、控制台 `/metrics`、`traceparent` 入站和 `X-Trace-Id` 出站。进行中。
 
 ## 完成定义
 

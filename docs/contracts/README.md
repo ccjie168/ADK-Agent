@@ -24,5 +24,6 @@
 - `quota_config.schema.json`：`QuotaConfig`，按租户配置配额策略。
 - `approval_request.schema.json`：`ApprovalRequest`，待人工审批的计划步骤。
 - `approval_decision.schema.json`：`ApprovalDecision`，审批人的决定。
+- `tracing.md`：入站 trace 头和出站 `X-Trace-Id` 的传播规则。
 
 `PublishedAgent` 不是独立契约，它是注册表对 `AgentManifest` 加 digest、签名和发布时间的包装。

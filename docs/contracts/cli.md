@@ -110,6 +110,7 @@
 - `--quota-config` 见 `quota_config.schema.json`，只有列出的租户受限制。`QUOTA_URL` 选择共享后端，规则同控制台。缺 `asyncpg` 时退出 1。
 - `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。审计 token 规则同模型网关。
 - 配置了审计或配额时，`serve` 改用 `serve-many` 的单 agent 形态，以获得同样的运行包装。
+- 审计的 `trace_id` 取 `traceparent` 的 trace-id，规则见 `tracing.md`。没有时每次调用新生成。
 - `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
 
 ## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
