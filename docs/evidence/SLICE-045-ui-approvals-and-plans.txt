@@ -1,0 +1,65 @@
+SLICE-045 approval inbox and plan view evidence
+date: 2026-11-12T22:07:02Z
+
+== red: new tests before implementation ==
+__________________ ERROR collecting tests/test_approvals.py ___________________
+ImportError while importing test module 'C:\AI_System\ADK-Agent\tests\test_approvals.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Python314\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_approvals.py:10: in <module>
+    from adk_agent.approvals import (
+E   ModuleNotFoundError: No module named 'adk_agent.approvals'
+______________ ERROR collecting tests/test_console_approvals.py _______________
+ImportError while importing test module 'C:\AI_System\ADK-Agent\tests\test_console_approvals.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Python314\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_console_approvals.py:11: in <module>
+    from adk_agent.approvals import FileApprovalInbox
+E   ModuleNotFoundError: No module named 'adk_agent.approvals'
+=========================== short test summary info ===========================
+ERROR tests/test_approvals.py
+ERROR tests/test_console_approvals.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!
+2 errors in 1.77s
+
+== red: counterexample 2, console does not accept --approval-dir ==
+usage: adk-agent [-h]
+                 {serve,serve-many,serve-a2a,serve-model-gateway,serve-tool-gateway,serve-audit,verify-audit,console,new,validate,publish,eval} ...
+adk-agent: error: unrecognized arguments: --approval-dir C:/Users/Jie/AppData/Local/Temp/inbox
+exit=2
+
+== red: counterexamples 3 and 4, routes are missing ==
+/api/approvals 404 {'detail': 'Not Found'}
+/api/plans 404 {'detail': 'Not Found'}
+
+== green: targeted tests ==
+tests/test_approvals.py tests/test_console_approvals.py tests/test_console_plans.py
+tests/test_console.py tests/orchestration/test_approval.py -> 36 passed in 2.59s
+
+== live: cross-process approval ==
+console on 127.0.0.1:8085 with --approval-dir /tmp/adk-045-live/inbox
+GET /api/approvals -> [{"request_id":"live-req-1","step_id":"deploy","input":"deploy prod",...}]
+waiter process (FileApprovalInbox.request) -> decision approved=True approver=console_user
+audit -> approval.decide live-req-1 ok console_user args_hash=None
+browser (Edge headless + CDP) -> tabs Chat/Registry/Runs/Sessions/Approvals/Plans/Policy
+  approvals row: live-req-1 deploy deployer touches production
+  row detail contains "deploy prod"; click Approve -> message "decided live-req-2"; rows 0; Plans tab active
+
+== live: real PlanExecutor waits for the console ==
+executor process submitted request 82f6e2a75aeb443598e7c7c7bbba5201 for step deploy
+POST /api/approvals/82f6e2a75aeb443598e7c7c7bbba5201 -> 200 approved=True approver=console_user reason="ship it"
+executor result -> text=deployed outputs={'deploy': 'deployed'} calls=['deploy prod']
+
+== live: decision is immutable and errors are fixed ==
+second POST live-req-2 -> HTTP 409 {"error":"approval_already_decided"}
+POST missing -> HTTP 404 {"error":"approval_not_found"}
+POST bad$id -> HTTP 400 {"error":"unsafe_request_id"}
+
+== gate ==
+check.py --fast -> ALL PASS (501 passed, 9 skipped), 7 steps

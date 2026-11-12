@@ -23,6 +23,7 @@ from google.adk.tools import BaseTool
 from google.adk.tools.base_toolset import BaseToolset
 from pydantic import ValidationError
 
+from .approvals import ApprovalConflict, ApprovalNotFound, FileApprovalInbox
 from .audit import ListAuditSink
 from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
@@ -117,6 +118,8 @@ _INDEX_HTML = """<!doctype html>
   <button id="tab-registry" class="tab" data-tab="registry">Registry</button>
   <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
   <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
+  <button id="tab-approvals" class="tab" data-tab="approvals">Approvals</button>
+  <button id="tab-plans" class="tab" data-tab="plans">Plans</button>
   <button id="tab-policy" class="tab" data-tab="policy">Policy</button>
 </div>
 
@@ -178,6 +181,36 @@ _INDEX_HTML = """<!doctype html>
   <div id="selected-session"><small></small></div>
 </section>
 
+<section id="approvals" class="panel">
+  <div class="row">
+    <button id="refresh-approvals">Refresh</button>
+  </div>
+  <div id="approvals-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>request</th><th>step</th><th>agent</th><th>reason</th><th>requested</th></tr></thead>
+    <tbody id="approvals-body"></tbody>
+  </table>
+  <h3>Request</h3>
+  <pre id="approval-detail"></pre>
+  <div class="row">
+    <button id="approve">Approve</button>
+    <button id="deny">Deny</button>
+  </div>
+</section>
+
+<section id="plans" class="panel">
+  <div class="row">
+    <button id="refresh-plans">Refresh</button>
+  </div>
+  <div id="plans-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>plan</th><th>tenant</th><th>status</th><th>steps</th><th>approvals</th><th>started</th></tr></thead>
+    <tbody id="plans-body"></tbody>
+  </table>
+  <h3>Plan trace</h3>
+  <div id="plan-trace"></div>
+</section>
+
 <section id="policy" class="panel">
   <h3>Policies</h3>
   <textarea id="policy" rows="12" spellcheck="false"></textarea>
@@ -190,8 +223,9 @@ _INDEX_HTML = """<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["chat", "registry", "runs", "sessions", "policy"];
+const TABS = ["chat", "registry", "runs", "sessions", "approvals", "plans", "policy"];
 let sessionId = null;
+let selectedApproval = null;
 const token = () => $("token").value.trim();
 $("token").value = sessionStorage.getItem("adk_token") || "";
 $("token").addEventListener("change", () => sessionStorage.setItem("adk_token", token()));
@@ -360,11 +394,89 @@ async function loadSessions() {
   }
 }
 
+async function loadApprovals() {
+  $("approvals-msg").textContent = "";
+  const body = $("approvals-body");
+  body.innerHTML = "";
+  const result = await getJson("/api/approvals");
+  if (!result.ok) {
+    $("approvals-msg").textContent = result.status === 404
+      ? "approvals not configured"
+      : "approvals unavailable (" + result.status + ")";
+    return;
+  }
+  for (const request of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(String(request.request_id).slice(0, 16)));
+    row.appendChild(cell(request.step_id));
+    row.appendChild(cell(request.agent_ref && request.agent_ref.id));
+    row.appendChild(cell(request.reason));
+    const requested = document.createElement("td");
+    requested.textContent = String(request.requested_at || "").replace("T", " ").slice(0, 19);
+    row.appendChild(requested);
+    row.addEventListener("click", () => {
+      selectedApproval = request.request_id;
+      $("approval-detail").textContent = JSON.stringify(request, null, 2);
+    });
+    body.appendChild(row);
+  }
+}
+
+async function decideApproval(approved) {
+  if (!selectedApproval) {
+    $("approvals-msg").textContent = "select a request first";
+    return;
+  }
+  const r = await fetch("/api/approvals/" + encodeURIComponent(selectedApproval), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() },
+    body: JSON.stringify({ approved: approved }),
+  });
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = null; }
+  if (!r.ok) {
+    $("approvals-msg").textContent = (data && data.error) ||
+      ("decision failed (" + r.status + ")");
+    return;
+  }
+  selectedApproval = null;
+  $("approval-detail").textContent = "";
+  await loadApprovals();
+  $("approvals-msg").textContent = "decided " + data.request_id;
+  loadAudit();
+}
+
+async function loadPlans() {
+  $("plans-msg").textContent = "";
+  const body = $("plans-body");
+  body.innerHTML = "";
+  const result = await getJson("/api/plans?limit=50");
+  if (!result.ok) {
+    $("plans-msg").textContent = "plans unavailable (" + result.status + ")";
+    return;
+  }
+  for (const plan of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(plan.plan_id));
+    row.appendChild(cell(plan.tenant));
+    row.appendChild(cell(plan.status));
+    row.appendChild(cell(plan.steps));
+    row.appendChild(cell(plan.approvals));
+    const started = document.createElement("td");
+    started.textContent = String(plan.started_at || "").replace("T", " ").slice(0, 19);
+    row.appendChild(started);
+    row.addEventListener("click", () => { showTab("plans"); loadTrace(plan.trace_id, "plan-trace"); });
+    body.appendChild(row);
+  }
+}
+
 async function connect() {
   await loadAgents();
   await loadTenants();
   await loadRuns();
   await loadSessions();
+  await loadApprovals();
+  await loadPlans();
   loadAudit();
 }
 
@@ -470,13 +582,14 @@ async function send() {
   }
 }
 
-async function loadTrace(traceId) {
+async function loadTrace(traceId, targetId) {
+  const boxId = targetId || "trace";
   const r = await fetch("/api/traces/" + encodeURIComponent(traceId), {
     headers: { Authorization: "Bearer " + token() },
   });
-  if (!r.ok) { $("trace").textContent = "trace unavailable (" + r.status + ")"; return; }
+  if (!r.ok) { $(boxId).textContent = "trace unavailable (" + r.status + ")"; return; }
   const data = await r.json();
-  const box = $("trace");
+  const box = $(boxId);
   box.innerHTML = "";
   if (!data.root) { box.textContent = "trace not found"; return; }
   const rootLine = document.createElement("div");
@@ -536,6 +649,10 @@ $("refresh").addEventListener("click", loadAudit);
 $("refresh-registry").addEventListener("click", loadRegistry);
 $("refresh-runs").addEventListener("click", loadRuns);
 $("refresh-sessions").addEventListener("click", loadSessions);
+$("refresh-approvals").addEventListener("click", loadApprovals);
+$("refresh-plans").addEventListener("click", loadPlans);
+$("approve").addEventListener("click", () => decideApproval(true));
+$("deny").addEventListener("click", () => decideApproval(false));
 $("load-policy").addEventListener("click", loadPolicy);
 $("save-policy").addEventListener("click", savePolicy);
 $("connect").addEventListener("click", connect);
@@ -671,6 +788,45 @@ def _summarize_runs(events: Iterable[AuditEvent], limit: int) -> list[dict]:
     return [summary for _, summary in summaries[:limit]]
 
 
+def _summarize_plans(events: Iterable[AuditEvent], limit: int) -> list[dict]:
+    limit = min(max(limit, 1), 200)
+    groups: dict[str, list[AuditEvent]] = {}
+    for event in events:
+        groups.setdefault(event.trace_id, []).append(event)
+
+    summaries: list[tuple[datetime, dict]] = []
+    for trace_id, group in groups.items():
+        runs = [event for event in group if event.action == "orchestration.run"]
+        if not runs:
+            continue
+        ordered = sorted(group, key=lambda event: event.timestamp)
+        latest = max(runs, key=lambda event: event.timestamp)
+        summaries.append(
+            (
+                ordered[-1].timestamp,
+                {
+                    "trace_id": trace_id,
+                    "plan_id": latest.target,
+                    "agent_id": latest.agent_ref.id,
+                    "tenant": latest.tenant,
+                    "status": latest.status,
+                    "error_code": latest.error_code,
+                    "started_at": ordered[0].timestamp.isoformat(),
+                    "last_at": ordered[-1].timestamp.isoformat(),
+                    "steps": sum(1 for event in group if event.action == "orchestration.step"),
+                    "approvals": sum(
+                        1 for event in group if event.action == "orchestration.approval"
+                    ),
+                    "latency_ms": latest.latency_ms,
+                    "cost_usd": latest.cost_usd,
+                },
+            )
+        )
+
+    summaries.sort(key=lambda item: item[0], reverse=True)
+    return [summary for _, summary in summaries[:limit]]
+
+
 def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
@@ -732,6 +888,7 @@ def build_console_app(
     oidc: IdentityProvider | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
+    approvals: FileApprovalInbox | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -874,6 +1031,102 @@ def build_console_app(
     async def list_runs(request: Request, limit: int = 50) -> list[dict]:
         events = _visible_events(audit.recent(1000), _principal_for(request))
         return _summarize_runs(events, limit)
+
+    @app.get("/api/approvals")
+    async def list_approvals(request: Request) -> Any:
+        if approvals is None:
+            return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        pending = approvals.pending()
+        if "admin" not in caller.roles:
+            pending = [item for item in pending if item.principal.tenant == caller.tenant]
+        return [item.model_dump(mode="json") for item in pending]
+
+    @app.post("/api/approvals/{request_id}")
+    async def decide_approval(request: Request, request_id: str) -> Any:
+        if approvals is None:
+            return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
+        if not _TRACE_ID.fullmatch(request_id):
+            return JSONResponse({"error": "unsafe_request_id"}, status_code=400)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid json"}, status_code=400)
+        if not isinstance(body, dict) or not isinstance(body.get("approved"), bool):
+            return JSONResponse({"error": "invalid decision"}, status_code=400)
+        reason = body.get("reason", "")
+        if not isinstance(reason, str):
+            return JSONResponse({"error": "invalid decision"}, status_code=400)
+
+        caller = _principal_for(request)
+        record = approvals.get(request_id)
+        if record is None:
+            return JSONResponse({"error": "approval_not_found"}, status_code=404)
+        stored = record.request
+        if stored.principal.tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+
+        if policy_engine is not None:
+            invocation = Invocation(
+                run_id=stored.run_id,
+                trace_id=stored.trace_id,
+                principal=caller,
+                agent_ref=stored.agent_ref,
+                input="",
+            )
+            policy = await policy_engine.decide(invocation, "approval.decide", stored.agent_ref.id)
+            if policy.decision != "allow":
+                await audit.emit(
+                    AuditEvent(
+                        event_id=uuid.uuid4().hex,
+                        run_id=stored.run_id,
+                        trace_id=stored.trace_id,
+                        tenant=caller.tenant,
+                        principal=caller,
+                        approver=caller.subject,
+                        agent_ref=stored.agent_ref,
+                        action="approval.decide",
+                        target=request_id,
+                        status="denied",
+                        error_code="policy_denied",
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                )
+                return JSONResponse({"error": "policy_denied"}, status_code=403)
+
+        try:
+            decision = approvals.decide(
+                request_id,
+                approved=body["approved"],
+                approver=caller.subject,
+                reason=reason,
+            )
+        except ApprovalConflict:
+            return JSONResponse({"error": "approval_already_decided"}, status_code=409)
+        except ApprovalNotFound:
+            return JSONResponse({"error": "approval_not_found"}, status_code=404)
+
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=stored.run_id,
+                trace_id=stored.trace_id,
+                tenant=caller.tenant,
+                principal=caller,
+                approver=caller.subject,
+                agent_ref=stored.agent_ref,
+                action="approval.decide",
+                target=request_id,
+                status="ok" if decision.approved else "denied",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse(decision.model_dump(mode="json"))
+
+    @app.get("/api/plans")
+    async def list_plans(request: Request, limit: int = 50) -> list[dict]:
+        events = _visible_events(audit.recent(1000), _principal_for(request))
+        return _summarize_plans(events, limit)
 
     @app.get("/api/sessions")
     async def list_sessions(request: Request, agent: str | None = None) -> Any:
@@ -1149,6 +1402,7 @@ def run_console(
     oidc: IdentityProvider | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
+    approvals: FileApprovalInbox | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -1165,6 +1419,7 @@ def run_console(
         oidc=oidc,
         quota=quota,
         quota_config=quota_config,
+        approvals=approvals,
     )
 
     import uvicorn

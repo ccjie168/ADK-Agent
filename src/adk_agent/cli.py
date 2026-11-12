@@ -372,6 +372,11 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="JSON QuotaConfig file",
     )
+    p_console.add_argument(
+        "--approval-dir",
+        default=os.environ.get("ADK_APPROVAL_DIR"),
+        help="approval inbox directory (defaults to $ADK_APPROVAL_DIR)",
+    )
     _add_http_args(p_console)
     _add_runtime_args(p_console)
 
@@ -578,6 +583,11 @@ def main(argv: list[str] | None = None) -> None:
 
         oidc = _identity_provider(args)
         quota, quota_config = _console_quota(args)
+        approvals = None
+        if args.approval_dir:
+            from .approvals import FileApprovalInbox
+
+            approvals = FileApprovalInbox(Path(args.approval_dir))
 
         agents = _load_agents(args.agents)
         run_console(
@@ -594,6 +604,7 @@ def main(argv: list[str] | None = None) -> None:
             oidc=oidc,
             quota=quota,
             quota_config=quota_config,
+            approvals=approvals,
         )
     elif args.cmd == "validate":
         from .core import manifest_digest

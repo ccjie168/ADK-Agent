@@ -1,6 +1,6 @@
 # SLICE-045 控制台审批收件箱与计划可视化（UI-2）
 
-状态: spec'd
+状态: gated
 依据: SLICE-027，SLICE-036，SLICE-038，`docs/contracts/console.md`，`docs/contracts/cli.md`
 
 ## 意图（要什么，不写怎么写）
@@ -80,40 +80,40 @@ PlanSummary:
 
 ## 完成判据（可执行）
 
-- [ ] 提交后出现在待决列表 -> `tests/test_approvals.py::test_submit_then_pending`
-- [ ] 决定后不再待决 -> `tests/test_approvals.py::test_decide_removes_from_pending`
-- [ ] 第二次决定冲突且不改写 -> `tests/test_approvals.py::test_second_decision_conflicts`
-- [ ] 未知请求 -> `tests/test_approvals.py::test_unknown_request_not_found`
-- [ ] 非法 id 被拒 -> `tests/test_approvals.py::test_unsafe_request_id_rejected`
-- [ ] 同 id 同内容幂等 -> `tests/test_approvals.py::test_same_request_is_idempotent`
-- [ ] 同 id 不同内容冲突 -> `tests/test_approvals.py::test_conflicting_resubmit_rejected`
-- [ ] 门等待另一实例的决定 -> `tests/test_approvals.py::test_gate_waits_for_decision`
-- [ ] 取消后请求保留 -> `tests/test_approvals.py::test_gate_cancellation_leaves_pending`
-- [ ] 两个收件箱共享决定 -> `tests/test_approvals.py::test_two_inboxes_share_decisions`
-- [ ] 未配置审批目录返回 404 -> `tests/test_console_approvals.py::test_approvals_not_configured`
-- [ ] 非 admin 只看到自己租户 -> `tests/test_console_approvals.py::test_list_pending_filters_by_tenant`
-- [ ] admin 看到所有租户 -> `tests/test_console_approvals.py::test_admin_sees_all_tenants`
-- [ ] 决定记录审批人和审计 -> `tests/test_console_approvals.py::test_decide_records_approver_and_audit`
-- [ ] 审计不含待审输入 -> `tests/test_console_approvals.py::test_audit_has_no_input`
-- [ ] 跨租户决定被拒 -> `tests/test_console_approvals.py::test_decide_other_tenant_forbidden`
-- [ ] 重复决定返回 409 -> `tests/test_console_approvals.py::test_decide_twice_conflicts`
-- [ ] 未知请求返回 404 -> `tests/test_console_approvals.py::test_decide_unknown`
-- [ ] 非法 id 返回 400 -> `tests/test_console_approvals.py::test_unsafe_request_id`
-- [ ] 策略拒绝返回 403 -> `tests/test_console_approvals.py::test_policy_denies_decision`
-- [ ] 计划按 trace 聚合 -> `tests/test_console_plans.py::test_plans_group_by_trace`
-- [ ] 计划按租户过滤 -> `tests/test_console_plans.py::test_plans_filter_by_tenant`
-- [ ] 计划 limit 夹紧 -> `tests/test_console_plans.py::test_plans_limit_clamped`
-- [ ] 索引含新面板 -> `tests/test_console.py::test_index_has_management_panels`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 提交后出现在待决列表 -> `tests/test_approvals.py::test_submit_then_pending`
+- [x] 决定后不再待决 -> `tests/test_approvals.py::test_decide_removes_from_pending`
+- [x] 第二次决定冲突且不改写 -> `tests/test_approvals.py::test_second_decision_conflicts`
+- [x] 未知请求 -> `tests/test_approvals.py::test_unknown_request_not_found`
+- [x] 非法 id 被拒 -> `tests/test_approvals.py::test_unsafe_request_id_rejected`
+- [x] 同 id 同内容幂等 -> `tests/test_approvals.py::test_same_request_is_idempotent`
+- [x] 同 id 不同内容冲突 -> `tests/test_approvals.py::test_conflicting_resubmit_rejected`
+- [x] 门等待另一实例的决定 -> `tests/test_approvals.py::test_gate_waits_for_decision`
+- [x] 取消后请求保留 -> `tests/test_approvals.py::test_gate_cancellation_leaves_pending`
+- [x] 两个收件箱共享决定 -> `tests/test_approvals.py::test_two_inboxes_share_decisions`
+- [x] 未配置审批目录返回 404 -> `tests/test_console_approvals.py::test_approvals_not_configured`
+- [x] 非 admin 只看到自己租户 -> `tests/test_console_approvals.py::test_list_pending_filters_by_tenant`
+- [x] admin 看到所有租户 -> `tests/test_console_approvals.py::test_admin_sees_all_tenants`
+- [x] 决定记录审批人和审计 -> `tests/test_console_approvals.py::test_decide_records_approver_and_audit`
+- [x] 审计不含待审输入 -> `tests/test_console_approvals.py::test_audit_has_no_input`
+- [x] 跨租户决定被拒 -> `tests/test_console_approvals.py::test_decide_other_tenant_forbidden`
+- [x] 重复决定返回 409 -> `tests/test_console_approvals.py::test_decide_twice_conflicts`
+- [x] 未知请求返回 404 -> `tests/test_console_approvals.py::test_decide_unknown`
+- [x] 非法 id 返回 400 -> `tests/test_console_approvals.py::test_unsafe_request_id`
+- [x] 策略拒绝返回 403 -> `tests/test_console_approvals.py::test_policy_denies_decision`
+- [x] 计划按 trace 聚合 -> `tests/test_console_plans.py::test_plans_group_by_trace`
+- [x] 计划按租户过滤 -> `tests/test_console_plans.py::test_plans_filter_by_tenant`
+- [x] 计划 limit 夹紧 -> `tests/test_console_plans.py::test_plans_limit_clamped`
+- [x] 索引含新面板 -> `tests/test_console.py::test_index_has_management_panels`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.approvals import FileApprovalInbox` -> 当前 `ImportError`
-- [ ] 反例 2：`console --approval-dir DIR` -> 当前 argparse 退出 2，不认识该参数
-- [ ] 反例 3：配置审批目录后 `GET /api/approvals` -> 当前路由不存在，返回 FastAPI 的 404 `{"detail":"Not Found"}`
-- [ ] 反例 4：`GET /api/plans` -> 当前路由不存在
-- [ ] 反例 5：同一目录两个实例，一个提交一个决定 -> 当前没有实现
-- [ ] 反例 6：对同一请求决定两次 -> 当前没有实现；实现后第二次必须是 409，不能静默覆盖
+- [x] 反例 1：`from adk_agent.approvals import FileApprovalInbox` -> 当前 `ImportError`
+- [x] 反例 2：`console --approval-dir DIR` -> 当前 argparse 退出 2，不认识该参数
+- [x] 反例 3：配置审批目录后 `GET /api/approvals` -> 当前路由不存在，返回 FastAPI 的 404 `{"detail":"Not Found"}`
+- [x] 反例 4：`GET /api/plans` -> 当前路由不存在
+- [x] 反例 5：同一目录两个实例，一个提交一个决定 -> 当前没有实现
+- [x] 反例 6：对同一请求决定两次 -> 当前没有实现；实现后第二次必须是 409，不能静默覆盖
 
 ## 契约（如涉及对外接口）
 
@@ -142,5 +142,7 @@ PlanSummary:
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-045-ui-approvals-and-plans.txt`，审批模块 ImportError，`--approval-dir` 退出 2，两个新路由 404 `detail: Not Found`
+- 实现后绿: 同文件，36 passed；`check.py --fast` ALL PASS（501 passed, 9 skipped）
+- 真实跨进程: 同文件，执行器进程等待，控制台批准后步骤执行一次，决定第二次返回 409
+- 真实浏览器: 同文件，Edge headless + CDP 打开 Approvals 面板，看到请求详情并点击 Approve，列表清空，Plans 面板可切换

@@ -66,10 +66,16 @@ def test_index_has_management_panels():
         "tab-runs",
         "tab-sessions",
         "tab-policy",
+        "tab-approvals",
+        "tab-plans",
         "registry",
         "runs",
         "sessions",
+        "approvals-body",
+        "plans-body",
     ):
         assert f'id="{element}"' in page.text
     assert "Registry" in page.text
     assert "Runs" in page.text
+    assert "Approvals" in page.text
+    assert "Plans" in page.text
