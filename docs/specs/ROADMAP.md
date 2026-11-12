@@ -135,6 +135,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-042 MCP HTTP OIDC 认证：`serve` 和 `serve-many` 的 streamable-http 鉴权。已完成。
 - SLICE-043 MCP principal 注入：把 token 主体带进 ADK 的 MCP 运行和会话归属。已完成。
 - SLICE-044 共享配额：`QuotaConfig`、Postgres 配额后端，控制台按租户限流。已完成。
+- SLICE-045 审批收件箱与计划可视化（UI-2）：目录收件箱、审批接口、Approvals 和 Plans 面板。已完成。
 
 ## 完成定义
 
