@@ -109,3 +109,41 @@ def test_publish_without_suite_is_ungated(tmp_path, capsys):
     cli.main(["publish", str(manifest), "--registry", str(registry)])
 
     assert "published" in capsys.readouterr().out
+
+
+def test_publish_persists_eval_report(tmp_path, capsys):
+    manifest = _write(tmp_path, _manifest_data(eval_suite=_suite()), "manifest.json")
+    report = _write(tmp_path, _report_data(), "report.json")
+    registry = tmp_path / "registry"
+
+    cli.main(["publish", str(manifest), "--registry", str(registry), "--eval-report", str(report)])
+
+    capsys.readouterr()
+    stored = registry / "team-a" / "support-bot" / "1.0.0.eval.json"
+    assert stored.is_file()
+    payload = json.loads(stored.read_text())
+    assert payload["suite_id"] == "smoke"
+    assert payload["passed"] == 2
+    assert payload["total"] == 2
+
+
+def test_republish_finishes_missing_report(tmp_path):
+    manifest = _write(tmp_path, _manifest_data(eval_suite=_suite()), "manifest.json")
+    report = _write(tmp_path, _report_data(), "report.json")
+    registry = tmp_path / "registry"
+    args = [
+        "publish",
+        str(manifest),
+        "--registry",
+        str(registry),
+        "--eval-report",
+        str(report),
+    ]
+    cli.main(args)
+
+    stored = registry / "team-a" / "support-bot" / "1.0.0.eval.json"
+    stored.unlink()
+
+    cli.main(args)
+
+    assert stored.is_file()

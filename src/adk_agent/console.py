@@ -28,7 +28,9 @@ from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, resolve_http_auth
 from .core import (
     AccessPolicy,
+    AgentRegistry,
     AuditEvent,
+    EvalReportStore,
     Invocation,
     ModelPolicy,
     Principal,
@@ -38,6 +40,7 @@ from .core import (
 from .mcp.http import resolve_port
 from .models.gateway_llm import GatewayLlm, provider_for_model
 from .rbac import FilePolicyStore, RolePolicyEngine
+from .registry import RegistryIntegrityError
 from .runtime import AgentRuntime, dev_agent_ref
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
 from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard, toolset_tool_ids
@@ -57,8 +60,8 @@ _INDEX_HTML = """<!doctype html>
 <meta charset="utf-8">
 <title>ADK Console</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; }
-  #log { border: 1px solid #ccc; border-radius: 6px; padding: .75rem; height: 360px; overflow-y: auto; }
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+  #log { border: 1px solid #ccc; border-radius: 6px; padding: .75rem; height: 320px; overflow-y: auto; }
   #log div { white-space: pre-wrap; margin: .2rem 0; }
   .row { display: flex; gap: .5rem; margin-top: .75rem; }
   input, select, button { font: inherit; padding: .45rem .6rem; }
@@ -66,6 +69,18 @@ _INDEX_HTML = """<!doctype html>
   .you { color: #0b5; }
   .agent { color: #246; }
   .system { color: #a00; }
+  #tabs { display: flex; gap: .25rem; margin: 1rem 0 .5rem; flex-wrap: wrap; }
+  .tab { background: #eee; border: 1px solid #ccc; border-radius: 6px 6px 0 0; cursor: pointer; }
+  .tab.active { background: #fff; border-bottom-color: #fff; font-weight: 600; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+  th, td { text-align: left; border-bottom: 1px solid #ddd; padding: .3rem .4rem; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #f5f8ff; }
+  .badge { background: #e6f5ea; color: #0b5; border-radius: 4px; padding: 0 .35rem; font-size: .75rem; }
+  pre { background: #f7f7f7; border: 1px solid #ddd; border-radius: 6px; padding: .6rem; overflow: auto; max-height: 260px; font-size: .78rem; }
+  .panel-msg { color: #a00; font-size: .85rem; min-height: 1.2rem; }
   #audit { border: 1px solid #ccc; border-radius: 6px; padding: .5rem .75rem; max-height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; }
   #audit div { white-space: pre-wrap; margin: .15rem 0; }
   #policy { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: .8rem; }
@@ -91,34 +106,112 @@ _INDEX_HTML = """<!doctype html>
   <input id="token" type="password" placeholder="Bearer token" autocomplete="off">
   <button id="connect">Connect</button>
 </div>
-<div id="log"></div>
-<div class="row">
-  <input id="msg" placeholder="Ask the agent..." autocomplete="off">
-  <button id="send">Send</button>
+
+<div id="tabs">
+  <button id="tab-chat" class="tab active" data-tab="chat">Chat</button>
+  <button id="tab-registry" class="tab" data-tab="registry">Registry</button>
+  <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
+  <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
+  <button id="tab-policy" class="tab" data-tab="policy">Policy</button>
 </div>
-<h3>Run progress</h3>
-<div id="status"></div>
-<div id="timeline"></div>
-<h3>Trace</h3>
-<div id="trace"></div>
-<h3>Recent audit</h3>
-<div id="audit"></div>
-<div class="row">
-  <button id="refresh">Refresh audit</button>
-</div>
-<h3>Policies</h3>
-<textarea id="policy" rows="10" spellcheck="false"></textarea>
-<div class="row">
-  <button id="load-policy">Load policy</button>
-  <button id="save-policy">Save policy</button>
-</div>
-<div id="policy-msg"></div>
+
+<section id="chat" class="panel active">
+  <div id="log"></div>
+  <div class="row">
+    <input id="msg" placeholder="Ask the agent..." autocomplete="off">
+    <button id="send">Send</button>
+  </div>
+  <h3>Run progress</h3>
+  <div id="status"></div>
+  <div id="timeline"></div>
+  <h3>Recent audit</h3>
+  <div id="audit"></div>
+  <div class="row">
+    <button id="refresh">Refresh audit</button>
+  </div>
+</section>
+
+<section id="registry" class="panel">
+  <div class="row">
+    <select id="tenant"></select>
+    <button id="refresh-registry">Refresh</button>
+  </div>
+  <div id="registry-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>id</th><th>version</th><th>published</th><th>eval</th></tr></thead>
+    <tbody id="registry-body"></tbody>
+  </table>
+  <h3>Manifest</h3>
+  <pre id="manifest"></pre>
+  <h3>Eval report</h3>
+  <pre id="eval-report"></pre>
+</section>
+
+<section id="runs" class="panel">
+  <div class="row">
+    <button id="refresh-runs">Refresh</button>
+  </div>
+  <div id="runs-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>run</th><th>agent</th><th>status</th><th>started</th><th>latency</th><th>cost</th><th>events</th></tr></thead>
+    <tbody id="runs-body"></tbody>
+  </table>
+  <h3>Trace</h3>
+  <div id="trace"></div>
+</section>
+
+<section id="sessions" class="panel">
+  <div class="row">
+    <select id="session-agent"></select>
+    <button id="refresh-sessions">Refresh</button>
+  </div>
+  <div id="sessions-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>session</th><th>last update</th></tr></thead>
+    <tbody id="sessions-body"></tbody>
+  </table>
+  <div id="selected-session"><small></small></div>
+</section>
+
+<section id="policy" class="panel">
+  <h3>Policies</h3>
+  <textarea id="policy" rows="12" spellcheck="false"></textarea>
+  <div class="row">
+    <button id="load-policy">Load policy</button>
+    <button id="save-policy">Save policy</button>
+  </div>
+  <div id="policy-msg"></div>
+</section>
+
 <script>
 const $ = (id) => document.getElementById(id);
+const TABS = ["chat", "registry", "runs", "sessions", "policy"];
 let sessionId = null;
 const token = () => $("token").value.trim();
 $("token").value = sessionStorage.getItem("adk_token") || "";
 $("token").addEventListener("change", () => sessionStorage.setItem("adk_token", token()));
+
+function showTab(name) {
+  for (const tab of TABS) {
+    const panel = $(tab);
+    const button = $("tab-" + tab);
+    if (panel) panel.classList.toggle("active", tab === name);
+    if (button) button.classList.toggle("active", tab === name);
+  }
+}
+
+async function getJson(path) {
+  const response = await fetch(path, { headers: { Authorization: "Bearer " + token() } });
+  let data = null;
+  try { data = await response.json(); } catch (e) { data = null; }
+  return { ok: response.ok, status: response.status, data: data };
+}
+
+function cell(text) {
+  const td = document.createElement("td");
+  td.textContent = text == null ? "-" : String(text);
+  return td;
+}
 
 function append(who, text) {
   const line = document.createElement("div");
@@ -129,17 +222,145 @@ function append(who, text) {
 }
 
 async function loadAgents() {
-  const r = await fetch("/api/agents", { headers: { Authorization: "Bearer " + token() } });
-  if (!r.ok) { append("system", "connect failed (" + r.status + ")"); return; }
-  const agents = await r.json();
-  $("agent").innerHTML = "";
-  for (const a of agents) {
-    const o = document.createElement("option");
-    o.value = a.name;
-    o.textContent = a.name + (a.description ? " - " + a.description : "");
-    $("agent").appendChild(o);
+  const result = await getJson("/api/agents");
+  if (!result.ok) { append("system", "connect failed (" + result.status + ")"); return; }
+  const agents = result.data || [];
+  for (const selectId of ["agent", "session-agent"]) {
+    const select = $(selectId);
+    select.innerHTML = "";
+    for (const a of agents) {
+      const o = document.createElement("option");
+      o.value = a.name;
+      o.textContent = a.name + (a.description ? " - " + a.description : "");
+      select.appendChild(o);
+    }
   }
   append("system", "connected: " + agents.map((a) => a.name).join(", "));
+}
+
+async function loadTenants() {
+  const result = await getJson("/api/tenants");
+  if (!result.ok) {
+    $("registry-msg").textContent = "tenants unavailable (" + result.status + ")";
+    return;
+  }
+  const select = $("tenant");
+  select.innerHTML = "";
+  for (const tenant of result.data || []) {
+    const option = document.createElement("option");
+    option.value = tenant;
+    option.textContent = tenant;
+    select.appendChild(option);
+  }
+  await loadRegistry();
+}
+
+async function loadRegistry() {
+  const tenant = $("tenant").value;
+  $("registry-msg").textContent = "";
+  const body = $("registry-body");
+  body.innerHTML = "";
+  if (!tenant) return;
+  const result = await getJson("/api/registry?tenant=" + encodeURIComponent(tenant));
+  if (!result.ok) {
+    $("registry-msg").textContent = "registry unavailable (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  for (const entry of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(entry.id));
+    row.appendChild(cell(entry.version));
+    const published = document.createElement("td");
+    published.textContent = String(entry.published_at || "").replace("T", " ").slice(0, 19);
+    row.appendChild(published);
+    const evalCell = document.createElement("td");
+    if (entry.has_eval_report) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = "eval";
+      evalCell.appendChild(badge);
+    } else {
+      evalCell.textContent = "-";
+    }
+    row.appendChild(evalCell);
+    row.addEventListener("click", () => selectRegistryEntry(tenant, entry));
+    body.appendChild(row);
+  }
+}
+
+async function selectRegistryEntry(tenant, entry) {
+  $("manifest").textContent = JSON.stringify(entry.manifest, null, 2);
+  $("eval-report").textContent = "";
+  if (!entry.has_eval_report) { $("eval-report").textContent = "no eval report"; return; }
+  const path = "/api/registry/" + encodeURIComponent(tenant) + "/" +
+    encodeURIComponent(entry.id) + "/" + encodeURIComponent(entry.version) + "/eval";
+  const result = await getJson(path);
+  $("eval-report").textContent = result.ok
+    ? JSON.stringify(result.data, null, 2)
+    : "eval report unavailable (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+}
+
+async function loadRuns() {
+  const result = await getJson("/api/runs?limit=50");
+  if (!result.ok) {
+    $("runs-msg").textContent = "runs unavailable (" + result.status + ")";
+    return;
+  }
+  $("runs-msg").textContent = "";
+  const body = $("runs-body");
+  body.innerHTML = "";
+  for (const run of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(String(run.run_id).slice(0, 12)));
+    row.appendChild(cell(run.agent_id));
+    row.appendChild(cell(run.status));
+    const started = document.createElement("td");
+    started.textContent = String(run.started_at || "").replace("T", " ").slice(0, 19);
+    row.appendChild(started);
+    row.appendChild(cell(run.latency_ms == null ? "-" : run.latency_ms + "ms"));
+    row.appendChild(cell(run.cost_usd == null ? "-" : run.cost_usd));
+    row.appendChild(cell(run.events));
+    row.addEventListener("click", () => { showTab("runs"); loadTrace(run.trace_id); });
+    body.appendChild(row);
+  }
+}
+
+async function loadSessions() {
+  const agent = $("session-agent").value;
+  $("sessions-msg").textContent = "";
+  const body = $("sessions-body");
+  body.innerHTML = "";
+  if (!agent) return;
+  const result = await getJson("/api/sessions?agent=" + encodeURIComponent(agent));
+  if (!result.ok) {
+    $("sessions-msg").textContent = "sessions unavailable (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  for (const session of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(session.session_id));
+    const updated = document.createElement("td");
+    updated.textContent = String(session.last_update_time || "").replace("T", " ").slice(0, 19);
+    row.appendChild(updated);
+    row.addEventListener("click", () => {
+      sessionId = session.session_id;
+      showTab("chat");
+      append("system", "session " + session.session_id);
+      $("selected-session").textContent = "session: " + session.session_id;
+    });
+    body.appendChild(row);
+  }
+}
+
+async function connect() {
+  await loadAgents();
+  await loadTenants();
+  await loadRuns();
+  await loadSessions();
+  loadAudit();
 }
 
 function resetProgress() {
@@ -169,7 +390,7 @@ function describe(p) {
 
 function parseEvent(block) {
   const out = { name: "", data: {} };
-  for (const line of block.split("\n")) {
+  for (const line of block.split(String.fromCharCode(10))) {
     if (line.startsWith("event: ")) out.name = line.slice(7);
     else if (line.startsWith("data: ")) out.data = JSON.parse(line.slice(6));
   }
@@ -213,7 +434,7 @@ async function send() {
       if (chunk.done) break;
       buffer += decoder.decode(chunk.value, { stream: true });
       let index;
-      while ((index = buffer.indexOf("\n\n")) >= 0) {
+      while ((index = buffer.indexOf(String.fromCharCode(10) + String.fromCharCode(10))) >= 0) {
         const block = buffer.slice(0, index);
         buffer = buffer.slice(index + 2);
         const ev = parseEvent(block);
@@ -304,12 +525,20 @@ async function savePolicy() {
 }
 
 $("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
+$("tenant").addEventListener("change", loadRegistry);
+$("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
+$("refresh-registry").addEventListener("click", loadRegistry);
+$("refresh-runs").addEventListener("click", loadRuns);
+$("refresh-sessions").addEventListener("click", loadSessions);
 $("load-policy").addEventListener("click", loadPolicy);
 $("save-policy").addEventListener("click", savePolicy);
-$("connect").addEventListener("click", loadAgents);
+$("connect").addEventListener("click", connect);
 $("send").addEventListener("click", send);
 $("msg").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+for (const tab of TABS) {
+  $("tab-" + tab).addEventListener("click", () => showTab(tab));
+}
 </script>
 </body>
 </html>
@@ -390,6 +619,46 @@ def _trace_payload(events: Iterable[AuditEvent], trace_id: str) -> dict:
     return {"trace_id": trace_id, "root": node, "error": None}
 
 
+def _summarize_runs(events: Iterable[AuditEvent], limit: int) -> list[dict]:
+    limit = min(max(limit, 1), 200)
+    groups: dict[str, list[AuditEvent]] = {}
+    for event in events:
+        groups.setdefault(event.run_id, []).append(event)
+
+    summaries: list[tuple[datetime, dict]] = []
+    for run_id, group in groups.items():
+        ordered = sorted(group, key=lambda event: event.timestamp)
+        last = ordered[-1]
+        latency_ms = next(
+            (event.latency_ms for event in reversed(ordered) if event.latency_ms is not None),
+            None,
+        )
+        cost_usd = next(
+            (event.cost_usd for event in reversed(ordered) if event.cost_usd is not None),
+            None,
+        )
+        summaries.append(
+            (
+                last.timestamp,
+                {
+                    "run_id": run_id,
+                    "trace_id": last.trace_id,
+                    "agent_id": last.agent_ref.id,
+                    "tenant": last.tenant,
+                    "status": last.status,
+                    "started_at": ordered[0].timestamp.isoformat(),
+                    "last_at": last.timestamp.isoformat(),
+                    "latency_ms": latency_ms,
+                    "cost_usd": cost_usd,
+                    "events": len(ordered),
+                },
+            )
+        )
+
+    summaries.sort(key=lambda item: item[0], reverse=True)
+    return [summary for _, summary in summaries[:limit]]
+
+
 def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
@@ -444,6 +713,9 @@ def build_console_app(
     sandbox: SandboxPolicy | None = None,
     policy_file: str | None = None,
     roles: list[str] | None = None,
+    registry: AgentRegistry | None = None,
+    eval_reports: EvalReportStore | None = None,
+    session_service: Any | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated)
@@ -455,7 +727,7 @@ def build_console_app(
 
     from google.adk.runners import Runner
 
-    session_service = _session_service(session_db)
+    service = session_service if session_service is not None else _session_service(session_db)
     audit = ListAuditSink()
     sandbox_policy = sandbox or SandboxPolicy()
     for agent in agents.values():
@@ -463,7 +735,7 @@ def build_console_app(
         install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
         _install_tool_guard(agent, audit)
     runners = {
-        name: Runner(app_name=name, agent=agent, session_service=session_service)
+        name: Runner(app_name=name, agent=agent, session_service=service)
         for name, agent in agents.items()
     }
     runtimes = {name: AgentRuntime(runner, audit=audit) for name, runner in runners.items()}
@@ -512,6 +784,81 @@ def build_console_app(
     async def list_audit(limit: int = 50) -> list[dict]:
         limit = min(max(limit, 1), 200)
         return [event.model_dump(mode="json") for event in audit.recent(limit)]
+
+    @app.get("/api/tenants")
+    async def list_tenants() -> Any:
+        if registry is None:
+            return JSONResponse({"error": "registry_not_configured"}, status_code=404)
+        return await registry.tenants()
+
+    @app.get("/api/registry")
+    async def list_registry(tenant: str | None = None) -> Any:
+        if registry is None:
+            return JSONResponse({"error": "registry_not_configured"}, status_code=404)
+        target = tenant or principal.tenant
+        try:
+            records = await registry.list(target)
+        except RegistryIntegrityError:
+            return JSONResponse({"error": "registry_corrupt"}, status_code=500)
+        except ValueError:
+            return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
+
+        entries = []
+        for record in records:
+            has_report = (
+                await eval_reports.has(target, record.manifest.id, record.manifest.version)
+                if eval_reports is not None
+                else False
+            )
+            entries.append(
+                {
+                    "tenant": target,
+                    "id": record.manifest.id,
+                    "version": record.manifest.version,
+                    "digest": record.digest,
+                    "description": record.manifest.description,
+                    "published_at": record.published_at.isoformat(),
+                    "has_eval_report": has_report,
+                    "manifest": record.manifest.model_dump(mode="json"),
+                }
+            )
+        return entries
+
+    @app.get("/api/registry/{tenant}/{agent_id}/{version}/eval")
+    async def get_eval_report(tenant: str, agent_id: str, version: str) -> Any:
+        if eval_reports is None:
+            return JSONResponse({"error": "registry_not_configured"}, status_code=404)
+        try:
+            report = await eval_reports.get(tenant, agent_id, version)
+        except ValidationError:
+            return JSONResponse({"error": "registry_corrupt"}, status_code=500)
+        except ValueError:
+            return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
+        if report is None:
+            return JSONResponse({"error": "eval_report_not_found"}, status_code=404)
+        return report.model_dump(mode="json")
+
+    @app.get("/api/runs")
+    async def list_runs(limit: int = 50) -> list[dict]:
+        return _summarize_runs(audit.recent(1000), limit)
+
+    @app.get("/api/sessions")
+    async def list_sessions(agent: str | None = None) -> Any:
+        if agent not in agents:
+            return JSONResponse({"error": "unknown_agent"}, status_code=400)
+        listed = await service.list_sessions(app_name=agent, user_id=_USER_ID)
+        sessions = sorted(
+            listed.sessions, key=lambda session: session.last_update_time, reverse=True
+        )
+        return [
+            {
+                "session_id": session.id,
+                "last_update_time": datetime.fromtimestamp(
+                    session.last_update_time, tz=timezone.utc
+                ).isoformat(),
+            }
+            for session in sessions
+        ]
 
     if policy_store is not None and policy_engine is not None:
 
@@ -593,7 +940,7 @@ def build_console_app(
         if runtime is None:
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
-        session_id = await _session_id_for(session_service, name, body.get("session_id"))
+        session_id = await _session_id_for(service, name, body.get("session_id"))
 
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
@@ -643,7 +990,7 @@ def build_console_app(
         if runtime is None:
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
-        session_id = await _session_id_for(session_service, name, body.get("session_id"))
+        session_id = await _session_id_for(service, name, body.get("session_id"))
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
             trace_id=_trace_id(request),
@@ -732,6 +1079,8 @@ def run_console(
     sandbox: SandboxPolicy | None = None,
     policy_file: str | None = None,
     roles: list[str] | None = None,
+    registry: AgentRegistry | None = None,
+    eval_reports: EvalReportStore | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -743,6 +1092,8 @@ def run_console(
         sandbox=sandbox,
         policy_file=policy_file,
         roles=roles,
+        registry=registry,
+        eval_reports=eval_reports,
     )
 
     import uvicorn

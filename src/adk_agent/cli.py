@@ -279,6 +279,11 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="role for the console principal (repeatable; default: admin)",
     )
+    p_console.add_argument(
+        "--registry",
+        default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
+        help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
+    )
     _add_http_args(p_console)
     _add_runtime_args(p_console)
 
@@ -463,6 +468,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"ok {count} records")
     elif args.cmd == "console":
         from .console import run_console
+        from .registry import FileAgentRegistry, FileEvalReportStore
 
         agents = _load_agents(args.agents)
         run_console(
@@ -474,6 +480,8 @@ def main(argv: list[str] | None = None) -> None:
             session_db=args.session_db,
             policy_file=args.policy,
             roles=args.roles,
+            registry=FileAgentRegistry(args.registry),
+            eval_reports=FileEvalReportStore(args.registry),
         )
     elif args.cmd == "validate":
         from .core import manifest_digest
@@ -490,7 +498,12 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "publish":
         from .core import EvalReport
         from .eval import enforce_eval_gate
-        from .registry import FileAgentRegistry, load_manifest, published_from
+        from .registry import (
+            FileAgentRegistry,
+            FileEvalReportStore,
+            load_manifest,
+            published_from,
+        )
 
         try:
             manifest = load_manifest(args.path)
@@ -502,6 +515,12 @@ def main(argv: list[str] | None = None) -> None:
             enforce_eval_gate(manifest, report)
             registry = FileAgentRegistry(args.registry)
             stored = asyncio.run(registry.publish(published_from(manifest)))
+            if report is not None:
+                asyncio.run(
+                    FileEvalReportStore(args.registry).put(
+                        manifest.tenant, manifest.id, manifest.version, report
+                    )
+                )
         except Exception as exc:  # noqa: BLE001
             print(f"publish failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from None

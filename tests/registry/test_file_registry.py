@@ -7,13 +7,14 @@ import json
 
 import pytest
 
-from adk_agent.core import AgentManifest, AgentRef
+from adk_agent.core import AgentManifest, AgentRef, EvalReport
 from adk_agent.registry import (
     FileAgentRegistry,
     RegistryConflict,
     RegistryIntegrityError,
 )
 from adk_agent.registry.manifest import published_from
+from adk_agent.registry.reports import FileEvalReportStore
 
 
 def _manifest(**overrides):
@@ -111,3 +112,81 @@ def test_tampered_file_raises_integrity_error(tmp_path):
 def test_signature_is_integrity_marker():
     published = published_from(_manifest())
     assert published.signature == f"sha256:{published.digest}"
+
+
+def test_list_returns_published_records(tmp_path):
+    registry = _registry(tmp_path)
+    records = [
+        published_from(_manifest(id="beta-bot", version="1.0.0")),
+        published_from(_manifest(id="alpha-bot", version="2.0.0")),
+        published_from(_manifest(id="alpha-bot", version="1.0.0")),
+    ]
+    for record in records:
+        asyncio.run(registry.publish(record))
+
+    listed = asyncio.run(registry.list(_TENANT))
+
+    assert [(item.manifest.id, item.manifest.version) for item in listed] == [
+        ("alpha-bot", "1.0.0"),
+        ("alpha-bot", "2.0.0"),
+        ("beta-bot", "1.0.0"),
+    ]
+    assert {item.digest for item in listed} == {item.digest for item in records}
+
+
+def test_tenants_sorted_and_missing_root(tmp_path):
+    missing = FileAgentRegistry(tmp_path / "missing")
+    assert asyncio.run(missing.tenants()) == []
+
+    registry = _registry(tmp_path)
+    asyncio.run(registry.publish(published_from(_manifest(tenant="team-b"))))
+    asyncio.run(registry.publish(published_from(_manifest(tenant="team-a"))))
+    (tmp_path / "registry" / "bad name").mkdir()
+
+    assert asyncio.run(registry.tenants()) == ["team-a", "team-b"]
+
+
+def test_list_rejects_unsafe_tenant(tmp_path):
+    registry = _registry(tmp_path)
+    with pytest.raises(ValueError):
+        asyncio.run(registry.list("../x"))
+
+
+def test_list_surfaces_corrupt_record(tmp_path):
+    registry = _registry(tmp_path)
+    published = published_from(_manifest())
+    asyncio.run(registry.publish(published))
+
+    path = tmp_path / "registry" / _TENANT / "support-bot" / "1.0.0.json"
+    data = json.loads(path.read_text())
+    data["digest"] = "0" * 64
+    path.write_text(json.dumps(data))
+
+    with pytest.raises(RegistryIntegrityError):
+        asyncio.run(registry.list(_TENANT))
+
+
+def test_list_surfaces_malformed_record(tmp_path):
+    registry = _registry(tmp_path)
+    asyncio.run(registry.publish(published_from(_manifest())))
+
+    path = tmp_path / "registry" / _TENANT / "support-bot" / "1.0.0.json"
+    path.write_text("{not json")
+
+    with pytest.raises(RegistryIntegrityError):
+        asyncio.run(registry.list(_TENANT))
+
+
+def test_list_ignores_eval_report_files(tmp_path):
+    registry = _registry(tmp_path)
+    asyncio.run(registry.publish(published_from(_manifest())))
+    report = EvalReport(suite_id="smoke", version="1", passed=1, total=1)
+    asyncio.run(
+        FileEvalReportStore(tmp_path / "registry").put(_TENANT, "support-bot", "1.0.0", report)
+    )
+
+    listed = asyncio.run(registry.list(_TENANT))
+
+    assert [(item.manifest.id, item.manifest.version) for item in listed] == [
+        ("support-bot", "1.0.0")
+    ]

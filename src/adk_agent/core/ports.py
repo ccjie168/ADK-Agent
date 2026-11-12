@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from typing import Literal, Protocol
 
 from .approval import ApprovalDecision, ApprovalRequest
 from .audit import AuditEvent
+from .eval import EvalReport
 from .identity import Principal
 from .invocation import Invocation
 from .manifest import AgentRef, ModelPolicy, PublishedAgent
@@ -21,6 +23,20 @@ class AgentRegistry(Protocol):
     async def get(self, ref: AgentRef, tenant: str) -> PublishedAgent | None: ...
 
     async def publish(self, agent: PublishedAgent) -> PublishedAgent: ...
+
+    async def list(self, tenant: str) -> builtins.list[PublishedAgent]: ...
+
+    async def tenants(self) -> builtins.list[str]: ...
+
+
+class EvalReportStore(Protocol):
+    async def put(
+        self, tenant: str, agent_id: str, version: str, report: EvalReport
+    ) -> EvalReport: ...
+
+    async def get(self, tenant: str, agent_id: str, version: str) -> EvalReport | None: ...
+
+    async def has(self, tenant: str, agent_id: str, version: str) -> bool: ...
 
 
 class IdentityProvider(Protocol):
@@ -74,6 +90,7 @@ __all__ = [
     "AgentRegistry",
     "ApprovalGate",
     "AuditSink",
+    "EvalReportStore",
     "IdentityProvider",
     "ModelGateway",
     "ModelProvider",

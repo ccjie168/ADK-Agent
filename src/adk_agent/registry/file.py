@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import os
 import re
@@ -51,6 +52,34 @@ class FileAgentRegistry:
             return None
         return published
 
+    async def list(self, tenant: str) -> builtins.list[PublishedAgent]:
+        if not _SAFE_NAME.fullmatch(tenant):
+            raise ValueError(f"unsafe registry path component {tenant!r}")
+        tenant_dir = self.root / tenant
+        if not tenant_dir.is_dir():
+            return []
+
+        records: builtins.list[PublishedAgent] = []
+        for agent_dir in tenant_dir.iterdir():
+            if not agent_dir.is_dir():
+                continue
+            for path in agent_dir.glob("*.json"):
+                if path.name.endswith(".eval.json"):
+                    continue
+                records.append(self._load(path))
+        records.sort(key=lambda record: (record.manifest.id, record.manifest.version))
+        return records
+
+    async def tenants(self) -> builtins.list[str]:
+        if not self.root.is_dir():
+            return []
+        names = [
+            entry.name
+            for entry in self.root.iterdir()
+            if entry.is_dir() and _SAFE_NAME.fullmatch(entry.name)
+        ]
+        return sorted(names)
+
     async def publish(self, agent: PublishedAgent) -> PublishedAgent:
         path = self._path(agent.manifest.tenant, agent.manifest.id, agent.manifest.version)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +103,10 @@ class FileAgentRegistry:
         return agent
 
     def _load(self, path: Path) -> PublishedAgent:
-        published = PublishedAgent.model_validate_json(path.read_text(encoding="utf-8"))
+        try:
+            published = PublishedAgent.model_validate_json(path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise RegistryIntegrityError(f"{path}: invalid published agent record") from exc
         if manifest_digest(published.manifest) != published.digest:
             raise RegistryIntegrityError(f"{path}: digest does not match its manifest")
         return published

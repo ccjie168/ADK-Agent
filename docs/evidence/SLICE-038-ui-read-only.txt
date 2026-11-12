@@ -1,0 +1,72 @@
+SLICE-038 只读运营视图（UI-1）
+日期: 2026-11-12
+状态: gated
+
+反例红（实现前）
+----------------
+$ .venv/Scripts/python.exe -m pytest tests/registry/test_eval_reports.py \
+    tests/test_console_registry.py tests/test_console_runs.py -q
+tests/registry/test_eval_reports.py:10: in <module>
+    from adk_agent.registry.reports import EvalReportConflict, FileEvalReportStore
+E   ModuleNotFoundError: No module named 'adk_agent.registry.reports'
+tests/test_console_runs.py:7: in <module>
+    from adk_agent.console import _summarize_runs
+E   ImportError: cannot import name '_summarize_runs' from 'adk_agent.console'
+4 errors in 2.42s
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/registry tests/test_console.py \
+    tests/test_console_registry.py tests/test_console_runs.py \
+    tests/test_console_sessions.py tests/test_eval_gate.py tests/test_layering.py -q
+47 passed in 3.30s
+
+$ .venv/Scripts/python.exe -m pytest -q
+392 passed, 2 skipped in 38.99s
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实页面验证
+------------
+临时注册表: team-a/support-bot@1.0.0，另存一份 smoke 评测报告。
+控制台:
+$ ADK_MCP_AUTH_TOKEN=secret adk-agent console \
+    --agents agents.py --registry registry --host 127.0.0.1 --port 18099
+浏览器: Edge 155 headless，CDP 9223，页面 http://127.0.0.1:18099/。
+
+CDP 探针输出:
+title: ADK Console
+tabs: Chat|Registry|Runs|Sessions|Policy
+tenants: team-a
+registry rows: 1
+registry text: support-bot 1.0.0 2026-11-12 13:43:48 eval
+registry msg: (empty)
+runs rows: 0
+sessions rows: 0
+manifest chars: 376
+eval text: {"suite_id":"smoke","version":"1","passed":1,"total":1,...}
+active panel after clicking Runs: runs
+js errors: none
+screenshot: C:\Users\Jie\AppData\Local\Temp\adk-038-live\ui.png
+
+说明: 注册表列表、评测徽标、manifest 和评测报告都在真实浏览器里渲染，没有 JavaScript 异常。
+控制台和 Edge 都已停止。
+
+审阅修复
+--------
+- `FileAgentRegistry._load` 现在把 JSON 解析和 schema 校验错误统一包成
+  `RegistryIntegrityError`。损坏记录因此也返回固定的 500 `registry_corrupt`，响应不含路径。
+  新增 `test_list_surfaces_malformed_record` 和 `test_malformed_record_is_500_without_path`。
+- 实现代理顺带修了一个原有的前端 bug。Python 三引号字符串把 JS 里的 `"\n"` 变成真实换行，
+  服务出的脚本无法解析。改用 `String.fromCharCode(10)`，`node --check` 通过。

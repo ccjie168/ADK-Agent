@@ -53,3 +53,23 @@ def test_chat_validates_input():
         assert unknown.status_code == 400
         empty = client.post("/api/chat", json={"agent": "probe", "message": " "}, headers=headers)
         assert empty.status_code == 400
+
+
+def test_index_has_management_panels():
+    with _client() as client:
+        page = client.get("/")
+
+    for element in (
+        "tabs",
+        "tab-chat",
+        "tab-registry",
+        "tab-runs",
+        "tab-sessions",
+        "tab-policy",
+        "registry",
+        "runs",
+        "sessions",
+    ):
+        assert f'id="{element}"' in page.text
+    assert "Registry" in page.text
+    assert "Runs" in page.text

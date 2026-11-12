@@ -1,6 +1,6 @@
 # SLICE-038 只读运营视图（UI-1）
 
-状态: planned
+状态: gated
 依据: ADR-0002 第 2、6 条。参考 Google ADK Web 与 Vertex AI Agent Engine 控制台。
 
 ## 意图（要什么，不写怎么写）
@@ -32,7 +32,7 @@
 ## 修改文件
 
 - `src/adk_agent/core/ports.py`：`AgentRegistry` 增加 `list(tenant)` 和 `tenants()`，新增 `EvalReportStore` 端口
-- `src/adk_agent/core/__init__.py`：导出新端口和 `EvalReportConflict`
+- `src/adk_agent/core/__init__.py`：导出新端口。`EvalReportConflict` 留在 `registry/reports.py`，避免 core 依赖适配器
 - `src/adk_agent/registry/file.py`：实现 `list` 和 `tenants`，非法租户抛 `ValueError`
 - `src/adk_agent/registry/__init__.py`：导出 `FileEvalReportStore` 和 `EvalReportConflict`
 - `src/adk_agent/cli.py`：`console` 增加 `--registry`，`publish` 留存评测报告
@@ -65,34 +65,36 @@ SessionSummary = { session_id: str, last_update_time: ISO8601 }
 
 ## 完成判据（可执行）
 
-- [ ] 注册表列出已发布记录，按 `(id, version)` 排序 -> `tests/registry/test_file_registry.py::test_list_returns_published_records`
-- [ ] 注册表列出租户，按字典序，根目录不存在时为空 -> `tests/registry/test_file_registry.py::test_tenants_sorted_and_missing_root`
-- [ ] 非法租户被拒绝 -> `tests/registry/test_file_registry.py::test_list_rejects_unsafe_tenant`
-- [ ] 损坏记录让列表失败，不静默跳过 -> `tests/registry/test_file_registry.py::test_list_surfaces_corrupt_record`
-- [ ] 评测报告可写入并按版本读回 -> `tests/registry/test_eval_reports.py::test_put_then_get_report`
-- [ ] 同版本相同报告幂等 -> `tests/registry/test_eval_reports.py::test_put_same_report_is_idempotent`
-- [ ] 同版本不同报告冲突 -> `tests/registry/test_eval_reports.py::test_put_different_report_conflicts`
-- [ ] `publish --eval-report` 落盘报告 -> `tests/test_eval_gate.py::test_publish_persists_eval_report`
-- [ ] 重新发布可补写报告 -> `tests/test_eval_gate.py::test_republish_finishes_missing_report`
-- [ ] `GET /api/tenants` 返回排序后的租户 -> `tests/test_console_registry.py::test_tenants_endpoint`
-- [ ] `GET /api/registry?tenant=` 返回条目和评测标记 -> `tests/test_console_registry.py::test_registry_listing`
-- [ ] `GET /api/registry/{tenant}/{id}/{version}/eval` 返回报告 -> `tests/test_console_registry.py::test_eval_report_endpoint`
-- [ ] 未配置注册表时返回 404 `registry_not_configured` -> `tests/test_console_registry.py::test_registry_not_configured`
-- [ ] `GET /api/runs` 按 `run_id` 聚合并按最后事件倒序 -> `tests/test_console_runs.py::test_runs_group_by_run_id`
-- [ ] `GET /api/runs?limit=` 夹在 1 到 200 -> `tests/test_console_runs.py::test_runs_limit_is_clamped`
-- [ ] `GET /api/sessions?agent=` 只返回 id 和最后更新时间 -> `tests/test_console_sessions.py::test_sessions_omit_state_and_events`
-- [ ] 未知 agent 返回 400 `unknown_agent` -> `tests/test_console_sessions.py::test_sessions_reject_unknown_agent`
-- [ ] 首页含五个标签和三个新面板 -> `tests/test_console.py::test_index_has_management_panels`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 注册表列出已发布记录，按 `(id, version)` 排序 -> `tests/registry/test_file_registry.py::test_list_returns_published_records`
+- [x] 注册表列出租户，按字典序，根目录不存在时为空 -> `tests/registry/test_file_registry.py::test_tenants_sorted_and_missing_root`
+- [x] 非法租户被拒绝 -> `tests/registry/test_file_registry.py::test_list_rejects_unsafe_tenant`
+- [x] 损坏记录让列表失败，不静默跳过 -> `tests/registry/test_file_registry.py::test_list_surfaces_corrupt_record`
+- [x] 非法 JSON 记录抛 `RegistryIntegrityError` -> `tests/registry/test_file_registry.py::test_list_surfaces_malformed_record`
+- [x] 评测报告可写入并按版本读回 -> `tests/registry/test_eval_reports.py::test_put_then_get_report`
+- [x] 同版本相同报告幂等 -> `tests/registry/test_eval_reports.py::test_put_same_report_is_idempotent`
+- [x] 同版本不同报告冲突 -> `tests/registry/test_eval_reports.py::test_put_different_report_conflicts`
+- [x] `publish --eval-report` 落盘报告 -> `tests/test_eval_gate.py::test_publish_persists_eval_report`
+- [x] 重新发布可补写报告 -> `tests/test_eval_gate.py::test_republish_finishes_missing_report`
+- [x] `GET /api/tenants` 返回排序后的租户 -> `tests/test_console_registry.py::test_tenants_endpoint`
+- [x] `GET /api/registry?tenant=` 返回条目和评测标记 -> `tests/test_console_registry.py::test_registry_listing`
+- [x] `GET /api/registry/{tenant}/{id}/{version}/eval` 返回报告 -> `tests/test_console_registry.py::test_eval_report_endpoint`
+- [x] 未配置注册表时返回 404 `registry_not_configured` -> `tests/test_console_registry.py::test_registry_not_configured`
+- [x] 非法 JSON 记录返回 500 `registry_corrupt` 且不含路径 -> `tests/test_console_registry.py::test_malformed_record_is_500_without_path`
+- [x] `GET /api/runs` 按 `run_id` 聚合并按最后事件倒序 -> `tests/test_console_runs.py::test_runs_group_by_run_id`
+- [x] `GET /api/runs?limit=` 夹在 1 到 200 -> `tests/test_console_runs.py::test_runs_limit_is_clamped`
+- [x] `GET /api/sessions?agent=` 只返回 id 和最后更新时间 -> `tests/test_console_sessions.py::test_sessions_omit_state_and_events`
+- [x] 未知 agent 返回 400 `unknown_agent` -> `tests/test_console_sessions.py::test_sessions_reject_unknown_agent`
+- [x] 首页含五个标签和三个新面板 -> `tests/test_console.py::test_index_has_management_panels`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.registry.reports import FileEvalReportStore` -> 当前 `ImportError`
-- [ ] 反例 2：`GET /api/tenants` -> 当前 404
-- [ ] 反例 3：`GET /api/registry?tenant=../x` -> 期望 400 `unsafe_tenant`，不拼路径
-- [ ] 反例 4：注册表里放一个损坏的 JSON -> 期望 500 `registry_corrupt`，响应不含文件路径
-- [ ] 反例 5：`publish --eval-report` 后报告文件不存在 -> 当前确实不存在，期望存在
-- [ ] 反例 6：`adk-agent console --registry DIR` -> 当前 argparse 退出 2
+- [x] 反例 1：`from adk_agent.registry.reports import FileEvalReportStore` -> 当前 `ImportError`
+- [x] 反例 2：`GET /api/tenants` -> 当前 404
+- [x] 反例 3：`GET /api/registry?tenant=../x` -> 期望 400 `unsafe_tenant`，不拼路径
+- [x] 反例 4：注册表里放一个 digest 不匹配或语法损坏的 JSON -> 期望 500 `registry_corrupt`，响应不含文件路径
+- [x] 反例 5：`publish --eval-report` 后报告文件不存在 -> 当前确实不存在，期望存在
+- [x] 反例 6：`adk-agent console --registry DIR` -> 当前 argparse 退出 2
 
 ## 契约（如涉及对外接口）
 
@@ -125,5 +127,5 @@ SessionSummary = { session_id: str, last_update_time: ISO8601 }
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-038-ui-read-only.txt`，`adk_agent.registry.reports` 和 `_summarize_runs` 不存在，4 个测试文件收集失败
+- 实现后绿: 同文件，47 个目标测试通过，全量 392 passed 2 skipped，`check.py --full` ALL PASS，另做真实浏览器验证

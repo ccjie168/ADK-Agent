@@ -29,6 +29,7 @@ def test_ports_defined():
     from adk_agent.core.ports import (
         AgentRegistry,
         AuditSink,
+        EvalReportStore,
         IdentityProvider,
         PolicyEngine,
         SecretProvider,
@@ -36,8 +37,9 @@ def test_ports_defined():
     )
 
     expected = {
-        AgentRegistry: {"get", "publish"},
+        AgentRegistry: {"get", "publish", "list", "tenants"},
         AuditSink: {"emit"},
+        EvalReportStore: {"put", "get", "has"},
         IdentityProvider: {"resolve"},
         PolicyEngine: {"decide"},
         SecretProvider: {"resolve"},
