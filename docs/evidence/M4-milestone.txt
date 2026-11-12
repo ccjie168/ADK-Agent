@@ -1,0 +1,68 @@
+M4 平台加固 出口证据
+日期: 2026-11-12
+状态: done
+
+切片
+----
+- SLICE-028 租户隔离与配额（gated）
+- SLICE-029 RBAC 与策略管理界面（gated）
+- SLICE-030 评测门禁与灰度（gated）
+- SLICE-031 A2A 消费方与提供方评估（gated）
+
+出口标准逐条
+------------
+1. 两租户隔离
+   - manifest 必填 tenant。注册表存 <root>/<tenant>/<id>/<version>.json。
+   - get(ref, tenant) 跨租户返回 None。
+   - RBAC 绑定按租户过滤。
+   - 测试: tests/registry/test_file_registry.py::test_get_from_other_tenant_returns_none
+           tests/test_rbac.py::test_binding_is_tenant_scoped
+
+2. 配额生效
+   - QuotaPolicy + QuotaManager 端口 + InMemoryQuotaManager。
+   - AgentRuntime.run 与 PlanExecutor.run 都接受配额，超额 fail closed 并审计。
+   - 测试: tests/runtime/test_quota.py（8 条）
+           tests/orchestration/test_quota_gate.py（2 条）
+
+3. 评测不过不能发布
+   - enforce_eval_gate 校验报告存在、套件标识与版本一致、分数达标。
+   - CLI publish --eval-report。真实运行：达标发布成功，不达标和缺报告都退出 1 且不写注册表。
+   - 测试: tests/test_eval.py、tests/test_eval_gate.py
+
+4. 门禁
+   $ .venv/Scripts/python.exe scripts/check.py --fast
+   299 passed, 1 skipped
+   [PASS] format
+   [PASS] lint
+   [PASS] types
+   [PASS] layering
+   [PASS] specs
+   [PASS] test
+   [PASS] secrets
+   ALL PASS
+
+   $ .venv/Scripts/python.exe scripts/check.py --full
+   299 passed, 1 skipped
+   [PASS] format
+   [PASS] lint
+   [PASS] types
+   [PASS] layering
+   [PASS] specs
+   [PASS] test
+   [PASS] sast
+   [PASS] deps
+   [PASS] secrets
+   ALL PASS
+   No known vulnerabilities found
+
+已知边界
+--------
+- 配额只在单进程内存生效。多副本需要共享后端，排在 M5。
+- 配额还没从配置或控制台装配。
+- RBAC 是单 token 单身份，角色来自启动参数，没有 OIDC 角色映射。
+- 策略无版本历史；版本由人维护。
+- 评测报告可被伪造，门禁信任报告文件。签名报告未做。
+- 灰度路由器没有接流量，注册表没有按版本解析入口。
+- A2A 是可选适配器，默认依赖不变，ADR-0003 状态 Proposed。
+- A2A 消费侧 final 事件重复，接入运行时前要先归一化。
+- 审计哈希链和篡改检测仍未做。

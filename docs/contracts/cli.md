@@ -40,6 +40,14 @@
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。
 
+## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
+
+把一个 agent 暴露成 A2A 端点。
+
+- 需要可选依赖 `a2a-sdk[http-server]>=0.3.4,<2`。没装时退出 1 并给出安装命令。
+- 非回环地址必须提供 `--auth-token-env` 指向的 token。loopback 可以 `--allow-unauthenticated`（仅开发）。
+- token 保护所有路径，包括 `/.well-known/agent-card.json` 和 JSON-RPC。
+
 ## `adk-agent console --agents FILE [--policy FILE] [--role ROLE]`
 
 启动私有控制台。

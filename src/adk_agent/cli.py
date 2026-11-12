@@ -150,6 +150,15 @@ def main(argv: list[str] | None = None) -> None:
     _add_http_args(p_many)
     _add_runtime_args(p_many)
 
+    p_a2a = sub.add_parser("serve-a2a", help="serve an ADK agent over A2A (needs a2a-sdk)")
+    p_a2a.add_argument("--agent", required=True, help="path to a Python file defining `agent`")
+    p_a2a.add_argument(
+        "--rpc-path",
+        default="",
+        help="mount the RPC and agent-card routes under this path prefix",
+    )
+    _add_http_args(p_a2a)
+
     p_console = sub.add_parser("console", help="serve a private web console for agents")
     p_console.add_argument(
         "--agents",
@@ -265,6 +274,22 @@ def main(argv: list[str] | None = None) -> None:
             allow_unauthenticated=args.allow_unauthenticated,
             runner_factory=runner_factory,
         )
+    elif args.cmd == "serve-a2a":
+        from .a2a import A2aUnavailable, serve_a2a
+
+        agent = _load_agent(args.agent)
+        try:
+            serve_a2a(
+                agent,
+                host=args.host,
+                port=args.port,
+                rpc_path=args.rpc_path,
+                auth_token=_auth_token(args),
+                allow_unauthenticated=args.allow_unauthenticated,
+            )
+        except A2aUnavailable as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from None
     elif args.cmd == "console":
         from .console import run_console
 

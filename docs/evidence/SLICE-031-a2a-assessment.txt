@@ -1,0 +1,78 @@
+SLICE-031 A2A 消费方与提供方评估
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/test_a2a.py -q
+ModuleNotFoundError: No module named 'adk_agent.a2a'
+1 error during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_a2a.py -q
+7 passed in 2.38s
+（本机为评估安装了 a2a-sdk，4 个 needs_a2a 用例实际执行。CI 不装时这 4 个跳过。）
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+299 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+299 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实提供方验证
+--------------
+启动:
+$ ADK_MCP_AUTH_TOKEN=secret adk_agent serve-a2a --agent provider.py --port 8095 --rpc-path probe
+
+GET /probe/.well-known/agent-card.json 无 token -> 401 {"error": "unauthorized"}
+GET /probe/.well-known/agent-card.json 带 token -> 200
+card: name=a2a_probe, supportedInterfaces[0].url=http://127.0.0.1:8095/probe
+
+真实消费方验证
+--------------
+$ PYTHONPATH=src python consumer.py
+consumer got: hello from a2a providerhello from a2a provider
+
+ADK 2.14 的 A2A 转换把同一段文本放进多个 final 事件（task artifact 加 status）。
+本地直接跑 provider 只有一个 final 事件。消费侧如果累积所有 final 文本会重复。
+这一点记为已知边界，不是本切片的修复范围。
+
+说明
+----
+- ADR-0003 记录评估：a2a-sdk 是 ADK 可选 extra，security_schemes 不强制，默认无鉴权。
+- 提供方 build_a2a_app 惰性导入 to_a2a，加 bearer 中间件，card 和 RPC 都要 token。
+- serve_a2a 先走 resolve_http_auth。非回环无 token 抛 ValueError。
+- 消费方 remote_agent 构造 RemoteA2aAgent，带 token 时用带 Authorization 的 httpx 客户端。
+- 缺依赖时 A2aUnavailable 带安装命令 `a2a-sdk[http-server]>=0.3.4,<2`。
+- 默认依赖和 pyproject 不变。ADR-0003 状态 Proposed，等确认后再加 extra。
+- CLI serve-a2a 缺依赖时输出提示并退出 1。
+- cli.md 已更新。
+
+已知边界
+--------
+- 单一共享 token，没有 per-peer 身份、作用域、速率限制。
+- agent card 受 token 保护，部分第三方客户端默认匿名拉 card，需要配置 header。
+- 没有接注册表版本解析和灰度，exposure="a2a" 只是声明。
+- 消费侧 final 事件重复，累积文本会翻倍。接入运行时前要先归一化。
+- 远端输出按不可信输入处理，没有内容清洗。
+- a2a-sdk 不在默认依赖，CI 跳过 4 个需要它的用例。
