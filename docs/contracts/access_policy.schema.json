@@ -1,0 +1,61 @@
+{
+  "$defs": {
+    "RoleBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allow",
+          "type": "array"
+        },
+        "deny": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Deny",
+          "type": "array"
+        },
+        "role": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+          "title": "Role",
+          "type": "string"
+        },
+        "tenant": {
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+          "title": "Tenant",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "tenant"
+      ],
+      "title": "RoleBinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "bindings": {
+      "items": {
+        "$ref": "#/$defs/RoleBinding"
+      },
+      "title": "Bindings",
+      "type": "array"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "title": "AccessPolicy",
+  "type": "object"
+}

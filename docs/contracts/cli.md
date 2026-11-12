@@ -30,4 +30,14 @@
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。
 
+## `adk-agent console --agents FILE [--policy FILE] [--role ROLE]`
+
+启动私有控制台。
+
+- `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
+- `--role` 可重复，设置控制台 principal 的角色。默认 `admin`。
+- `GET /api/policy` 返回当前策略。`PUT /api/policy` 校验、原子落盘、热替换并写 `policy.update` 审计。
+- 聊天按 `agent.run:<agent>` 检查策略。拒绝返回 403 `policy_denied`，并写 `agent.run` `denied` 审计。
+- 没给 `--policy` 时控制台不做 RBAC，`/api/policy` 返回 404。
+
 M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名，M4 会替换。

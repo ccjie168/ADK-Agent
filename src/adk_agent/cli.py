@@ -155,6 +155,18 @@ def main(argv: list[str] | None = None) -> None:
         required=True,
         help="path to a Python file defining an `agents` dict (name -> agent)",
     )
+    p_console.add_argument(
+        "--policy",
+        default=None,
+        help="path to an AccessPolicy JSON file (enables RBAC and /api/policy)",
+    )
+    p_console.add_argument(
+        "--role",
+        action="append",
+        dest="roles",
+        default=None,
+        help="role for the console principal (repeatable; default: admin)",
+    )
     _add_http_args(p_console)
     _add_runtime_args(p_console)
 
@@ -245,6 +257,8 @@ def main(argv: list[str] | None = None) -> None:
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
             session_db=args.session_db,
+            policy_file=args.policy,
+            roles=args.roles,
         )
     elif args.cmd == "validate":
         from .core import manifest_digest

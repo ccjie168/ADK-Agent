@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request
@@ -17,12 +18,15 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from google.adk.models import BaseLlm
 from google.adk.tools import BaseTool
 from google.adk.tools.base_toolset import BaseToolset
+from pydantic import ValidationError
 
 from .audit import ListAuditSink
+from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, resolve_http_auth
-from .core import Invocation, ModelPolicy, Principal, ToolGrant
+from .core import AccessPolicy, AuditEvent, Invocation, ModelPolicy, Principal, ToolGrant
 from .mcp.http import resolve_port
 from .models.gateway_llm import GatewayLlm, provider_for_model
+from .rbac import FilePolicyStore, RolePolicyEngine
 from .runtime import AgentRuntime, dev_agent_ref
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
 from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard, toolset_tool_ids
@@ -34,7 +38,6 @@ logger = logging.getLogger(__name__)
 
 _USER_ID = "console_user"
 _OPEN_PATHS = frozenset({"/", "/healthz"})
-_CONSOLE_PRINCIPAL = Principal(tenant="local", subject=_USER_ID, kind="human")
 _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 
 _INDEX_HTML = """<!doctype html>
@@ -54,6 +57,8 @@ _INDEX_HTML = """<!doctype html>
   .system { color: #a00; }
   #audit { border: 1px solid #ccc; border-radius: 6px; padding: .5rem .75rem; max-height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; }
   #audit div { white-space: pre-wrap; margin: .15rem 0; }
+  #policy { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: .8rem; }
+  #policy-msg { color: #666; font-size: .85rem; margin-top: .35rem; }
   small { color: #666; }
 </style>
 </head>
@@ -75,6 +80,13 @@ _INDEX_HTML = """<!doctype html>
 <div class="row">
   <button id="refresh">Refresh audit</button>
 </div>
+<h3>Policies</h3>
+<textarea id="policy" rows="10" spellcheck="false"></textarea>
+<div class="row">
+  <button id="load-policy">Load policy</button>
+  <button id="save-policy">Save policy</button>
+</div>
+<div id="policy-msg"></div>
 <script>
 const $ = (id) => document.getElementById(id);
 let sessionId = null;
@@ -139,8 +151,30 @@ async function loadAudit() {
   }
 }
 
+async function loadPolicy() {
+  const r = await fetch("/api/policy", { headers: { Authorization: "Bearer " + token() } });
+  if (!r.ok) { $("policy-msg").textContent = "policy unavailable (" + r.status + ")"; return; }
+  $("policy").value = JSON.stringify(await r.json(), null, 2);
+  $("policy-msg").textContent = "loaded";
+}
+
+async function savePolicy() {
+  let body;
+  try { body = JSON.parse($("policy").value); }
+  catch (e) { $("policy-msg").textContent = "invalid json"; return; }
+  const r = await fetch("/api/policy", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  $("policy-msg").textContent = r.ok ? "saved version " + data.version : (data.error || "save failed");
+}
+
 $("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
 $("refresh").addEventListener("click", loadAudit);
+$("load-policy").addEventListener("click", loadPolicy);
+$("save-policy").addEventListener("click", savePolicy);
 $("connect").addEventListener("click", loadAgents);
 $("send").addEventListener("click", send);
 $("msg").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
@@ -229,9 +263,16 @@ def build_console_app(
     host: str = "127.0.0.1",
     allow_unauthenticated: bool = False,
     sandbox: SandboxPolicy | None = None,
+    policy_file: str | None = None,
+    roles: list[str] | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated)
+    principal = Principal(
+        tenant="local", subject=_USER_ID, kind="human", roles=list(roles or ["admin"])
+    )
+    policy_store = FilePolicyStore(policy_file) if policy_file else None
+    policy_engine = RolePolicyEngine(policy_store.load()) if policy_store else None
 
     from google.adk.runners import Runner
 
@@ -269,6 +310,67 @@ def build_console_app(
         limit = min(max(limit, 1), 200)
         return [event.model_dump(mode="json") for event in audit.recent(limit)]
 
+    if policy_store is not None and policy_engine is not None:
+
+        @app.get("/api/policy")
+        async def get_policy() -> dict:
+            return policy_engine.policy.model_dump(mode="json")
+
+        @app.put("/api/policy")
+        async def put_policy(request: Request) -> JSONResponse:
+            try:
+                body = await request.json()
+            except ValueError:
+                return JSONResponse({"error": "invalid json"}, status_code=400)
+            try:
+                policy = AccessPolicy.model_validate(body)
+            except ValidationError:
+                return JSONResponse({"error": "invalid policy"}, status_code=400)
+
+            invocation = Invocation(
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                principal=principal,
+                agent_ref=dev_agent_ref("policy"),
+                input=policy.version,
+            )
+            decision = await policy_engine.decide(invocation, "policy.update", policy.version)
+            if decision.decision != "allow":
+                await audit.emit(
+                    AuditEvent(
+                        event_id=uuid.uuid4().hex,
+                        run_id=invocation.run_id,
+                        trace_id=invocation.trace_id,
+                        tenant=principal.tenant,
+                        principal=principal,
+                        agent_ref=invocation.agent_ref,
+                        action="policy.update",
+                        target=policy.version,
+                        status="denied",
+                        error_code="policy_denied",
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                )
+                return JSONResponse({"error": "policy_denied"}, status_code=403)
+
+            policy_store.save(policy)
+            policy_engine.update(policy)
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=_trace_id(request),
+                    tenant=principal.tenant,
+                    principal=principal,
+                    agent_ref=dev_agent_ref("policy"),
+                    action="policy.update",
+                    target=policy.version,
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+            return JSONResponse(policy.model_dump(mode="json"))
+
     @app.post("/api/chat")
     async def chat(request: Request) -> JSONResponse:
         try:
@@ -293,10 +395,30 @@ def build_console_app(
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
             trace_id=_trace_id(request),
-            principal=_CONSOLE_PRINCIPAL,
+            principal=principal,
             agent_ref=dev_agent_ref(name),
             input=message,
         )
+        if policy_engine is not None:
+            decision = await policy_engine.decide(invocation, "agent.run", name)
+            if decision.decision != "allow":
+                await audit.emit(
+                    AuditEvent(
+                        event_id=uuid.uuid4().hex,
+                        run_id=invocation.run_id,
+                        trace_id=invocation.trace_id,
+                        tenant=principal.tenant,
+                        principal=principal,
+                        agent_ref=invocation.agent_ref,
+                        action="agent.run",
+                        target=name,
+                        args_hash=hash_text(message),
+                        status="denied",
+                        error_code="policy_denied",
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                )
+                return JSONResponse({"error": "policy_denied"}, status_code=403)
         try:
             result = await runtime.run(invocation, user_id=_USER_ID, session_id=session_id)
         except Exception:  # noqa: BLE001
@@ -332,6 +454,8 @@ def run_console(
     allow_unauthenticated: bool = False,
     session_db: str | None = None,
     sandbox: SandboxPolicy | None = None,
+    policy_file: str | None = None,
+    roles: list[str] | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -341,6 +465,8 @@ def run_console(
         host=host,
         allow_unauthenticated=allow_unauthenticated,
         sandbox=sandbox,
+        policy_file=policy_file,
+        roles=roles,
     )
 
     import uvicorn

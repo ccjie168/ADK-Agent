@@ -1,0 +1,73 @@
+SLICE-029 RBAC 与策略管理界面
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/test_rbac.py tests/test_policy_api.py -q
+ImportError: cannot import name 'AccessPolicy' from 'adk_agent.core'
+1 error during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_rbac.py tests/test_policy_api.py -q
+16 passed in 1.97s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+272 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+272 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实控制台验证
+--------------
+启动: adk_agent console --agents examples/minimal/agent.py --port 8082 --policy /tmp/slice029/policy.json --role guest
+
+GET  /api/policy  -> 200 {"version": "1", ...}
+POST /api/chat    -> 403 {"error": "policy_denied"}（guest 不在 ops 绑定中）
+PUT  /api/policy  -> 403 {"error": "policy_denied"}（无 policy.update 权限，不能自提权）
+GET  /api/audit   -> policy.update denied policy_denied
+                     agent.run denied policy_denied
+
+说明
+----
+- AccessPolicy 是版本加绑定。RoleBinding 带 role、tenant、allow、deny。
+- 权限串是 <action>:<target>。*、action:*、完整串都匹配。
+- 绑定只在租户一致且角色命中时生效。任意生效绑定的 deny 命中即拒绝。
+- 没有 allow 命中时默认拒绝。决定带 rbac:<version>。
+- RolePolicyEngine 实现 PolicyEngine 端口，update 热替换。
+- FilePolicyStore 原子替换写入，保留最后一份完整文件。
+- 控制台 --policy 启用 RBAC，--role 设置 principal 角色，默认 admin。
+- PUT /api/policy 校验后按当前策略检查 policy.update，再落盘并审计。
+- 聊天在 runtime 前检查 agent.run:<agent>，拒绝写 denied 审计并返回 403。
+- 页面增加策略面板，加载和保存都走 /api/policy。
+- access_policy.schema.json 已生成。cli.md 已更新。
+- 没给 --policy 时控制台行为不变，/api/policy 返回 404。
+
+已知边界
+--------
+- 控制台是单 token 单身份。角色来自启动参数，没有 OIDC 角色映射。
+- 策略变更没有版本历史，只有审计事件。
+- 策略版本由人维护，不强制递增。
+- RBAC 只覆盖控制台聊天和策略写入。工具网关和编排策略仍用 grant 引擎。
+- GET /api/policy 对所有持 token 的调用方开放。
+- 审计哈希链和篡改检测仍未做。

@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from adk_agent.config import FrameworkConfig  # noqa: E402
 from adk_agent.core import (  # noqa: E402
+    AccessPolicy,
     AgentManifest,
     AgentRef,
     AuditEvent,
@@ -34,6 +35,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "framework_config.schema.json": FrameworkConfig,
     "orchestration_plan.schema.json": OrchestrationPlan,
     "supervisor_decision.schema.json": SupervisorDecision,
+    "access_policy.schema.json": AccessPolicy,
 }
 
 

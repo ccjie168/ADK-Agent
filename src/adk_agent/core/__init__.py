@@ -41,9 +41,11 @@ from .ports import (
     ToolGateway,
 )
 from .quota import QuotaExceeded, QuotaPolicy
+from .rbac import AccessPolicy, RoleBinding
 from .tool import ToolRequest, ToolResponse
 
 __all__ = [
+    "AccessPolicy",
     "AgentManifest",
     "AgentRef",
     "AgentRegistry",
@@ -73,6 +75,7 @@ __all__ = [
     "QuotaExceeded",
     "QuotaManager",
     "QuotaPolicy",
+    "RoleBinding",
     "RouteWhen",
     "SecretProvider",
     "Slo",
