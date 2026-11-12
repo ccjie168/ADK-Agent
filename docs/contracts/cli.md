@@ -8,15 +8,25 @@
 - 失败：stderr 输出 `invalid manifest: <原因>`，退出 1。
 - 未知字段、非法 `id` / `version` / `tenant`、缺失必填字段都算失败。
 
-## `adk-agent publish <path> [--registry DIR]`
+## `adk-agent publish <path> [--registry DIR] [--eval-report FILE]`
 
-校验 manifest，计算 digest，写入注册表。
+校验 manifest，跑评测门禁，计算 digest，写入注册表。
 
+- manifest 声明 `eval_suite` 时必须给 `--eval-report`，且报告的 `suite_id`、`version` 一致，`score` 不低于 `pass_threshold`。否则退出 1，不写注册表。
 - 成功：stdout 输出 `published tenant/id@version sha256:<digest>`，退出 0。
 - 重复发布相同内容：幂等成功，返回已存记录。
 - 同版本不同内容：stderr 输出 `publish failed: <原因>`，退出 1。
 - 默认注册表目录是 `$ADK_REGISTRY_DIR`，否则 `./registry`。
 - 存储布局是 `<registry>/<tenant>/<id>/<version>.json`。租户目录来自 manifest，不受调用方控制。
+
+## `adk-agent eval <suite> --agents FILE [--out FILE]`
+
+跑一个 `EvalSuiteSpec` 并输出 `EvalReport`。
+
+- `suite.agent` 必须在 `--agents` 的映射里，否则退出 1。
+- 用例判定是 `exact` 或 `contains`，不做模型裁判。
+- 调用抛异常的用例记为失败，`error` 是异常类名。
+- 给了 `--out` 写入文件并输出 `wrote <path>`，否则报告 JSON 写 stdout。
 
 ## `adk-agent new <name> [--template minimal] [--tenant TENANT]`
 

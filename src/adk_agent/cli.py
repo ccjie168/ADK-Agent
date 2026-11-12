@@ -8,6 +8,7 @@ import importlib.util
 import os
 import re
 import sys
+import uuid
 from functools import partial
 from pathlib import Path
 from typing import Literal, cast
@@ -193,6 +194,24 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
     )
+    p_publish.add_argument(
+        "--eval-report",
+        default=None,
+        help="path to an EvalReport JSON file (required when the manifest declares eval_suite)",
+    )
+
+    p_eval = sub.add_parser("eval", help="run an eval suite against agents")
+    p_eval.add_argument("suite", help="path to an EvalSuiteSpec JSON file")
+    p_eval.add_argument(
+        "--agents",
+        required=True,
+        help="path to a Python file defining an `agents` dict (name -> agent)",
+    )
+    p_eval.add_argument(
+        "--out",
+        default=None,
+        help="write the report JSON here (defaults to stdout)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -273,10 +292,18 @@ def main(argv: list[str] | None = None) -> None:
             f"{manifest.tenant}/{manifest.id}@{manifest.version} sha256:{manifest_digest(manifest)}"
         )
     elif args.cmd == "publish":
+        from .core import EvalReport
+        from .eval import enforce_eval_gate
         from .registry import FileAgentRegistry, load_manifest, published_from
 
         try:
             manifest = load_manifest(args.path)
+            report = (
+                EvalReport.model_validate_json(Path(args.eval_report).read_text(encoding="utf-8"))
+                if args.eval_report
+                else None
+            )
+            enforce_eval_gate(manifest, report)
             registry = FileAgentRegistry(args.registry)
             stored = asyncio.run(registry.publish(published_from(manifest)))
         except Exception as exc:  # noqa: BLE001
@@ -286,6 +313,42 @@ def main(argv: list[str] | None = None) -> None:
             f"published {stored.manifest.tenant}/{stored.manifest.id}@{stored.manifest.version} "
             f"sha256:{stored.digest}"
         )
+    elif args.cmd == "eval":
+        from google.adk.runners import Runner
+        from google.adk.sessions import InMemorySessionService
+
+        from .core import EvalSuiteSpec, Invocation, InvocationResult, Principal
+        from .eval import EvalRunner
+        from .runtime import AgentRuntime, dev_agent_ref
+
+        suite = EvalSuiteSpec.model_validate_json(Path(args.suite).read_text(encoding="utf-8"))
+        agents = _load_agents(args.agents)
+        target = agents.get(suite.agent)
+        if target is None:
+            print(f"unknown agent: {suite.agent!r}", file=sys.stderr)
+            raise SystemExit(1)
+
+        service = InMemorySessionService()
+        runtime = AgentRuntime(Runner(app_name=suite.agent, agent=target, session_service=service))
+
+        async def call(invocation: Invocation) -> InvocationResult:
+            session = await service.create_session(app_name=suite.agent, user_id="eval")
+            return await runtime.run(invocation, user_id="eval", session_id=str(session.id))
+
+        invocation = Invocation(
+            run_id=uuid.uuid4().hex,
+            trace_id=uuid.uuid4().hex,
+            principal=Principal(tenant="local", subject="eval", kind="service"),
+            agent_ref=dev_agent_ref(suite.agent),
+            input="",
+        )
+        report = asyncio.run(EvalRunner(call).run(suite, invocation))
+        payload = report.model_dump_json(indent=2) + "\n"
+        if args.out:
+            Path(args.out).write_text(payload, encoding="utf-8")
+            print(f"wrote {args.out}")
+        else:
+            print(payload, end="")
     elif args.cmd == "new":
         _scaffold(args.name, args.template, args.tenant)
 

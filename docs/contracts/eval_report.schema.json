@@ -1,0 +1,79 @@
+{
+  "$defs": {
+    "EvalCaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "actual": {
+          "default": "",
+          "title": "Actual",
+          "type": "string"
+        },
+        "case_id": {
+          "minLength": 1,
+          "title": "Case Id",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "case_id",
+        "passed"
+      ],
+      "title": "EvalCaseResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "passed": {
+      "minimum": 0,
+      "title": "Passed",
+      "type": "integer"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/EvalCaseResult"
+      },
+      "title": "Results",
+      "type": "array"
+    },
+    "suite_id": {
+      "minLength": 1,
+      "title": "Suite Id",
+      "type": "string"
+    },
+    "total": {
+      "exclusiveMinimum": 0,
+      "title": "Total",
+      "type": "integer"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "suite_id",
+    "version",
+    "passed",
+    "total"
+  ],
+  "title": "EvalReport",
+  "type": "object"
+}

@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "EvalCase": {
+      "additionalProperties": false,
+      "properties": {
+        "expected": {
+          "minLength": 1,
+          "title": "Expected",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "input": {
+          "minLength": 1,
+          "title": "Input",
+          "type": "string"
+        },
+        "match": {
+          "default": "contains",
+          "enum": [
+            "exact",
+            "contains"
+          ],
+          "title": "Match",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "input",
+        "expected"
+      ],
+      "title": "EvalCase",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "agent": {
+      "minLength": 1,
+      "title": "Agent",
+      "type": "string"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/EvalCase"
+      },
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    },
+    "suite_id": {
+      "minLength": 1,
+      "title": "Suite Id",
+      "type": "string"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "suite_id",
+    "version",
+    "agent",
+    "cases"
+  ],
+  "title": "EvalSuiteSpec",
+  "type": "object"
+}

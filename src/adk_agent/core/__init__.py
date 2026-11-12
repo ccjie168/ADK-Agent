@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from .approval import ApprovalDecision, ApprovalRequest
 from .audit import AuditEvent
+from .canary import CanaryPolicy
+from .eval import EvalCase, EvalCaseResult, EvalReport, EvalSuiteSpec
 from .identity import Principal
 from .invocation import Invocation, InvocationResult
 from .manifest import (
@@ -54,8 +56,13 @@ __all__ = [
     "ApprovalRequest",
     "AuditEvent",
     "AuditSink",
+    "CanaryPolicy",
     "DataClass",
+    "EvalCase",
+    "EvalCaseResult",
+    "EvalReport",
     "EvalSuite",
+    "EvalSuiteSpec",
     "IdentityProvider",
     "Invocation",
     "InvocationResult",

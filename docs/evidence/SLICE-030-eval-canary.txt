@@ -1,0 +1,81 @@
+SLICE-030 评测门禁与灰度
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/test_eval.py tests/test_eval_gate.py tests/test_canary.py -q
+ModuleNotFoundError: No module named 'adk_agent.canary'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_eval.py tests/test_eval_gate.py tests/test_canary.py -q
+20 passed in 1.99s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+292 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+292 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实 CLI 验证
+-------------
+评测（脚本化模型返回 "hello from eval"，套件 2 条用例）:
+$ adk_agent eval suite.json --agents stub_agent.py --out report.json
+wrote report.json
+{"suite_id": "smoke", "version": "1", "passed": 2, "total": 2, "results": [...]}
+
+发布门禁:
+$ adk_agent publish manifest.json --registry registry --eval-report report.json
+published local/eval-bot@1.0.0 sha256:618a0464...
+
+$ adk_agent publish ... --eval-report bad-report.json
+publish failed: eval score 0.500 is below threshold 0.8   (exit 1)
+
+$ adk_agent publish ...
+publish failed: manifest requires an eval report            (exit 1)
+
+失败的两次没有创建注册表目录。
+
+说明
+----
+- EvalCase 支持 exact 和 contains。判定去空白，不做模型裁判。
+- EvalSuiteSpec 至少一条用例。EvalReport 校验 passed <= total。
+- EvalRunner 用父 invocation 派生子调用，只换输入和 run_id。
+- 用例异常记为失败，error 只存异常类名。
+- enforce_eval_gate：没声明套件放行；声明了要求报告存在、套件标识与版本一致、分数达标。
+- CLI publish 新增 --eval-report。门禁失败输出 publish failed 并退出 1，不写注册表。
+- CLI eval 加载 agents 映射，按用例新建内存会话，输出报告 JSON。
+- CanaryPolicy 约束权重 0 到 1，正权重时两个版本必须不同。
+- CanaryRouter 权重 0 走稳定版，权重 1 走候选版，其余按注入的随机源决定。
+- 租户不一致时路由抛 ValueError。
+- eval_suite_spec、eval_report、canary_policy 三个 schema 已生成。cli.md 已更新。
+
+已知边界
+--------
+- 判定只有确定性匹配。语义评测需要模型裁判，没做。
+- 报告可由人伪造。门禁信任报告文件。签名报告排在后续。
+- 灰度路由器没有接流量。注册表还没有按版本解析的入口。
+- 评测 CLI 每次用例新建内存会话，不保留会话。
+- 审计没有 eval.run 事件。
+- 审计哈希链和篡改检测仍未做。

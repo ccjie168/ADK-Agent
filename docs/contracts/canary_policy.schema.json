@@ -1,0 +1,44 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "canary_version": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+      "title": "Canary Version",
+      "type": "string"
+    },
+    "stable_version": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+      "title": "Stable Version",
+      "type": "string"
+    },
+    "tenant": {
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+      "title": "Tenant",
+      "type": "string"
+    },
+    "weight": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Weight",
+      "type": "number"
+    }
+  },
+  "required": [
+    "tenant",
+    "agent_id",
+    "stable_version",
+    "canary_version",
+    "weight"
+  ],
+  "title": "CanaryPolicy",
+  "type": "object"
+}

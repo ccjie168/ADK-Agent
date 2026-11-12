@@ -18,6 +18,9 @@ from adk_agent.core import (  # noqa: E402
     AgentManifest,
     AgentRef,
     AuditEvent,
+    CanaryPolicy,
+    EvalReport,
+    EvalSuiteSpec,
     Invocation,
     OrchestrationPlan,
     Principal,
@@ -36,6 +39,9 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "orchestration_plan.schema.json": OrchestrationPlan,
     "supervisor_decision.schema.json": SupervisorDecision,
     "access_policy.schema.json": AccessPolicy,
+    "eval_suite_spec.schema.json": EvalSuiteSpec,
+    "eval_report.schema.json": EvalReport,
+    "canary_policy.schema.json": CanaryPolicy,
 }
 
 
