@@ -42,7 +42,7 @@
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。
 
-## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR]`
+## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE]`
 
 把模型网关作为独立服务运行。
 
@@ -53,14 +53,18 @@
 - 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。
 - `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
 - 审计 token 从 `--audit-token-env` 指定的环境变量读，默认 `ADK_AUDIT_AUTH_TOKEN`。非回环 URL 没有 token 拒绝启动，退出 1。
+- 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥，同时给退出 1。
+- OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
-## `adk-agent serve-audit --out FILE`
+## `adk-agent serve-audit --out FILE [--oidc-config FILE]`
 
 把审计管线作为独立服务运行。
 
 - 只有 `/healthz` 开放。`POST /v1/events` 需要 bearer token，非回环地址没 token 拒绝启动。
 - 成功返回 202 `{"hash":"..."}`。写入失败返回 502 `{"error":"audit_write_failed"}`。
 - `FILE` 每行一条 `AuditRecord`，同租户串成哈希链，每租户首条 `prev_hash` 为空串。
+- 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
+- OIDC 模式下，事件的 `tenant` 和 `principal.subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
 ## `adk-agent verify-audit FILE`
 
@@ -69,7 +73,7 @@
 - 通过：stdout 输出 `ok <N> records`，退出 0。
 - 断链或文件非法：stderr 输出原因，退出 1。
 
-## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH | --audit-url URL] [--audit-token-env VAR]`
+## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE]`
 
 把工具网关作为独立服务运行。
 
@@ -81,6 +85,8 @@
 - 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。
 - `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
 - 审计 token 从 `--audit-token-env` 指定的环境变量读，默认 `ADK_AUDIT_AUTH_TOKEN`。非回环 URL 没有 token 拒绝启动，退出 1。
+- 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
+- OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
 ## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
 
