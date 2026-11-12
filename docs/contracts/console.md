@@ -26,6 +26,53 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - `event: error`，数据是 `{error}`，文案固定。配额用尽时是 `{"error":"quota_exceeded"}`。
 - 鉴权和策略检查在建流前完成，拒绝返回普通 JSON 错误。
 
+## `GET /api/approvals` -> `[ApprovalRequest]`
+
+返回待决的人工审批请求，按 `requested_at` 正序。结构见 `approval_request.schema.json`。
+
+- 未配置审批目录时返回 404 `approvals_not_configured`。
+- 非 `admin` 身份只看到自己租户的请求。
+- 请求里的 `input` 是待审内容，只在这里返回给有权限的调用方。
+
+## `POST /api/approvals/{request_id}`
+
+请求：`{approved, reason?}`
+响应：`ApprovalDecision`，结构见 `approval_decision.schema.json`。`approver` 是当前 principal 的 `subject`，`decided_at` 由服务端生成。
+
+- 请求 id 必须匹配 `^[A-Za-z0-9._-]{1,128}$`，否则 400 `unsafe_request_id`。
+- `approved` 缺失或不是布尔返回 400 `invalid decision`。
+- 请求不存在返回 404 `approval_not_found`。
+- 已决请求返回 409 `approval_already_decided`，决定不可改写。
+- 非 `admin` 身份决定其他租户的请求返回 403 `tenant_forbidden`。
+- 配置了 `--policy` 时按 `approval.decide:<agent_id>` 判定，拒绝返回 403 `policy_denied`。
+- 每次成功决定写一条 `approval.decide` 审计，`target` 是请求 id，`approver` 是审批人，`status` 是 `ok` 或 `denied`。审计不含待审 `input`。
+- 未配置审批目录时返回 404 `approvals_not_configured`。
+
+## `GET /api/plans?limit=50` -> `[PlanSummary]`
+
+从当前进程的审计缓冲按 `trace_id` 聚合 `orchestration.run` 事件，按最后事件时间倒序。`limit` 夹在 1 到 200。
+
+```json
+{
+  "trace_id": "tr1",
+  "plan_id": "flow@1.0.0",
+  "agent_id": "flow",
+  "tenant": "local",
+  "status": "ok",
+  "error_code": null,
+  "started_at": "2026-11-12T10:00:00Z",
+  "last_at": "2026-11-12T10:00:01Z",
+  "steps": 3,
+  "approvals": 1,
+  "latency_ms": 120,
+  "cost_usd": 0.001
+}
+```
+
+- `steps` 和 `approvals` 数同一 trace 的 `orchestration.step` 和 `orchestration.approval` 事件。
+- 非 `admin` 身份只看到自己租户的计划。
+- 计划历史只覆盖当前控制台进程。
+
 ## `GET /api/traces/{trace_id}` -> `{trace_id, root, error}`
 
 根是最后一条 `agent.run` 或 `orchestration.run` 事件，`children` 是同一 trace 的其余事件。
