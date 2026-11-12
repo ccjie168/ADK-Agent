@@ -113,13 +113,17 @@
 - 审计的 `trace_id` 取 `traceparent` 的 trace-id，规则见 `tracing.md`。没有时每次调用新生成。
 - `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
 
-## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
+## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--quota-config FILE]`
 
 把一个 agent 暴露成 A2A 端点。
 
 - 需要可选依赖 `a2a-sdk[http-server]>=0.3.4,<2`。没装时退出 1 并给出安装命令。
 - 非回环地址必须提供 `--auth-token-env` 指向的 token。loopback 可以 `--allow-unauthenticated`（仅开发）。
 - token 保护所有路径，包括 `/.well-known/agent-card.json` 和 JSON-RPC。
+- 审计和配额规则同 MCP 一节。tenant 固定 `local`，principal 是 `local` 下的 `a2a_user`，kind 是 `service`。
+- 审计的 `args_hash` 取 A2A 消息里文本 part 的拼接，`result_hash` 取最终回复文本。
+- 审计的 `trace_id` 取请求头 `traceparent` 的 trace-id，规则见 `tracing.md`。
+- 配置了审计或配额且没有传入 runner 时，服务自行构建默认 runner 并包一层。`--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
 
 ## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR]`
 

@@ -8,7 +8,7 @@
 - 没有合法的 `X-Trace-Id` 时读 W3C `traceparent`，格式是 `<version>-<trace-id>-<parent-id>-<flags>`。版本和 trace-id 不能全零，版本不能是 `ff`，各段用小写十六进制。取其中的 32 位 trace-id。
 - 两者都没有时生成 32 位小写十六进制。
 
-控制台用它作为本次 run 的 `trace_id`，MCP 审计也用它。
+控制台用它作为本次 run 的 `trace_id`，MCP 和 A2A 审计也用它。
 
 ## 出站
 
