@@ -18,6 +18,7 @@ from adk_agent.core import (  # noqa: E402
     AgentRef,
     AuditEvent,
     Invocation,
+    OrchestrationPlan,
     Principal,
 )
 
@@ -30,6 +31,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "invocation.schema.json": Invocation,
     "audit_event.schema.json": AuditEvent,
     "framework_config.schema.json": FrameworkConfig,
+    "orchestration_plan.schema.json": OrchestrationPlan,
 }
 
 

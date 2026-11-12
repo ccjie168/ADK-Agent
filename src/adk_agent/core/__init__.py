@@ -15,6 +15,13 @@ from .manifest import (
     manifest_digest,
 )
 from .model import Message, ModelRequest, ModelResponse
+from .orchestration import (
+    OrchestrationPlan,
+    PlanResult,
+    PlanStep,
+    plan_digest,
+    plan_ref,
+)
 from .policy import DataClass, PolicyDecision, ToolGrant
 from .ports import (
     AgentRegistry,
@@ -46,6 +53,9 @@ __all__ = [
     "ModelProvider",
     "ModelRequest",
     "ModelResponse",
+    "OrchestrationPlan",
+    "PlanResult",
+    "PlanStep",
     "PolicyDecision",
     "PolicyEngine",
     "Principal",
@@ -58,4 +68,6 @@ __all__ = [
     "ToolRequest",
     "ToolResponse",
     "manifest_digest",
+    "plan_digest",
+    "plan_ref",
 ]

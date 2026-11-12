@@ -20,9 +20,17 @@ from .config import (
     load_config,
 )
 from .console import build_console_app, run_console
+from .core import OrchestrationPlan, PlanResult, PlanStep, plan_digest, plan_ref
 from .factory import build_agent, build_framework, build_runner
 from .mcp.server import serve_agent, serve_many
 from .models import build_model, disable_thinking
+from .orchestration import (
+    AgentGrantPolicyEngine,
+    PlanDenied,
+    PlanExecutionError,
+    PlanExecutor,
+    UnknownAgent,
+)
 from .sandbox import (
     SandboxPolicy,
     SandboxTimeout,
@@ -56,6 +64,16 @@ __all__ = [
     "SandboxViolation",
     "ToolSandbox",
     "install_tool_sandbox",
+    "OrchestrationPlan",
+    "PlanResult",
+    "PlanStep",
+    "plan_digest",
+    "plan_ref",
+    "AgentGrantPolicyEngine",
+    "PlanDenied",
+    "PlanExecutionError",
+    "PlanExecutor",
+    "UnknownAgent",
 ]
 
 __version__ = "0.1.0"

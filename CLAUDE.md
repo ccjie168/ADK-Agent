@@ -16,7 +16,7 @@
 
 ## 目录地图
 
-- `src/adk_agent`: 框架库（`core` 契约与端口、`models` 模型网关、`tools` 工具网关/守卫/沙箱、`secretstore` 密钥、`registry` 注册表、`runtime` 运行时、`console` 控制台、`mcp`、`cli`）
+- `src/adk_agent`: 框架库（`core` 契约与端口、`models` 模型网关、`tools` 工具网关/守卫/沙箱、`secretstore` 密钥、`registry` 注册表、`runtime` 运行时、`orchestration` 计划执行器、`console` 控制台、`mcp`、`cli`）
 - `tests/`: 与 `src` 镜像
 - `examples/`: `minimal`、`multi_agent` 示例
 - `scripts/`: `check.py`、`probe_mcp.py`、`call_tool.py`

@@ -27,7 +27,7 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 | M0 地基 | Phase 0 | 五个契约合并，import-linter 生效，manifest 可往返，P0 加固完成 | done |
 | M1 单 agent 闭环 | Phase 1 | 注册、发布、模型网关、审计端到端跑通 | done |
 | M2 工具与策略 | Phase 2 | 越权工具调用被拒并留痕，沙箱生效 | done |
-| M3 编排 | Phase 3 | 多 agent 工作流可回放，审批门生效 | planned |
+| M3 编排 | Phase 3 | 多 agent 工作流可回放，审批门生效 | in_progress |
 | M4 平台加固 | Phase 4 | 两租户隔离，配额生效，评测不过不能发布 | planned |
 | M5 拆分 | Phase 5 | 网关与 worker 独立部署，故障隔离 | planned |
 
@@ -79,12 +79,16 @@ M2 出口证据见 `docs/evidence/M2-milestone.txt`。
 
 进入每个切片时再写详细 spec。
 
-## M3 候选切片
+## M3 切片
 
-- `OrchestrationPlan` schema。
-- 单 agent、路由、监督者、工作流、扇出扇入策略。
-- 持久化执行、重试、超时、预算、取消。
-- 人工审批与 trace 树。
+- SLICE-023 编排计划与执行器：OrchestrationPlan、单 agent、顺序、agent.invoke 策略、审计。已完成。
+- SLICE-024 执行韧性：重试、超时、预算、取消。
+- SLICE-025 策略扩展：路由、监督者、扇出扇入。
+- SLICE-026 人工审批与 trace 树。
+
+M3 仍进行中，等 SLICE-024 到 SLICE-026。
+
+进入每个切片时再写详细 spec。
 
 ## M4 候选切片
 

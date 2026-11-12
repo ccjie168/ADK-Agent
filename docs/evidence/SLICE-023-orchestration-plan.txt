@@ -1,0 +1,66 @@
+SLICE-023 编排计划与执行器
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/orchestration -q
+ImportError: cannot import name 'OrchestrationPlan' from 'adk_agent.core'
+ModuleNotFoundError: No module named 'adk_agent.orchestration'
+3 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/orchestration -q
+20 passed in 1.83s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+203 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+203 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- OrchestrationPlan、PlanStep、PlanResult 是 core 领域类型。
+- plan_digest 是规范 JSON 的 SHA-256。plan_ref 带 digest。
+- 校验重复 step id、未知依赖、自依赖、环、inputs_from 不是依赖、single 策略形状。
+- order() 返回稳定拓扑序，同层按声明顺序。
+- PlanExecutor 按拓扑序执行 single 和 sequential。
+- 步骤输入：静态 input 加 inputs_from 的输出。都为空时用父输入。
+- 子 invocation 新 run_id，父 trace_id，父 principal，步骤 agent_ref。
+- deadline 取父 deadline 和 now + timeout 的较早值。预算取较小值。
+- 每个步骤先过 PolicyEngine 的 agent.invoke。拒绝时不调用 agent，写 denied。
+- 未注册 agent 写 unknown_agent。
+- 步骤异常写 error，保留原错误类名，再抛 PlanExecutionError。
+- 计划级审计 action=orchestration.run，agent_ref 带计划 digest。
+- 计划事件和步骤事件共享 trace_id。
+- 审计只存输入输出的 hash。
+- orchestration_plan.schema.json 已生成，契约同步测试通过。
+
+已知边界
+--------
+- 重试、超时强制、预算强制、取消没有做。deadline 和 budget 只是写进子调用。
+- 审批门和 trace 树没有做。
+- 路由、监督者、扇出扇入没有做。当前只有 single 和 sequential。
+- agent 映射按 id 取。AgentRef 的 digest 没有在解析时校验。
+- 控制台和 CLI 还没有计划入口。执行器目前是库接口。
