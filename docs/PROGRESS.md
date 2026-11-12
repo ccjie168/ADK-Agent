@@ -2,12 +2,12 @@
 
 更新日期: 2026-11-12
 分支: master
-最新提交: `3fcf12d` feat(console): stream run progress and show a trace timeline (SLICE-036)
+最新提交: `911654d` feat(cli): send gateway audit events to the audit service (SLICE-037)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
 
-企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加一个控制台可见性切片。门禁全绿，CI 全绿。可做内部试点，未达对外多租户生产标准。
+企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性和审计客户端接入两个切片。本地门禁全绿。可做内部试点，未达对外多租户生产标准。
 
 ## 里程碑
 
@@ -36,6 +36,7 @@
 | SLICE-034 | worker 横向扩容（共享 Postgres 会话） | `07b61e1` |
 | SLICE-035 | 审计管线独立部署与租户哈希链 | `3b17b43` |
 | SLICE-036 | 控制台 SSE 进度与 trace 视图 | `3fcf12d` |
+| SLICE-037 | 审计客户端接入两个网关 | `911654d` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
@@ -43,9 +44,9 @@
 
 本机（装了可选驱动）:
 
-- `python scripts/check.py --fast` -> 357 passed, 2 skipped，7 步全 PASS
-- `python scripts/check.py --full` -> 357 passed, 2 skipped，9 步全 PASS
-- CI 最近运行 `43208162497` 结论 success
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 365 passed, 2 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 365 passed, 2 skipped，9 步全 PASS
+- 本轮未推送，CI 未运行。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
 两个 skip 是：Postgres 会话用例（需 `TEST_POSTGRES_URL`）、以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。CI 不装 `a2a-sdk`，另有 4 条 A2A 用例按条件跳过。
 
@@ -80,11 +81,10 @@ python -m adk_agent console --agents examples/minimal/agent.py \
 
 按优先级：
 
-1. OIDC 身份映射。现在是单 bearer token 单身份，RBAC 角色来自启动参数。
+1. OIDC 身份映射。现在是单 bearer token 单身份，RBAC 角色来自启动参数。开工前先写 ADR-0007 选 JWT 验证依赖。
 2. 共享配额。配额仍是进程内，多副本各自计数。
-3. 把 `HttpAuditSink` 接进网关装配，现在网关还写本地 JSONL。
-4. 控制台审批 UI 与编排计划可视化。
-5. DB 行级隔离、审计轮转和签名、指标与分布式追踪、限流熔断、备份恢复、压力与长稳测试。
+3. 控制台审批 UI 与编排计划可视化。
+4. DB 行级隔离、审计轮转和签名、指标与分布式追踪、限流熔断、备份恢复、压力与长稳测试。
 
 ## 恢复步骤
 
