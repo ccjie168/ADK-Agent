@@ -108,13 +108,15 @@
 - 非回环地址必须提供 `--auth-token-env` 指向的 token。loopback 可以 `--allow-unauthenticated`（仅开发）。
 - token 保护所有路径，包括 `/.well-known/agent-card.json` 和 JSON-RPC。
 
-## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE]`
+## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE] [--quota-config FILE]`
 
 启动私有控制台。
 
 - `--registry` 指向注册表根目录，默认 `$ADK_REGISTRY_DIR`，否则 `./registry`。只读运营视图从这里读已发布 agent 和评测报告。
 - `--oidc-config` 指向一个 `OidcConfig` JSON，见 `oidc_config.schema.json`。给了就改用 OIDC 鉴权，忽略 `--auth-token-env` 和 `--role`。
 - `--oidc-config` 和 `--allow-unauthenticated` 互斥，同时给退出 1。OIDC 模式允许绑定非回环地址，因为每个请求都验证 token。
+- `--quota-config` 指向一个 `QuotaConfig` JSON，见 `quota_config.schema.json`。只有列出的租户受配额限制，没列出的不限额。
+- `QUOTA_URL` 选择共享配额后端，接受 `postgresql://` 或 `postgresql+asyncpg://`。不设置时用进程内计数，只约束单进程。缺少 `asyncpg` 时退出 1 并给出安装提示。
 - 配置文件缺失或非法退出 1。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
 - `--role` 可重复，设置控制台 principal 的角色。默认 `admin`。

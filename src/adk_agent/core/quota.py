@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class QuotaPolicy(BaseModel):
@@ -17,6 +17,19 @@ class QuotaPolicy(BaseModel):
         if self.max_runs is None and self.max_concurrent is None:
             raise ValueError("quota policy needs max_runs or max_concurrent")
         return self
+
+
+class QuotaConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tenants: dict[str, QuotaPolicy] = Field(default_factory=dict)
+
+    @field_validator("tenants")
+    @classmethod
+    def _non_empty_tenants(cls, value: dict[str, QuotaPolicy]) -> dict[str, QuotaPolicy]:
+        if any(not tenant for tenant in value):
+            raise ValueError("tenant keys must be non-empty")
+        return value
 
 
 class QuotaExceeded(Exception):

@@ -21,5 +21,6 @@
 - `cli.md`：`adk-agent validate`、`adk-agent publish`、`adk-agent new` 的命令契约。
 - `console.md`：控制台 `/api/agents`、`/api/chat`、`/api/audit` 的 HTTP 契约。
 - `oidc_config.schema.json`：`OidcConfig`，OIDC 身份适配器的配置。它是唯一从 `identity` 适配器导出的契约。
+- `quota_config.schema.json`：`QuotaConfig`，按租户配置配额策略。
 
 `PublishedAgent` 不是独立契约，它是注册表对 `AgentManifest` 加 digest、签名和发布时间的包装。

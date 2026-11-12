@@ -45,7 +45,7 @@ from .ports import (
     ToolGateway,
 )
 from .progress import ProgressEvent, ProgressKind
-from .quota import QuotaExceeded, QuotaPolicy
+from .quota import QuotaConfig, QuotaExceeded, QuotaPolicy
 from .rbac import AccessPolicy, RoleBinding
 from .tool import ToolGatewayRequest, ToolRequest, ToolResponse
 
@@ -87,6 +87,7 @@ __all__ = [
     "ProgressEvent",
     "ProgressKind",
     "PublishedAgent",
+    "QuotaConfig",
     "QuotaExceeded",
     "QuotaManager",
     "QuotaPolicy",

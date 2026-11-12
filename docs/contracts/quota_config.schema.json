@@ -1,0 +1,55 @@
+{
+  "$defs": {
+    "QuotaPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "max_concurrent": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Concurrent"
+        },
+        "max_runs": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Runs"
+        },
+        "window_seconds": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "title": "Window Seconds",
+          "type": "number"
+        }
+      },
+      "title": "QuotaPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "tenants": {
+      "additionalProperties": {
+        "$ref": "#/$defs/QuotaPolicy"
+      },
+      "title": "Tenants",
+      "type": "object"
+    }
+  },
+  "title": "QuotaConfig",
+  "type": "object"
+}

@@ -13,6 +13,8 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 请求：`{agent, message, session_id?}`
 响应：`{session_id, reply, run_id, trace_id}`
 
+租户配额用尽时返回 429 `{"error":"quota_exceeded"}`，并写一条 `agent.run` 的 `denied` 审计，`error_code` 是 `quota_exceeded`。配额在模型调用前检查，超限的请求不会触发模型。配额后端不可用返回 503 `{"error":"quota_unavailable"}`。
+
 可选请求头 `X-Trace-Id`，必须匹配 `^[A-Za-z0-9._-]{1,128}$`，否则自动生成。
 
 ## `POST /api/chat/stream`
@@ -21,7 +23,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 
 - `event: progress`，数据是 `ProgressEvent`（见 `progress_event.schema.json`）。
 - `event: done`，数据是 `{session_id, reply, run_id, trace_id}`。
-- `event: error`，数据是 `{error}`，文案固定。
+- `event: error`，数据是 `{error}`，文案固定。配额用尽时是 `{"error":"quota_exceeded"}`。
 - 鉴权和策略检查在建流前完成，拒绝返回普通 JSON 错误。
 
 ## `GET /api/traces/{trace_id}` -> `{trace_id, root, error}`
