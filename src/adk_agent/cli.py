@@ -144,12 +144,19 @@ def _auth_token(args: argparse.Namespace) -> str | None:
 
 
 def _identity_provider(args: argparse.Namespace) -> IdentityProvider | None:
-    if not args.oidc_config:
+    if not getattr(args, "oidc_config", None):
         return None
-    from .identity import OidcConfig, OidcIdentityProvider
+    if getattr(args, "allow_unauthenticated", False):
+        print("oidc config cannot combine with allow_unauthenticated", file=sys.stderr)
+        raise SystemExit(1)
+    try:
+        from .identity import OidcConfig, OidcIdentityProvider
 
-    config = OidcConfig.model_validate_json(Path(args.oidc_config).read_text(encoding="utf-8"))
-    return OidcIdentityProvider(config)
+        config = OidcConfig.model_validate_json(Path(args.oidc_config).read_text(encoding="utf-8"))
+        return OidcIdentityProvider(config)
+    except Exception as exc:  # noqa: BLE001
+        print(f"invalid oidc config: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
@@ -239,6 +246,13 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     _add_http_args(p_gateway)
+    p_gateway.add_argument(
+        "--oidc-config",
+        default=None,
+        help=(
+            "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
+        ),
+    )
 
     p_tools = sub.add_parser(
         "serve-tool-gateway", help="serve the tool gateway as a standalone service"
@@ -262,10 +276,24 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     _add_http_args(p_tools)
+    p_tools.add_argument(
+        "--oidc-config",
+        default=None,
+        help=(
+            "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
+        ),
+    )
 
     p_audit = sub.add_parser("serve-audit", help="serve the audit pipeline as a standalone service")
     p_audit.add_argument("--out", required=True, help="append chained audit records here (JSONL)")
     _add_http_args(p_audit)
+    p_audit.add_argument(
+        "--oidc-config",
+        default=None,
+        help=(
+            "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
+        ),
+    )
 
     p_verify = sub.add_parser("verify-audit", help="verify an audit chain file")
     p_verify.add_argument("path", help="path to a chained audit JSONL file")
@@ -418,6 +446,7 @@ def main(argv: list[str] | None = None) -> None:
         from .models.gateway import PolicyModelGateway
         from .models.service import build_model_gateway_app, build_providers
 
+        oidc = _identity_provider(args)
         try:
             providers = build_providers(args.providers or ["litellm"], vllm_url=args.vllm_url)
         except ValueError as exc:
@@ -430,6 +459,7 @@ def main(argv: list[str] | None = None) -> None:
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
+            oidc=oidc,
         )
 
         import uvicorn
@@ -442,11 +472,13 @@ def main(argv: list[str] | None = None) -> None:
 
         registry = _load_tools(args.tools)
         sink = _audit_sink(args)
+        oidc = _identity_provider(args)
         app = build_tool_gateway_app(
             FunctionToolGateway(registry, audit=sink),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
+            oidc=oidc,
         )
 
         import uvicorn
@@ -457,11 +489,13 @@ def main(argv: list[str] | None = None) -> None:
         from .audit.service import build_audit_pipeline_app
         from .mcp.http import resolve_port
 
+        oidc = _identity_provider(args)
         app = build_audit_pipeline_app(
             AuditPipeline(args.out),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
+            oidc=oidc,
         )
 
         import uvicorn
@@ -486,14 +520,7 @@ def main(argv: list[str] | None = None) -> None:
         from .console import run_console
         from .registry import FileAgentRegistry, FileEvalReportStore
 
-        if args.oidc_config and args.allow_unauthenticated:
-            print("oidc config cannot combine with allow_unauthenticated", file=sys.stderr)
-            raise SystemExit(1)
-        try:
-            oidc = _identity_provider(args)
-        except Exception as exc:  # noqa: BLE001
-            print(f"invalid oidc config: {exc}", file=sys.stderr)
-            raise SystemExit(1) from None
+        oidc = _identity_provider(args)
 
         agents = _load_agents(args.agents)
         run_console(

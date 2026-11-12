@@ -1,0 +1,58 @@
+SLICE-041 OIDC 接线：服务面
+日期: 2026-11-12
+状态: gated
+
+反例红（实现前，由实现代理运行）
+--------------------------------
+$ .venv/Scripts/python.exe -m pytest tests/test_service_oidc.py -q
+FAILED ...::test_model_gateway_requires_token - TypeError ...
+...
+FAILED ...::test_cli_accepts_oidc_config - SystemExit: 2
+14 failed in 2.01s
+
+服务用例因缺少 `oidc=` 关键字失败。CLI 用例因 `--oidc-config` 未知退出 2。
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_service_oidc.py -q
+14 passed in 2.30s
+
+$ .venv/Scripts/python.exe -m pytest -q
+441 passed, 2 skipped in 39.70s
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实服务验证
+------------
+本地 JWKS 提供公钥，RS256 token 的 issuer、audience、kid 与配置一致。
+工具网关和审计服务都以 `--oidc-config` 启动，没有静态 token。
+请求体里的 principal 角色是 `[]`，token 里的角色是 `["admin"]`。
+
+工具网关:
+no token -> 401 {"error":"unauthorized"}
+valid token -> 200 {"output":"hello","data_classes":[]}
+mismatch -> 403 {"error":"principal_mismatch"}
+tool audit roles: ['admin']
+
+审计服务:
+no token -> 401 {"error":"unauthorized"}
+valid token -> 202 {"hash":"41d1daa2..."}
+mismatch -> 403 {"error":"principal_mismatch"}
+audit record roles: ['admin']
+
+$ adk-agent verify-audit audit.jsonl
+ok 1 records
+
+说明: 真实进程、真实签名、真实 JWKS。角色以 token 为准，请求体的角色被覆盖。
+工具网关的审计文件和审计服务的哈希链都记录了 token 角色。链可校验。

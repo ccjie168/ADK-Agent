@@ -11,8 +11,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from ..auth import BearerAuthMiddleware, resolve_http_auth
-from ..core import ModelGatewayRequest, ModelProvider
+from ..auth import (
+    BearerAuthMiddleware,
+    OidcAuthMiddleware,
+    bind_principal,
+    resolve_http_auth,
+)
+from ..core import IdentityProvider, ModelGatewayRequest, ModelProvider
 from .gateway import ModelDenied, PolicyModelGateway
 from .providers import LiteLlmProvider, VllmProvider
 
@@ -48,9 +53,10 @@ def build_model_gateway_app(
     host: str = "127.0.0.1",
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
+    oidc: IdentityProvider | None = None,
 ) -> FastAPI:
     """Build the gateway app. Every path except /healthz needs the token."""
-    token = resolve_http_auth(host, auth_token, allow_unauthenticated)
+    token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
     app = FastAPI(title="ADK Model Gateway", docs_url=None, redoc_url=None)
 
     @app.get("/healthz")
@@ -68,8 +74,14 @@ def build_model_gateway_app(
         except ValidationError:
             return JSONResponse({"error": "invalid request"}, status_code=400)
 
+        invocation = call.invocation
+        bound = bind_principal(request, invocation.principal)
+        if bound is None:
+            return JSONResponse({"error": "principal_mismatch"}, status_code=403)
+        invocation = invocation.model_copy(update={"principal": bound})
+
         try:
-            response = await gateway.complete(call.invocation, call.request, call.policy)
+            response = await gateway.complete(invocation, call.request, call.policy)
         except ModelDenied:
             return JSONResponse({"error": "model_denied"}, status_code=403)
         except Exception:  # noqa: BLE001
@@ -78,7 +90,9 @@ def build_model_gateway_app(
 
         return JSONResponse(response.model_dump(mode="json"))
 
-    if token:
+    if oidc is not None:
+        app.add_middleware(OidcAuthMiddleware, provider=oidc, open_paths=frozenset({"/healthz"}))
+    elif token:
         app.add_middleware(BearerAuthMiddleware, token=token, open_paths=frozenset({"/healthz"}))
     return app
 

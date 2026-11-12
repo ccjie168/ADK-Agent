@@ -9,7 +9,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
-from .core import IdentityProvider
+from .core import IdentityProvider, Principal
 from .identity import IdentityUnavailable, InvalidIdentity
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -80,6 +80,16 @@ class OidcAuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse({"error": "identity_unavailable"}, status_code=503)
         request.state.principal = principal
         return await call_next(request)
+
+
+def bind_principal(request: Request, claimed: Principal) -> Principal | None:
+    """Return the token principal when it matches the caller's claim, else ``None``."""
+    verified = getattr(request.state, "principal", None)
+    if verified is None:
+        return claimed
+    if claimed.tenant != verified.tenant or claimed.subject != verified.subject:
+        return None
+    return verified
 
 
 def resolve_http_auth(

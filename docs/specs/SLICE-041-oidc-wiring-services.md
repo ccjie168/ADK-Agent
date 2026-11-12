@@ -1,6 +1,6 @@
 # SLICE-041 OIDC 接线：服务面
 
-状态: in_progress
+状态: gated
 依据: ADR-0002 第 7 条，ADR-0007，SLICE-039、SLICE-040
 
 ## 意图（要什么，不写怎么写）
@@ -39,26 +39,26 @@
 
 ## 完成判据（可执行）
 
-- [ ] 模型网关缺 token 返回 401 -> `tests/test_service_oidc.py::test_model_gateway_requires_token`
-- [ ] 模型网关 tenant 不匹配返回 403 -> `tests/test_service_oidc.py::test_model_gateway_rejects_principal_mismatch`
-- [ ] 模型网关用 token 角色覆盖请求体角色 -> `tests/test_service_oidc.py::test_model_gateway_uses_token_principal`
-- [ ] 工具网关缺 token 返回 401 -> `tests/test_service_oidc.py::test_tool_gateway_requires_token`
-- [ ] 工具网关 tenant 不匹配返回 403 -> `tests/test_service_oidc.py::test_tool_gateway_rejects_principal_mismatch`
-- [ ] 工具网关用 token 角色覆盖请求体角色 -> `tests/test_service_oidc.py::test_tool_gateway_uses_token_principal`
-- [ ] 审计服务缺 token 返回 401 -> `tests/test_service_oidc.py::test_audit_service_requires_token`
-- [ ] 审计服务 tenant 不匹配返回 403 -> `tests/test_service_oidc.py::test_audit_service_rejects_principal_mismatch`
-- [ ] 审计服务用 token 角色覆盖事件角色 -> `tests/test_service_oidc.py::test_audit_service_uses_token_principal`
-- [ ] 签发方不可达返回 503 -> `tests/test_service_oidc.py::test_service_maps_provider_outage_to_503`
-- [ ] `serve-audit --oidc-config` 可解析 -> `tests/test_service_oidc.py::test_cli_accepts_oidc_config`
-- [ ] 配置和 `--allow-unauthenticated` 互斥 -> `tests/test_service_oidc.py::test_cli_rejects_oidc_with_unauthenticated`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 模型网关缺 token 返回 401 -> `tests/test_service_oidc.py::test_model_gateway_requires_token`
+- [x] 模型网关 tenant 不匹配返回 403 -> `tests/test_service_oidc.py::test_model_gateway_rejects_principal_mismatch`
+- [x] 模型网关用 token 角色覆盖请求体角色 -> `tests/test_service_oidc.py::test_model_gateway_uses_token_principal`
+- [x] 工具网关缺 token 返回 401 -> `tests/test_service_oidc.py::test_tool_gateway_requires_token`
+- [x] 工具网关 tenant 不匹配返回 403 -> `tests/test_service_oidc.py::test_tool_gateway_rejects_principal_mismatch`
+- [x] 工具网关用 token 角色覆盖请求体角色 -> `tests/test_service_oidc.py::test_tool_gateway_uses_token_principal`
+- [x] 审计服务缺 token 返回 401 -> `tests/test_service_oidc.py::test_audit_service_requires_token`
+- [x] 审计服务 tenant 不匹配返回 403 -> `tests/test_service_oidc.py::test_audit_service_rejects_principal_mismatch`
+- [x] 审计服务用 token 角色覆盖事件角色 -> `tests/test_service_oidc.py::test_audit_service_uses_token_principal`
+- [x] 签发方不可达返回 503 -> `tests/test_service_oidc.py::test_service_maps_provider_outage_to_503`
+- [x] `serve-audit --oidc-config` 可解析 -> `tests/test_service_oidc.py::test_cli_accepts_oidc_config`
+- [x] 配置和 `--allow-unauthenticated` 互斥 -> `tests/test_service_oidc.py::test_cli_rejects_oidc_with_unauthenticated`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`serve-model-gateway --oidc-config FILE` -> 当前 argparse 退出 2
-- [ ] 反例 2：请求体 principal 的 tenant 和 token 不一致 -> 当前被接受，期望 403 `principal_mismatch`
-- [ ] 反例 3：请求体 principal 自带 `admin` 角色，token 没有 -> 当前审计按 `admin` 记录，期望按 token 的角色记录
-- [ ] 反例 4：JWKS 不可达 -> 期望 503 `identity_unavailable`
+- [x] 反例 1：`serve-model-gateway --oidc-config FILE` -> 当前 argparse 退出 2
+- [x] 反例 2：请求体 principal 的 tenant 和 token 不一致 -> 当前被接受，期望 403 `principal_mismatch`
+- [x] 反例 3：请求体 principal 自带 `admin` 角色，token 没有 -> 当前审计按 `admin` 记录，期望按 token 的角色记录
+- [x] 反例 4：JWKS 不可达 -> 期望 503 `identity_unavailable`
 
 ## 契约（如涉及对外接口）
 
@@ -86,5 +86,5 @@
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-041-oidc-wiring-services.txt`，14 个用例失败，服务缺 `oidc=`，CLI 不认 `--oidc-config`
+- 实现后绿: 同文件，14 个目标测试通过，全量 441 passed 2 skipped，`check.py --full` ALL PASS，另做真实 JWKS 双服务验证
