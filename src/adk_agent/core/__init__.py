@@ -6,6 +6,7 @@ from .approval import ApprovalDecision, ApprovalRequest
 from .audit import AuditEvent
 from .canary import CanaryPolicy
 from .eval import EvalCase, EvalCaseResult, EvalReport, EvalSuiteSpec
+from .gateway import ModelGatewayRequest
 from .identity import Principal
 from .invocation import Invocation, InvocationResult
 from .manifest import (
@@ -68,6 +69,7 @@ __all__ = [
     "InvocationResult",
     "Message",
     "ModelGateway",
+    "ModelGatewayRequest",
     "ModelPolicy",
     "ModelProvider",
     "ModelRequest",

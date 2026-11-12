@@ -22,6 +22,7 @@ from adk_agent.core import (  # noqa: E402
     EvalReport,
     EvalSuiteSpec,
     Invocation,
+    ModelGatewayRequest,
     OrchestrationPlan,
     Principal,
     SupervisorDecision,
@@ -42,6 +43,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "eval_suite_spec.schema.json": EvalSuiteSpec,
     "eval_report.schema.json": EvalReport,
     "canary_policy.schema.json": CanaryPolicy,
+    "model_gateway_request.schema.json": ModelGatewayRequest,
 }
 
 

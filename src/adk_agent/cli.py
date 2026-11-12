@@ -159,6 +159,22 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_http_args(p_a2a)
 
+    p_gateway = sub.add_parser(
+        "serve-model-gateway", help="serve the model gateway as a standalone service"
+    )
+    p_gateway.add_argument(
+        "--provider",
+        action="append",
+        dest="providers",
+        default=None,
+        help="provider to serve, repeatable (default: litellm)",
+    )
+    p_gateway.add_argument(
+        "--vllm-url", default=None, help="vLLM base URL (defaults to $VLLM_BASE_URL)"
+    )
+    p_gateway.add_argument("--audit-file", default=None, help="append JSONL audit events here")
+    _add_http_args(p_gateway)
+
     p_console = sub.add_parser("console", help="serve a private web console for agents")
     p_console.add_argument(
         "--agents",
@@ -290,6 +306,29 @@ def main(argv: list[str] | None = None) -> None:
         except A2aUnavailable as exc:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from None
+    elif args.cmd == "serve-model-gateway":
+        from .audit import JsonlAuditSink
+        from .mcp.http import resolve_port
+        from .models.gateway import PolicyModelGateway
+        from .models.service import build_model_gateway_app, build_providers
+
+        try:
+            providers = build_providers(args.providers or ["litellm"], vllm_url=args.vllm_url)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from None
+
+        sink = JsonlAuditSink(args.audit_file) if args.audit_file else None
+        app = build_model_gateway_app(
+            PolicyModelGateway(providers, audit=sink),
+            host=args.host,
+            auth_token=_auth_token(args),
+            allow_unauthenticated=args.allow_unauthenticated,
+        )
+
+        import uvicorn
+
+        uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "console":
         from .console import run_console
 

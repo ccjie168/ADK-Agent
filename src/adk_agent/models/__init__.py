@@ -31,6 +31,8 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from ..config import ModelConfig
+from .http_gateway import HttpModelGateway, ModelGatewayError
+from .service import build_model_gateway_app, build_providers
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.models import BaseLlm
@@ -133,3 +135,13 @@ def _default_model_config() -> ModelConfig:
         return ModelConfig(provider="gemini", name="gemini-2.5-pro")
 
     return ModelConfig(provider="litellm", name="deepseek/deepseek-v4-pro")
+
+
+__all__ = [
+    "HttpModelGateway",
+    "ModelGatewayError",
+    "build_model",
+    "build_model_gateway_app",
+    "build_providers",
+    "disable_thinking",
+]

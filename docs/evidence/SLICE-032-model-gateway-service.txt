@@ -1,0 +1,75 @@
+SLICE-032 模型网关独立部署
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/models/test_model_service.py tests/models/test_http_gateway.py tests/audit/test_jsonl_sink.py -q
+ImportError: cannot import name 'JsonlAuditSink' from 'adk_agent.audit'
+3 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/models/test_model_service.py tests/models/test_http_gateway.py tests/audit/test_jsonl_sink.py -q
+12 passed in 1.69s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+311 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+311 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实服务验证
+------------
+独立进程启动 PolicyModelGateway + uvicorn，127.0.0.1:8096，token=secret，
+审计写 audit.jsonl。
+
+GET /healthz -> 200 {"status": "ok"}
+
+HttpModelGateway 调用:
+ok: hello from gateway service tokens: 3 4 cost: 0.0001
+错误 token -> ModelGatewayError: model gateway returned status 401
+越权 policy -> ModelDenied: model gateway denied the request
+
+audit.jsonl:
+{"action":"model.call","target":"fake:m","tokens":7,"cost_usd":0.0001,"status":"ok",...}
+{"action":"model.call","target":"fake:m","status":"denied","error_code":"provider_not_allowed",...}
+
+说明
+----
+- ModelGatewayRequest 是 invocation + request + policy，响应复用 ModelResponse。
+- 服务只有 /healthz 开放。/v1/complete 需要 bearer token。
+- 非回环建应用无 token 抛 ValueError。
+- 403 只返回 model_denied，502 只返回 model_call_failed，不回显 provider 异常。
+- HttpModelGateway 实现 ModelGateway 端口，token 逐请求带上，可注入客户端。
+- JsonlAuditSink 每个事件一行，追加并 fsync。
+- CLI serve-model-gateway 支持 litellm 和 vllm，可选 audit-file。
+- model_gateway_request.schema.json 已生成。cli.md 已更新。
+- ADR-0004 记录拆分顺序和形态，状态 Proposed。
+
+已知边界
+--------
+- 服务信任调用方送来的 policy，per-caller 权威要等身份映射。
+- JSONL 审计单进程，没有轮转和集中投递。
+- 没有请求大小上限、速率限制、重试和熔断。
+- GatewayLlm 还没切换到 HttpModelGateway。这一刀提供端口和服务。
+- 工具网关拆分未开始。

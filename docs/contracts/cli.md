@@ -40,6 +40,15 @@
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。
 
+## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--audit-file PATH]`
+
+把模型网关作为独立服务运行。
+
+- 默认 provider 是 `litellm`。`--provider vllm` 需要 `--vllm-url` 或 `$VLLM_BASE_URL`。
+- 只有 `/healthz` 开放。`POST /v1/complete` 需要 bearer token，非回环地址没 token 拒绝启动。
+- 策略拒绝返回 403 `{"error":"model_denied"}`，provider 失败返回 502 `{"error":"model_call_failed"}`。
+- 给了 `--audit-file` 时每个 `model.call` 事件追加一行 JSON。
+
 ## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
 
 把一个 agent 暴露成 A2A 端点。
