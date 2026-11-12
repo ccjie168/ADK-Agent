@@ -40,7 +40,7 @@
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。
 
-## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--audit-file PATH]`
+## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR]`
 
 把模型网关作为独立服务运行。
 
@@ -48,6 +48,9 @@
 - 只有 `/healthz` 开放。`POST /v1/complete` 需要 bearer token，非回环地址没 token 拒绝启动。
 - 策略拒绝返回 403 `{"error":"model_denied"}`，provider 失败返回 502 `{"error":"model_call_failed"}`。
 - 给了 `--audit-file` 时每个 `model.call` 事件追加一行 JSON。
+- 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。
+- `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
+- 审计 token 从 `--audit-token-env` 指定的环境变量读，默认 `ADK_AUDIT_AUTH_TOKEN`。非回环 URL 没有 token 拒绝启动，退出 1。
 
 ## `adk-agent serve-audit --out FILE`
 
@@ -64,7 +67,7 @@
 - 通过：stdout 输出 `ok <N> records`，退出 0。
 - 断链或文件非法：stderr 输出原因，退出 1。
 
-## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH]`
+## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH | --audit-url URL] [--audit-token-env VAR]`
 
 把工具网关作为独立服务运行。
 
@@ -73,6 +76,9 @@
 - 授权以 grants 过线，服务端用 `GrantPolicyEngine` 判定。拒绝和未注册工具返回 403 `{"error":"tool_denied"}`。
 - 执行失败返回 502 `{"error":"tool_call_failed"}`，输出不可 JSON 序列化返回 502 `{"error":"tool_output_invalid"}`。
 - 给了 `--audit-file` 时每个 `tool.call` 事件追加一行 JSON。
+- 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。
+- `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
+- 审计 token 从 `--audit-token-env` 指定的环境变量读，默认 `ADK_AUDIT_AUTH_TOKEN`。非回环 URL 没有 token 拒绝启动，退出 1。
 
 ## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
 
