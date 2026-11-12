@@ -48,3 +48,13 @@ class AuditEvent(BaseModel):
         if self.tenant != self.principal.tenant:
             raise ValueError("tenant must equal principal.tenant")
         return self
+
+
+class AuditRecord(BaseModel):
+    """One link in a tenant's audit hash chain."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event: AuditEvent
+    prev_hash: str = Field(pattern=r"^([0-9a-f]{64})?$")
+    hash: str = Field(pattern=r"^[0-9a-f]{64}$")

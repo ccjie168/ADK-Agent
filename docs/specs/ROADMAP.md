@@ -29,7 +29,7 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 | M2 工具与策略 | Phase 2 | 越权工具调用被拒并留痕，沙箱生效 | done |
 | M3 编排 | Phase 3 | 多 agent 工作流可回放，审批门生效 | done |
 | M4 平台加固 | Phase 4 | 两租户隔离，配额生效，评测不过不能发布 | done |
-| M5 拆分 | Phase 5 | 网关与 worker 独立部署，故障隔离 | in_progress |
+| M5 拆分 | Phase 5 | 网关与 worker 独立部署，故障隔离 | done |
 
 ## M0 切片
 
@@ -111,7 +111,11 @@ M4 出口证据见 `docs/evidence/M4-milestone.txt`。
 - SLICE-032 模型网关独立部署：跨进程契约、HTTP 服务、鉴权、JSONL 审计、`HttpModelGateway` 客户端。已完成。
 - SLICE-033 工具网关独立部署：grants 契约、HTTP 服务、鉴权、客户端、工具文件加载。已完成。
 - SLICE-034 运行时 worker 横向扩容：`SESSION_URL` 共享 Postgres 会话、缺驱动显式失败、控制台与 MCP 共用存储。已完成。
-- 审计管线独立部署。
+- SLICE-035 审计管线独立部署：`AuditRecord` 租户哈希链、审计服务、`HttpAuditSink`、`verify-audit`。已完成。
+
+M5 收口。
+
+M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 
 进入每个切片时再写详细 spec。
 

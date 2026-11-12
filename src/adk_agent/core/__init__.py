@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .approval import ApprovalDecision, ApprovalRequest
-from .audit import AuditEvent
+from .audit import AuditEvent, AuditRecord
 from .canary import CanaryPolicy
 from .eval import EvalCase, EvalCaseResult, EvalReport, EvalSuiteSpec
 from .gateway import ModelGatewayRequest
@@ -56,6 +56,7 @@ __all__ = [
     "ApprovalGate",
     "ApprovalRequest",
     "AuditEvent",
+    "AuditRecord",
     "AuditSink",
     "CanaryPolicy",
     "DataClass",

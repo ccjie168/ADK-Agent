@@ -208,6 +208,13 @@ def main(argv: list[str] | None = None) -> None:
     p_tools.add_argument("--audit-file", default=None, help="append JSONL audit events here")
     _add_http_args(p_tools)
 
+    p_audit = sub.add_parser("serve-audit", help="serve the audit pipeline as a standalone service")
+    p_audit.add_argument("--out", required=True, help="append chained audit records here (JSONL)")
+    _add_http_args(p_audit)
+
+    p_verify = sub.add_parser("verify-audit", help="verify an audit chain file")
+    p_verify.add_argument("path", help="path to a chained audit JSONL file")
+
     p_console = sub.add_parser("console", help="serve a private web console for agents")
     p_console.add_argument(
         "--agents",
@@ -380,6 +387,36 @@ def main(argv: list[str] | None = None) -> None:
         import uvicorn
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+    elif args.cmd == "serve-audit":
+        from .audit import AuditPipeline
+        from .audit.service import build_audit_pipeline_app
+        from .mcp.http import resolve_port
+
+        app = build_audit_pipeline_app(
+            AuditPipeline(args.out),
+            host=args.host,
+            auth_token=_auth_token(args),
+            allow_unauthenticated=args.allow_unauthenticated,
+        )
+
+        import uvicorn
+
+        uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+    elif args.cmd == "verify-audit":
+        from .audit import AuditChainBroken, verify_audit_file
+
+        try:
+            count = verify_audit_file(args.path)
+        except AuditChainBroken as exc:
+            print(
+                f"audit chain broken at record {exc.index} for tenant {exc.tenant!r}",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from None
+        except Exception as exc:  # noqa: BLE001
+            print(f"invalid audit file: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        print(f"ok {count} records")
     elif args.cmd == "console":
         from .console import run_console
 

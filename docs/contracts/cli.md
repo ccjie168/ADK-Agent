@@ -49,6 +49,21 @@
 - 策略拒绝返回 403 `{"error":"model_denied"}`，provider 失败返回 502 `{"error":"model_call_failed"}`。
 - 给了 `--audit-file` 时每个 `model.call` 事件追加一行 JSON。
 
+## `adk-agent serve-audit --out FILE`
+
+把审计管线作为独立服务运行。
+
+- 只有 `/healthz` 开放。`POST /v1/events` 需要 bearer token，非回环地址没 token 拒绝启动。
+- 成功返回 202 `{"hash":"..."}`。写入失败返回 502 `{"error":"audit_write_failed"}`。
+- `FILE` 每行一条 `AuditRecord`，同租户串成哈希链，每租户首条 `prev_hash` 为空串。
+
+## `adk-agent verify-audit FILE`
+
+逐条重算审计链。
+
+- 通过：stdout 输出 `ok <N> records`，退出 0。
+- 断链或文件非法：stderr 输出原因，退出 1。
+
 ## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH]`
 
 把工具网关作为独立服务运行。

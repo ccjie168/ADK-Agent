@@ -1,0 +1,78 @@
+SLICE-035 审计管线独立部署
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/audit/test_pipeline.py tests/audit/test_http_sink.py -q
+ImportError: cannot import name 'AuditPipeline' from 'adk_agent.audit'
+2 errors during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/audit/test_pipeline.py tests/audit/test_http_sink.py -q
+13 passed in 2.68s
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+345 passed, 2 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+345 passed, 2 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实服务验证
+------------
+启动:
+$ ADK_MCP_AUTH_TOKEN=secret adk_agent serve-audit --out audit.jsonl --port 8098
+
+HttpAuditSink 投递:
+emitted 3 events（t1: model.call, tool.call；t2: agent.run）
+
+GET /healthz -> 200 {"status": "ok"}
+
+校验:
+$ adk_agent verify-audit audit.jsonl
+ok 3 records
+
+首条记录: tenant t1, prev_hash '', hash b931f0d9...
+
+篡改第 2 条 target 后:
+$ adk_agent verify-audit audit.jsonl
+audit chain broken at record 1 for tenant 't1'   (exit 1)
+
+说明
+----
+- AuditRecord = event + prev_hash + hash。hash = sha256(prev_hash + canonical(event))。
+- 每租户一条链。AuditPipeline 启动时扫描文件重建每个租户的最后哈希，断链直接拒绝启动。
+- 服务写 JSONL 并 fsync 后才返回 202。写失败返回 502 audit_write_failed。
+- 只有 /healthz 开放。非回环无 token 拒绝启动。
+- HttpAuditSink 非 202 抛 AuditSinkUnavailable，不吞错。
+- CLI serve-audit 和 verify-audit。verify 断链退出 1。
+- audit_record.schema.json 已生成。cli.md 已更新。
+- ADR-0006 记录决策，状态 Proposed。
+
+已知边界
+--------
+- JSONL 单进程追加，多副本写同一文件不安全。
+- 没有签名，链只证明内部一致。
+- 没有日期分区、轮转、保留期和集中投递。
+- 网关进程仍用 JsonlAuditSink，HttpAuditSink 还没接到网关装配。
+- 审计服务不可用时是否阻塞业务由装配决定。

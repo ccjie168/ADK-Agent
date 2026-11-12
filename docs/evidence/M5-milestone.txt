@@ -1,0 +1,70 @@
+M5 拆分 出口证据
+日期: 2026-11-12
+状态: done
+
+切片
+----
+- SLICE-032 模型网关独立部署（gated）
+- SLICE-033 工具网关独立部署（gated）
+- SLICE-034 运行时 worker 横向扩容（gated）
+- SLICE-035 审计管线独立部署（gated）
+
+出口标准逐条
+------------
+1. 网关独立部署
+   - 模型网关: POST /v1/complete，ModelGatewayRequest 契约，HttpModelGateway 客户端。
+   - 工具网关: POST /v1/invoke，ToolGatewayRequest 契约，grants 服务端判定，HttpToolGateway 客户端。
+   - 三个网关服务都只有 /healthz 开放，非回环无 token 拒绝启动。
+   - 证据: docs/evidence/SLICE-032-model-gateway-service.txt
+           docs/evidence/SLICE-033-tool-gateway-service.txt
+
+2. worker 独立部署与横向扩容
+   - SESSION_URL 指向共享 Postgres，两个 worker 共用会话。
+   - 实测: worker A 建会话，worker B 用同一 session_id 继续，库里 4 条事件。
+   - 证据: docs/evidence/SLICE-034-worker-scaling.txt
+
+3. 故障隔离
+   - 策略拒绝 403，上游失败 502，错误体固定，不回显内部细节。
+   - 客户端用类型化异常: ModelDenied / ModelGatewayError / ToolDenied / ToolGatewayError /
+     AuditSinkUnavailable。
+   - 审计链断链拒绝启动和校验失败退出 1。
+   - 测试: tests/models/test_model_service.py, tests/models/test_http_gateway.py,
+           tests/tools/test_tool_service.py, tests/tools/test_http_tool_gateway.py,
+           tests/audit/test_pipeline.py, tests/audit/test_http_sink.py
+
+4. 门禁
+   $ .venv/Scripts/python.exe scripts/check.py --fast
+   345 passed, 2 skipped
+   [PASS] format
+   [PASS] lint
+   [PASS] types
+   [PASS] layering
+   [PASS] specs
+   [PASS] test
+   [PASS] secrets
+   ALL PASS
+
+   $ .venv/Scripts/python.exe scripts/check.py --full
+   345 passed, 2 skipped
+   [PASS] format
+   [PASS] lint
+   [PASS] types
+   [PASS] layering
+   [PASS] specs
+   [PASS] test
+   [PASS] sast
+   [PASS] deps
+   [PASS] secrets
+   ALL PASS
+   No known vulnerabilities found
+
+已知边界
+--------
+- 所有服务共享单一 bearer token，没有 per-caller 身份和作用域。OIDC 映射未做。
+- 配额和 RBAC 状态仍按进程，多副本各自计数。
+- 审计服务未接入网关装配。网关进程继续写 JsonlAuditSink。
+- 审计链没有签名，没有日期分区、轮转和集中投递。
+- 会话驱动是可选依赖，CI 跳过 Postgres 用例。
+- 没有请求大小上限、速率限制、重试和熔断。
+- A2A 仍是可选适配器，没有接版本解析和灰度。
+- 没有控制面审批 UI，没有策略版本历史。
