@@ -82,11 +82,11 @@ M2 出口证据见 `docs/evidence/M2-milestone.txt`。
 ## M3 切片
 
 - SLICE-023 编排计划与执行器：OrchestrationPlan、单 agent、顺序、agent.invoke 策略、审计。已完成。
-- SLICE-024 执行韧性：重试、超时、预算、取消。
+- SLICE-024 执行韧性：重试、超时、预算、取消。已完成。
 - SLICE-025 策略扩展：路由、监督者、扇出扇入。
 - SLICE-026 人工审批与 trace 树。
 
-M3 仍进行中，等 SLICE-024 到 SLICE-026。
+M3 仍进行中，等 SLICE-025 和 SLICE-026。
 
 进入每个切片时再写详细 spec。
 

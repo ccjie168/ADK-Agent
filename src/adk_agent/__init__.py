@@ -26,9 +26,14 @@ from .mcp.server import serve_agent, serve_many
 from .models import build_model, disable_thinking
 from .orchestration import (
     AgentGrantPolicyEngine,
+    BudgetExceeded,
+    CancellationToken,
+    PlanCancelled,
     PlanDenied,
     PlanExecutionError,
     PlanExecutor,
+    PlanTimeout,
+    StepTimeout,
     UnknownAgent,
 )
 from .sandbox import (
@@ -70,9 +75,14 @@ __all__ = [
     "plan_digest",
     "plan_ref",
     "AgentGrantPolicyEngine",
+    "BudgetExceeded",
+    "CancellationToken",
+    "PlanCancelled",
     "PlanDenied",
     "PlanExecutionError",
     "PlanExecutor",
+    "PlanTimeout",
+    "StepTimeout",
     "UnknownAgent",
 ]
 

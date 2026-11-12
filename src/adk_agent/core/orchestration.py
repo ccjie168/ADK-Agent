@@ -26,6 +26,8 @@ class PlanStep(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     timeout_seconds: float | None = Field(default=None, gt=0, le=3600)
     budget_usd: float | None = Field(default=None, ge=0)
+    max_attempts: int = Field(default=1, ge=1, le=5)
+    retry_backoff_seconds: float = Field(default=0.0, ge=0, le=60)
 
     @field_validator("depends_on", "inputs_from")
     @classmethod
@@ -114,6 +116,7 @@ class PlanResult(BaseModel):
     trace_id: str
     outputs: dict[str, str] = Field(default_factory=dict)
     final_text: str = ""
+    cost_usd: float = Field(default=0.0, ge=0)
 
 
 def plan_digest(plan: OrchestrationPlan) -> str:

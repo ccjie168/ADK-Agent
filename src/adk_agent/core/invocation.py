@@ -36,3 +36,4 @@ class InvocationResult(BaseModel):
     trace_id: str = Field(min_length=1)
     agent_ref: AgentRef
     text: str
+    cost_usd: float = Field(default=0.0, ge=0)

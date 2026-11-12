@@ -1,0 +1,66 @@
+SLICE-024 执行韧性
+日期: 2026-11-12
+状态: gated
+
+反例红
+-------
+$ .venv/Scripts/python.exe -m pytest tests/orchestration/test_resilience.py -q
+ImportError: cannot import name 'BudgetExceeded' from 'adk_agent.orchestration'
+1 error during collection
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/orchestration -q
+32 passed in 1.93s
+
+$ .venv/Scripts/python.exe -m pytest tests/orchestration/test_resilience.py -q
+12 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+215 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+215 passed, 1 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+说明
+----
+- PlanStep 增加 max_attempts 和 retry_backoff_seconds。
+- 重试只针对 agent 调用失败和步骤超时。策略拒绝、未知 agent、取消不重试。
+- 每次重试写 orchestration.retry，target 是 <step>#<attempt>。
+- 最终步骤只写一次 orchestration.step。
+- 每次尝试单独计时。有效超时取 timeout_seconds 和父 deadline 剩余时间的较小值。
+- 父 deadline 导致的超时抛 PlanTimeout，不重试。
+- 调用前检查剩余预算。剩余为 0 时拒绝。
+- 步骤花费超过步骤预算时，步骤写 error budget_exceeded，计划写 denied。
+- 父预算在最后一步超支时，步骤写 ok，计划写 denied budget_exceeded。
+- InvocationResult 增加 cost_usd。PlanResult 累计 cost_usd。
+- CancellationToken 支持运行前、调用中、重试等待中取消。
+- 调用中用 asyncio.wait 同时等待调用和取消 token。取消时取消调用任务。
+- orchestration_plan.schema.json 已重新生成。
+
+已知边界
+--------
+- 预算依赖 InvocationResult.cost_usd。当前 AgentRuntime 没有填这个字段，默认 0.0。
+  模型网关的 cost 审计还没有回传到运行时。预算强制在执行器层已经生效，真实成本要等后续接线。
+- 重试复用同一个子 run_id。审计能区分 attempt，但每轮不是独立 run。
+- 同步工具线程无法被强制中断。取消只保证调用方拿到 PlanCancelled。
+- 审批、trace 树、路由、监督者、扇出扇入没做。

@@ -15,6 +15,27 @@ class UnknownAgent(PlanError):
     """The plan references an agent the executor cannot resolve."""
 
 
+class PlanCancelled(PlanError):
+    """The caller cancelled the plan."""
+
+
+class PlanTimeout(PlanError):
+    """The plan deadline expired."""
+
+
+class StepTimeout(PlanError):
+    def __init__(self, step_id: str, timeout_seconds: float) -> None:
+        self.step_id = step_id
+        self.timeout_seconds = timeout_seconds
+        super().__init__(f"step {step_id!r} exceeded {timeout_seconds}s")
+
+
+class BudgetExceeded(PlanError):
+    def __init__(self, message: str, step_id: str | None = None) -> None:
+        self.step_id = step_id
+        super().__init__(message)
+
+
 class PlanExecutionError(PlanError):
     def __init__(self, step_id: str, error: Exception) -> None:
         self.step_id = step_id
