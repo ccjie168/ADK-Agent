@@ -139,6 +139,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-046 MCP 运行路径审计与配额：包装 `_run_agent` 的 runner，补 `agent.run` 审计和租户配额。已完成。
 - SLICE-047 指标与 trace 传播：`MetricsRegistry`、控制台 `/metrics`、`traceparent` 入站和 `X-Trace-Id` 出站。已完成。
 - SLICE-048 A2A 运行路径审计与配额：通用 `AuditedRunner`、A2A 审计、配额和 traceparent。已完成。
+- SLICE-049 审批过期与提交提醒：`expires_at`、收件箱过期语义、`on_submit` 回调和控制台 410。进行中。
 
 ## 完成定义
 

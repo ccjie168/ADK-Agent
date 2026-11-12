@@ -42,6 +42,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 返回待决的人工审批请求，按 `requested_at` 正序。结构见 `approval_request.schema.json`。
 
+- 已过期的请求不返回。`expires_at` 是请求自带的截止时间，可能为 `null`。
 - 未配置审批目录时返回 404 `approvals_not_configured`。
 - 非 `admin` 身份只看到自己租户的请求。
 - 请求里的 `input` 是待审内容，只在这里返回给有权限的调用方。
@@ -55,6 +56,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - `approved` 缺失或不是布尔返回 400 `invalid decision`。
 - 请求不存在返回 404 `approval_not_found`。
 - 已决请求返回 409 `approval_already_decided`，决定不可改写。
+- 已过期且未决的请求返回 410 `approval_expired`。
 - 非 `admin` 身份决定其他租户的请求返回 403 `tenant_forbidden`。
 - 配置了 `--policy` 时按 `approval.decide:<agent_id>` 判定，拒绝返回 403 `policy_denied`。
 - 每次成功决定写一条 `approval.decide` 审计，`target` 是请求 id，`approver` 是审批人，`status` 是 `ok` 或 `denied`。审计不含待审 `input`。

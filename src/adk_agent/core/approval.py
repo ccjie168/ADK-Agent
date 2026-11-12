@@ -22,12 +22,13 @@ class ApprovalRequest(BaseModel):
     input: str
     reason: str = ""
     requested_at: datetime
+    expires_at: datetime | None = None
 
-    @field_validator("requested_at")
+    @field_validator("requested_at", "expires_at")
     @classmethod
-    def _timezone_aware(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("requested_at must be timezone-aware")
+    def _timezone_aware(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("timestamps must be timezone-aware")
         return value
 
 

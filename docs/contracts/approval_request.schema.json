@@ -80,6 +80,19 @@
     "agent_ref": {
       "$ref": "#/$defs/AgentRef"
     },
+    "expires_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
     "input": {
       "title": "Input",
       "type": "string"
