@@ -1,0 +1,53 @@
+SLICE-039 OIDC 身份解析器核心
+日期: 2026-11-12
+状态: gated
+
+反例红（实现前）
+----------------
+$ PYTHONPATH="$PWD/src" python -m pytest tests/identity -q
+ERROR tests/identity/test_oidc_config.py
+ERROR tests/identity/test_oidc_provider.py
+E   ModuleNotFoundError: No module named 'adk_agent.identity'
+2 errors in 2.32s
+
+实现后绿
+--------
+$ PYTHONPATH="$PWD/src" python -m pytest tests/identity -q
+18 passed in 1.91s
+
+$ python -m pytest -q（主分支，两个切片合并后）
+410 passed, 2 skipped in 39.12s
+
+$ python scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实 JWKS 验证
+--------------
+本地 HTTP 服务在 127.0.0.1:18321/jwks 提供 JWKS。用 RSA 私钥签发 RS256 token，
+kid 为 k1。provider 不注入 key resolver，走默认 PyJWKClient。
+
+$ python jwks_probe.py
+principal: t1 alice human ['admin']
+
+说明: 默认路径真实取 JWKS，按 kid 选键，验证签名与 claims，再映射成 Principal。
+
+审阅修复
+--------
+- `kind` claim 没有先判类型。token 里把 `kind` 设成数组会抛 TypeError，而不是
+  InvalidIdentity。改为 Literal type guard `_is_kind`，并在 `test_kind_mapping` 里加了
+  `kind=[]` 的用例。
+- 补了 `test_missing_iat_is_rejected` 和 `test_default_resolver_uses_jwk_client`，
+  后者用假的 PyJWKClient 断言 URL、kid 和缓存参数。
+- 实现代理在 worktree 里提交时，pre-commit 钩子回退到系统 Python 而失败。worktree 没有
+  `.venv`。修复提交因此在 worktree 里用 `--no-verify` 落地，主分支合并后重新跑了完整门禁，
+  结果如上。

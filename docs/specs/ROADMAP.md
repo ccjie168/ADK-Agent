@@ -129,7 +129,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 
 - SLICE-037 审计客户端接入网关：两个网关用 `--audit-url` 把事件发给独立审计服务，审计 token 只从环境变量读，非回环地址强制鉴权。已完成。
 - SLICE-038 只读运营视图（UI-1）：注册表、run 历史和会话的只读接口与面板，发布时留存评测报告。进行中。
-- SLICE-039 OIDC 身份解析器核心：验证 JWT 并映射成 `Principal`，只做解析器，不接 HTTP。计划中。
+- SLICE-039 OIDC 身份解析器核心：验证 JWT 并映射成 `Principal`，只做解析器，不接 HTTP。已完成。
 - SLICE-040 OIDC 接线：把解析器接到控制台、MCP HTTP、两个网关和审计服务。接线前先写配置契约。
 
 ## 完成定义
