@@ -27,18 +27,19 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 ## `GET /api/traces/{trace_id}` -> `{trace_id, root, error}`
 
 根是最后一条 `agent.run` 或 `orchestration.run` 事件，`children` 是同一 trace 的其余事件。
+非 `admin` 身份只能看到自己租户的事件，别的租户的 trace 视为找不到。
 找不到根时 `root` 为 `null`，`error` 为 `trace_not_found`。`trace_id` 必须匹配
 `^[A-Za-z0-9._-]{1,128}$`。
 
 ## `GET /api/audit?limit=50` -> `[AuditEvent]`
 
-`limit` 上限 200。事件按时间正序，最多返回最近 200 条。
+`limit` 上限 200。事件按时间正序，最多返回最近 200 条。非 `admin` 身份只返回自己租户的事件。
 
 事件结构见 `audit_event.schema.json`。
 
 ## `GET /api/tenants` -> `[str]`
 
-返回注册表里已发布租户的目录名，按字典序。注册表根目录不存在时返回空数组。
+返回注册表里已发布租户的目录名，按字典序。注册表根目录不存在时返回空数组。非 `admin` 身份只返回自己的租户名。
 
 未配置注册表时返回 404 `{"error":"registry_not_configured"}`。
 
@@ -60,7 +61,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 ```
 
 - 非法租户返回 400 `unsafe_tenant`。
-- OIDC 模式下，非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
+- 非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
 - 记录损坏返回 500 `registry_corrupt`，响应不含文件路径。
 - 未配置注册表返回 404 `registry_not_configured`。
 
@@ -68,6 +69,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 
 返回该版本的评测报告，结构见 `eval_report.schema.json`。
 
+- 非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
 - 没有报告返回 404 `eval_report_not_found`。
 - 非法路径分量返回 400 `unsafe_tenant`。
 - 未配置注册表返回 404 `registry_not_configured`。
@@ -94,6 +96,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - `status` 取该 run 最后一条事件的 status。
 - `latency_ms` 和 `cost_usd` 取最后一条有值的事件，没有则为 `null`。
 - `agent_id` 取该 run 的 `agent_ref.id`。
+- 非 `admin` 身份只看到自己租户的 run。
 - 运行历史只覆盖当前控制台进程。多副本部署各看各的。
 
 ## `GET /api/sessions?agent=<name>` -> `[SessionSummary]`

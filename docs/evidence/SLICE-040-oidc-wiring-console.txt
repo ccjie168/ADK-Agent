@@ -1,0 +1,62 @@
+SLICE-040 OIDC 接线：控制台与中间件
+日期: 2026-11-12
+状态: gated
+
+反例红（实现前，由实现代理运行）
+--------------------------------
+$ .venv/Scripts/python.exe -m pytest tests/test_oidc_auth.py -q
+E   ImportError: cannot import name 'OidcAuthMiddleware' from 'adk_agent.auth'
+ERROR tests/test_oidc_auth.py
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console_oidc.py -q
+FAILED ...::test_console_accepts_oidc_token - TypeError (unexpected keyword 'oidc')
+...
+adk-agent: error: unrecognized arguments: --oidc-config ...
+10 failed in 1.56s
+
+实现后绿
+--------
+$ .venv/Scripts/python.exe -m pytest tests/test_oidc_auth.py tests/test_console_oidc.py -q
+17 passed in 2.18s
+
+$ .venv/Scripts/python.exe -m pytest -q
+427 passed, 2 skipped in 38.85s
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+No known vulnerabilities found
+
+真实 OIDC 控制台验证
+--------------------
+本地 JWKS 服务在 127.0.0.1:18321/jwks 提供公钥。用 RSA 私钥签发 RS256 token，
+issuer、audience、kid 与配置一致。配置经 `console --oidc-config` 加载。
+
+无 token /api/agents: 401 {"error":"unauthorized"}
+合法 token /api/agents: 200 [{"name":"probe","description":""}]
+错受众 /api/agents: 401 {"error":"unauthorized"}
+admin /api/tenants: 200 ["team-a"]
+guest /api/tenants: 200 []
+guest 跨租户注册表: 403 {"error":"tenant_forbidden"}
+admin 跨租户注册表: 200 [{"tenant":"team-a","id":"support-bot",...}]
+guest 跨租户评测报告: 403 {"error":"tenant_forbidden"}
+admin 跨租户评测报告: 200 {"suite_id":"smoke","version":"1","passed":1,"total":1}
+
+说明: 真实进程、真实签名、真实 JWKS。401、403 和成功路径都符合契约。
+
+审阅修复
+--------
+- 补了读视图的租户隔离。之前 `/api/audit`、`/api/runs`、`/api/traces`、`/api/tenants`
+  和评测报告接口对任何已鉴权用户都可见。现在非 admin 只看自己租户的数据，评测报告
+  跨租户返回 403 `tenant_forbidden`。
+- 空的 `tenant` 查询参数按缺失处理，回退到 principal 租户。
+- 新增 `audit_sink` 注入点，便于测试审计、run 和 trace 的隔离。
+- 补充 2 个测试后共 17 个目标测试，全量 427 passed。

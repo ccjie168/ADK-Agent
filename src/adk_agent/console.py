@@ -25,12 +25,13 @@ from pydantic import ValidationError
 
 from .audit import ListAuditSink
 from .audit.hashing import hash_text
-from .auth import BearerAuthMiddleware, resolve_http_auth
+from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from .core import (
     AccessPolicy,
     AgentRegistry,
     AuditEvent,
     EvalReportStore,
+    IdentityProvider,
     Invocation,
     ModelPolicy,
     Principal,
@@ -557,15 +558,15 @@ def _session_service(session_db: str | None) -> Any:
     return InMemorySessionService()
 
 
-async def _session_id_for(session_service: Any, app_name: str, raw: object) -> str:
+async def _session_id_for(session_service: Any, app_name: str, raw: object, user_id: str) -> str:
     """Return an existing session for this agent, or create a new one."""
     if isinstance(raw, str) and raw:
         session = await session_service.get_session(
-            app_name=app_name, user_id=_USER_ID, session_id=raw
+            app_name=app_name, user_id=user_id, session_id=raw
         )
         if session is not None:
             return str(session.id)
-    session = await session_service.create_session(app_name=app_name, user_id=_USER_ID)
+    session = await session_service.create_session(app_name=app_name, user_id=user_id)
     return str(session.id)
 
 
@@ -617,6 +618,13 @@ def _trace_payload(events: Iterable[AuditEvent], trace_id: str) -> dict:
     node = _trace_node(root)
     node["children"] = [_trace_node(event) for event in relevant if event is not root]
     return {"trace_id": trace_id, "root": node, "error": None}
+
+
+def _visible_events(events: Iterable[AuditEvent], principal: Principal) -> list[AuditEvent]:
+    visible = list(events)
+    if "admin" in principal.roles:
+        return visible
+    return [event for event in visible if event.tenant == principal.tenant]
 
 
 def _summarize_runs(events: Iterable[AuditEvent], limit: int) -> list[dict]:
@@ -716,19 +724,26 @@ def build_console_app(
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
     session_service: Any | None = None,
+    audit_sink: ListAuditSink | None = None,
+    oidc: IdentityProvider | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
-    token = resolve_http_auth(host, auth_token, allow_unauthenticated)
+    token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
     principal = Principal(
         tenant="local", subject=_USER_ID, kind="human", roles=list(roles or ["admin"])
     )
+
+    def _principal_for(request: Request) -> Principal:
+        found = getattr(request.state, "principal", None)
+        return found if found is not None else principal
+
     policy_store = FilePolicyStore(policy_file) if policy_file else None
     policy_engine = RolePolicyEngine(policy_store.load()) if policy_store else None
 
     from google.adk.runners import Runner
 
     service = session_service if session_service is not None else _session_service(session_db)
-    audit = ListAuditSink()
+    audit = audit_sink if audit_sink is not None else ListAuditSink()
     sandbox_policy = sandbox or SandboxPolicy()
     for agent in agents.values():
         _wrap_model(agent, audit)
@@ -751,8 +766,8 @@ def build_console_app(
                 event_id=uuid.uuid4().hex,
                 run_id=invocation.run_id,
                 trace_id=invocation.trace_id,
-                tenant=principal.tenant,
-                principal=principal,
+                tenant=invocation.principal.tenant,
+                principal=invocation.principal,
                 agent_ref=invocation.agent_ref,
                 action="agent.run",
                 target=name,
@@ -781,21 +796,29 @@ def build_console_app(
         ]
 
     @app.get("/api/audit")
-    async def list_audit(limit: int = 50) -> list[dict]:
+    async def list_audit(request: Request, limit: int = 50) -> list[dict]:
         limit = min(max(limit, 1), 200)
-        return [event.model_dump(mode="json") for event in audit.recent(limit)]
+        events = _visible_events(audit.recent(1000), _principal_for(request))
+        return [event.model_dump(mode="json") for event in events[-limit:]]
 
     @app.get("/api/tenants")
-    async def list_tenants() -> Any:
+    async def list_tenants(request: Request) -> Any:
         if registry is None:
             return JSONResponse({"error": "registry_not_configured"}, status_code=404)
-        return await registry.tenants()
+        caller = _principal_for(request)
+        names = await registry.tenants()
+        if "admin" not in caller.roles:
+            names = [name for name in names if name == caller.tenant]
+        return names
 
     @app.get("/api/registry")
-    async def list_registry(tenant: str | None = None) -> Any:
+    async def list_registry(request: Request, tenant: str | None = None) -> Any:
         if registry is None:
             return JSONResponse({"error": "registry_not_configured"}, status_code=404)
-        target = tenant or principal.tenant
+        caller = _principal_for(request)
+        target = tenant or caller.tenant
+        if tenant and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
         try:
             records = await registry.list(target)
         except RegistryIntegrityError:
@@ -825,7 +848,10 @@ def build_console_app(
         return entries
 
     @app.get("/api/registry/{tenant}/{agent_id}/{version}/eval")
-    async def get_eval_report(tenant: str, agent_id: str, version: str) -> Any:
+    async def get_eval_report(request: Request, tenant: str, agent_id: str, version: str) -> Any:
+        caller = _principal_for(request)
+        if tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
         if eval_reports is None:
             return JSONResponse({"error": "registry_not_configured"}, status_code=404)
         try:
@@ -839,14 +865,17 @@ def build_console_app(
         return report.model_dump(mode="json")
 
     @app.get("/api/runs")
-    async def list_runs(limit: int = 50) -> list[dict]:
-        return _summarize_runs(audit.recent(1000), limit)
+    async def list_runs(request: Request, limit: int = 50) -> list[dict]:
+        events = _visible_events(audit.recent(1000), _principal_for(request))
+        return _summarize_runs(events, limit)
 
     @app.get("/api/sessions")
-    async def list_sessions(agent: str | None = None) -> Any:
+    async def list_sessions(request: Request, agent: str | None = None) -> Any:
         if agent not in agents:
             return JSONResponse({"error": "unknown_agent"}, status_code=400)
-        listed = await service.list_sessions(app_name=agent, user_id=_USER_ID)
+        listed = await service.list_sessions(
+            app_name=agent, user_id=_principal_for(request).subject
+        )
         sessions = sorted(
             listed.sessions, key=lambda session: session.last_update_time, reverse=True
         )
@@ -877,10 +906,11 @@ def build_console_app(
             except ValidationError:
                 return JSONResponse({"error": "invalid policy"}, status_code=400)
 
+            caller = _principal_for(request)
             invocation = Invocation(
                 run_id=uuid.uuid4().hex,
                 trace_id=_trace_id(request),
-                principal=principal,
+                principal=caller,
                 agent_ref=dev_agent_ref("policy"),
                 input=policy.version,
             )
@@ -891,8 +921,8 @@ def build_console_app(
                         event_id=uuid.uuid4().hex,
                         run_id=invocation.run_id,
                         trace_id=invocation.trace_id,
-                        tenant=principal.tenant,
-                        principal=principal,
+                        tenant=caller.tenant,
+                        principal=caller,
                         agent_ref=invocation.agent_ref,
                         action="policy.update",
                         target=policy.version,
@@ -910,8 +940,8 @@ def build_console_app(
                     event_id=uuid.uuid4().hex,
                     run_id=uuid.uuid4().hex,
                     trace_id=_trace_id(request),
-                    tenant=principal.tenant,
-                    principal=principal,
+                    tenant=caller.tenant,
+                    principal=caller,
                     agent_ref=dev_agent_ref("policy"),
                     action="policy.update",
                     target=policy.version,
@@ -940,19 +970,20 @@ def build_console_app(
         if runtime is None:
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
-        session_id = await _session_id_for(service, name, body.get("session_id"))
+        caller = _principal_for(request)
+        session_id = await _session_id_for(service, name, body.get("session_id"), caller.subject)
 
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
             trace_id=_trace_id(request),
-            principal=principal,
+            principal=caller,
             agent_ref=dev_agent_ref(name),
             input=message,
         )
         if not await allowed(invocation, name):
             return JSONResponse({"error": "policy_denied"}, status_code=403)
         try:
-            result = await runtime.run(invocation, user_id=_USER_ID, session_id=session_id)
+            result = await runtime.run(invocation, user_id=caller.subject, session_id=session_id)
         except Exception:  # noqa: BLE001
             logger.exception(
                 "agent run failed: agent=%s session=%s run=%s",
@@ -990,11 +1021,12 @@ def build_console_app(
         if runtime is None:
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
-        session_id = await _session_id_for(service, name, body.get("session_id"))
+        caller = _principal_for(request)
+        session_id = await _session_id_for(service, name, body.get("session_id"), caller.subject)
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
             trace_id=_trace_id(request),
-            principal=principal,
+            principal=caller,
             agent_ref=dev_agent_ref(name),
             input=message,
         )
@@ -1011,7 +1043,7 @@ def build_console_app(
                 try:
                     result = await runtime.run(
                         invocation,
-                        user_id=_USER_ID,
+                        user_id=caller.subject,
                         session_id=session_id,
                         on_progress=on_progress,
                     )
@@ -1057,12 +1089,15 @@ def build_console_app(
         )
 
     @app.get("/api/traces/{trace_id}")
-    async def get_trace(trace_id: str) -> dict:
+    async def get_trace(request: Request, trace_id: str) -> dict:
         if not _TRACE_ID.fullmatch(trace_id):
             return {"trace_id": trace_id, "root": None, "error": "trace_not_found"}
-        return _trace_payload(audit.recent(1000), trace_id)
+        events = _visible_events(audit.recent(1000), _principal_for(request))
+        return _trace_payload(events, trace_id)
 
-    if token:
+    if oidc is not None:
+        app.add_middleware(OidcAuthMiddleware, provider=oidc, open_paths=_OPEN_PATHS)
+    elif token:
         app.add_middleware(BearerAuthMiddleware, token=token, open_paths=_OPEN_PATHS)
 
     return app
@@ -1081,6 +1116,7 @@ def run_console(
     roles: list[str] | None = None,
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
+    oidc: IdentityProvider | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -1094,6 +1130,7 @@ def run_console(
         roles=roles,
         registry=registry,
         eval_reports=eval_reports,
+        oidc=oidc,
     )
 
     import uvicorn

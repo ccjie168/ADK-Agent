@@ -9,8 +9,19 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+from .core import IdentityProvider
+from .identity import IdentityUnavailable, InvalidIdentity
+
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 OPEN_PATHS = frozenset({"/healthz"})
+
+
+def _unauthorized() -> JSONResponse:
+    return JSONResponse(
+        {"error": "unauthorized"},
+        status_code=401,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 class BearerAuthMiddleware(BaseHTTPMiddleware):
@@ -37,11 +48,37 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
             and secrets.compare_digest(parts[1], self.token)
         )
         if not valid:
-            return JSONResponse(
-                {"error": "unauthorized"},
-                status_code=401,
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            return _unauthorized()
+        return await call_next(request)
+
+
+class OidcAuthMiddleware(BaseHTTPMiddleware):
+    """Resolve ``Authorization: Bearer <jwt>`` into ``request.state.principal``."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        provider: IdentityProvider,
+        open_paths: frozenset[str] = OPEN_PATHS,
+    ) -> None:
+        super().__init__(app)
+        self.provider = provider
+        self.open_paths = open_paths
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.url.path in self.open_paths:
+            return await call_next(request)
+        header = request.headers.get("authorization", "")
+        parts = header.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            return _unauthorized()
+        try:
+            principal = await self.provider.resolve(parts[1])
+        except InvalidIdentity:
+            return _unauthorized()
+        except IdentityUnavailable:
+            return JSONResponse({"error": "identity_unavailable"}, status_code=503)
+        request.state.principal = principal
         return await call_next(request)
 
 

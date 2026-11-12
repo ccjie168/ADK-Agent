@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .core import AuditSink
+    from .core import AuditSink, IdentityProvider
 
 Transport = Literal["stdio", "streamable-http"]
 
@@ -141,6 +141,15 @@ def _add_runtime_args(parser: argparse.ArgumentParser) -> None:
 def _auth_token(args: argparse.Namespace) -> str | None:
     env_name = getattr(args, "auth_token_env", None)
     return os.environ.get(env_name) if env_name else None
+
+
+def _identity_provider(args: argparse.Namespace) -> IdentityProvider | None:
+    if not args.oidc_config:
+        return None
+    from .identity import OidcConfig, OidcIdentityProvider
+
+    config = OidcConfig.model_validate_json(Path(args.oidc_config).read_text(encoding="utf-8"))
+    return OidcIdentityProvider(config)
 
 
 def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
@@ -283,6 +292,13 @@ def main(argv: list[str] | None = None) -> None:
         "--registry",
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
+    )
+    p_console.add_argument(
+        "--oidc-config",
+        default=None,
+        help=(
+            "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
+        ),
     )
     _add_http_args(p_console)
     _add_runtime_args(p_console)
@@ -470,6 +486,15 @@ def main(argv: list[str] | None = None) -> None:
         from .console import run_console
         from .registry import FileAgentRegistry, FileEvalReportStore
 
+        if args.oidc_config and args.allow_unauthenticated:
+            print("oidc config cannot combine with allow_unauthenticated", file=sys.stderr)
+            raise SystemExit(1)
+        try:
+            oidc = _identity_provider(args)
+        except Exception as exc:  # noqa: BLE001
+            print(f"invalid oidc config: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
         agents = _load_agents(args.agents)
         run_console(
             agents,
@@ -482,6 +507,7 @@ def main(argv: list[str] | None = None) -> None:
             roles=args.roles,
             registry=FileAgentRegistry(args.registry),
             eval_reports=FileEvalReportStore(args.registry),
+            oidc=oidc,
         )
     elif args.cmd == "validate":
         from .core import manifest_digest
