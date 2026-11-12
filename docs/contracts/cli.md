@@ -88,6 +88,17 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
+## `adk-agent serve` / `serve-many` 的 MCP HTTP 鉴权
+
+`serve` 和 `serve-many` 的 `streamable-http` 传输支持 `--oidc-config FILE`。
+
+- 给了就改用 OIDC 鉴权，忽略 `--auth-token-env`，允许绑定非回环地址。
+- 只对 `streamable-http` 生效。stdio 传输同时给 `--oidc-config` 退出 1。
+- 和 `--allow-unauthenticated` 互斥，同时给退出 1。
+- 没有 token 或 token 不合法返回 401 `{"error":"unauthorized"}`，签发方不可达返回 503 `{"error":"identity_unavailable"}`。
+- `/healthz` 保持开放。
+- 这一版只做认证。agent 运行仍使用 ADK 的 `mcp_user`，principal 注入排在 SLICE-043。
+
 ## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P]`
 
 把一个 agent 暴露成 A2A 端点。
