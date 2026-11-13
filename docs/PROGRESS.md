@@ -71,7 +71,7 @@
 | SLICE-069 | 市场视图与工件状态（UI-3） | `1b3b5d5` |
 | SLICE-070 | Postgres 注册表 | `a04828b` |
 | SLICE-071 | 注册表控制面与客户端 | `325078e` |
-| SLICE-072 | 命令接注册表服务 | `PENDING` |
+| SLICE-072 | 命令接注册表服务 | `6d88dcc` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
