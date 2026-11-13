@@ -73,6 +73,26 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，事件的 `tenant` 和 `principal.subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
+## `adk-agent backup --out FILE [--registry DIR] [--approvals DIR] [--audit FILE]`
+
+把文件型状态打成一个 gzip tar 包。
+
+- 至少给一个来源，否则退出 1。来源不存在也退出 1。
+- 归档内用 `registry/`、`approvals/`、`audit/` 前缀。`--audit` 会连同 `<FILE>.000001` 这类轮转段一起打包。
+- 包里有 `manifest.json`，内容至少包含 `version`（当前是 1）、`created_at` 和每个来源的文件数与字节数。
+- 成功后 stdout 输出 `wrote <path> sha256:<hex>`，退出 0。文件权限设为 0600（POSIX）。
+- 不包含 Postgres 里的会话和配额数据。这些用 `pg_dump` 单独备份。
+
+## `adk-agent restore --archive FILE --dest DIR [--force]`
+
+把备份解到 `DIR`。
+
+- `DIR` 必须不存在或为空，否则退出 1。`--force` 时先完整解到临时目录，成功后替换 `DIR`。
+- 解包使用安全过滤器，拒绝绝对路径和 `..`，失败退出 1。
+- 必须有版本为 1 的 `manifest.json`，缺失或版本不符退出 1。
+- 成功后 stdout 输出 `restored <N> files to <path>`，退出 0。
+- 解包失败不留下半成品目录。
+
 ## `adk-agent approvals prune --dir DIR --older-than SECONDS [--delete]`
 
 归档或删除已经终结、且超过保留期的审批记录。
