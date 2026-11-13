@@ -1,6 +1,6 @@
 # SLICE-053 审计轮转与签名
 
-状态: spec'd
+状态: gated
 依据: SLICE-035，SLICE-037，`docs/contracts/cli.md`
 
 ## 意图（要什么，不写怎么写）
@@ -56,28 +56,28 @@ verify_audit_file(path, signing_key=None) -> int
 
 ## 完成判据（可执行）
 
-- [ ] 写满后轮转 -> `tests/audit/test_rotation.py::test_rotates_segments`
-- [ ] 恰好写满不轮转 -> `tests/audit/test_rotation.py::test_rotates_only_when_full`
-- [ ] 哈希链跨段连续 -> `tests/audit/test_rotation.py::test_chain_continues_across_segments`
-- [ ] 重启后接着写已有段 -> `tests/audit/test_rotation.py::test_restart_reads_all_segments`
-- [ ] 默认不轮转 -> `tests/audit/test_rotation.py::test_no_rotation_by_default`
-- [ ] 校验跨段并定位篡改 -> `tests/audit/test_rotation.py::test_verify_spans_segments`
-- [ ] 签名记录能用同一密钥验证 -> `tests/audit/test_signing.py::test_signed_records_verify`
-- [ ] 错误密钥失败 -> `tests/audit/test_signing.py::test_wrong_key_fails`
-- [ ] 有密钥但记录没签名时失败 -> `tests/audit/test_signing.py::test_missing_signature_fails`
-- [ ] 签名被篡改时失败 -> `tests/audit/test_signing.py::test_signature_tamper_fails`
-- [ ] 没密钥时只验链 -> `tests/audit/test_signing.py::test_unsigned_verify_without_key`
-- [ ] CLI 用环境变量验签 -> `tests/audit/test_signing.py::test_verify_command_uses_env_key`
-- [ ] CLI 转发轮转参数和密钥 -> `tests/test_cli_audit_rotation.py::test_serve_audit_forwards_rotation_and_key`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 写满后轮转 -> `tests/audit/test_rotation.py::test_rotates_segments`
+- [x] 恰好写满不轮转 -> `tests/audit/test_rotation.py::test_rotates_only_when_full`
+- [x] 哈希链跨段连续 -> `tests/audit/test_rotation.py::test_chain_continues_across_segments`
+- [x] 重启后接着写已有段 -> `tests/audit/test_rotation.py::test_restart_reads_all_segments`
+- [x] 默认不轮转 -> `tests/audit/test_rotation.py::test_no_rotation_by_default`
+- [x] 校验跨段并定位篡改 -> `tests/audit/test_rotation.py::test_verify_spans_segments`
+- [x] 签名记录能用同一密钥验证 -> `tests/audit/test_signing.py::test_signed_records_verify`
+- [x] 错误密钥失败 -> `tests/audit/test_signing.py::test_wrong_key_fails`
+- [x] 有密钥但记录没签名时失败 -> `tests/audit/test_signing.py::test_missing_signature_fails`
+- [x] 签名被篡改时失败 -> `tests/audit/test_signing.py::test_signature_tamper_fails`
+- [x] 没密钥时只验链 -> `tests/audit/test_signing.py::test_unsigned_verify_without_key`
+- [x] CLI 用环境变量验签 -> `tests/audit/test_signing.py::test_verify_command_uses_env_key`
+- [x] CLI 转发轮转参数和密钥 -> `tests/test_cli_audit_rotation.py::test_serve_audit_forwards_rotation_and_key`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.audit import AuditSignatureInvalid` -> 当前 `ImportError`
-- [ ] 反例 2：`AuditPipeline(path, max_records=2)` -> 当前 `TypeError`，不认识该参数
-- [ ] 反例 3：写 5 条后没有段文件 -> 当前只有基础文件
-- [ ] 反例 4：`AuditRecord(..., signature=...)` -> 契约模型已先加字段；当前管线不写签名
-- [ ] 反例 5：`serve-audit --audit-max-records 2` -> 当前 argparse 退出 2
+- [x] 反例 1：`from adk_agent.audit import AuditSignatureInvalid` -> 当前 `ImportError`
+- [x] 反例 2：`AuditPipeline(path, max_records=2)` -> 当前 `TypeError`，不认识该参数
+- [x] 反例 3：写 5 条后没有段文件 -> 当前只有基础文件
+- [x] 反例 4：`AuditRecord(..., signature=...)` -> 契约模型已先加字段；当前管线不写签名
+- [x] 反例 5：`serve-audit --audit-max-records 2` -> 当前 argparse 退出 2
 
 ## 契约（如涉及对外接口）
 
@@ -103,5 +103,6 @@ verify_audit_file(path, signing_key=None) -> int
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-053-audit-rotation-signing.txt`，`AuditSignatureInvalid` ImportError，`AuditPipeline` 不认识 `max_records`，`serve-audit` 参数退出 2
+- 实现后绿: 同文件，31 passed；`check.py --fast` ALL PASS（609 passed, 13 skipped），`--full` ALL PASS
+- 真实审计服务: 同文件，5 条事件轮转成 2+2+1 三个文件，正确密钥验签通过，错误密钥和篡改的签名都在记录 0 被拒绝

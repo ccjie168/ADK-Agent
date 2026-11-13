@@ -5,15 +5,24 @@ from __future__ import annotations
 from .http_sink import AuditSinkUnavailable, HttpAuditSink
 from .jsonl import JsonlAuditSink
 from .memory import ListAuditSink
-from .pipeline import AuditChainBroken, AuditPipeline, load_records, verify_audit_file
+from .pipeline import (
+    AuditChainBroken,
+    AuditPipeline,
+    AuditSignatureInvalid,
+    load_records,
+    record_signature,
+    verify_audit_file,
+)
 
 __all__ = [
     "AuditChainBroken",
     "AuditPipeline",
+    "AuditSignatureInvalid",
     "AuditSinkUnavailable",
     "HttpAuditSink",
     "JsonlAuditSink",
     "ListAuditSink",
     "load_records",
+    "record_signature",
     "verify_audit_file",
 ]

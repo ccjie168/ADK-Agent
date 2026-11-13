@@ -355,6 +355,12 @@ def main(argv: list[str] | None = None) -> None:
 
     p_audit = sub.add_parser("serve-audit", help="serve the audit pipeline as a standalone service")
     p_audit.add_argument("--out", required=True, help="append chained audit records here (JSONL)")
+    p_audit.add_argument(
+        "--audit-max-records",
+        type=int,
+        default=None,
+        help="rotate the audit file into FILE.000001 segments after this many records",
+    )
     _add_http_args(p_audit)
     p_audit.add_argument(
         "--oidc-config",
@@ -633,9 +639,17 @@ def main(argv: list[str] | None = None) -> None:
         from .audit.service import build_audit_pipeline_app
         from .mcp.http import resolve_port
 
+        if args.audit_max_records is not None and args.audit_max_records <= 0:
+            print("--audit-max-records must be greater than 0", file=sys.stderr)
+            raise SystemExit(1)
+        signing_key = os.environ.get("ADK_AUDIT_SIGNING_KEY")
         oidc = _identity_provider(args)
         app = build_audit_pipeline_app(
-            AuditPipeline(args.out),
+            AuditPipeline(
+                args.out,
+                max_records=args.audit_max_records,
+                signing_key=signing_key,
+            ),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
@@ -646,10 +660,14 @@ def main(argv: list[str] | None = None) -> None:
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "verify-audit":
-        from .audit import AuditChainBroken, verify_audit_file
+        from .audit import AuditChainBroken, AuditSignatureInvalid, verify_audit_file
 
+        signing_key = os.environ.get("ADK_AUDIT_SIGNING_KEY")
         try:
-            count = verify_audit_file(args.path)
+            count = verify_audit_file(args.path, signing_key=signing_key)
+        except AuditSignatureInvalid as exc:
+            print(f"audit signature invalid at record {exc.index}", file=sys.stderr)
+            raise SystemExit(1) from None
         except AuditChainBroken as exc:
             print(
                 f"audit chain broken at record {exc.index} for tenant {exc.tenant!r}",

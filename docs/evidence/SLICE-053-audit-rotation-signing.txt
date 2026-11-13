@@ -1,0 +1,56 @@
+SLICE-053 audit rotation and signing evidence
+date: 2026-11-13T02:38:12Z
+
+== red: new tests before implementation ==
+
+=================================== ERRORS ====================================
+________________ ERROR collecting tests/audit/test_signing.py _________________
+ImportError while importing test module 'C:\AI_System\ADK-Agent\tests\audit\test_signing.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Python314\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\audit\test_signing.py:12: in <module>
+    from adk_agent.audit import AuditPipeline, AuditSignatureInvalid, verify_audit_file
+E   ImportError: cannot import name 'AuditSignatureInvalid' from 'adk_agent.audit' (C:\AI_System\ADK-Agent\src\adk_agent\audit\__init__.py)
+=========================== short test summary info ===========================
+ERROR tests/audit/test_signing.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.75s
+
+== red: serve-audit lacks the rotation flag ==
+adk-agent: error: unrecognized arguments: --audit-max-records 2
+exit=2
+
+== red: rotation and CLI behavior ==
+---------------------------- Captured stderr call -----------------------------
+usage: adk-agent [-h]
+                 {serve,serve-many,serve-a2a,serve-model-gateway,serve-tool-gateway,serve-audit,verify-audit,console,approvals,new,validate,publish,eval} ...
+adk-agent: error: unrecognized arguments: --audit-max-records 0
+=========================== short test summary info ===========================
+FAILED tests/audit/test_rotation.py::test_rotates_segments - TypeError: Audit...
+FAILED tests/audit/test_rotation.py::test_rotates_only_when_full - TypeError:...
+FAILED tests/audit/test_rotation.py::test_chain_continues_across_segments - T...
+FAILED tests/audit/test_rotation.py::test_restart_reads_all_segments - TypeEr...
+FAILED tests/audit/test_rotation.py::test_verify_spans_segments - TypeError: ...
+FAILED tests/test_cli_audit_rotation.py::test_serve_audit_forwards_rotation_and_key
+FAILED tests/test_cli_audit_rotation.py::test_serve_audit_reads_key_from_env_only
+FAILED tests/test_cli_audit_rotation.py::test_serve_audit_rejects_nonpositive_rotation
+8 failed, 1 passed in 2.43s
+
+== green: targeted tests ==
+tests/audit/test_rotation.py tests/audit/test_signing.py
+tests/test_cli_audit_rotation.py tests/audit/test_pipeline.py
+tests/test_audit_sink_wiring.py -> 31 passed in 2.13s
+
+== live: audit service on 8096 with --audit-max-records 2 and ADK_AUDIT_SIGNING_KEY=live-key ==
+POST /v1/events x5 -> all 202, each with a hash
+files: audit.jsonl.000001 (2), audit.jsonl.000002 (2), audit.jsonl (1)
+verify-audit with the correct key -> ok 5 records, exit 0
+verify-audit with the wrong key -> "audit signature invalid at record 0", exit 1
+verify-audit without a key -> ok 5 records, exit 0 (chain only)
+tamper the signature in .000001 -> verify with the correct key -> "audit signature invalid at record 0", exit 1
+
+== gate ==
+check.py --fast -> ALL PASS (609 passed, 13 skipped), 7 steps
