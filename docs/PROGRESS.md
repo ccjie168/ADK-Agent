@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-13
 分支: master
-最新提交: 待填（SLICE-057 SSE 有界进度队列）
+最新提交: `6f3a0bb` feat(console): bound the SSE progress buffer (SLICE-057)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
@@ -56,7 +56,7 @@
 | SLICE-054 | 模型调用熔断 | `4c576b5` |
 | SLICE-055 | 文件状态备份与恢复 | `08b157a` |
 | SLICE-056 | 压测基线（配额并发与审计吞吐） | `60a5acb` |
-| SLICE-057 | SSE 慢客户端与有界进度队列 | 待填 |
+| SLICE-057 | SSE 慢客户端与有界进度队列 | `6f3a0bb` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
