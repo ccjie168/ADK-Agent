@@ -75,6 +75,23 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，事件的 `tenant` 和 `principal.subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
+## `GET /v1/events`（审计服务的只读查询）
+
+审计服务在 `POST /v1/events` 之外提供只读查询，供控制台和其他治理视图使用。
+
+查询参数，全部可选：
+
+- `tenant`：租户。OIDC 模式下缺省取 token 的租户；非 `admin` 角色查询其他租户返回 403 `tenant_forbidden`。静态 token 和回环免鉴权模式不做租户限制。
+- `trace_id`、`run_id`、`action`：精确匹配。
+- `status`：`ok`、`error` 或 `denied`，其他值返回 400 `invalid_status`。
+- `since`、`until`：ISO-8601 时间，必须带时区，闭区间，非法值返回 400 `invalid_time`。
+- `limit`：1 到 1000，默认 100，越界返回 400 `invalid_limit`。
+- `order`：`desc`（默认，最新在前）或 `asc`，其他值返回 400 `invalid_order`。
+
+成功返回 200 `{"events": [AuditEvent], "count": <本次返回条数>}`。事件按时间排序，同一时间按写入顺序。读取正在写入的当前段时，末尾未写完的半行被忽略；其他解析失败返回 502 `audit_read_failed`。
+
+鉴权规则与写入相同，见上一节。
+
 ## `adk-agent backup --out FILE [--registry DIR] [--approvals DIR] [--audit FILE]`
 
 把文件型状态打成一个 gzip tar 包。

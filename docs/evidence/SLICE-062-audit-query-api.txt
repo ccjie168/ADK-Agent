@@ -1,0 +1,13 @@
+SLICE-062 audit query API evidence
+date: 2026-11-13
+
+== red: query function and route do not exist ==
+$ python -m pytest tests/audit/test_query.py -q
+tests\audit\test_query.py:12: in <module>
+    from adk_agent.audit import AuditPipeline, query_events
+E   ImportError: cannot import name 'query_events' from 'adk_agent.audit'
+ERROR tests/audit/test_query.py
+1 error in 1.99s
+
+$ GET /v1/events with a valid token
+405   (route not registered)
