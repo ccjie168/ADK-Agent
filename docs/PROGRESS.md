@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-13
 分支: master
-最新提交: 待填（SLICE-064 工件类型与端口）
+最新提交: `00b504d` feat(core): add agent artifact type and ports (SLICE-064)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
@@ -63,7 +63,7 @@
 | SLICE-061 | 会话按租户隔离（可选开关） | `44abd21` |
 | SLICE-062 | 审计只读查询 API | `68afdf9` |
 | SLICE-063 | 控制台接共享审计 | `59b58c5` |
-| SLICE-064 | 工件类型与端口（ADR-0008） | 待填 |
+| SLICE-064 | 工件类型与端口（ADR-0008） | `00b504d` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
