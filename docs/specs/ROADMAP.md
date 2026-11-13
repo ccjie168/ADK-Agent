@@ -156,6 +156,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-063 控制台接共享审计：`--audit-url`/`--audit-file` 读写同一份审计数据。已完成。
 - SLICE-064 工件类型与端口：`AgentArtifact`、`ArtifactStore`/`ArtifactLoader`、契约。已完成。
 - SLICE-065 工件存储：文件内容寻址与 Postgres `adk_artifacts` 两个实现。已完成。
+- SLICE-066 发布带工件与签名：确定性 zip、Ed25519、`publish --artifact`。进行中。
 
 ## 完成定义
 

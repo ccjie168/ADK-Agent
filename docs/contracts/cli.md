@@ -8,7 +8,7 @@
 - 失败：stderr 输出 `invalid manifest: <原因>`，退出 1。
 - 未知字段、非法 `id` / `version` / `tenant`、缺失必填字段都算失败。
 
-## `adk-agent publish <path> [--registry DIR] [--eval-report FILE]`
+## `adk-agent publish <path> [--registry DIR] [--eval-report FILE] [--artifact DIR|ZIP --key FILE --key-id ID] [--artifact-dir DIR | $ARTIFACT_URL]`
 
 校验 manifest，跑评测门禁，计算 digest，写入注册表。
 
@@ -18,6 +18,10 @@
 - 同版本不同内容：stderr 输出 `publish failed: <原因>`，退出 1。
 - 通过门禁的报告写到 `<registry>/<tenant>/<id>/<version>.eval.json`。相同报告重复发布幂等，不同报告退出 1。
 - 报告写失败退出 1，版本可能已写入；重新发布同一 manifest 会把报告补上。
+- `--artifact DIR|ZIP` 附加工件。`DIR` 必须含 `manifest.json` 和入口 `agent.py`，可选 `requirements.txt`、`README.md`；打包成字节级确定的 zip（条目排序、时间戳 1980-01-01、权限 0644、不压缩）。`ZIP` 输入必须是同一 manifest 的工件，内容不符退出 1。工件上限 8 MiB。
+- 带工件发布必须给 `--key FILE`（PEM Ed25519 私钥）和 `--key-id ID`；签名是私钥对 `sha256:<hex>` 摘要的 Ed25519 签名，128 hex。缺任一参数退出 1。`--key` 配 `--key-id` 但不给 `--artifact` 也退出 1。
+- 工件字节写到 `--artifact-dir DIR`（内容寻址目录）或 `ARTIFACT_URL`（`postgresql://` 共享库），两者只能给一个；带工件发布且都没给时退出 1。
+- 成功输出第一行不变，有工件时第二行输出 `artifact sha256:<hex>`。
 - 默认注册表目录是 `$ADK_REGISTRY_DIR`，否则 `./registry`。
 - 存储布局是 `<registry>/<tenant>/<id>/<version>.json`。租户目录来自 manifest，不受调用方控制。
 

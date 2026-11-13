@@ -1,0 +1,13 @@
+SLICE-066 publish artifact evidence
+date: 2026-11-13
+
+== red: packaging, signing and publish flags do not exist ==
+$ python -m pytest tests/registry/test_packaging.py tests/registry/test_signing.py tests/test_cli_publish_artifact.py -q
+E   ImportError: cannot import name 'PackagingError' from 'adk_agent.registry'
+E   ImportError: cannot import name 'PublishUnavailable' from 'adk_agent.registry'
+E   ImportError: cannot import name 'pack_agent' from 'adk_agent.registry'
+3 errors in 2.38s
+
+$ adk-agent publish examples/minimal/manifest.json --artifact .
+adk-agent: error: unrecognized arguments: --artifact .
+exit=2
