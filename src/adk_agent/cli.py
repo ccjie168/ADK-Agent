@@ -297,6 +297,19 @@ def _registry_token(args: argparse.Namespace) -> str | None:
     return os.environ.get(env_name)
 
 
+def _tool_catalog(args: argparse.Namespace) -> Any:
+    path = getattr(args, "tool_catalog", None)
+    if not path:
+        return None
+    from .tools import ToolCatalogError, load_tool_catalog
+
+    try:
+        return load_tool_catalog(path)
+    except ToolCatalogError as exc:
+        print(f"invalid tool catalog: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def _agent_registry(args: argparse.Namespace) -> Any:
     """Return the HTTP registry client when a URL is set, else the file registry."""
     from .registry import FileAgentRegistry, HttpAgentRegistry
@@ -750,6 +763,11 @@ def main(argv: list[str] | None = None) -> None:
         "--artifact-keys",
         default=None,
         help="JSON file mapping key id to a 64 hex Ed25519 public key",
+    )
+    p_console.add_argument(
+        "--tool-catalog",
+        default=None,
+        help="read-only tool catalog JSON for the Tools panel",
     )
     p_console.add_argument(
         "--policy",
@@ -1273,6 +1291,7 @@ def main(argv: list[str] | None = None) -> None:
             policy_file=args.policy,
             roles=args.roles,
             registry=_agent_registry(args),
+            tool_catalog=_tool_catalog(args),
             eval_reports=(
                 HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
                 if args.registry_url

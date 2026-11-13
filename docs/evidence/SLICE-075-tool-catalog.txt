@@ -1,0 +1,67 @@
+SLICE-075 read-only tool catalog
+================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_catalog.py tests/test_console_tools.py -q
+tests\test_console_tools.py:15: in <module>
+    from adk_agent.tools import ToolCatalog, ToolEntry, load_tool_catalog
+E   ImportError: cannot import name 'ToolCatalog' from 'adk_agent.tools'
+ERROR tests/test_tool_catalog.py
+ERROR tests/test_console_tools.py
+2 errors in 4.08s
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_catalog.py tests/test_console_tools.py -q
+.............                                                            [100%]
+13 passed in 3.02s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+885 passed, 26 skipped in 54.57s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, real console with a file registry and a catalog file
+----------------------------------------------------------
+Registry contains `acme/support-bot@1.0.0` with tool_grants for crm.read and
+crm.export. Catalog has a global crm.read, an acme-only crm.export, and an
+other-tenant billing.read. Console on 8808 with `--registry`, `--tool-catalog`.
+
+$ GET /api/tools?tenant=acme
+200
+[
+  {"tool_id": "crm.export", "source": "openapi", "data_classes": ["internal"],
+   "requires_approval": true, "tenant": "acme",
+   "granted_agents": [{"id": "support-bot", "version": "1.0.0"}]},
+  {"tool_id": "crm.read", "source": "function", "data_classes": ["internal"],
+   "requires_approval": false, "tenant": null,
+   "granted_agents": [{"id": "support-bot", "version": "1.0.0"}]}
+]
+
+billing.read (tenant=other) is filtered out.
+
+Screenshot: docs/evidence/ui/SLICE-075-tools.png shows the Tools tab with the
+two acme-visible tools, their source, data class, approval flag and grants.
+
+notes
+-----
+- The catalog is a plain file so it can describe function, OpenAPI, MCP and
+  connector tools before those sources have a shared discovery API.
+- Grants come only from published manifests; the console never infers them.
+- A missing registry yields empty grants instead of an error; a broken registry
+  returns 500 registry_corrupt.

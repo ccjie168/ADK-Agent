@@ -1,125 +1,141 @@
-"""SLICE-020: the console installs the tool guard."""
+"""SLICE-075: the console lists the tool catalog with registry grants."""
 
 from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
 
+from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
-from google.adk.tools import BaseTool
 
-from adk_agent.config import McpServerConfig, OpenApiConfig
+from adk_agent import cli
 from adk_agent.console import build_console_app
-from adk_agent.core import AgentRef, Invocation, Principal
-from adk_agent.core.context import reset_invocation, set_invocation
-from adk_agent.mcp.client import toolset_from_config
-from adk_agent.secretstore import MappingSecretProvider
-from adk_agent.tools.guard import ToolGuard
-from adk_agent.tools.sources import openapi_toolset_from_config
+from adk_agent.core import AgentManifest
+from adk_agent.registry import FileAgentRegistry, published_from
+from adk_agent.tools import ToolCatalog, ToolEntry, load_tool_catalog
+
+AUTH = {"Authorization": "Bearer secret"}
 
 
-class FakeContext:
-    def __init__(self, function_call_id: str = "call-1") -> None:
-        self.function_call_id = function_call_id
-
-
-class FakeTool(BaseTool):
-    def __init__(self, name: str) -> None:
-        super().__init__(name=name, description="fake tool")
-
-
-def _invocation() -> Invocation:
-    return Invocation(
-        run_id="r1",
-        trace_id="tr1",
-        principal=Principal(tenant="t1", subject="alice", kind="human"),
-        agent_ref=AgentRef(id="probe", version="1.0.0", digest="d" * 64),
-        input="hi",
+def _entry(tool_id: str, *, tenant=None, source="function") -> ToolEntry:
+    return ToolEntry(
+        tool_id=tool_id,
+        description=f"{tool_id} description",
+        source=source,
+        data_classes=["internal"],
+        requires_approval=False,
+        tenant=tenant,
     )
 
 
-def _agent() -> LlmAgent:
-    def get_time() -> str:
-        """Return the current time."""
-        return "now"
-
-    sub = LlmAgent(name="sub", model="gemini-2.5-pro", instruction="x")
-    return LlmAgent(
-        name="probe",
-        model="gemini-2.5-pro",
-        instruction="x",
-        tools=[get_time],
-        sub_agents=[sub],
+def _catalog() -> ToolCatalog:
+    return ToolCatalog(
+        version=1,
+        tools=[
+            _entry("crm.read"),
+            _entry("crm.export", tenant="acme"),
+            _entry("billing.read", tenant="other"),
+        ],
     )
 
 
-def _guard_for(agent: LlmAgent) -> ToolGuard:
-    callbacks = agent.before_tool_callback
-    assert callbacks
-    guard = getattr(callbacks[0], "__self__", None)
-    assert isinstance(guard, ToolGuard)
-    return guard
+def _manifest(tenant: str = "acme", tool_ids=("crm.read",)) -> AgentManifest:
+    return AgentManifest(
+        id="bot",
+        version="1.0.0",
+        tenant=tenant,
+        owner=tenant,
+        description="bot",
+        model_policy={"provider_allowlist": ["litellm"]},
+        tool_grants=[{"tool_id": tool_id, "data_classes": ["internal"]} for tool_id in tool_ids],
+    )
 
 
-def test_console_installs_tool_guard():
-    agent = _agent()
-    build_console_app({"probe": agent}, auth_token="secret")
-
-    for current in (agent, agent.sub_agents[0]):
-        assert isinstance(current.before_tool_callback, list)
-        assert isinstance(current.after_tool_callback, list)
-        assert isinstance(current.on_tool_error_callback, list)
-        for callback in (
-            current.before_tool_callback[0],
-            current.after_tool_callback[0],
-            current.on_tool_error_callback[0],
-        ):
-            assert isinstance(getattr(callback, "__self__", None), ToolGuard)
+def _app(tmp_path, *, catalog=True, registry=None, roles=None):
+    probe = LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")
+    return build_console_app(
+        {"probe": probe},
+        auth_token="secret",
+        roles=roles,
+        registry=registry if registry is not None else FileAgentRegistry(tmp_path / "registry"),
+        tool_catalog=_catalog() if catalog is True else catalog,
+    )
 
 
-def test_console_wraps_tools_in_sandbox():
-    agent = _agent()
-    build_console_app({"probe": agent}, auth_token="secret")
-    assert getattr(agent.tools[0], "__sandboxed__", False) is True
+def _tools(client, tenant="acme"):
+    return client.get(f"/api/tools?tenant={tenant}", headers=AUTH)
 
 
-def test_console_grants_declared_tools():
-    agent = _agent()
-    build_console_app({"probe": agent}, auth_token="secret")
-    guard = _guard_for(agent)
+def test_lists_global_and_tenant_tools(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        response = _tools(client)
 
-    async def scenario() -> tuple[bool, dict[str, Any] | None]:
-        token = set_invocation(_invocation())
-        try:
-            allowed = await guard.before(FakeTool("get_time"), {}, FakeContext("call-1"))
-            denied = await guard.before(FakeTool("delete"), {}, FakeContext("call-2"))
-            return allowed is None, denied
-        finally:
-            reset_invocation(token)
-
-    allowed, denied = asyncio.run(scenario())
-    assert allowed is True
-    assert denied is not None
-    assert denied["error"] == "tool_denied"
+    assert response.status_code == 200
+    assert [entry["tool_id"] for entry in response.json()] == ["crm.export", "crm.read"]
 
 
-def _write_openapi(tmp_path) -> str:
-    path = tmp_path / "openapi.json"
+def test_grants_from_registry(tmp_path):
+    registry = FileAgentRegistry(tmp_path / "registry")
+    asyncio.run(registry.publish(published_from(_manifest(tool_ids=("crm.read", "crm.write")))))
+    with TestClient(_app(tmp_path, registry=registry)) as client:
+        [entry] = [item for item in _tools(client).json() if item["tool_id"] == "crm.read"]
+
+    assert entry["granted_agents"] == [{"id": "bot", "version": "1.0.0"}]
+
+
+def test_cross_tenant_forbidden(tmp_path):
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = _tools(client, tenant="acme")
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "tenant_forbidden"}
+
+
+def test_no_catalog(tmp_path):
+    with TestClient(_app(tmp_path, catalog=None)) as client:
+        response = _tools(client)
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "tool_catalog_not_configured"}
+
+
+def test_grants_empty_without_registry(tmp_path):
+    probe = LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")
+    app = build_console_app(
+        {"probe": probe}, auth_token="secret", registry=None, tool_catalog=_catalog()
+    )
+    with TestClient(app) as client:
+        response = _tools(client)
+
+    assert response.status_code == 200
+    assert all(entry["granted_agents"] == [] for entry in response.json())
+
+
+def _agents_file(tmp_path) -> str:
+    path = tmp_path / "agents.py"
+    path.write_text(
+        "from google.adk.agents import LlmAgent\n"
+        "agents = {'probe': LlmAgent(name='probe', model='gemini-2.5-pro', instruction='x')}\n",
+        encoding="utf-8",
+    )
+    return str(path)
+
+
+def _catalog_file(tmp_path) -> str:
+    path = tmp_path / "tools.json"
     path.write_text(
         json.dumps(
             {
-                "openapi": "3.0.3",
-                "info": {"title": "Demo API", "version": "1.0.0"},
-                "servers": [{"url": "https://api.example.com"}],
-                "paths": {
-                    "/users": {
-                        "get": {
-                            "operationId": "getUser",
-                            "responses": {"200": {"description": "ok"}},
-                        }
+                "version": 1,
+                "tools": [
+                    {
+                        "tool_id": "crm.read",
+                        "description": "read",
+                        "source": "function",
+                        "data_classes": ["internal"],
+                        "requires_approval": False,
                     }
-                },
+                ],
             }
         ),
         encoding="utf-8",
@@ -127,56 +143,32 @@ def _write_openapi(tmp_path) -> str:
     return str(path)
 
 
-def _decide(guard: ToolGuard, allowed_name: str, denied_name: str):
-    async def scenario():
-        token = set_invocation(_invocation())
-        try:
-            allowed = await guard.before(FakeTool(allowed_name), {}, FakeContext("call-1"))
-            denied = await guard.before(FakeTool(denied_name), {}, FakeContext("call-2"))
-            return allowed, denied
-        finally:
-            reset_invocation(token)
+def test_cli_loads_catalog(tmp_path, monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr("adk_agent.console.run_console", lambda *a, **k: captured.update(k))
 
-    return asyncio.run(scenario())
-
-
-def test_console_grants_openapi_toolset_tools(tmp_path):
-    toolset = openapi_toolset_from_config(
-        OpenApiConfig(spec_path=_write_openapi(tmp_path)),
-        MappingSecretProvider({}),
+    cli.main(
+        ["console", "--agents", _agents_file(tmp_path), "--tool-catalog", _catalog_file(tmp_path)]
     )
-    agent = LlmAgent(
-        name="probe",
-        model="gemini-2.5-pro",
-        instruction="x",
-        tools=[toolset],
-    )
-    build_console_app({"probe": agent}, auth_token="secret")
 
-    allowed, denied = _decide(_guard_for(agent), "get_user", "delete_user")
-    assert allowed is None
-    assert denied is not None
-    assert denied["error"] == "tool_denied"
+    assert isinstance(captured["tool_catalog"], ToolCatalog)
 
 
-def test_console_grants_mcp_filter_tools():
-    toolset = toolset_from_config(
-        McpServerConfig(
-            transport="http",
-            url="https://mcp.example.com/mcp",
-            tool_filter=["read_file"],
-        ),
-        MappingSecretProvider({}),
-    )
-    agent = LlmAgent(
-        name="probe",
-        model="gemini-2.5-pro",
-        instruction="x",
-        tools=[toolset],
-    )
-    build_console_app({"probe": agent}, auth_token="secret")
+def test_cli_rejects_bad_catalog(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("adk_agent.console.run_console", lambda *a, **k: None)
+    bad = tmp_path / "tools.json"
+    bad.write_text("{", encoding="utf-8")
 
-    allowed, denied = _decide(_guard_for(agent), "read_file", "write_file")
-    assert allowed is None
-    assert denied is not None
-    assert denied["error"] == "tool_denied"
+    try:
+        cli.main(["console", "--agents", _agents_file(tmp_path), "--tool-catalog", str(bad)])
+    except SystemExit as exc:
+        assert exc.code == 1
+    else:
+        raise AssertionError("bad catalog did not exit")
+    assert "tool catalog" in capsys.readouterr().err.lower()
+
+
+def test_catalog_file_roundtrip(tmp_path):
+    catalog = load_tool_catalog(_catalog_file(tmp_path))
+
+    assert catalog.tools[0].tool_id == "crm.read"

@@ -63,7 +63,13 @@ from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .runtime.sessions import scoped_user_id
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
-from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard, toolset_tool_ids
+from .tools import (
+    GrantPolicyEngine,
+    ToolCatalog,
+    ToolGuard,
+    install_tool_guard,
+    toolset_tool_ids,
+)
 from .tracing import resolve_trace_id
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -133,6 +139,7 @@ _INDEX_HTML = """<!doctype html>
 <div id="tabs">
   <button id="tab-chat" class="tab active" data-tab="chat">Chat</button>
   <button id="tab-registry" class="tab" data-tab="registry">Registry</button>
+  <button id="tab-tools" class="tab" data-tab="tools">Tools</button>
   <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
   <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
   <button id="tab-approvals" class="tab" data-tab="approvals">Approvals</button>
@@ -176,6 +183,17 @@ _INDEX_HTML = """<!doctype html>
     <button id="open-chat">Open chat</button>
     <span id="artifact-msg" class="panel-msg"></span>
   </div>
+</section>
+
+<section id="tools" class="panel">
+  <div class="row">
+    <button id="refresh-tools">Refresh</button>
+  </div>
+  <div id="tools-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>tool</th><th>source</th><th>data classes</th><th>approval</th><th>granted agents</th></tr></thead>
+    <tbody id="tools-body"></tbody>
+  </table>
 </section>
 
 <section id="runs" class="panel">
@@ -246,7 +264,7 @@ _INDEX_HTML = """<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["chat", "registry", "runs", "sessions", "approvals", "plans", "policy"];
+const TABS = ["chat", "registry", "tools", "runs", "sessions", "approvals", "plans", "policy"];
 let sessionId = null;
 let selectedApproval = null;
 let selectedRegistry = null;
@@ -437,6 +455,30 @@ async function openChat() {
   showTab("chat");
 }
 
+async function loadTools() {
+  const tenant = $("tenant").value;
+  $("tools-msg").textContent = "";
+  const body = $("tools-body");
+  body.innerHTML = "";
+  if (!tenant) return;
+  const result = await getJson("/api/tools?tenant=" + encodeURIComponent(tenant));
+  if (!result.ok) {
+    $("tools-msg").textContent = "tools unavailable (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  for (const tool of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(tool.tool_id));
+    row.appendChild(cell(tool.source));
+    row.appendChild(cell((tool.data_classes || []).join(", ") || "-"));
+    row.appendChild(cell(tool.requires_approval ? "yes" : "no"));
+    const agents = (tool.granted_agents || []).map((a) => a.id + "@" + a.version).join(", ");
+    row.appendChild(cell(agents || "-"));
+    body.appendChild(row);
+  }
+}
+
 async function loadRuns() {
   const result = await getJson("/api/runs?limit=50");
   if (!result.ok) {
@@ -573,6 +615,7 @@ async function connect() {
   await loadSessions();
   await loadApprovals();
   await loadPlans();
+  await loadTools();
   loadAudit();
 }
 
@@ -739,12 +782,13 @@ async function savePolicy() {
 }
 
 $("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
-$("tenant").addEventListener("change", loadRegistry);
+$("tenant").addEventListener("change", () => { loadRegistry(); loadTools(); });
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-registry").addEventListener("click", loadRegistry);
 $("open-chat").addEventListener("click", openChat);
 $("refresh-runs").addEventListener("click", loadRuns);
+$("refresh-tools").addEventListener("click", loadTools);
 $("refresh-sessions").addEventListener("click", loadSessions);
 $("refresh-approvals").addEventListener("click", loadApprovals);
 $("refresh-plans").addEventListener("click", loadPlans);
@@ -1021,6 +1065,7 @@ def build_console_app(
     roles: list[str] | None = None,
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
+    tool_catalog: ToolCatalog | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1317,6 +1362,49 @@ def build_console_app(
         if report is None:
             return JSONResponse({"error": "eval_report_not_found"}, status_code=404)
         return report.model_dump(mode="json")
+
+    @app.get("/api/tools")
+    async def list_tools(request: Request, tenant: str | None = None) -> Any:
+        if tool_catalog is None:
+            return JSONResponse({"error": "tool_catalog_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        target = tenant or caller.tenant
+        if tenant and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        grants: dict[str, set[tuple[str, str]]] = {}
+        if registry is not None:
+            try:
+                records = await registry.list(target)
+            except ValueError:
+                return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
+            except Exception:  # noqa: BLE001
+                logger.exception("tool catalog registry read failed")
+                return JSONResponse({"error": "registry_corrupt"}, status_code=500)
+            for record in records:
+                for grant in record.manifest.tool_grants:
+                    grants.setdefault(grant.tool_id, set()).add(
+                        (record.manifest.id, record.manifest.version)
+                    )
+        entries: list[dict[str, Any]] = []
+        for tool in tool_catalog.tools:
+            if tool.tenant is not None and tool.tenant != target:
+                continue
+            granted = sorted(grants.get(tool.tool_id, set()))
+            entries.append(
+                {
+                    "tool_id": tool.tool_id,
+                    "description": tool.description,
+                    "source": tool.source,
+                    "data_classes": list(tool.data_classes),
+                    "requires_approval": tool.requires_approval,
+                    "tenant": tool.tenant,
+                    "granted_agents": [
+                        {"id": agent_id, "version": version} for agent_id, version in granted
+                    ],
+                }
+            )
+        entries.sort(key=lambda entry: entry["tool_id"])
+        return entries
 
     @app.get("/api/runs")
     async def list_runs(request: Request, limit: int = 50) -> list[dict]:
@@ -1706,6 +1794,7 @@ def run_console(
     roles: list[str] | None = None,
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
+    tool_catalog: ToolCatalog | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1733,6 +1822,7 @@ def run_console(
         roles=roles,
         registry=registry,
         eval_reports=eval_reports,
+        tool_catalog=tool_catalog,
         artifact_store=artifact_store,
         artifact_loader=artifact_loader,
         artifact_trust=artifact_trust,

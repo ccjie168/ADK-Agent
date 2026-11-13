@@ -162,6 +162,28 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 工件无法加载成同名 ADK agent 返回 500 `load_failed`。
 - 成功加载写一条 `agent.load` 审计，`status=ok`，`target` 是 agent 名，`tenant` 是调用方的租户（审计事件要求租户等于 principal 的租户）。
 
+## `GET /api/tools?tenant=<name>` -> `[ToolEntry]`
+
+只读工具目录。每个条目附带该租户已发布版本里引用它的 agent。
+
+```json
+{
+  "tool_id": "crm.read",
+  "description": "read a CRM record",
+  "source": "function",
+  "data_classes": ["internal"],
+  "requires_approval": false,
+  "tenant": null,
+  "granted_agents": [{"id": "support-bot", "version": "1.0.0"}]
+}
+```
+
+- 目录由 `console --tool-catalog FILE` 提供，文件格式见 `cli.md`。未配置返回 404 `tool_catalog_not_configured`。
+- `tenant` 为 `null` 的条目对所有租户可见；其他条目只在同名租户出现。
+- `tenant` 缺失时用当前 principal 的租户。非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
+- `granted_agents` 来自该租户注册表记录中 `manifest.tool_grants` 的同名工具，按 `(id, version)` 排序。没有注册表时为空列表；注册表损坏返回 500 `registry_corrupt`。
+- 结果按 `tool_id` 排序。
+
 ## `GET /api/runs?limit=50` -> `[RunSummary]`
 
 从审计缓冲或审计服务读出的事件按 `run_id` 聚合，按最后事件时间倒序。`limit` 夹在 1 到 200。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。

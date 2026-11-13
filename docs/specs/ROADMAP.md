@@ -165,6 +165,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-072 命令接注册表服务：`console`/`serve`/`serve-many`/`publish` 的 `--registry-url`，发布两步上传。已完成。
 - SLICE-073 市场页按需加载：`POST /api/registry/load`、验签后注册运行时、`--max-loaded-agents`。已完成。
 - SLICE-074 评测报告集中存储：`adk_eval_reports`、服务 GET/PUT 报告、`HttpEvalReportStore`、发布带报告。已完成。
+- SLICE-075 只读工具目录（UI-4）：`ToolCatalog`、`--tool-catalog`、`/api/tools` 叠加注册表授权、Tools 面板。已完成。
 
 ## 完成定义
 
