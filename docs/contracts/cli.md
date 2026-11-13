@@ -143,7 +143,7 @@
 
 ## `adk-agent serve` / `serve-many` 的审计、配额与指标
 
-两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE` 和 `--metrics`。
+两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE`、`--metrics` 和 `--rate-limit N --rate-limit-window SECONDS`。
 
 - 每次 MCP 工具调用在 agent 运行前后写一条 `agent.run` 审计。`target` 是 `<agent>@dev`，`args_hash` 是请求文本的哈希，成功时写 `result_hash`。
 - 运行失败写 `status=error`，`error_code` 是异常类名。配额用尽写 `status=denied`、`error_code=quota_exceeded`，并且不运行 agent。
@@ -153,10 +153,12 @@
 - `--metrics` 在 streamable-http 服务上暴露 `GET /metrics`，并记录运行计数、耗时和配额拒绝。stdio 下只计数，没有端点。
 - 指标名和聚合边界见 `metrics.md`。聚合由抓取端做，应用不跨副本共享计数。
 - 配置了审计、配额或指标时，`serve` 改用 `serve-many` 的单 agent 形态，以获得同样的运行包装。
+- `--rate-limit N --rate-limit-window SECONDS` 只对 `streamable-http` 生效，语义见「入口限流」。
+  配 `stdio` 同时给 `--rate-limit` 退出 1。
 - 审计的 `trace_id` 取 `traceparent` 的 trace-id，规则见 `tracing.md`。没有时每次调用新生成。
 - `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
 
-## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--quota-config FILE]`
+## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--quota-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把一个 agent 暴露成 A2A 端点。
 
@@ -168,6 +170,7 @@
 - 审计的 `trace_id` 取请求头 `traceparent` 的 trace-id，规则见 `tracing.md`。
 - 配额拒绝在 A2A 里表现为 task 的 `status.state="failed"`，消息是 `tenant '<name>' exceeded <limit>`，HTTP 状态仍是 200。审计里是 `status=denied`、`error_code=quota_exceeded`。
 - 配置了审计或配额且没有传入 runner 时，服务自行构建默认 runner 并包一层。`--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
+- `--rate-limit N --rate-limit-window SECONDS` 按客户端地址计数，对所有路径生效。A2A 没有 `/healthz` 和 `/metrics`，没有豁免路径。
 
 ## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS]`
 
@@ -200,4 +203,5 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - 固定窗口。超过上限返回 429 `{"error":"rate_limited"}`，并带 `Retry-After` 秒数。
 - `/healthz` 不限流。暴露 `/metrics` 的服务也豁免 `/metrics`，避免抓取被限流。鉴权在限流之前，没有 token 的请求仍返回 401。
 - 计数在进程内，多副本时每个副本各算一份。跨副本限流交给入口网关或反向代理。
-- 拒绝计数见 `metrics.md`。MCP 和 A2A 端点不在这一节范围内。
+- MCP 的 streamable-http 也支持这两个参数，计数键优先用 OIDC principal，否则用客户端地址；`/healthz` 和 `/metrics` 豁免。A2A 端点只支持静态 token，按客户端地址计数，无豁免路径。
+- 拒绝计数见 `metrics.md`。

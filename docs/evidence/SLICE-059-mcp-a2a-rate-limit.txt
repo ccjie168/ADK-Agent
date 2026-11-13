@@ -1,0 +1,22 @@
+SLICE-059 MCP and A2A rate limit evidence
+date: 2026-11-13
+
+== red: builders and flags do not accept rate limits ==
+$ python -m pytest tests/test_mcp_a2a_rate_limit.py -q
+FAILED test_mcp_rate_limited - TypeError: MCPServer...unexpected keyword argument 'rate_limit'
+FAILED test_mcp_exempt_paths - TypeError
+FAILED test_mcp_metric - TypeError
+FAILED test_mcp_auth_precedes_limit - TypeError
+FAILED test_a2a_rate_limited - TypeError: build_a2a_app() got an unexpected keyword argument
+FAILED test_a2a_auth_precedes_limit - TypeError
+FAILED test_cli_rejects_bad_flags[0..3] - assert 2 == 1
+FAILED test_stdio_rejects_rate_limit - assert 2 == 1
+11 failed in 2.41s
+
+$ adk-agent serve --agent examples/minimal/agent.py --rate-limit 5
+adk-agent: error: unrecognized arguments: --rate-limit 5
+exit=2
+
+$ adk-agent serve-a2a --agent examples/minimal/agent.py --rate-limit 5
+adk-agent: error: unrecognized arguments: --rate-limit 5
+exit=2
