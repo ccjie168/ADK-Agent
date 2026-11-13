@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .artifacts import ArtifactStoreError, FileArtifactStore, artifact_digest
 from .client import (
+    HttpAgentLifecycleStore,
     HttpAgentRegistry,
     HttpEvalReportStore,
     RegistryForbidden,
@@ -38,6 +39,7 @@ __all__ = [
     "PublishUnavailable",
     "FileAgentRegistry",
     "FileEvalReportStore",
+    "HttpAgentLifecycleStore",
     "HttpAgentRegistry",
     "HttpEvalReportStore",
     "RefError",

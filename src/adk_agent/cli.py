@@ -133,6 +133,7 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
 
     try:
         registry = _agent_registry(args)
+        lifecycle = _lifecycle_source(args, registry)
 
         async def load():
             try:
@@ -141,6 +142,7 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
                     registry=registry,
                     store=store,
                     trust=trust,
+                    lifecycle=lifecycle,
                 )
             finally:
                 if isinstance(registry, HttpAgentRegistry):
@@ -295,6 +297,15 @@ def _add_registry_client_args(parser: argparse.ArgumentParser) -> None:
 def _registry_token(args: argparse.Namespace) -> str | None:
     env_name = getattr(args, "registry_token_env", None) or "ADK_REGISTRY_AUTH_TOKEN"
     return os.environ.get(env_name)
+
+
+def _lifecycle_source(args: argparse.Namespace, registry: Any = None) -> Any:
+    from .registry import FileAgentLifecycleStore, HttpAgentLifecycleStore, HttpAgentRegistry
+
+    if not getattr(args, "registry_url", None):
+        return FileAgentLifecycleStore(args.registry)
+    client = registry if isinstance(registry, HttpAgentRegistry) else _agent_registry(args)
+    return HttpAgentLifecycleStore(client)
 
 
 def _tool_catalog(args: argparse.Namespace) -> Any:
@@ -853,6 +864,21 @@ def main(argv: list[str] | None = None) -> None:
         help="delete records instead of moving them to <dir>/archive",
     )
 
+    p_lifecycle = sub.add_parser("lifecycle", help="change a published version's lifecycle state")
+    lifecycle_sub = p_lifecycle.add_subparsers(dest="lifecycle_cmd", required=True)
+    p_lifecycle_set = lifecycle_sub.add_parser("set", help="set the lifecycle status")
+    p_lifecycle_set.add_argument("--tenant", required=True)
+    p_lifecycle_set.add_argument("--id", required=True)
+    p_lifecycle_set.add_argument("--version", required=True)
+    p_lifecycle_set.add_argument("--status", required=True, help="published, deprecated or retired")
+    p_lifecycle_set.add_argument("--reason", default="")
+    p_lifecycle_set.add_argument(
+        "--registry",
+        default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
+        help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
+    )
+    _add_registry_client_args(p_lifecycle_set)
+
     p_backup = sub.add_parser("backup", help="archive file-based state into a gzip tar")
     p_backup.add_argument("--out", required=True, help="archive path to write")
     p_backup.add_argument("--registry", default=None, help="registry directory to include")
@@ -1251,6 +1277,7 @@ def main(argv: list[str] | None = None) -> None:
         rate_limit = _rate_limit(args)
         from .console import run_console
         from .registry import (
+            FileAgentLifecycleStore,
             FileEvalReportStore,
             HttpEvalReportStore,
             InProcessArtifactLoader,
@@ -1286,6 +1313,8 @@ def main(argv: list[str] | None = None) -> None:
         audit_sink = _audit_sink(args)
         artifact_trust = _artifact_trust(args)
         artifact_store = _artifact_store(args)
+        registry_client = _agent_registry(args)
+        console_lifecycle = _lifecycle_source(args, registry_client)
         run_console(
             agents=agents,
             host=args.host,
@@ -1295,8 +1324,9 @@ def main(argv: list[str] | None = None) -> None:
             session_db=args.session_db,
             policy_file=args.policy,
             roles=args.roles,
-            registry=_agent_registry(args),
+            registry=registry_client,
             tool_catalog=_tool_catalog(args),
+            lifecycle=console_lifecycle,
             eval_reports=(
                 HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
                 if args.registry_url
@@ -1381,6 +1411,63 @@ def main(argv: list[str] | None = None) -> None:
         print(
             f"{manifest.tenant}/{manifest.id}@{manifest.version} sha256:{manifest_digest(manifest)}"
         )
+    elif args.cmd == "lifecycle":
+        from .core import LifecycleTransitionError
+        from .registry import (
+            FileAgentLifecycleStore,
+            FileAgentRegistry,
+            HttpAgentLifecycleStore,
+            RegistryError,
+        )
+
+        if args.status not in {"published", "deprecated", "retired"}:
+            print(f"invalid status: {args.status!r}", file=sys.stderr)
+            raise SystemExit(1)
+        try:
+            if args.registry_url:
+                client = _agent_registry(args)
+                remote = HttpAgentLifecycleStore(client)
+
+                async def set_remote():
+                    try:
+                        return await remote.set(
+                            args.tenant,
+                            args.id,
+                            args.version,
+                            status=args.status,
+                            changed_by="cli",
+                            reason=args.reason,
+                        )
+                    finally:
+                        await client.aclose()
+
+                state = asyncio.run(set_remote())
+            else:
+                registry = FileAgentRegistry(args.registry)
+
+                async def check_version():
+                    records = await registry.list(args.tenant)
+                    if not any(
+                        record.manifest.id == args.id and record.manifest.version == args.version
+                        for record in records
+                    ):
+                        raise LookupError(f"version not found: {args.id}@{args.version}")
+
+                asyncio.run(check_version())
+                state = asyncio.run(
+                    FileAgentLifecycleStore(args.registry).set(
+                        args.tenant,
+                        args.id,
+                        args.version,
+                        status=args.status,
+                        changed_by="cli",
+                        reason=args.reason,
+                    )
+                )
+        except (LifecycleTransitionError, RegistryError, LookupError, ValueError) as exc:
+            print(f"lifecycle failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        print(f"{args.tenant}/{args.id}@{args.version} status={state.status}")
     elif args.cmd == "publish":
         from .core import EvalReport
         from .eval import enforce_eval_gate

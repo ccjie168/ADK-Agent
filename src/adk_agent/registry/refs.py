@@ -33,6 +33,7 @@ async def load_registry_agents(
     store: ArtifactStore,
     trust: TrustStore,
     loader: InProcessArtifactLoader | None = None,
+    lifecycle: Any = None,
 ) -> dict[str, Any]:
     """Load each published reference, verifying trust, keyed by agent name."""
     artifact_loader = loader or InProcessArtifactLoader()
@@ -50,6 +51,10 @@ async def load_registry_agents(
         )
         if record is None:
             raise ArtifactLoadError(f"agent version not found: {text}")
+        if lifecycle is not None:
+            state = await lifecycle.get(tenant, agent_id, version)
+            if state.status == "retired":
+                raise RefError(f"{tenant}/{agent_id}@{version} is retired")
         ref = AgentRef(
             id=record.manifest.id,
             version=record.manifest.version,

@@ -96,6 +96,17 @@
 
 鉴权规则与写入相同，见上一节。
 
+## `adk-agent lifecycle set --tenant T --id ID --version V --status S [--reason TEXT] [--registry DIR | --registry-url URL [--registry-token-env VAR]]`
+
+修改已发布版本的生命周期状态，语义见 ADR-0010 与 `registry_service.md`。
+
+- `--status` 取 `published`、`deprecated`、`retired`，其他值退出 1。
+- `--registry-url` 走控制面 `PUT .../lifecycle`；否则用 `--registry` 目录下的文件实现。
+- 版本不存在、非法转换或服务不可达退出 1。成功打印 `TENANT/ID@VERSION status=STATUS`。
+- `changed_by` 在文件模式下是 `cli`；HTTP 模式由服务端按调用方记录。
+
+`console`、`serve`、`serve-many` 从注册表加载时也会检查状态：退役版本启动失败退出 1。控制台按需加载对退役版本返回 409。
+
 ## `adk-agent backup --out FILE [--registry DIR] [--approvals DIR] [--audit FILE]`
 
 把文件型状态打成一个 gzip tar 包。

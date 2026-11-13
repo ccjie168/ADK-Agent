@@ -282,7 +282,30 @@ class HttpEvalReportStore:
             self._client = None
 
 
+class HttpAgentLifecycleStore:
+    """Adapt the registry client's lifecycle calls to the store port."""
+
+    def __init__(self, registry: HttpAgentRegistry) -> None:
+        self._registry = registry
+
+    async def get(self, tenant: str, agent_id: str, version: str) -> AgentLifecycle:
+        return await self._registry.get_lifecycle(tenant, agent_id, version)
+
+    async def set(
+        self,
+        tenant: str,
+        agent_id: str,
+        version: str,
+        *,
+        status: LifecycleStatus,
+        changed_by: str,
+        reason: str,
+    ) -> AgentLifecycle:
+        return await self._registry.set_lifecycle(tenant, agent_id, version, status, reason)
+
+
 __all__ = [
+    "HttpAgentLifecycleStore",
     "HttpAgentRegistry",
     "HttpEvalReportStore",
     "RegistryForbidden",

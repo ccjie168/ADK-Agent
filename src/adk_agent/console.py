@@ -29,6 +29,8 @@ from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from .core import (
     AccessPolicy,
+    AgentLifecycle,
+    AgentLifecycleStore,
     AgentRef,
     AgentRegistry,
     ArtifactLoader,
@@ -170,7 +172,7 @@ _INDEX_HTML = """<!doctype html>
   </div>
   <div id="registry-msg" class="panel-msg"></div>
   <table>
-    <thead><tr><th>id</th><th>version</th><th>published</th><th>eval</th><th>artifact</th></tr></thead>
+    <thead><tr><th>id</th><th>version</th><th>published</th><th>eval</th><th>artifact</th><th>lifecycle</th></tr></thead>
     <tbody id="registry-body"></tbody>
   </table>
   <h3>Manifest</h3>
@@ -179,6 +181,8 @@ _INDEX_HTML = """<!doctype html>
   <pre id="eval-report"></pre>
   <h3>Artifact</h3>
   <pre id="artifact-info"></pre>
+  <h3>Lifecycle</h3>
+  <pre id="lifecycle-info"></pre>
   <div class="row">
     <button id="open-chat">Open chat</button>
     <span id="artifact-msg" class="panel-msg"></span>
@@ -320,6 +324,16 @@ function artifactCell(info) {
   return td;
 }
 
+function lifecycleCell(info) {
+  const td = document.createElement("td");
+  if (!info || info.status === "published") { td.textContent = "published"; return td; }
+  const badge = document.createElement("span");
+  badge.className = info.status === "retired" ? "badge bad" : "badge muted";
+  badge.textContent = info.status;
+  td.appendChild(badge);
+  return td;
+}
+
 function append(who, text) {
   const line = document.createElement("div");
   line.className = who;
@@ -398,6 +412,7 @@ async function loadRegistry() {
     }
     row.appendChild(evalCell);
     row.appendChild(artifactCell(entry.artifact));
+    row.appendChild(lifecycleCell(entry.lifecycle));
     row.addEventListener("click", () => selectRegistryEntry(tenant, entry));
     body.appendChild(row);
   }
@@ -408,6 +423,8 @@ async function selectRegistryEntry(tenant, entry) {
   $("artifact-info").textContent = entry.artifact
     ? JSON.stringify(entry.artifact, null, 2)
     : "no artifact";
+  $("lifecycle-info").textContent = JSON.stringify(
+    entry.lifecycle || { status: "published" }, null, 2);
   $("artifact-msg").textContent = "";
   $("manifest").textContent = JSON.stringify(entry.manifest, null, 2);
   $("eval-report").textContent = "";
@@ -428,6 +445,12 @@ async function openChat() {
   }
   const select = $("agent");
   const name = selectedRegistry.id;
+  const state = selectedRegistry.lifecycle || { status: "published" };
+  if (state.status === "retired") {
+    $("artifact-msg").textContent =
+      "version is retired" + (state.reason ? ": " + state.reason : "");
+    return;
+  }
   let loaded = Array.from(select.options).some((option) => option.value === name);
   if (!loaded) {
     $("artifact-msg").textContent =
@@ -1066,6 +1089,7 @@ def build_console_app(
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
     tool_catalog: ToolCatalog | None = None,
+    lifecycle: AgentLifecycleStore | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1117,6 +1141,13 @@ def build_console_app(
             "key_id": artifact.key_id,
             "status": status,
         }
+
+    async def _lifecycle(state_of: Any) -> AgentLifecycle:
+        if lifecycle is None:
+            return AgentLifecycle.default()
+        return await lifecycle.get(
+            state_of.manifest.tenant, state_of.manifest.id, state_of.manifest.version
+        )
 
     policy_store = FilePolicyStore(policy_file) if policy_file else None
     policy_engine = RolePolicyEngine(policy_store.load()) if policy_store else None
@@ -1235,9 +1266,14 @@ def build_console_app(
             return JSONResponse({"error": "registry_corrupt"}, status_code=500)
         except ValueError:
             return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
+        try:
+            states = [await _lifecycle(record) for record in records]
+        except Exception:  # noqa: BLE001
+            logger.exception("lifecycle read failed")
+            return JSONResponse({"error": "lifecycle_unavailable"}, status_code=503)
 
         entries = []
-        for record in records:
+        for record, state in zip(records, states, strict=True):
             has_report = (
                 await eval_reports.has(target, record.manifest.id, record.manifest.version)
                 if eval_reports is not None
@@ -1254,6 +1290,7 @@ def build_console_app(
                     "has_eval_report": has_report,
                     "manifest": record.manifest.model_dump(mode="json"),
                     "artifact": _artifact_info(record),
+                    "lifecycle": state.model_dump(mode="json"),
                 }
             )
         return entries
@@ -1303,6 +1340,13 @@ def build_console_app(
         )
         if record is None:
             return JSONResponse({"error": "not_found"}, status_code=404)
+        try:
+            state = await _lifecycle(record)
+        except Exception:  # noqa: BLE001
+            logger.exception("lifecycle read failed")
+            return JSONResponse({"error": "lifecycle_unavailable"}, status_code=503)
+        if state.status == "retired":
+            return JSONResponse({"error": "version_retired"}, status_code=409)
 
         async with load_lock:
             if agent_id in agents:
@@ -1795,6 +1839,7 @@ def run_console(
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
     tool_catalog: ToolCatalog | None = None,
+    lifecycle: AgentLifecycleStore | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1823,6 +1868,7 @@ def run_console(
         registry=registry,
         eval_reports=eval_reports,
         tool_catalog=tool_catalog,
+        lifecycle=lifecycle,
         artifact_store=artifact_store,
         artifact_loader=artifact_loader,
         artifact_trust=artifact_trust,

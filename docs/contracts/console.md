@@ -122,15 +122,17 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
   "published_at": "2026-11-12T10:00:00Z",
   "has_eval_report": true,
   "manifest": {},
-  "artifact": {"digest": "sha256:...", "size": 450, "key_id": "publisher-1", "status": "verified"}
+  "artifact": {"digest": "sha256:...", "size": 450, "key_id": "publisher-1", "status": "verified"},
+  "lifecycle": {"status": "published", "changed_at": null, "changed_by": null, "reason": ""}
 }
 ```
 
-`artifact` 为 `null` 表示该版本没有工件。`status` 是 `verified`、`untrusted`、`unknown`（控制台没有配置可信密钥）或 `unsigned`（工件没有签名）。
+`lifecycle` 是 ADR-0010 的状态；没有状态行时是默认的 `published`。`artifact` 为 `null` 表示该版本没有工件。`status` 是 `verified`、`untrusted`、`unknown`（控制台没有配置可信密钥）或 `unsigned`（工件没有签名）。
 
 - 非法租户返回 400 `unsafe_tenant`。
 - 非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
 - 记录损坏返回 500 `registry_corrupt`，响应不含文件路径。
+- 生命周期存储不可用返回 503 `lifecycle_unavailable`。
 - 未配置注册表返回 404 `registry_not_configured`。
 
 ## `GET /api/registry/{tenant}/{id}/{version}/eval` -> `EvalReport`
@@ -158,8 +160,10 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 版本不存在返回 404 `not_found`。
 - 该版本没有工件返回 409 `artifact_missing`；签名缺失或不可信返回 409 `artifact_untrusted`。
 - 同名 agent 已按另一版本按需加载返回 409 `name_conflict`。
+- 版本已退役返回 409 `version_retired`；`deprecated` 版本仍可加载。
 - 已加载数量达到 `--max-loaded-agents` 返回 409 `load_limit`。
 - 工件无法加载成同名 ADK agent 返回 500 `load_failed`。
+- 生命周期存储不可用返回 503 `lifecycle_unavailable`。
 - 成功加载写一条 `agent.load` 审计，`status=ok`，`target` 是 agent 名，`tenant` 是调用方的租户（审计事件要求租户等于 principal 的租户）。
 
 ## `GET /api/tools?tenant=<name>` -> `[ToolEntry]`
