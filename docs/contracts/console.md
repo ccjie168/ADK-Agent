@@ -34,8 +34,10 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 请求同 `/api/chat`。响应 `text/event-stream`。
 
 - `event: progress`，数据是 `ProgressEvent`（见 `progress_event.schema.json`）。
-- `event: done`，数据是 `{session_id, reply, run_id, trace_id}`。
-- `event: error`，数据是 `{error}`，文案固定。配额用尽时是 `{"error":"quota_exceeded"}`。
+- `event: done`，数据是 `{session_id, reply, run_id, trace_id, dropped}`。
+- `event: error`，数据是 `{error, dropped}`，文案固定。配额用尽时是 `{"error":"quota_exceeded","dropped":0}`。
+- 每条流最多缓冲 `<sse-queue-size>` 条 `progress`。客户端读得慢时丢弃最旧的 `progress`，保留最新的和终结事件。`dropped` 是被丢掉的条数。
+- `progress` 事件可能因慢客户端缺失，终结事件 `done` / `error` 不会丢。
 - 鉴权和策略检查在建流前完成，拒绝返回普通 JSON 错误。
 
 ## `GET /api/approvals` -> `[ApprovalRequest]`

@@ -147,6 +147,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-054 模型调用熔断：三态熔断器、provider 包装和网关 503。已完成。
 - SLICE-055 文件状态备份与恢复：`backup`/`restore` 子命令、manifest 和安全解包。已完成。
 - SLICE-056 压测基线：`scripts/loadtest.py` 的配额并发与审计吞吐测量，并记录实机基线。已完成。
+- SLICE-057 SSE 慢客户端与有界进度队列：`ProgressBuffer`、`--sse-queue-size`、`sse` 压测场景。进行中。
 
 ## 完成定义
 

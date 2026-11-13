@@ -1,0 +1,21 @@
+SLICE-057 SSE backpressure evidence
+date: 2026-11-13
+
+== red: bounded buffer does not exist ==
+$ python -m pytest tests/test_console_sse_buffer.py -q
+tests\test_console_sse_buffer.py:13: in <module>
+    from adk_agent.console import ProgressBuffer, build_console_app
+E   ImportError: cannot import name 'ProgressBuffer' from 'adk_agent.console'
+ERROR tests/test_console_sse_buffer.py
+1 error in 1.65s
+
+$ python scripts/loadtest.py sse --events 10
+loadtest.py: error: argument command: invalid choice: 'sse' (choose from 'quota', 'audit')
+exit=2
+
+$ adk-agent console --agents examples/minimal/agent.py --sse-queue-size 0
+adk-agent: error: unrecognized arguments: --sse-queue-size 0
+exit=2
+
+$ python -m pytest tests/test_loadtest.py -q
+3 failed, 12 passed   (run_sse missing, sse subcommand missing)

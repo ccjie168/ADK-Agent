@@ -180,6 +180,7 @@
 - `QUOTA_URL` 选择共享配额后端，接受 `postgresql://` 或 `postgresql+asyncpg://`。不设置时用进程内计数，只约束单进程。缺少 `asyncpg` 时退出 1 并给出安装提示。
 - `--approval-dir` 指向审批收件箱目录，默认 `$ADK_APPROVAL_DIR`。不设置时审批接口返回 404，收件箱禁用。目录在第一次写入时创建。
 - `--approval-ttl` 是控制台侧的兜底过期秒数，只作用于没有 `expires_at` 的请求。请求自带 `expires_at` 时以请求为准。不设置时这类请求一直待决。
+- `--sse-queue-size` 是每条 SSE 流最多缓冲的 `progress` 事件数，默认 512。必须大于 0，否则退出 1。慢客户端超过缓冲时丢弃最早的 `progress`，丢弃数在终结事件里报，见 `console.md`。
 - 配置文件缺失或非法退出 1。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
 - `--role` 可重复，设置控制台 principal 的角色。默认 `admin`。
