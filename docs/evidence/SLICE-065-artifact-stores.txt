@@ -1,0 +1,11 @@
+SLICE-065 artifact stores evidence
+date: 2026-11-13
+
+== red: stores do not exist ==
+$ python -m pytest tests/registry/test_artifacts.py -q
+E   ImportError: cannot import name 'ArtifactStoreError' from 'adk_agent.registry'
+ERROR tests/registry/test_artifacts.py
+1 error in 2.10s
+
+$ python -c "from adk_agent.registry import FileArtifactStore"
+ImportError: cannot import name 'FileArtifactStore' from 'adk_agent.registry'
