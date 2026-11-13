@@ -45,6 +45,7 @@ from .core import (
 from .mcp.http import resolve_port
 from .metrics import MetricsRegistry
 from .models.gateway_llm import GatewayLlm, provider_for_model
+from .ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
 from .rbac import FilePolicyStore, RolePolicyEngine
 from .registry import RegistryIntegrityError
 from .runtime import AgentRuntime, dev_agent_ref
@@ -934,6 +935,7 @@ def build_console_app(
     approvals: FileApprovalInbox | None = None,
     metrics: MetricsRegistry | None = None,
     sse_queue_size: int = 512,
+    rate_limit: RateLimit | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -1437,6 +1439,14 @@ def build_console_app(
         events = _visible_events(audit.recent(1000), _principal_for(request))
         return _trace_payload(events, trace_id)
 
+    if rate_limit is not None:
+        app.add_middleware(
+            RateLimitMiddleware,
+            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            surface="console",
+            exempt=frozenset({"/healthz", "/metrics"}),
+            metrics=metrics,
+        )
     if oidc is not None:
         app.add_middleware(OidcAuthMiddleware, provider=oidc, open_paths=_OPEN_PATHS)
     elif token:
@@ -1464,6 +1474,7 @@ def run_console(
     approvals: FileApprovalInbox | None = None,
     metrics: MetricsRegistry | None = None,
     sse_queue_size: int = 512,
+    rate_limit: RateLimit | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -1483,6 +1494,7 @@ def run_console(
         approvals=approvals,
         metrics=metrics,
         sse_queue_size=sse_queue_size,
+        rate_limit=rate_limit,
     )
 
     import uvicorn

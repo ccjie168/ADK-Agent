@@ -198,6 +198,6 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - 不给 `--rate-limit` 时不限流。`--rate-limit` 必须是大于 0 的整数，`--rate-limit-window` 必须是大于 0 的秒数，否则退出 1。只给 `--rate-limit-window` 也退出 1。
 - 计数键是 principal 的 `tenant:subject`；没有 principal 的模式（静态 token、未鉴权）用客户端地址。
 - 固定窗口。超过上限返回 429 `{"error":"rate_limited"}`，并带 `Retry-After` 秒数。
-- `/healthz` 不限流。鉴权在限流之前，没有 token 的请求仍返回 401。
+- `/healthz` 不限流。暴露 `/metrics` 的服务也豁免 `/metrics`，避免抓取被限流。鉴权在限流之前，没有 token 的请求仍返回 401。
 - 计数在进程内，多副本时每个副本各算一份。跨副本限流交给入口网关或反向代理。
 - 拒绝计数见 `metrics.md`。MCP 和 A2A 端点不在这一节范围内。

@@ -16,6 +16,7 @@ from ..auth import (
     resolve_http_auth,
 )
 from ..core import AuditEvent, IdentityProvider
+from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ def build_audit_pipeline_app(
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
+    rate_limit: RateLimit | None = None,
 ) -> FastAPI:
     """Build the audit service. Every path except /healthz needs the token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -59,6 +61,12 @@ def build_audit_pipeline_app(
             return JSONResponse({"error": "audit_write_failed"}, status_code=502)
         return JSONResponse({"hash": record.hash}, status_code=202)
 
+    if rate_limit is not None:
+        app.add_middleware(
+            RateLimitMiddleware,
+            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            surface="audit",
+        )
     if oidc is not None:
         app.add_middleware(OidcAuthMiddleware, provider=oidc, open_paths=frozenset({"/healthz"}))
     elif token:

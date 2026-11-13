@@ -18,6 +18,7 @@ from ..auth import (
 )
 from ..core import IdentityProvider, ToolGatewayRequest
 from ..metrics import MetricsRegistry
+from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
 from .gateway import FunctionToolGateway, ToolDenied
 from .policy import GrantPolicyEngine
 
@@ -32,6 +33,7 @@ def build_tool_gateway_app(
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
     metrics: MetricsRegistry | None = None,
+    rate_limit: RateLimit | None = None,
 ) -> FastAPI:
     """Build the tool gateway app. Every path except /healthz needs the token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -86,6 +88,14 @@ def build_tool_gateway_app(
             return JSONResponse({"error": "tool_output_invalid"}, status_code=502)
         return JSONResponse(payload)
 
+    if rate_limit is not None:
+        app.add_middleware(
+            RateLimitMiddleware,
+            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            surface="tool_gateway",
+            exempt=frozenset({"/healthz", "/metrics"}),
+            metrics=metrics,
+        )
     if oidc is not None:
         app.add_middleware(OidcAuthMiddleware, provider=oidc, open_paths=frozenset({"/healthz"}))
     elif token:

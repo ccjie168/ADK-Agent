@@ -1,6 +1,6 @@
 # SLICE-058 入口限流
 
-状态: planned
+状态: merged
 依据: SLICE-050，SLICE-054，`docs/contracts/cli.md`，`docs/contracts/metrics.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -11,7 +11,7 @@
 - 计数键是 principal 的 `tenant:subject`，没有 principal 时用客户端地址。
 - `--rate-limit N --rate-limit-window SECONDS` 加到四个服务。不给 `--rate-limit` 时不限流。
 - 超限返回 429 `{"error":"rate_limited"}`，带 `Retry-After` 秒数。
-- `/healthz` 免限流。鉴权在限流之前，未认证请求仍是 401。
+- `/healthz` 免限流；有 `/metrics` 的服务同时豁免 `/metrics`。鉴权在限流之前，未认证请求仍是 401。
 - 拒绝计数写 `adk_http_rate_limited_total{surface}`。
 - 限流器在进程内。多副本各算一份，跨副本限流交给入口网关。
 
@@ -45,28 +45,29 @@ RateLimitMiddleware(app, *, limiter, surface, metrics=None, exempt=frozenset({"/
 
 ## 完成判据（可执行）
 
-- [ ] 窗口内允许到上限，之后拒绝 -> `tests/test_ratelimit.py::test_allows_up_to_limit`
-- [ ] 拒绝时给出剩余等待秒数 -> `tests/test_ratelimit.py::test_retry_after_counts_down`
-- [ ] 窗口过去后重新放行 -> `tests/test_ratelimit.py::test_window_resets`
-- [ ] 不同 key 互不影响 -> `tests/test_ratelimit.py::test_keys_are_isolated`
-- [ ] 中间件返回 429、`Retry-After` 和固定文案 -> `tests/test_ratelimit.py::test_middleware_denies`
-- [ ] 有 principal 时按 `tenant:subject` 计数 -> `tests/test_ratelimit.py::test_middleware_keys_by_principal`
-- [ ] `/healthz` 免限流 -> `tests/test_ratelimit.py::test_healthz_is_exempt`
-- [ ] 拒绝计数进入指标 -> `tests/test_ratelimit.py::test_rate_limited_metric`
-- [ ] 未认证请求先 401 而不是 429 -> `tests/test_ratelimit.py::test_auth_runs_before_limit`
-- [ ] 模型网关接入 -> `tests/test_ratelimit.py::test_model_gateway_wired`
-- [ ] 工具网关接入 -> `tests/test_ratelimit.py::test_tool_gateway_wired`
-- [ ] 控制台接入 -> `tests/test_ratelimit.py::test_console_wired`
-- [ ] 审计服务接入 -> `tests/test_ratelimit.py::test_audit_wired`
-- [ ] 四个命令的非法参数退出 1 -> `tests/test_ratelimit.py::test_cli_rejects_bad_flags`
-- [ ] 控制台把限流参数传进应用 -> `tests/test_ratelimit.py::test_console_cli_wires_rate_limit`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 窗口内允许到上限，之后拒绝 -> `tests/test_ratelimit.py::test_allows_up_to_limit`
+- [x] 拒绝时给出剩余等待秒数 -> `tests/test_ratelimit.py::test_retry_after_counts_down`
+- [x] 窗口过去后重新放行 -> `tests/test_ratelimit.py::test_window_resets`
+- [x] 不同 key 互不影响 -> `tests/test_ratelimit.py::test_keys_are_isolated`
+- [x] 中间件返回 429、`Retry-After` 和固定文案 -> `tests/test_ratelimit.py::test_middleware_denies`
+- [x] 有 principal 时按 `tenant:subject` 计数 -> `tests/test_ratelimit.py::test_middleware_keys_by_principal`
+- [x] `/healthz` 免限流 -> `tests/test_ratelimit.py::test_healthz_is_exempt`
+- [x] `/metrics` 免限流 -> `tests/test_ratelimit.py::test_metrics_endpoint_is_exempt`
+- [x] 拒绝计数进入指标 -> `tests/test_ratelimit.py::test_rate_limited_metric`
+- [x] 未认证请求先 401 而不是 429 -> `tests/test_ratelimit.py::test_auth_runs_before_limit`
+- [x] 模型网关接入 -> `tests/test_ratelimit.py::test_model_gateway_wired`
+- [x] 工具网关接入 -> `tests/test_ratelimit.py::test_tool_gateway_wired`
+- [x] 控制台接入 -> `tests/test_ratelimit.py::test_console_wired`
+- [x] 审计服务接入 -> `tests/test_ratelimit.py::test_audit_wired`
+- [x] 四个命令的非法参数退出 1 -> `tests/test_ratelimit.py::test_cli_rejects_bad_flags`
+- [x] 控制台把限流参数传进应用 -> `tests/test_ratelimit.py::test_console_cli_wires_rate_limit`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.ratelimit import FixedWindowLimiter` -> 当前 `ModuleNotFoundError`
-- [ ] 反例 2：`console --rate-limit 0` -> 当前 argparse 退出 2（参数不存在）
-- [ ] 反例 3：先发满额请求再发一次，若无限流会得到 200/400 而不是 429 -> 由 `test_middleware_denies` 覆盖
+- [x] 反例 1：`from adk_agent.ratelimit import FixedWindowLimiter` -> 当前 `ModuleNotFoundError`
+- [x] 反例 2：`console --rate-limit 0` -> 当前 argparse 退出 2（参数不存在）
+- [x] 反例 3：先发满额请求再发一次，若无限流会得到 200/400 而不是 429 -> 由 `test_middleware_denies` 覆盖
 
 ## 契约（如涉及对外接口）
 
@@ -89,6 +90,6 @@ RateLimitMiddleware(app, *, limiter, surface, metrics=None, exempt=frozenset({"/
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-058-ingress-rate-limit.txt` 的 red 段
+- 实现后绿: 同文件 green 段，21 passed，全量 678 passed
+- 实机: 同文件 live 段。真工具网关限流 3 次每 10 秒，前 3 次 200，后 2 次 429（Retry-After 10），拒绝计数 2；首轮实测发现 `/metrics` 也被限流，改为豁免后抓取恢复 200

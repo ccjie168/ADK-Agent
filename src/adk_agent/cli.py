@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 if TYPE_CHECKING:  # pragma: no cover
     from .core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
+    from .ratelimit import RateLimit
 
 Transport = Literal["stdio", "streamable-http"]
 
@@ -138,6 +139,21 @@ def _add_runtime_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_rate_limit_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--rate-limit",
+        type=int,
+        default=None,
+        help="max requests per caller per window (default: no limit)",
+    )
+    parser.add_argument(
+        "--rate-limit-window",
+        type=float,
+        default=None,
+        help="rate limit window in seconds (default: 60)",
+    )
+
+
 def _add_audit_quota_args(parser: argparse.ArgumentParser) -> None:
     audit = parser.add_mutually_exclusive_group()
     audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
@@ -158,6 +174,27 @@ def _add_audit_quota_args(parser: argparse.ArgumentParser) -> None:
 def _auth_token(args: argparse.Namespace) -> str | None:
     env_name = getattr(args, "auth_token_env", None)
     return os.environ.get(env_name) if env_name else None
+
+
+def _rate_limit(args: argparse.Namespace) -> RateLimit | None:
+    limit = getattr(args, "rate_limit", None)
+    window = getattr(args, "rate_limit_window", None)
+    if limit is None:
+        if window is not None:
+            print("--rate-limit-window requires --rate-limit", file=sys.stderr)
+            raise SystemExit(1)
+        return None
+    if limit <= 0:
+        print("--rate-limit must be greater than 0", file=sys.stderr)
+        raise SystemExit(1)
+    window_seconds = 60.0 if window is None else window
+    if window_seconds <= 0:
+        print("--rate-limit-window must be greater than 0", file=sys.stderr)
+        raise SystemExit(1)
+
+    from .ratelimit import RateLimit
+
+    return RateLimit(limit=limit, window_seconds=window_seconds)
 
 
 def _identity_provider(args: argparse.Namespace) -> IdentityProvider | None:
@@ -327,6 +364,7 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     _add_http_args(p_gateway)
+    _add_rate_limit_args(p_gateway)
     p_gateway.add_argument(
         "--oidc-config",
         default=None,
@@ -357,6 +395,7 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     _add_http_args(p_tools)
+    _add_rate_limit_args(p_tools)
     p_tools.add_argument(
         "--oidc-config",
         default=None,
@@ -374,6 +413,7 @@ def main(argv: list[str] | None = None) -> None:
         help="rotate the audit file into FILE.000001 segments after this many records",
     )
     _add_http_args(p_audit)
+    _add_rate_limit_args(p_audit)
     p_audit.add_argument(
         "--oidc-config",
         default=None,
@@ -438,6 +478,7 @@ def main(argv: list[str] | None = None) -> None:
         help="max buffered progress events per SSE stream (default: 512)",
     )
     _add_http_args(p_console)
+    _add_rate_limit_args(p_console)
     _add_runtime_args(p_console)
 
     p_approvals = sub.add_parser("approvals", help="manage approval records")
@@ -625,6 +666,7 @@ def main(argv: list[str] | None = None) -> None:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from None
     elif args.cmd == "serve-model-gateway":
+        rate_limit = _rate_limit(args)
         from .core import ModelProvider
         from .mcp.http import resolve_port
         from .metrics import MetricsRegistry
@@ -667,12 +709,14 @@ def main(argv: list[str] | None = None) -> None:
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
             metrics=metrics,
+            rate_limit=rate_limit,
         )
 
         import uvicorn
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "serve-tool-gateway":
+        rate_limit = _rate_limit(args)
         from .mcp.http import resolve_port
         from .tools import FunctionToolGateway
         from .tools.service import build_tool_gateway_app
@@ -686,12 +730,14 @@ def main(argv: list[str] | None = None) -> None:
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
+            rate_limit=rate_limit,
         )
 
         import uvicorn
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "serve-audit":
+        rate_limit = _rate_limit(args)
         from .audit import AuditPipeline
         from .audit.service import build_audit_pipeline_app
         from .mcp.http import resolve_port
@@ -711,6 +757,7 @@ def main(argv: list[str] | None = None) -> None:
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
+            rate_limit=rate_limit,
         )
 
         import uvicorn
@@ -736,6 +783,7 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
         print(f"ok {count} records")
     elif args.cmd == "console":
+        rate_limit = _rate_limit(args)
         from .console import run_console
         from .registry import FileAgentRegistry, FileEvalReportStore
 
@@ -768,6 +816,7 @@ def main(argv: list[str] | None = None) -> None:
             quota_config=quota_config,
             approvals=approvals,
             sse_queue_size=args.sse_queue_size,
+            rate_limit=rate_limit,
         )
     elif args.cmd == "approvals":
         from .approvals import FileApprovalInbox
