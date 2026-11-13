@@ -146,7 +146,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-053 审计轮转与签名：按记录数分段的哈希链、逐记录 HMAC 和跨段校验。已完成。
 - SLICE-054 模型调用熔断：三态熔断器、provider 包装和网关 503。已完成。
 - SLICE-055 文件状态备份与恢复：`backup`/`restore` 子命令、manifest 和安全解包。已完成。
-- SLICE-056 压测基线：`scripts/loadtest.py` 的配额并发与审计吞吐测量。进行中。
+- SLICE-056 压测基线：`scripts/loadtest.py` 的配额并发与审计吞吐测量，并记录实机基线。已完成。
 
 ## 完成定义
 

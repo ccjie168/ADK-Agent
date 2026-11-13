@@ -12,3 +12,93 @@ ERROR tests/test_loadtest.py - FileNotFoundError
 $ python scripts/loadtest.py quota --requests 5
 python.exe: can't open file 'C:\AI_System\ADK-Agent\scripts\loadtest.py': [Errno 2] No such file or directory
 exit=2
+
+== green: targeted tests ==
+$ python -m pytest tests/test_loadtest.py -q
+............                                                             [100%]
+12 passed in 1.81s
+
+$ python -m ruff format --check scripts/loadtest.py
+$ python -m ruff check scripts/loadtest.py
+All checks passed!
+
+== live: in-memory quota, 20000 reservations, 64 workers, max_runs 5000 ==
+$ python scripts/loadtest.py quota --requests 20000 --concurrency 64 --max-runs 5000
+{"scenario": "quota", "requests": 20000, "concurrency": 64, "ok": 5000, "denied": 15000, "errors": 0,
+ "latency_ms": {"p50": 0.001, "p95": 0.002, "p99": 0.002, "max": 0.438},
+ "throughput_per_s": 564713.322, "peak_active": 1,
+ "invariants": [counts_balance true, no_oversell true, run_cap_saturated true, no_errors true]}
+exit=0
+
+== live: Postgres 15.19, 2000 reservations, 32 workers, max_runs 1000 ==
+$ python scripts/loadtest.py quota --requests 2000 --concurrency 32 --max_runs 1000 \
+    --url postgresql://postgres:***@127.0.0.1:55432/adk
+{"scenario": "quota", "requests": 2000, "concurrency": 32, "ok": 1000, "denied": 1000, "errors": 0,
+ "latency_ms": {"p50": 214.720, "p95": 294.703, "p99": 310.057, "max": 373.157},
+ "throughput_per_s": 159.327, "peak_active": 1,
+ "invariants": [counts_balance true, no_oversell true, run_cap_saturated true, no_errors true]}
+exit=0
+
+== live: Postgres concurrency cap, short holds ==
+$ python scripts/loadtest.py quota --requests 300 --concurrency 20 --max-concurrent 5 \
+    --hold-seconds 0.01 --lease-seconds 30 --url postgresql://postgres:***@127.0.0.1:55432/adk
+{"ok": 101, "denied": 199, "errors": 0, "peak_active": 2, "throughput_per_s": 204.568,
+ "invariants": [counts_balance true, peak_within_limit true, no_errors true], "exit": 0}
+
+== live: Postgres concurrency cap, holds longer than enter latency ==
+$ python scripts/loadtest.py quota --requests 40 --concurrency 20 --max-concurrent 5 \
+    --hold-seconds 0.5 --lease-seconds 30 --url postgresql://postgres:***@127.0.0.1:55432/adk
+{"ok": 5, "denied": 35, "errors": 0, "peak_active": 5, "throughput_per_s": 61.061,
+ "latency_ms": {"p50": 43.727, "p95": 148.518, "p99": 154.022, "max": 154.022},
+ "invariants": [counts_balance true, peak_within_limit true, no_errors true], "exit": 0}
+
+== live: audit append throughput, no rotation ==
+$ python scripts/loadtest.py audit --records 5000 --path .../audit-5000.jsonl
+{"scenario": "audit", "ok": 5000, "errors": 0,
+ "latency_ms": {"p50": 2.991, "p95": 3.122, "p99": 4.020, "max": 8.081},
+ "throughput_per_s": 343.207, "verify_records": 5000,
+ "invariants": [no_errors true, chain_verifies true], "exit": 0}
+
+== live: audit append throughput, segments of 1000 ==
+$ python scripts/loadtest.py audit --records 5000 --path .../audit-rot.jsonl --max-records 1000
+{"ok": 5000, "errors": 0, "throughput_per_s": 329.683, "verify_records": 5000,
+ "invariants": [no_errors true, chain_verifies true], "exit": 0}
+$ ls .../audit-rot.jsonl*
+audit-rot.jsonl  audit-rot.jsonl.000001  audit-rot.jsonl.000002  audit-rot.jsonl.000003  audit-rot.jsonl.000004
+
+== live: append keeps the chain, overwrite is refused ==
+$ python scripts/loadtest.py audit --records 1000 --path .../audit-append.jsonl
+$ python scripts/loadtest.py audit --records 500 --path .../audit-append.jsonl --append
+{"verify_records": 1500, "invariants": [no_errors true, chain_verifies true], "exit": 0}
+$ python scripts/loadtest.py audit --records 10 --path .../audit-append.jsonl
+refusing to overwrite existing audit file ...\audit-append.jsonl
+exit=1
+$ adk-agent verify-audit .../audit-append.jsonl
+ok 1500 records
+
+== baseline reading ==
+Machine: Windows 11 Pro, Python 3.14, venv. Absolute numbers are machine-specific; compare future runs to these.
+- In-memory quota is CPU-bound on the event loop (0.001 ms median). It says nothing about multi-replica cost.
+- Postgres quota serializes on the per-tenant advisory lock, and the pool is capped at max_size=5. With 32
+  workers the median reserve is 215 ms and throughput 159/s. Denied attempts queue behind the same lock,
+  so a tenant at its limit pays the same cost as an allowed one. This is the current capacity ceiling.
+- Concurrency cap holds exactly: peak_active never exceeded max_concurrent. With holds shorter than reserve
+  latency the cap is underused (peak 2 of 5), so a cap of N needs each run to hold longer than a reserve
+  round trip to actually reach N.
+- Audit append is fsync-bound: about 340 records/s and a 3 ms median per record on this disk, unchanged by
+  rotation. Sustained ingest above that rate will back up the writer.
+
+== full gate ==
+$ python scripts/check.py --full
+648 passed, 13 skipped in 42.61s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
