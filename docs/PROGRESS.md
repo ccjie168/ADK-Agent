@@ -81,7 +81,7 @@
 | SLICE-079 | MCP 与 A2A 工具授权 | `a6ce1cb` |
 | SLICE-080 | 临时授权运行时合并 | `f19bdb7` |
 | SLICE-081 | 工具授权申请与审批 | `8a578de` |
-| SLICE-082 | 工具授权使用统计与到期提示 | `PENDING` |
+| SLICE-082 | 工具授权使用统计与到期提示 | `5b8bc93` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
