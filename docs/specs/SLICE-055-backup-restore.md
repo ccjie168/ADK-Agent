@@ -1,6 +1,6 @@
 # SLICE-055 文件状态备份与恢复
 
-状态: spec'd
+状态: merged
 依据: SLICE-012，SLICE-045，SLICE-053，`docs/contracts/cli.md`
 
 ## 意图（要什么，不写怎么写）
@@ -68,25 +68,25 @@ manifest.json:
 
 ## 完成判据（可执行）
 
-- [ ] 备份再恢复内容一致 -> `tests/test_backup.py::test_roundtrip`
-- [ ] manifest 记录来源计数 -> `tests/test_backup.py::test_manifest_counts`
-- [ ] 审计段一起打包 -> `tests/test_backup.py::test_audit_segments_included`
-- [ ] 非空目标被拒 -> `tests/test_backup.py::test_restore_refuses_nonempty`
-- [ ] force 可以替换 -> `tests/test_backup.py::test_restore_force_replaces`
-- [ ] 路径穿越被拒且不留文件 -> `tests/test_backup.py::test_restore_rejects_traversal`
-- [ ] 缺 manifest 被拒 -> `tests/test_backup.py::test_missing_manifest_rejected`
-- [ ] 未知来源类型被拒 -> `tests/test_backup.py::test_unknown_kind_rejected`
-- [ ] CLI 备份输出路径和哈希 -> `tests/test_cli_backup.py::test_cli_backup`
-- [ ] CLI 恢复输出文件数 -> `tests/test_cli_backup.py::test_cli_restore`
-- [ ] CLI 没有来源退出 1 -> `tests/test_cli_backup.py::test_cli_backup_requires_source`
-- [ ] CLI 非空目标退出 1 -> `tests/test_cli_backup.py::test_cli_restore_refuses_nonempty`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 备份再恢复内容一致 -> `tests/test_backup.py::test_roundtrip`
+- [x] manifest 记录来源计数 -> `tests/test_backup.py::test_manifest_counts`
+- [x] 审计段一起打包 -> `tests/test_backup.py::test_audit_segments_included`
+- [x] 非空目标被拒 -> `tests/test_backup.py::test_restore_refuses_nonempty`
+- [x] force 可以替换 -> `tests/test_backup.py::test_restore_force_replaces`
+- [x] 路径穿越被拒且不留文件 -> `tests/test_backup.py::test_restore_rejects_traversal`
+- [x] 缺 manifest 被拒 -> `tests/test_backup.py::test_missing_manifest_rejected`
+- [x] 未知来源类型被拒 -> `tests/test_backup.py::test_unknown_kind_rejected`
+- [x] CLI 备份输出路径和哈希 -> `tests/test_cli_backup.py::test_cli_backup`
+- [x] CLI 恢复输出文件数 -> `tests/test_cli_backup.py::test_cli_restore`
+- [x] CLI 没有来源退出 1 -> `tests/test_cli_backup.py::test_cli_backup_requires_source`
+- [x] CLI 非空目标退出 1 -> `tests/test_cli_backup.py::test_cli_restore_refuses_nonempty`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.backup import create_backup` -> 当前 `ImportError`
-- [ ] 反例 2：`adk-agent backup --out x.tar.gz` -> 当前 argparse 退出 2
-- [ ] 反例 3：`adk-agent restore --archive x --dest y` -> 当前 argparse 退出 2
+- [x] 反例 1：`from adk_agent.backup import create_backup` -> 当前 `ImportError`
+- [x] 反例 2：`adk-agent backup --out x.tar.gz` -> 当前 argparse 退出 2
+- [x] 反例 3：`adk-agent restore --archive x --dest y` -> 当前 argparse 退出 2
 
 ## 契约（如涉及对外接口）
 
@@ -109,5 +109,6 @@ manifest.json:
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-055-backup-restore.txt` 的 red 段
+- 实现后绿: 同文件 green 段，12 passed
+- 实机: 同文件 live 段，备份哈希与 `sha256sum` 一致、`.bak` 被排除、恢复 5 个文件、非空目标退出 1、`--force` 清掉哨兵文件

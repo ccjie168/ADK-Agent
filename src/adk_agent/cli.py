@@ -454,6 +454,21 @@ def main(argv: list[str] | None = None) -> None:
         help="delete records instead of moving them to <dir>/archive",
     )
 
+    p_backup = sub.add_parser("backup", help="archive file-based state into a gzip tar")
+    p_backup.add_argument("--out", required=True, help="archive path to write")
+    p_backup.add_argument("--registry", default=None, help="registry directory to include")
+    p_backup.add_argument("--approvals", default=None, help="approval inbox directory to include")
+    p_backup.add_argument(
+        "--audit", default=None, help="audit JSONL file to include with its rotation segments"
+    )
+
+    p_restore = sub.add_parser("restore", help="restore a file-based state backup")
+    p_restore.add_argument("--archive", required=True, help="backup archive to read")
+    p_restore.add_argument("--dest", required=True, help="directory to restore into")
+    p_restore.add_argument(
+        "--force", action="store_true", help="replace a non-empty destination after a full extract"
+    )
+
     p_new = sub.add_parser("new", help="scaffold a new agent project")
     p_new.add_argument("name", help="agent name, created as a directory")
     p_new.add_argument(
@@ -764,6 +779,38 @@ def main(argv: list[str] | None = None) -> None:
             print(f"deleted {result.deleted} requests")
         else:
             print(f"archived {result.archived} requests")
+    elif args.cmd == "backup":
+        from .backup import BackupError, create_backup
+
+        sources = [
+            (kind, path)
+            for kind, path in (
+                ("registry", args.registry),
+                ("approvals", args.approvals),
+                ("audit", args.audit),
+            )
+            if path
+        ]
+        if not sources:
+            print("backup needs at least one source", file=sys.stderr)
+            raise SystemExit(1)
+        try:
+            _, digest = create_backup(args.out, sources)
+        except (BackupError, OSError) as exc:
+            print(f"backup failed: {type(exc).__name__}", file=sys.stderr)
+            raise SystemExit(1) from None
+        print(f"wrote {args.out} sha256:{digest}")
+    elif args.cmd == "restore":
+        from .backup import BackupError, restore_backup
+
+        try:
+            restore_backup(args.archive, args.dest, force=args.force)
+        except BackupError as exc:
+            print(f"restore failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        dest = Path(args.dest)
+        files = sum(1 for path in dest.rglob("*") if path.is_file())
+        print(f"restored {files} files to {args.dest}")
     elif args.cmd == "validate":
         from .core import manifest_digest
         from .registry import load_manifest
