@@ -94,8 +94,8 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         ArtifactLoadError,
         ArtifactStoreError,
         ArtifactTrustError,
-        FileAgentRegistry,
         FileArtifactStore,
+        HttpAgentRegistry,
         PublishUnavailable,
         RefError,
         load_registry_agents,
@@ -126,14 +126,21 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         else:
             print("set exactly one of --artifact-dir or ARTIFACT_URL", file=sys.stderr)
             raise SystemExit(1)
-        return asyncio.run(
-            load_registry_agents(
-                refs,
-                registry=FileAgentRegistry(args.registry),
-                store=store,
-                trust=trust,
-            )
-        )
+        registry = _agent_registry(args)
+
+        async def load():
+            try:
+                return await load_registry_agents(
+                    refs,
+                    registry=registry,
+                    store=store,
+                    trust=trust,
+                )
+            finally:
+                if isinstance(registry, HttpAgentRegistry):
+                    await registry.aclose()
+
+        return asyncio.run(load())
     except (
         RefError,
         ArtifactLoadError,
@@ -266,6 +273,36 @@ def _auth_token(args: argparse.Namespace) -> str | None:
     return os.environ.get(env_name) if env_name else None
 
 
+def _add_registry_client_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--registry-url",
+        default=None,
+        help="registry control-plane URL; when set, read metadata over HTTP",
+    )
+    parser.add_argument(
+        "--registry-token-env",
+        default="ADK_REGISTRY_AUTH_TOKEN",
+        help="env var holding the registry bearer token (never pass tokens on the command line)",
+    )
+
+
+def _agent_registry(args: argparse.Namespace) -> Any:
+    """Return the HTTP registry client when a URL is set, else the file registry."""
+    from .registry import FileAgentRegistry, HttpAgentRegistry
+
+    url = getattr(args, "registry_url", None)
+    if not url:
+        return FileAgentRegistry(args.registry)
+    if not url.startswith(("http://", "https://")):
+        print(
+            f"invalid --registry-url {url!r}: expected http:// or https://",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    env_name = getattr(args, "registry_token_env", None) or "ADK_REGISTRY_AUTH_TOKEN"
+    return HttpAgentRegistry(url, auth_token=os.environ.get(env_name))
+
+
 def _rate_limit(args: argparse.Namespace) -> RateLimit | None:
     limit = getattr(args, "rate_limit", None)
     window = getattr(args, "rate_limit_window", None)
@@ -362,7 +399,7 @@ def _audit_query(args: argparse.Namespace) -> AuditQuery | None:
     return None
 
 
-def _publish_artifact(args: argparse.Namespace, manifest: Any) -> Any:
+def _publish_artifact(args: argparse.Namespace, manifest: Any) -> tuple[Any, bytes | None]:
     from .core import AgentArtifact
     from .registry import (
         FileArtifactStore,
@@ -378,7 +415,7 @@ def _publish_artifact(args: argparse.Namespace, manifest: Any) -> Any:
     if args.artifact is None:
         if args.key is not None or args.key_id is not None or args.artifact_dir is not None:
             raise ValueError("--key, --key-id and --artifact-dir require --artifact")
-        return None
+        return None, None
     if not args.key or not args.key_id:
         raise ValueError("--artifact requires --key and --key-id")
     source = Path(args.artifact)
@@ -390,7 +427,10 @@ def _publish_artifact(args: argparse.Namespace, manifest: Any) -> Any:
     if inner != manifest:
         raise ValueError("artifact manifest does not match the published manifest")
     url = os.environ.get("ARTIFACT_URL")
-    if bool(args.artifact_dir) == bool(url):
+    if args.registry_url:
+        if args.artifact_dir or url:
+            raise ValueError("--artifact-dir and ARTIFACT_URL cannot be used with --registry-url")
+    elif bool(args.artifact_dir) == bool(url):
         raise ValueError("set exactly one of --artifact-dir or ARTIFACT_URL")
     key = load_private_key(args.key)
     digest = artifact_digest(data)
@@ -400,9 +440,11 @@ def _publish_artifact(args: argparse.Namespace, manifest: Any) -> Any:
         signature=sign_digest(digest, key),
         key_id=args.key_id,
     )
+    if args.registry_url:
+        return artifact, data
     store = PostgresArtifactStore(url) if url else FileArtifactStore(args.artifact_dir)
     asyncio.run(store.put(artifact, data))
-    return artifact
+    return artifact, None
 
 
 def _quota_settings(
@@ -449,6 +491,7 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
     )
+    _add_registry_client_args(p_serve)
     p_serve.add_argument(
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
     )
@@ -504,6 +547,7 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
     )
+    _add_registry_client_args(p_many)
     p_many.add_argument(
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
     )
@@ -714,6 +758,7 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
     )
+    _add_registry_client_args(p_console)
     p_console.add_argument(
         "--oidc-config",
         default=None,
@@ -811,6 +856,7 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
     )
+    _add_registry_client_args(p_publish)
     p_publish.add_argument(
         "--eval-report",
         default=None,
@@ -1162,7 +1208,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "console":
         rate_limit = _rate_limit(args)
         from .console import run_console
-        from .registry import FileAgentRegistry, FileEvalReportStore
+        from .registry import FileEvalReportStore
 
         if args.sse_queue_size < 1:
             print("--sse-queue-size must be at least 1", file=sys.stderr)
@@ -1199,7 +1245,7 @@ def main(argv: list[str] | None = None) -> None:
             session_db=args.session_db,
             policy_file=args.policy,
             roles=args.roles,
-            registry=FileAgentRegistry(args.registry),
+            registry=_agent_registry(args),
             eval_reports=FileEvalReportStore(args.registry),
             artifact_trust=artifact_trust,
             audit_sink=audit_sink,
@@ -1281,13 +1327,14 @@ def main(argv: list[str] | None = None) -> None:
         from .core import EvalReport
         from .eval import enforce_eval_gate
         from .registry import (
-            FileAgentRegistry,
             FileEvalReportStore,
             load_manifest,
             published_from,
         )
 
         try:
+            if args.registry_url and args.eval_report:
+                raise ValueError("--eval-report cannot be used with --registry-url")
             manifest = load_manifest(args.path)
             report = (
                 EvalReport.model_validate_json(Path(args.eval_report).read_text(encoding="utf-8"))
@@ -1295,9 +1342,18 @@ def main(argv: list[str] | None = None) -> None:
                 else None
             )
             enforce_eval_gate(manifest, report)
-            artifact = _publish_artifact(args, manifest)
-            registry = FileAgentRegistry(args.registry)
-            stored = asyncio.run(registry.publish(published_from(manifest, artifact=artifact)))
+            artifact, artifact_bytes = _publish_artifact(args, manifest)
+            registry = _agent_registry(args)
+
+            async def publish_record():
+                stored = await registry.publish(published_from(manifest, artifact=artifact))
+                if artifact_bytes is not None:
+                    await registry.upload_artifact(stored.artifact, artifact_bytes)
+                if hasattr(registry, "aclose"):
+                    await registry.aclose()
+                return stored
+
+            stored = asyncio.run(publish_record())
             if report is not None:
                 asyncio.run(
                     FileEvalReportStore(args.registry).put(

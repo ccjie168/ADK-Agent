@@ -1,0 +1,82 @@
+SLICE-072 command wiring for the registry service
+=================================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_registry_url_wiring.py::test_agent_registry_prefers_url -q
+        _namespace(registry_url="http://reg.example", registry_token_env="MY_TOKEN")
+    )
+E       AttributeError: module 'adk_agent.cli' has no attribute '_agent_registry'
+tests/test_registry_url_wiring.py:98: AttributeError
+1 failed in 1.61s
+
+After SLICE-071 landed, the full red set:
+$ ./.venv/Scripts/python.exe -m pytest tests/test_registry_url_wiring.py -q
+adk-agent: error: unrecognized arguments: --registry-url http://reg.example
+9 failed in 2.21s
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_registry_url_wiring.py -q
+.........                                                                [100%]
+9 passed in 1.79s
+
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console_registry.py \
+    tests/test_cli_publish_artifact.py tests/test_registry_startup.py \
+    tests/test_cli_quota.py tests/test_console.py tests/test_cli_mcp_runtime.py -q
+43 passed in 2.55s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+855 passed, 23 skipped in 43.54s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, real service, CLI publish and console in separate processes
+-----------------------------------------------------------------
+Fresh database `adk_live2` on 127.0.0.1:55432; service on 8801 with a file
+artifact store and the trusted key file.
+
+CLI publish over HTTP, artifact included:
+$ ADK_REGISTRY_AUTH_TOKEN=secret adk-agent publish project/manifest.json \
+    --registry-url http://127.0.0.1:8801 --artifact project \
+    --key publisher.pem --key-id k1
+published acme/bot@1.0.0 sha256:7bf064e2643bae4b57592c999ff5eb0e18dc89722efbf5666eefb0d8c421bbe0
+artifact sha256:6d7912aebd6fcae997535cc2c9a96f2c392c744d68aa360aa33a829c804d0930
+
+Bytes and row:
+  store/sha256/6d7912aebd6fcae997535cc2c9a96f2c392c744d68aa360aa33a829c804d0930
+  acme|bot|1.0.0|sha256:6d7912aebd6fcae997535cc2c9a96f2c392c744d68aa360aa33a829c804d0930
+
+Console on 8802 started with --agent-ref and --registry-url, artifact bytes and
+keys local:
+  GET /api/agents   -> 200 [{"name":"bot","description":""}]
+  GET /api/registry?tenant=acme -> 1 entry
+  artifact -> {"digest": "sha256:6d7912...", "key_id": "k1", "size": 491, "status": "verified"}
+
+Repeat publish of the same record: exit 0, same two digests.
+Publish with a changed description: `publish failed: registry service returned status 409`, exit 1.
+
+notes
+-----
+- The first console start failed with `RuntimeError: Event loop is closed` while
+  closing the registry client. `_registry_agents` now loads and closes inside
+  one event loop; the client docstring records that it belongs to the loop of
+  its first call.
+- `publish --registry-url` uploads bytes with a single asyncio.run for publish
+  plus upload, and closes the client in that loop.
+- Console still keeps the local eval report store; report centralization is out
+  of scope and `publish --registry-url` rejects --eval-report.

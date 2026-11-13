@@ -162,6 +162,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-069 市场视图与工件状态（UI-3）：注册表页展示工件摘要与验签徽标。已完成。
 - SLICE-070 Postgres 注册表：`adk_agent_versions`、不可变版本与幂等发布、共享惰性连接池。已完成。
 - SLICE-071 注册表控制面与客户端：`serve-registry` 五个端点、租户绑定、两步发布、`HttpAgentRegistry`。已完成。
+- SLICE-072 命令接注册表服务：`console`/`serve`/`serve-many`/`publish` 的 `--registry-url`，发布两步上传。已完成。
 
 ## 完成定义
 

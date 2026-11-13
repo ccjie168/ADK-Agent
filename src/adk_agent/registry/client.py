@@ -38,7 +38,11 @@ def _raise_for_status(response: Any, *, conflict: bool = False) -> None:
 
 
 class HttpAgentRegistry:
-    """Speak the registry control-plane contract. Implements the AgentRegistry port."""
+    """Speak the registry control-plane contract. Implements the AgentRegistry port.
+
+    The lazily built httpx client belongs to the event loop of its first call.
+    Close it in that loop, or create a new instance per loop.
+    """
 
     def __init__(
         self,
