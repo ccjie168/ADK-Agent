@@ -1,0 +1,8 @@
+SLICE-067 artifact loader evidence
+date: 2026-11-13
+
+== red: loader and trust store do not exist ==
+$ python -m pytest tests/registry/test_artifact_loader.py -q
+E   ImportError: cannot import name 'ArtifactLoadError' from 'adk_agent.registry'
+ERROR tests/registry/test_artifact_loader.py
+1 error in 1.94s
