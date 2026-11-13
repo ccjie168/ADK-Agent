@@ -6,9 +6,10 @@ import builtins
 from typing import Any
 from urllib.parse import quote
 
-from ..core import AgentArtifact, AgentRef, PublishedAgent
+from ..core import AgentArtifact, AgentRef, EvalReport, PublishedAgent
 from ..core.artifact import MEDIA_TYPE
 from .file import RegistryConflict, RegistryError
+from .reports import EvalReportConflict
 
 
 class RegistryServiceUnavailable(RegistryError):
@@ -147,8 +148,90 @@ class HttpAgentRegistry:
             self._client = None
 
 
+class HttpEvalReportStore:
+    """Speak the eval-report endpoints. Implements the EvalReportStore port.
+
+    Builds its httpx client lazily, in the loop of its first call, and closes it
+    through ``aclose`` in that same loop.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        auth_token: str | None = None,
+        client: Any = None,
+        timeout: float = 10.0,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.auth_token = auth_token
+        self.timeout = timeout
+        self._client = client
+        self._owns_client = client is None
+
+    def _http(self) -> Any:
+        if self._client is None:
+            import httpx
+
+            self._client = httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
+        return self._client
+
+    def _headers(self) -> dict[str, str]:
+        headers: dict[str, str] = {}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+        return headers
+
+    def _path(self, tenant: str, agent_id: str, version: str) -> str:
+        return "/v1/agents/{}/{}/{}/eval".format(
+            quote(tenant, safe=""), quote(agent_id, safe=""), quote(version, safe="")
+        )
+
+    async def get(self, tenant: str, agent_id: str, version: str) -> EvalReport | None:
+        import httpx
+
+        try:
+            response = await self._http().get(
+                f"{self.base_url}{self._path(tenant, agent_id, version)}",
+                headers=self._headers(),
+            )
+        except httpx.HTTPError as exc:
+            raise RegistryServiceUnavailable("registry service unreachable") from exc
+        if response.status_code == 404:
+            return None
+        _raise_for_status(response)
+        return EvalReport.model_validate(response.json())
+
+    async def put(self, tenant: str, agent_id: str, version: str, report: EvalReport) -> EvalReport:
+        import httpx
+
+        try:
+            response = await self._http().put(
+                f"{self.base_url}{self._path(tenant, agent_id, version)}",
+                json=report.model_dump(mode="json"),
+                headers=self._headers(),
+            )
+        except httpx.HTTPError as exc:
+            raise RegistryServiceUnavailable("registry service unreachable") from exc
+        if response.status_code == 409:
+            raise EvalReportConflict(
+                f"{tenant}/{agent_id}@{version} already has a different eval report"
+            )
+        _raise_for_status(response)
+        return EvalReport.model_validate(response.json())
+
+    async def has(self, tenant: str, agent_id: str, version: str) -> bool:
+        return await self.get(tenant, agent_id, version) is not None
+
+    async def aclose(self) -> None:
+        if self._owns_client and self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+
 __all__ = [
     "HttpAgentRegistry",
+    "HttpEvalReportStore",
     "RegistryForbidden",
     "RegistryRejected",
     "RegistryServiceUnavailable",

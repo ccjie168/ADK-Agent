@@ -15,6 +15,8 @@ from ..auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from ..core import (
     AgentRegistry,
     ArtifactStore,
+    EvalReport,
+    EvalReportStore,
     IdentityProvider,
     Principal,
     PublishedAgent,
@@ -24,6 +26,7 @@ from ..core.artifact import MAX_ARTIFACT_BYTES, MEDIA_TYPE
 from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
 from .artifacts import ArtifactStoreError
 from .file import RegistryConflict, RegistryError, RegistryIntegrityError
+from .reports import EvalReportConflict
 from .signing import PublishUnavailable
 from .trust import ArtifactTrustError, TrustStore
 
@@ -67,6 +70,7 @@ def build_registry_service_app(
     registry: AgentRegistry,
     *,
     artifact_store: ArtifactStore | None = None,
+    eval_reports: EvalReportStore | None = None,
     trust: TrustStore | None = None,
     host: str = "127.0.0.1",
     auth_token: str | None = None,
@@ -122,6 +126,64 @@ def build_registry_service_app(
             if record.manifest.id == agent_id and record.manifest.version == version:
                 return JSONResponse(record.model_dump(mode="json"))
         return _error("not_found", 404)
+
+    @app.get("/v1/agents/{tenant}/{agent_id}/{version}/eval")
+    async def get_eval_report(
+        request: Request, tenant: str, agent_id: str, version: str
+    ) -> JSONResponse:
+        if _cross_tenant(_principal(request), tenant):
+            return _error("tenant_forbidden", 403)
+        if eval_reports is None:
+            return _error("eval_store_unavailable", 502)
+        try:
+            report = await eval_reports.get(tenant, agent_id, version)
+        except RegistryError:
+            return _error("eval_store_unavailable", 502)
+        except Exception:  # noqa: BLE001
+            logger.exception("eval report read failure")
+            return _error("eval_store_unavailable", 502)
+        if report is None:
+            return _error("eval_report_not_found", 404)
+        return JSONResponse(report.model_dump(mode="json"))
+
+    @app.put("/v1/agents/{tenant}/{agent_id}/{version}/eval")
+    async def put_eval_report(
+        request: Request, tenant: str, agent_id: str, version: str
+    ) -> JSONResponse:
+        try:
+            body: Any = await request.json()
+        except ValueError:
+            return _error("invalid_json", 400)
+        try:
+            report = EvalReport.model_validate(body)
+        except ValidationError:
+            return _error("invalid_report", 400)
+        if _cross_tenant(_principal(request), tenant):
+            return _error("tenant_forbidden", 403)
+        try:
+            records = await registry.list(tenant)
+        except RegistryError as exc:
+            return _read_error(exc)
+        except Exception:  # noqa: BLE001
+            logger.exception("registry list failure")
+            return _error("registry_unavailable", 502)
+        if not any(
+            record.manifest.id == agent_id and record.manifest.version == version
+            for record in records
+        ):
+            return _error("not_found", 404)
+        if eval_reports is None:
+            return _error("eval_store_unavailable", 502)
+        try:
+            stored = await eval_reports.put(tenant, agent_id, version, report)
+        except EvalReportConflict:
+            return _error("eval_report_conflict", 409)
+        except RegistryError:
+            return _error("eval_store_unavailable", 502)
+        except Exception:  # noqa: BLE001
+            logger.exception("eval report write failure")
+            return _error("eval_store_unavailable", 502)
+        return JSONResponse(stored.model_dump(mode="json"), status_code=201)
 
     @app.post("/v1/agents")
     async def publish(request: Request) -> JSONResponse:

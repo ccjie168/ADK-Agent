@@ -47,10 +47,35 @@ class FakeRegistry:
         pass
 
 
+class FakeEvalStore:
+    instances: list[FakeEvalStore] = []
+
+    def __init__(self, url: str, *, auth_token: str | None = None, **_kwargs) -> None:
+        self.url = url
+        self.auth_token = auth_token
+        self.puts = []
+        FakeEvalStore.instances.append(self)
+
+    async def put(self, tenant, agent_id, version, report):
+        self.puts.append((tenant, agent_id, version, report))
+        return report
+
+    async def get(self, tenant, agent_id, version):
+        return None
+
+    async def has(self, tenant, agent_id, version):
+        return False
+
+    async def aclose(self) -> None:
+        pass
+
+
 @pytest.fixture
 def fake_registry(monkeypatch):
     FakeRegistry.instances = []
+    FakeEvalStore.instances = []
     monkeypatch.setattr("adk_agent.registry.HttpAgentRegistry", FakeRegistry)
+    monkeypatch.setattr("adk_agent.registry.HttpEvalReportStore", FakeEvalStore)
     return FakeRegistry.instances
 
 
@@ -256,21 +281,27 @@ def test_publish_artifact_source_exclusive(tmp_path, fake_registry, capsys):
     assert "artifact" in capsys.readouterr().err.lower()
 
 
-def test_publish_eval_report_exclusive(tmp_path, fake_registry, capsys):
-    report = tmp_path / "report.json"
-    report.write_text("{}", encoding="utf-8")
+def test_publish_uploads_eval_report(tmp_path, fake_registry):
+    report = {
+        "suite_id": "smoke",
+        "version": "1",
+        "passed": 1,
+        "total": 1,
+    }
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
 
-    with pytest.raises(SystemExit) as exc:
-        cli.main(
-            [
-                "publish",
-                str(_manifest_file(tmp_path)),
-                "--registry-url",
-                "http://reg.example",
-                "--eval-report",
-                str(report),
-            ]
-        )
+    cli.main(
+        [
+            "publish",
+            str(_manifest_file(tmp_path)),
+            "--registry-url",
+            "http://reg.example",
+            "--eval-report",
+            str(path),
+        ]
+    )
 
-    assert exc.value.code == 1
-    assert "eval" in capsys.readouterr().err.lower()
+    [(tenant, agent_id, version, stored)] = FakeEvalStore.instances[0].puts
+    assert (tenant, agent_id, version) == ("acme", "bot", "1.0.0")
+    assert stored.suite_id == "smoke"

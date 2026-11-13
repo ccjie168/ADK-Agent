@@ -292,6 +292,11 @@ def _add_registry_client_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _registry_token(args: argparse.Namespace) -> str | None:
+    env_name = getattr(args, "registry_token_env", None) or "ADK_REGISTRY_AUTH_TOKEN"
+    return os.environ.get(env_name)
+
+
 def _agent_registry(args: argparse.Namespace) -> Any:
     """Return the HTTP registry client when a URL is set, else the file registry."""
     from .registry import FileAgentRegistry, HttpAgentRegistry
@@ -305,8 +310,7 @@ def _agent_registry(args: argparse.Namespace) -> Any:
             file=sys.stderr,
         )
         raise SystemExit(1)
-    env_name = getattr(args, "registry_token_env", None) or "ADK_REGISTRY_AUTH_TOKEN"
-    return HttpAgentRegistry(url, auth_token=os.environ.get(env_name))
+    return HttpAgentRegistry(url, auth_token=_registry_token(args))
 
 
 def _rate_limit(args: argparse.Namespace) -> RateLimit | None:
@@ -1152,6 +1156,7 @@ def main(argv: list[str] | None = None) -> None:
             ArtifactStoreError,
             FileArtifactStore,
             PostgresAgentRegistry,
+            PostgresEvalReportStore,
             RegistryStoreUnavailable,
         )
         from .registry.artifacts_postgres import PostgresArtifactStore
@@ -1165,6 +1170,7 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1)
         try:
             registry = PostgresAgentRegistry(args.database_url)
+            eval_reports = PostgresEvalReportStore(args.database_url)
         except RegistryStoreUnavailable as exc:
             print(f"registry store unavailable: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
@@ -1187,6 +1193,7 @@ def main(argv: list[str] | None = None) -> None:
         app = build_registry_service_app(
             registry,
             artifact_store=store,
+            eval_reports=eval_reports,
             trust=_artifact_trust(args),
             host=args.host,
             auth_token=_auth_token(args),
@@ -1220,7 +1227,11 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "console":
         rate_limit = _rate_limit(args)
         from .console import run_console
-        from .registry import FileEvalReportStore, InProcessArtifactLoader
+        from .registry import (
+            FileEvalReportStore,
+            HttpEvalReportStore,
+            InProcessArtifactLoader,
+        )
 
         if args.sse_queue_size < 1:
             print("--sse-queue-size must be at least 1", file=sys.stderr)
@@ -1262,7 +1273,11 @@ def main(argv: list[str] | None = None) -> None:
             policy_file=args.policy,
             roles=args.roles,
             registry=_agent_registry(args),
-            eval_reports=FileEvalReportStore(args.registry),
+            eval_reports=(
+                HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
+                if args.registry_url
+                else FileEvalReportStore(args.registry)
+            ),
             artifact_store=artifact_store,
             artifact_loader=InProcessArtifactLoader() if artifact_store else None,
             artifact_trust=artifact_trust,
@@ -1347,13 +1362,12 @@ def main(argv: list[str] | None = None) -> None:
         from .eval import enforce_eval_gate
         from .registry import (
             FileEvalReportStore,
+            HttpEvalReportStore,
             load_manifest,
             published_from,
         )
 
         try:
-            if args.registry_url and args.eval_report:
-                raise ValueError("--eval-report cannot be used with --registry-url")
             manifest = load_manifest(args.path)
             report = (
                 EvalReport.model_validate_json(Path(args.eval_report).read_text(encoding="utf-8"))
@@ -1365,15 +1379,26 @@ def main(argv: list[str] | None = None) -> None:
             registry = _agent_registry(args)
 
             async def publish_record():
-                stored = await registry.publish(published_from(manifest, artifact=artifact))
-                if artifact_bytes is not None:
-                    await registry.upload_artifact(stored.artifact, artifact_bytes)
-                if hasattr(registry, "aclose"):
-                    await registry.aclose()
+                eval_store = (
+                    HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
+                    if args.registry_url and report is not None
+                    else None
+                )
+                try:
+                    stored = await registry.publish(published_from(manifest, artifact=artifact))
+                    if eval_store is not None and report is not None:
+                        await eval_store.put(manifest.tenant, manifest.id, manifest.version, report)
+                    if artifact_bytes is not None:
+                        await registry.upload_artifact(stored.artifact, artifact_bytes)
+                finally:
+                    if eval_store is not None and hasattr(eval_store, "aclose"):
+                        await eval_store.aclose()
+                    if hasattr(registry, "aclose"):
+                        await registry.aclose()
                 return stored
 
             stored = asyncio.run(publish_record())
-            if report is not None:
+            if report is not None and not args.registry_url:
                 asyncio.run(
                     FileEvalReportStore(args.registry).put(
                         manifest.tenant, manifest.id, manifest.version, report

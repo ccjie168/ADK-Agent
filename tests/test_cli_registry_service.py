@@ -43,6 +43,22 @@ def test_builds_service(monkeypatch):
     assert "/v1/artifacts/{digest}" in paths
 
 
+def test_builds_eval_store(monkeypatch):
+    monkeypatch.setenv("REG_TOKEN", "secret")
+    created: list = []
+
+    class FakeEvalStore:
+        def __init__(self, url: str) -> None:
+            created.append(url)
+
+    monkeypatch.setattr("adk_agent.registry.PostgresEvalReportStore", FakeEvalStore)
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: None)
+
+    cli.main(_argv("--database-url", DSN))
+
+    assert created == [DSN]
+
+
 def test_artifact_source_exclusive(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("REG_TOKEN", "secret")
     monkeypatch.setenv("ARTIFACT_URL", DSN)

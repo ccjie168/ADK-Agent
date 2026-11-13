@@ -1,0 +1,77 @@
+SLICE-074 central eval reports
+==============================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/registry/test_eval_reports_postgres.py \
+    tests/registry/test_registry_eval_service.py tests/registry/test_registry_eval_client.py \
+    tests/test_registry_url_wiring.py tests/test_cli_registry_service.py -q
+tests\registry\test_registry_eval_client.py:10: in <module>
+    from adk_agent.registry import HttpEvalReportStore, published_from
+E   ImportError: cannot import name 'HttpEvalReportStore' from 'adk_agent.registry'
+ERROR tests/registry/test_eval_reports_postgres.py
+ERROR tests/registry/test_registry_eval_client.py
+2 errors in 2.21s
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/registry tests/test_registry_url_wiring.py \
+    tests/test_cli_registry_service.py tests/test_console_on_demand.py tests/test_console_registry.py -q
+130 passed in 6.06s        (TEST_POSTGRES_URL set)
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+877 passed, 26 skipped, ALL PASS          (no TEST_POSTGRES_URL)
+902 passed, 1 skipped, ALL PASS           (TEST_POSTGRES_URL='postgresql://adk:adk@127.0.0.1:55432/adk')
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, service and console in separate processes
+-----------------------------------------------
+Fresh database `adk_live4`; service on 8806, shared file artifact store, trusted
+keys. Publish over HTTP with an eval report and an artifact:
+
+$ ADK_REGISTRY_AUTH_TOKEN=secret adk-agent publish project/manifest.json \
+    --registry-url http://127.0.0.1:8806 --artifact project \
+    --key publisher.pem --key-id k1 --eval-report report.json
+published acme/bot@1.0.0 sha256:7bf064e2...
+artifact sha256:6d7912ae...
+exit=0
+
+Stored report:
+$ docker exec adk-postgres-070 psql -U adk -d adk_live4 -tAc \
+    "select tenant, agent_id, version, report from adk_eval_reports"
+acme|bot|1.0.0|{"total": 3, "passed": 3, "results": [], "version": "1", "suite_id": "smoke"}
+
+Service read:
+  GET /v1/agents/acme/bot/1.0.0/eval -> 200
+  {"passed": 3, "results": [], "suite_id": "smoke", "total": 3, "version": "1"}
+
+Console on 8807 with --registry-url, probe-only startup agents:
+  GET /api/registry?tenant=acme -> 200 [('bot', True)]
+  GET /api/registry/acme/bot/1.0.0/eval -> 200, same report
+
+Conflicting report on the same version:
+$ adk-agent publish project/manifest.json --registry-url http://127.0.0.1:8806 \
+    --eval-report report-other.json
+publish failed: acme/bot@1.0.0 already has a different eval report
+exit=1
+
+notes
+-----
+- The two new red test files needed `ruff format` only; no assertion changed.
+- GET .../eval does not require the version row to still exist; PUT enforces it
+  so reports stay tied to published versions.
+- The console reaches the same report through HttpEvalReportStore, so the eval
+  panel now works across replicas when --registry-url is set.

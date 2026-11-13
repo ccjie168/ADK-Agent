@@ -5,6 +5,7 @@ from __future__ import annotations
 from .artifacts import ArtifactStoreError, FileArtifactStore, artifact_digest
 from .client import (
     HttpAgentRegistry,
+    HttpEvalReportStore,
     RegistryForbidden,
     RegistryRejected,
     RegistryServiceUnavailable,
@@ -16,6 +17,7 @@ from .packaging import PackagingError, pack_agent, read_artifact_zip
 from .postgres import PostgresAgentRegistry, RegistryStoreUnavailable
 from .refs import RefError, load_registry_agents, parse_agent_ref
 from .reports import EvalReportConflict, FileEvalReportStore
+from .reports_postgres import PostgresEvalReportStore
 from .signing import PublishUnavailable, load_private_key, sign_digest, verify_digest
 from .trust import ArtifactTrustError, TrustStore
 
@@ -28,10 +30,12 @@ __all__ = [
     "InProcessArtifactLoader",
     "PackagingError",
     "PostgresAgentRegistry",
+    "PostgresEvalReportStore",
     "PublishUnavailable",
     "FileAgentRegistry",
     "FileEvalReportStore",
     "HttpAgentRegistry",
+    "HttpEvalReportStore",
     "RefError",
     "RegistryConflict",
     "RegistryError",

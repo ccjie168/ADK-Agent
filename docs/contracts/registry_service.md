@@ -43,6 +43,21 @@
 - 记录签名必须可信，否则 409 `artifact_untrusted`。
 - 成功写入 `ArtifactStore` 返回 201 `{"digest": "sha256:<hex>", "size": <n>}`。重复上传同一摘要返回 201，幂等。
 
+## `GET /v1/agents/{tenant}/{agent_id}/{version}/eval`
+
+返回 200，正文是一条 `EvalReport`（结构见 `eval_report.schema.json`）。OIDC 非 admin 跨租户 403。没有报告返回 404 `{"error":"eval_report_not_found"}`。评测报告存储不可用返回 502 `eval_store_unavailable`。
+
+## `PUT /v1/agents/{tenant}/{agent_id}/{version}/eval`
+
+请求体是一条 `EvalReport`。版本必须已发布，否则 404 `{"error":"not_found"}`；OIDC 非 admin 跨租户 403。
+
+- 请求体不是 JSON 返回 400 `invalid_json`，模型非法返回 400 `invalid_report`。
+- 成功返回 201 和已存报告。同一版本同内容重复提交返回 201，幂等。
+- 同一版本不同内容返回 409 `{"error":"eval_report_conflict"}`。
+- 存储不可达返回 502 `{"error":"eval_store_unavailable"}`。
+
+评测报告与发布记录同库存储在 `adk_eval_reports`，服务总是配置这个存储。
+
 ## 错误
 
 | 状态 | 错误码 | 含义 |
@@ -53,15 +68,19 @@
 | 400 | `digest_mismatch` | 上传字节与摘要不符 |
 | 400 | `size_mismatch` | 上传字节大小与记录不符 |
 | 400 | `artifact_untrusted` | 工件签名不可信 |
+| 400 | `invalid_report` | `EvalReport` 非法 |
 | 401 | `unauthorized` | 缺少或错误的凭证 |
 | 403 | `tenant_forbidden` | 跨租户访问 |
 | 404 | `not_found` | 版本不存在 |
+| 404 | `eval_report_not_found` | 该版本没有评测报告 |
 | 409 | `version_conflict` | 同版本不同内容 |
 | 409 | `artifact_not_published` | 没有引用该摘要的发布记录 |
 | 409 | `artifact_untrusted` | 上传时记录的签名不可信 |
+| 409 | `eval_report_conflict` | 同版本已有不同评测报告 |
 | 413 | `too_large` | 超过 8 MiB |
 | 415 | `unsupported_media_type` | 工件 Content-Type 不对 |
 | 502 | `artifact_store_failed` | 工件存储写入失败 |
+| 502 | `eval_store_unavailable` | 评测报告存储不可用 |
 | 502 | `registry_unavailable` | 注册表存储不可达 |
 | 502 | `registry_integrity_error` | 存储的记录与摘要不符 |
 | 503 | `artifact_store_unavailable` | 服务没有配置工件存储 |

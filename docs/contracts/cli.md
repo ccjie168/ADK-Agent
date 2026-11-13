@@ -168,7 +168,7 @@
 
 - `console`、`serve`、`serve-many` 的运行工件仍从 `--artifact-dir` 或 `$ARTIFACT_URL` 读取，可信公钥仍为必需。
 - `publish --registry-url` 先 `POST /v1/agents`；带 `--artifact` 时再用 `PUT /v1/artifacts/{digest}` 上传字节。此模式下 `--artifact-dir` 与 `$ARTIFACT_URL` 不参与，同时给退出 1。
-- `publish --registry-url` 不接受 `--eval-report`，因为评测报告还没有集中存储；同时给退出 1。
+- `publish --registry-url` 带 `--eval-report` 时在发布记录后用 `PUT /v1/agents/{tenant}/{id}/{version}/eval` 上传报告，顺序是记录、报告、工件字节。
 
 ## 从注册表启动（`console` / `serve` / `serve-many`）
 
