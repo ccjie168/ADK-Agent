@@ -175,7 +175,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 按优先级：
 
-1. ADR-0008 工件与插件化加载：工件抽象成 store/loader 端口，第一版进程内加载，是市场与按 digest 运行的前提。
+1. ADR-0008 工件与插件化加载已拟好，状态 Proposed，待签字：`docs/decisions/ADR-0008-agent-artifacts.md`。签字后按契约 → 类型 → store → 发布签名 → loader → 接线的顺序开工。
 2. 注册表 Postgres 后端（Phase B2）：元数据与 manifest 先入库，保留 `AgentRegistry` 端口，文件实现降级。
 3. 跨副本共享限流计数。需要 Redis 或入口网关，属于新依赖，先出 ADR。
 2. Inbound 请求限流。目前只有运行配额和 provider 熔断，入口层限流仍留给网关或反向代理。
