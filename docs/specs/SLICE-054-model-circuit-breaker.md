@@ -1,6 +1,6 @@
 # SLICE-054 模型调用熔断
 
-状态: spec'd
+状态: gated
 依据: SLICE-032，SLICE-041，SLICE-050，`docs/contracts/cli.md`
 
 ## 意图（要什么，不写怎么写）
@@ -19,7 +19,7 @@ provider 持续失败时，网关现在会一次次把请求打到同一个坏�
 
 - `src/adk_agent/resilience.py`：`CircuitBreaker`
 - `src/adk_agent/models/breaker.py`：`BreakerProvider`
-- `tests/test_resilience.py`
+- `tests/test_circuit_breaker.py`
 - `tests/models/test_breaker_provider.py`
 - `tests/models/test_service_breaker.py`
 - `tests/test_cli_model_breaker.py`
@@ -58,29 +58,29 @@ BreakerProvider(inner, breaker, *, metrics=None):
 
 ## 完成判据（可执行）
 
-- [ ] 阈值前保持 closed -> `tests/test_resilience.py::test_closed_until_threshold`
-- [ ] 达到阈值后 open -> `tests/test_resilience.py::test_opens_at_threshold`
-- [ ] 重置前拒绝 -> `tests/test_resilience.py::test_rejects_before_reset`
-- [ ] 重置后只放行一个探测 -> `tests/test_resilience.py::test_half_open_single_probe`
-- [ ] 探测成功关闭 -> `tests/test_resilience.py::test_probe_success_closes`
-- [ ] 探测失败重新打开 -> `tests/test_resilience.py::test_probe_failure_reopens`
-- [ ] 成功清零失败计数 -> `tests/test_resilience.py::test_success_resets_failures`
-- [ ] 熔断后不再调用 provider -> `tests/models/test_breaker_provider.py::test_short_circuits_after_threshold`
-- [ ] 短路计数 -> `tests/models/test_breaker_provider.py::test_short_circuit_metric`
-- [ ] 重置后恢复 -> `tests/models/test_breaker_provider.py::test_recovers_after_reset`
-- [ ] 成功透传 -> `tests/models/test_breaker_provider.py::test_success_passes_through`
-- [ ] 服务返回 503 -> `tests/models/test_service_breaker.py::test_gateway_returns_503_when_open`
-- [ ] CLI 转发两个参数 -> `tests/test_cli_model_breaker.py::test_serve_forwards_breaker_settings`
-- [ ] CLI 默认值 -> `tests/test_cli_model_breaker.py::test_breaker_defaults`
-- [ ] CLI 拒绝非正值 -> `tests/test_cli_model_breaker.py::test_rejects_nonpositive_settings`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 阈值前保持 closed -> `tests/test_circuit_breaker.py::test_closed_until_threshold`
+- [x] 达到阈值后 open -> `tests/test_circuit_breaker.py::test_opens_at_threshold`
+- [x] 重置前拒绝 -> `tests/test_circuit_breaker.py::test_rejects_before_reset`
+- [x] 重置后只放行一个探测 -> `tests/test_circuit_breaker.py::test_half_open_single_probe`
+- [x] 探测成功关闭 -> `tests/test_circuit_breaker.py::test_probe_success_closes`
+- [x] 探测失败重新打开 -> `tests/test_circuit_breaker.py::test_probe_failure_reopens`
+- [x] 成功清零失败计数 -> `tests/test_circuit_breaker.py::test_success_resets_failures`
+- [x] 熔断后不再调用 provider -> `tests/models/test_breaker_provider.py::test_short_circuits_after_threshold`
+- [x] 短路计数 -> `tests/models/test_breaker_provider.py::test_short_circuit_metric`
+- [x] 重置后恢复 -> `tests/models/test_breaker_provider.py::test_recovers_after_reset`
+- [x] 成功透传 -> `tests/models/test_breaker_provider.py::test_success_passes_through`
+- [x] 服务返回 503 -> `tests/models/test_service_breaker.py::test_gateway_returns_503_when_open`
+- [x] CLI 转发两个参数 -> `tests/test_cli_model_breaker.py::test_serve_forwards_breaker_settings`
+- [x] CLI 默认值 -> `tests/test_cli_model_breaker.py::test_breaker_defaults`
+- [x] CLI 拒绝非正值 -> `tests/test_cli_model_breaker.py::test_rejects_nonpositive_settings`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.resilience import CircuitBreaker` -> 当前 `ImportError`
-- [ ] 反例 2：`from adk_agent.models.breaker import BreakerProvider` -> 当前 `ImportError`
-- [ ] 反例 3：provider 连续失败后仍被调用 -> 当前没有熔断，确实继续调用
-- [ ] 反例 4：`serve-model-gateway --breaker-failures 2` -> 当前 argparse 退出 2
+- [x] 反例 1：`from adk_agent.resilience import CircuitBreaker` -> 当前 `ImportError`
+- [x] 反例 2：`from adk_agent.models.breaker import BreakerProvider` -> 当前 `ImportError`
+- [x] 反例 3：provider 连续失败后仍被调用 -> 当前没有熔断，确实继续调用
+- [x] 反例 4：`serve-model-gateway --breaker-failures 2` -> 当前 argparse 退出 2
 
 ## 契约（如涉及对外接口）
 
@@ -103,5 +103,6 @@ BreakerProvider(inner, breaker, *, metrics=None):
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-054-model-circuit-breaker.txt`，两个新模块 ImportError，`serve-model-gateway` 参数退出 2
+- 实现后绿: 同文件，48 passed；`check.py --fast` ALL PASS（624 passed, 13 skipped），`--full` ALL PASS
+- 真实模型网关: 同文件，连续两次 provider 失败后第三次返回 503 `model_unavailable`，短路指标为 1

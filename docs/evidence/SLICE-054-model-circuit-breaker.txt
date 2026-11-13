@@ -1,0 +1,48 @@
+SLICE-054 model circuit breaker evidence
+date: 2026-11-13T05:26:39Z
+
+== red: new tests before implementation ==
+E   ModuleNotFoundError: No module named 'adk_agent.models.breaker'
+______________ ERROR collecting tests/test_cli_model_breaker.py _______________
+ImportError while importing test module 'C:\AI_System\ADK-Agent\tests\test_cli_model_breaker.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Python314\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_cli_model_breaker.py:8: in <module>
+    from adk_agent.models.breaker import BreakerProvider
+E   ModuleNotFoundError: No module named 'adk_agent.models.breaker'
+=========================== short test summary info ===========================
+ERROR tests/test_resilience.py
+ERROR tests/models/test_breaker_provider.py
+ERROR tests/models/test_service_breaker.py
+ERROR tests/test_cli_model_breaker.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 4 errors during collection !!!!!!!!!!!!!!!!!!!
+4 errors in 3.30s
+
+== red: serve-model-gateway lacks breaker flags ==
+adk-agent: error: unrecognized arguments: --breaker-failures 2
+exit=2
+
+== green: targeted tests ==
+tests/test_circuit_breaker.py tests/models/test_breaker_provider.py
+tests/models/test_service_breaker.py tests/test_cli_model_breaker.py
+tests/models/test_model_service.py tests/test_audit_sink_wiring.py
+tests/test_service_oidc.py tests/test_gateway_metrics.py -> 48 passed in 2.06s
+
+Note: the new breaker test file is tests/test_circuit_breaker.py; it was renamed from
+tests/test_resilience.py to avoid the pytest basename collision with
+tests/orchestration/test_resilience.py.
+
+== live: model gateway on 8097 with --breaker-failures 2 --breaker-reset 30 ==
+no litellm credentials, so every provider call fails
+POST /v1/complete #1 -> HTTP 502 {"error":"model_call_failed"}
+POST /v1/complete #2 -> HTTP 502 {"error":"model_call_failed"}
+POST /v1/complete #3 -> HTTP 503 {"error":"model_unavailable"}
+metrics:
+  adk_model_breaker_short_circuits_total{provider="litellm"} 1
+  adk_model_calls_total{provider="litellm",status="error"} 3
+
+== gate ==
+check.py --fast -> ALL PASS (624 passed, 13 skipped), 7 steps

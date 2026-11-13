@@ -24,6 +24,10 @@ class ModelDenied(Exception):
     """The request is not allowed by the agent's model policy."""
 
 
+class ModelUnavailable(RuntimeError):
+    """The provider's circuit is open, so the call was not attempted."""
+
+
 def egress_for(provider: str) -> Literal["none", "third_party"]:
     return "none" if provider == "vllm" else "third_party"
 

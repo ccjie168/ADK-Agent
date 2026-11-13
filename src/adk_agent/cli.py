@@ -301,6 +301,18 @@ def main(argv: list[str] | None = None) -> None:
     p_gateway.add_argument(
         "--vllm-url", default=None, help="vLLM base URL (defaults to $VLLM_BASE_URL)"
     )
+    p_gateway.add_argument(
+        "--breaker-failures",
+        type=int,
+        default=5,
+        help="consecutive provider failures that open the circuit (default: 5)",
+    )
+    p_gateway.add_argument(
+        "--breaker-reset",
+        type=float,
+        default=30.0,
+        help="seconds an open circuit waits before probing (default: 30)",
+    )
     gateway_audit = p_gateway.add_mutually_exclusive_group()
     gateway_audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
     gateway_audit.add_argument(
@@ -592,9 +604,17 @@ def main(argv: list[str] | None = None) -> None:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from None
     elif args.cmd == "serve-model-gateway":
+        from .core import ModelProvider
         from .mcp.http import resolve_port
+        from .metrics import MetricsRegistry
+        from .models.breaker import BreakerProvider
         from .models.gateway import PolicyModelGateway
         from .models.service import build_model_gateway_app, build_providers
+        from .resilience import CircuitBreaker
+
+        if args.breaker_failures <= 0 or args.breaker_reset <= 0:
+            print("breaker thresholds must be positive", file=sys.stderr)
+            raise SystemExit(1)
 
         oidc = _identity_provider(args)
         try:
@@ -603,6 +623,21 @@ def main(argv: list[str] | None = None) -> None:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from None
 
+        metrics = MetricsRegistry()
+        providers = {
+            name: cast(
+                ModelProvider,
+                BreakerProvider(
+                    provider,
+                    CircuitBreaker(
+                        failure_threshold=args.breaker_failures,
+                        reset_seconds=args.breaker_reset,
+                    ),
+                    metrics=metrics,
+                ),
+            )
+            for name, provider in providers.items()
+        }
         sink = _audit_sink(args)
         app = build_model_gateway_app(
             PolicyModelGateway(providers, audit=sink),
@@ -610,6 +645,7 @@ def main(argv: list[str] | None = None) -> None:
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
+            metrics=metrics,
         )
 
         import uvicorn

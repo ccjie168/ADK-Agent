@@ -20,7 +20,7 @@ from ..auth import (
 )
 from ..core import IdentityProvider, ModelGatewayRequest, ModelProvider
 from ..metrics import MetricsRegistry
-from .gateway import ModelDenied, PolicyModelGateway
+from .gateway import ModelDenied, ModelUnavailable, PolicyModelGateway
 from .providers import LiteLlmProvider, VllmProvider
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,9 @@ def build_model_gateway_app(
         started = time.perf_counter()
         try:
             response = await gateway.complete(invocation, call.request, call.policy)
+        except ModelUnavailable:
+            _record_model_call(metrics, provider, "error", started)
+            return JSONResponse({"error": "model_unavailable"}, status_code=503)
         except ModelDenied:
             _record_model_call(metrics, provider, "denied", started)
             return JSONResponse({"error": "model_denied"}, status_code=403)

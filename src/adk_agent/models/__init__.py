@@ -31,6 +31,8 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from ..config import ModelConfig
+from .breaker import BreakerProvider
+from .gateway import ModelUnavailable
 from .http_gateway import HttpModelGateway, ModelGatewayError
 from .service import build_model_gateway_app, build_providers
 
@@ -138,8 +140,10 @@ def _default_model_config() -> ModelConfig:
 
 
 __all__ = [
+    "BreakerProvider",
     "HttpModelGateway",
     "ModelGatewayError",
+    "ModelUnavailable",
     "build_model",
     "build_model_gateway_app",
     "build_providers",
