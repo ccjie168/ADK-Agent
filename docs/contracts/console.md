@@ -196,6 +196,18 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
 - 存储不可达返回 503 `grant_store_unavailable`。
 
+## `GET /api/tool-grants/usage?tenant=<name>` -> `[ToolUsage]`
+
+按工具汇总最近的 `tool.call` 审计事件。`temporary` 是被临时授权放行的次数（`policy_version=grants-v2`）。
+
+```json
+{"tool_id": "crm.read", "allowed": 3, "denied": 1, "temporary": 2}
+```
+
+- 事件来源与控制台审计面板相同（共享审计或进程缓冲），上限 1000 条。
+- 非 `admin` 只能看自己的租户；审计服务不可用返回 502 `audit_unavailable`。
+- Grants 面板对已批准且 24 小时内到期的请求显示 expiring 徽标。
+
 ## `POST /api/tool-grants` -> `ToolGrantRequest`
 
 ```json

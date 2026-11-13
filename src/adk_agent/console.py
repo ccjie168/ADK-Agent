@@ -262,6 +262,11 @@ _INDEX_HTML = """<!doctype html>
     <button id="grant-approve">Approve</button>
     <button id="grant-deny">Deny</button>
   </div>
+  <h3>Tool usage (recent audit)</h3>
+  <table>
+    <thead><tr><th>tool</th><th>allowed</th><th>denied</th><th>temporary</th></tr></thead>
+    <tbody id="grant-usage-body"></tbody>
+  </table>
 </section>
 
 <section id="plans" class="panel">
@@ -648,7 +653,17 @@ async function loadGrants() {
     row.appendChild(cell(grant.tool_id));
     row.appendChild(cell(grant.agent_id));
     row.appendChild(cell(grant.version));
-    row.appendChild(cell(grant.status));
+    const status = document.createElement("td");
+    status.textContent = grant.status;
+    const left = Date.parse(grant.expires_at) - Date.now();
+    if (grant.status === "approved" && left > 0 && left <= 24 * 3600 * 1000) {
+      const badge = document.createElement("span");
+      badge.className = "badge muted";
+      badge.textContent = "expiring";
+      status.appendChild(document.createTextNode(" "));
+      status.appendChild(badge);
+    }
+    row.appendChild(status);
     const expires = document.createElement("td");
     expires.textContent = String(grant.expires_at || "").replace("T", " ").slice(0, 19);
     row.appendChild(expires);
@@ -657,6 +672,19 @@ async function loadGrants() {
       $("grants-msg").textContent = "selected " + grant.request_id;
     });
     body.appendChild(row);
+  }
+  const usage = await getJson("/api/tool-grants/usage?tenant=" + encodeURIComponent(tenant));
+  const usageBody = $("grant-usage-body");
+  usageBody.innerHTML = "";
+  if (usage.ok) {
+    for (const row of usage.data || []) {
+      const tr = document.createElement("tr");
+      tr.appendChild(cell(row.tool_id));
+      tr.appendChild(cell(row.allowed));
+      tr.appendChild(cell(row.denied));
+      tr.appendChild(cell(row.temporary));
+      usageBody.appendChild(tr);
+    }
   }
 }
 
@@ -1532,6 +1560,27 @@ def build_console_app(
             )
         entries.sort(key=lambda entry: entry["tool_id"])
         return entries
+
+    @app.get("/api/tool-grants/usage")
+    async def tool_grant_usage(request: Request, tenant: str | None = None) -> Any:
+        caller = _principal_for(request)
+        if tenant and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        events = _visible_events(await _query_events(request), caller)
+        counts: dict[str, dict[str, Any]] = {}
+        for event in events:
+            if event.action != "tool.call":
+                continue
+            row = counts.setdefault(
+                event.target, {"tool_id": event.target, "allowed": 0, "denied": 0, "temporary": 0}
+            )
+            if event.status == "ok":
+                row["allowed"] += 1
+            elif event.status == "denied":
+                row["denied"] += 1
+            if event.policy_version == "grants-v2":
+                row["temporary"] += 1
+        return sorted(counts.values(), key=lambda row: row["tool_id"])
 
     @app.get("/api/tool-grants")
     async def list_tool_grants(

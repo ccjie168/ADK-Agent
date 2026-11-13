@@ -154,6 +154,18 @@
           "default": null,
           "title": "Policy Decision Id"
         },
+        "policy_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policy Version"
+        },
         "principal": {
           "$ref": "#/$defs/Principal"
         },

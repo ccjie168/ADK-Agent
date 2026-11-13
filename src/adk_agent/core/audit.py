@@ -27,6 +27,7 @@ class AuditEvent(BaseModel):
     args_hash: str | None = None
     result_hash: str | None = None
     policy_decision_id: str | None = None
+    policy_version: str | None = None
     data_classes: list[DataClass] = Field(default_factory=list)
     latency_ms: int | None = Field(default=None, ge=0)
     tokens: int | None = Field(default=None, ge=0)

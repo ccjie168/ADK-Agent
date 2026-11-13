@@ -1,0 +1,55 @@
+SLICE-082 tool grant usage statistics and expiry hint
+====================================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_grant_usage.py -q
+5 failed in 1.92s
+  - AuditEvent has no policy_version field
+  - GET /api/tool-grants/usage -> 404
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_grant_usage.py tests/tools/test_guard.py -q
+13 passed in 2.52s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+945 passed, 28 skipped in 47.04s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, console chat plus a grant request
+---------------------------------------
+Console on 8813 with the scripted agent, the adk-075-live registry and a file
+grant store.
+
+  POST /api/chat {"agent": "bot", "message": "hi"} -> 200 reply "done"
+  POST /api/tool-grants (crm.read, 2h)             -> 201 pending
+  POST .../decide approved                         -> 200 approved
+  GET /api/tool-grants/usage?tenant=acme           -> [{"tool_id": "add", "allowed": 1, "denied": 0, "temporary": 0}]
+
+Screenshot: docs/evidence/ui/SLICE-082-grant-usage.png shows the approved
+request with the expiring badge (expires within 24h) and the tool usage table.
+
+notes
+-----
+- AuditEvent.policy_version is additive; regenerated audit_event and
+  audit_record schemas changed only by that field.
+- ToolGuard remembers the policy version per call key between before and after,
+  so allowed, denied and error events all carry it.
+- Expiry remains read-time only; the badge is computed in the browser and there
+  is no background notification job.

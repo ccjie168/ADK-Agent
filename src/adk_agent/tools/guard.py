@@ -41,6 +41,7 @@ class ToolGuard:
         self.audit = audit
         self._started: dict[str, float] = {}
         self._denied: set[str] = set()
+        self._policies: dict[str, str] = {}
 
     async def before(
         self, tool: BaseTool, args: dict[str, Any], context: Any
@@ -53,6 +54,7 @@ class ToolGuard:
         self._started[key] = time.perf_counter()
         decision = await self.policy.decide(invocation, "tool.call", tool.name)
         if decision.decision == "allow":
+            self._policies[key] = decision.policy_version
             return None
 
         self._denied.add(key)
@@ -63,6 +65,7 @@ class ToolGuard:
             response=None,
             status="denied",
             error_code=decision.error_code or "policy_denied",
+            policy_version=decision.policy_version,
             key=key,
         )
         return {"error": "tool_denied", "reason": decision.reason, "tool": tool.name}
@@ -87,6 +90,7 @@ class ToolGuard:
             response=response,
             status="ok",
             error_code=None,
+            policy_version=self._policies.pop(key, None),
             key=key,
         )
 
@@ -97,6 +101,7 @@ class ToolGuard:
         if invocation is None:
             return
 
+        key = _call_key(context)
         await self._audit(
             invocation,
             tool,
@@ -104,7 +109,8 @@ class ToolGuard:
             response=None,
             status="error",
             error_code=type(error).__name__,
-            key=_call_key(context),
+            policy_version=self._policies.pop(key, None),
+            key=key,
         )
 
     async def _audit(
@@ -117,6 +123,7 @@ class ToolGuard:
         status: Literal["ok", "error", "denied"],
         error_code: str | None,
         key: str,
+        policy_version: str | None = None,
     ) -> None:
         if self.audit is None:
             return
@@ -139,6 +146,7 @@ class ToolGuard:
             egress="none",
             status=status,
             error_code=error_code,
+            policy_version=policy_version,
             timestamp=datetime.now(timezone.utc),
         )
         await self.audit.emit(event)
