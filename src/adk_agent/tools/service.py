@@ -18,7 +18,7 @@ from ..auth import (
 )
 from ..core import IdentityProvider, ToolGatewayRequest
 from ..metrics import MetricsRegistry
-from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
+from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .gateway import FunctionToolGateway, ToolDenied
 from .policy import GrantPolicyEngine
 
@@ -91,7 +91,7 @@ def build_tool_gateway_app(
     if rate_limit is not None:
         app.add_middleware(
             RateLimitMiddleware,
-            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            limiter=build_rate_limiter(rate_limit, surface="tool_gateway", metrics=metrics),
             surface="tool_gateway",
             exempt=frozenset({"/healthz", "/metrics"}),
             metrics=metrics,

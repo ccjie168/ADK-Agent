@@ -1,0 +1,60 @@
+SLICE-084 shared rate limiting across replicas
+==============================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_ratelimit_redis.py -q
+E   ImportError: cannot import name 'RedisFixedWindowLimiter' from 'adk_agent.ratelimit'
+1 error in 1.85s
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_ratelimit_redis.py tests/test_ratelimit.py -q
+26 passed in 2.35s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+956 passed, 28 skipped in 47.78s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, two gateway processes sharing one Redis
+---------------------------------------------
+redis:7-alpine container on 127.0.0.1:6380; `redis` client 8.1.0 installed
+from the new `redis` extra. Two `serve-tool-gateway` processes on 8815 and
+8816, both with RATE_LIMIT_URL and `--rate-limit 2 --rate-limit-window 60`,
+same caller:
+
+  replica A #1: 200
+  replica A #2: 200
+  replica B #1: 429
+  replica B #2: 429
+
+Redis key: adk:rl:tool_gateway:127.0.0.1:<window-start>
+
+Fail-open: stopped the Redis container, called replica A again.
+
+  after redis stop: 200
+  adk_rate_limit_backend_errors_total{surface="tool_gateway"} 1
+
+notes
+-----
+- `build_rate_limiter` reads RATE_LIMIT_URL; unset keeps the in-process
+  limiter and leaves existing behavior unchanged.
+- The middleware awaits `acheck` when present and falls back to the sync
+  `check`, so both limiter types share one middleware.
+- Redis failures fall back to a per-process limiter, increment the error
+  counter and log one warning per process.

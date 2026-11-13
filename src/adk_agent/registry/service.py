@@ -33,7 +33,7 @@ from ..core import (
     manifest_digest,
 )
 from ..core.artifact import MAX_ARTIFACT_BYTES, MEDIA_TYPE
-from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
+from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .artifacts import ArtifactStoreError
 from .file import RegistryConflict, RegistryError, RegistryIntegrityError
 from .reports import EvalReportConflict
@@ -416,7 +416,7 @@ def build_registry_service_app(
     if rate_limit is not None:
         app.add_middleware(
             RateLimitMiddleware,
-            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            limiter=build_rate_limiter(rate_limit, surface="registry"),
             surface="registry",
         )
     if oidc is not None:

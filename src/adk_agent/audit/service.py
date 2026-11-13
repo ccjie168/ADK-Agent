@@ -17,7 +17,7 @@ from ..auth import (
     resolve_http_auth,
 )
 from ..core import AuditEvent, IdentityProvider
-from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
+from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .pipeline import query_events
 
 logger = logging.getLogger(__name__)
@@ -129,7 +129,7 @@ def build_audit_pipeline_app(
     if rate_limit is not None:
         app.add_middleware(
             RateLimitMiddleware,
-            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            limiter=build_rate_limiter(rate_limit, surface="audit"),
             surface="audit",
         )
     if oidc is not None:

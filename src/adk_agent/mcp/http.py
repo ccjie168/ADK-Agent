@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from ..auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from ..core import IdentityProvider
 from ..metrics import MetricsRegistry
-from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
+from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 
 
 def resolve_port(port: int | None, default: int = 8000) -> int:
@@ -65,7 +65,7 @@ def build_http_app(
     if rate_limit is not None:
         app.add_middleware(
             RateLimitMiddleware,
-            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            limiter=build_rate_limiter(rate_limit, surface="mcp", metrics=metrics),
             surface="mcp",
             metrics=metrics,
             exempt=frozenset({"/healthz", "/metrics"}),

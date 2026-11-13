@@ -294,6 +294,7 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - 计数键是 principal 的 `tenant:subject`；没有 principal 的模式（静态 token、未鉴权）用客户端地址。
 - 固定窗口。超过上限返回 429 `{"error":"rate_limited"}`，并带 `Retry-After` 秒数。
 - `/healthz` 不限流。暴露 `/metrics` 的服务也豁免 `/metrics`，避免抓取被限流。鉴权在限流之前，没有 token 的请求仍返回 401。
-- 计数在进程内，多副本时每个副本各算一份。跨副本限流交给入口网关或反向代理。
+- 计数默认在进程内。设置 `RATE_LIMIT_URL`（`redis://` 或 `rediss://`）后改用 Redis 共享计数，副本间共享一个窗口；未设置时行为不变。
+- Redis 不可达时退回进程内计数并记 `adk_rate_limit_backend_errors_total{surface}`，不会因为缓存故障拒绝全部请求。缺少 `redis` 客户端时配置了 URL 的启动会失败并提示安装 `adk-agent[redis]`。
 - MCP 的 streamable-http 也支持这两个参数，计数键优先用 OIDC principal，否则用客户端地址；`/healthz` 和 `/metrics` 豁免。A2A 端点只支持静态 token，按客户端地址计数，无豁免路径。
 - 拒绝计数见 `metrics.md`。

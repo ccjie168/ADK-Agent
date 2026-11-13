@@ -18,7 +18,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from .auth import BearerAuthMiddleware, resolve_http_auth
 from .core import Principal
 from .mcp.http import resolve_port
-from .ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
+from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .runtime.audit_proxy import wrap_runner
 from .tracing import resolve_trace_id
 
@@ -123,7 +123,7 @@ def build_a2a_app(
     if rate_limit is not None:
         app.add_middleware(
             RateLimitMiddleware,
-            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            limiter=build_rate_limiter(rate_limit, surface="a2a"),
             surface="a2a",
             exempt=frozenset(),
         )

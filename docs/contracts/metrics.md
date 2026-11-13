@@ -20,6 +20,7 @@ A2A 目前没有 metrics 端点。
 - `adk_model_calls_total{provider,status}` 和 `adk_model_call_duration_seconds{provider}`：模型网关。
 - `adk_model_breaker_short_circuits_total{provider}`：熔断器打开期间被直接拒绝的调用数。
 - `adk_tool_calls_total{tool,status}` 和 `adk_tool_call_duration_seconds{tool}`：工具网关。
+- `adk_rate_limit_backend_errors_total{surface}`：Redis 限流后端失败后退回进程内计数的次数。
 - `adk_http_rate_limited_total{surface}`：入口限流拒绝计数。`surface` 是 `console`、`model_gateway`、`tool_gateway` 或 `mcp`（只有带 `--metrics` 的 MCP 服务才有 `/metrics`）。审计服务和 A2A 没有 `/metrics`，不记录。
 
 ## 聚合
