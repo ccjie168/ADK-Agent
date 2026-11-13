@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..core import AgentManifest, PublishedAgent, manifest_digest
+from ..core import AgentArtifact, AgentManifest, PublishedAgent, manifest_digest
 
 
 def load_manifest(path: str | Path) -> AgentManifest:
@@ -15,7 +15,12 @@ def load_manifest(path: str | Path) -> AgentManifest:
     return AgentManifest.model_validate(data)
 
 
-def published_from(manifest: AgentManifest, *, now: datetime | None = None) -> PublishedAgent:
+def published_from(
+    manifest: AgentManifest,
+    *,
+    artifact: AgentArtifact | None = None,
+    now: datetime | None = None,
+) -> PublishedAgent:
     """Build the registry record. The signature is an integrity marker in M1."""
     digest = manifest_digest(manifest)
     return PublishedAgent(
@@ -23,4 +28,5 @@ def published_from(manifest: AgentManifest, *, now: datetime | None = None) -> P
         digest=digest,
         signature=f"sha256:{digest}",
         published_at=now or datetime.now(timezone.utc),
+        artifact=artifact,
     )

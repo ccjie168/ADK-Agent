@@ -1,6 +1,6 @@
 # SLICE-066 发布带工件与签名
 
-状态: planned
+状态: merged
 依据: ADR-0008 第 1、2、4、5 条，SLICE-064，SLICE-065，`docs/contracts/cli.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -20,7 +20,7 @@
 - `src/adk_agent/registry/packaging.py`
 - `src/adk_agent/registry/signing.py`
 - `tests/registry/test_packaging.py`
-- `tests/registry/test_signing.py`
+- `tests/registry/test_artifact_signing.py`
 - `tests/test_cli_publish_artifact.py`
 - `docs/evidence/SLICE-066-publish-artifact.txt`
 
@@ -54,25 +54,25 @@ publish --artifact ... --key ... --key-id ...
 
 ## 完成判据（可执行）
 
-- [ ] 打包是字节级确定的 -> `tests/registry/test_packaging.py::test_pack_is_deterministic`
-- [ ] 只打包允许的文件 -> `tests/registry/test_packaging.py::test_pack_includes_allowed_files`
-- [ ] zip 条目时间与权限固定 -> `tests/registry/test_packaging.py::test_zip_entries_are_normalized`
-- [ ] 缺 manifest 或入口被拒 -> `tests/registry/test_packaging.py::test_pack_requires_manifest_and_entrypoint`
-- [ ] 读取 zip 校验 manifest -> `tests/registry/test_packaging.py::test_read_zip_checks_manifest`
-- [ ] 签名可验、篡改失败 -> `tests/registry/test_signing.py::test_sign_and_verify`
-- [ ] 错误公钥验签失败 -> `tests/registry/test_signing.py::test_wrong_key_fails`
-- [ ] 发布带工件写入注册表与 store -> `tests/test_cli_publish_artifact.py::test_publish_with_artifact`
-- [ ] zip 输入发布 -> `tests/test_cli_publish_artifact.py::test_publish_with_zip`
-- [ ] 缺 key 或不给 store 退出 1 -> `tests/test_cli_publish_artifact.py::test_publish_requires_key`
-- [ ] manifest 不符的 zip 被拒 -> `tests/test_cli_publish_artifact.py::test_publish_rejects_mismatched_zip`
-- [ ] 不带工件的发布不变 -> 既有 `tests/registry/*` 全过
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 打包是字节级确定的 -> `tests/registry/test_packaging.py::test_pack_is_deterministic`
+- [x] 只打包允许的文件 -> `tests/registry/test_packaging.py::test_pack_includes_allowed_files`
+- [x] zip 条目时间与权限固定 -> `tests/registry/test_packaging.py::test_zip_entries_are_normalized`
+- [x] 缺 manifest 或入口被拒 -> `tests/registry/test_packaging.py::test_pack_requires_manifest_and_entrypoint`
+- [x] 读取 zip 校验 manifest -> `tests/registry/test_packaging.py::test_read_zip_checks_manifest`
+- [x] 签名可验、篡改失败 -> `tests/registry/test_artifact_signing.py::test_sign_and_verify`
+- [x] 错误公钥验签失败 -> `tests/registry/test_artifact_signing.py::test_wrong_key_fails`
+- [x] 发布带工件写入注册表与 store -> `tests/test_cli_publish_artifact.py::test_publish_with_artifact`
+- [x] zip 输入发布 -> `tests/test_cli_publish_artifact.py::test_publish_with_zip`
+- [x] 缺 key 或不给 store 退出 1 -> `tests/test_cli_publish_artifact.py::test_publish_requires_key`
+- [x] manifest 不符的 zip 被拒 -> `tests/test_cli_publish_artifact.py::test_publish_rejects_mismatched_zip`
+- [x] 不带工件的发布不变 -> 既有 `tests/registry/*` 全过
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.registry import pack_agent` -> 当前 `ImportError`
-- [ ] 反例 2：`publish --artifact ...` -> 当前 argparse 退出 2（参数不存在）
-- [ ] 反例 3：工件字节与声明摘要不符仍发布 -> 由 `test_publish_with_artifact` 的反向断言（store 内摘要一致）覆盖
+- [x] 反例 1：`from adk_agent.registry import pack_agent` -> 当前 `ImportError`
+- [x] 反例 2：`publish --artifact ...` -> 当前 argparse 退出 2（参数不存在）
+- [x] 反例 3：工件字节与声明摘要不符仍发布 -> 由 `test_publish_with_artifact` 的反向断言（store 内摘要一致）覆盖
 
 ## 契约（如涉及对外接口）
 
@@ -94,6 +94,6 @@ publish --artifact ... --key ... --key-id ...
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-066-publish-artifact.txt` 的 red 段
+- 实现后绿: 同文件 green 段，19 个新用例与全量 784 个用例通过
+- 实机: 同文件 live 段。真 CLI 发布目录工件，记录里的 digest、大小、key_id 正确，store 字节重新哈希一致，Ed25519 签名独立验签通过；同一工件再发到真 Postgres 的 `adk_artifacts`，摘要与大小一致

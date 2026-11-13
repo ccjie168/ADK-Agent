@@ -20,6 +20,7 @@ gemini = ["google-genai>=2.0"]
 claude = ["anthropic>=0.78"]
 http = ["uvicorn>=0.30"]
 oidc = ["PyJWT[crypto]>=2,<3"]
+publish = ["cryptography>=42"]
 dev = [
     "pytest>=8.0",
     "ruff",

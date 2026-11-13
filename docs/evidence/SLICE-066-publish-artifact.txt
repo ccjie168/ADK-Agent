@@ -11,3 +11,57 @@ E   ImportError: cannot import name 'pack_agent' from 'adk_agent.registry'
 $ adk-agent publish examples/minimal/manifest.json --artifact .
 adk-agent: error: unrecognized arguments: --artifact .
 exit=2
+
+== green: targeted tests ==
+$ python -m pytest tests/registry/test_packaging.py tests/registry/test_artifact_signing.py tests/test_cli_publish_artifact.py -q
+19 passed in 2.16s
+
+$ python -m pytest -q
+784 passed, 16 skipped in 44.34s
+
+Gate findings: the new signing test basename collided with tests/audit/test_signing.py (pytest
+import mismatch), so it was renamed test_artifact_signing.py; ruff format also reformatted it.
+
+== live: real CLI publish with a directory artifact ==
+$ adk-agent publish project/manifest.json --registry .../registry \
+    --artifact .../project --key .../key.pem --key-id publisher-1 --artifact-dir .../store
+published acme/bot@1.0.0 sha256:fb229817acf6...
+artifact sha256:e6bbe665fc20...
+
+record artifact: sha256:e6bbe665fc204ef74792c75bd7306dcc7fc7f980773ea2cf2c8ceeba987e4b26 450 publisher-1
+stored digest matches: True size 450
+signature verifies: True          (Ed25519, public key from the same key pair)
+exit=0
+
+$ publish --artifact ... (no --key)
+publish failed: --artifact requires --key and --key-id        exit=1
+
+== live: ARTIFACT_URL points at real Postgres 15 ==
+$ ARTIFACT_URL=postgresql://postgres:***@127.0.0.1:55432/adk adk-agent publish ... (same project)
+published acme/bot@1.0.0 sha256:fb229817acf6...
+artifact sha256:e6bbe665fc20...
+$ psql> select digest, size, octet_length(bytes) from adk_artifacts;
+sha256:e6bbe665fc20...|450|450
+
+== reading ==
+- The same project produced the same artifact digest against both stores, so packaging is
+  deterministic in practice, not only in the unit test.
+- The signature covers the digest; the stored bytes re-hash to it.
+- Publishing without --artifact is untouched: no store and no key are required.
+- Orphan risk: bytes are stored before the registry write, so a registry conflict can leave an
+  unreferenced blob. It is inert and can be garbage-collected later.
+
+== full gate ==
+$ python scripts/check.py --full
+784 passed, 16 skipped in 43.62s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS

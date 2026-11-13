@@ -277,6 +277,49 @@ def _audit_query(args: argparse.Namespace) -> AuditQuery | None:
     return None
 
 
+def _publish_artifact(args: argparse.Namespace, manifest: Any) -> Any:
+    from .core import AgentArtifact
+    from .registry import (
+        FileArtifactStore,
+        load_manifest,
+        load_private_key,
+        pack_agent,
+        read_artifact_zip,
+        sign_digest,
+    )
+    from .registry.artifacts import artifact_digest
+    from .registry.artifacts_postgres import PostgresArtifactStore
+
+    if args.artifact is None:
+        if args.key is not None or args.key_id is not None or args.artifact_dir is not None:
+            raise ValueError("--key, --key-id and --artifact-dir require --artifact")
+        return None
+    if not args.key or not args.key_id:
+        raise ValueError("--artifact requires --key and --key-id")
+    source = Path(args.artifact)
+    if source.is_dir():
+        data = pack_agent(source)
+        inner = load_manifest(source / "manifest.json")
+    else:
+        data, inner = read_artifact_zip(source)
+    if inner != manifest:
+        raise ValueError("artifact manifest does not match the published manifest")
+    url = os.environ.get("ARTIFACT_URL")
+    if bool(args.artifact_dir) == bool(url):
+        raise ValueError("set exactly one of --artifact-dir or ARTIFACT_URL")
+    key = load_private_key(args.key)
+    digest = artifact_digest(data)
+    artifact = AgentArtifact(
+        digest=digest,
+        size=len(data),
+        signature=sign_digest(digest, key),
+        key_id=args.key_id,
+    )
+    store = PostgresArtifactStore(url) if url else FileArtifactStore(args.artifact_dir)
+    asyncio.run(store.put(artifact, data))
+    return artifact
+
+
 def _quota_settings(
     args: argparse.Namespace,
 ) -> tuple[QuotaManager | None, QuotaConfig | None]:
@@ -608,6 +651,26 @@ def main(argv: list[str] | None = None) -> None:
         "--eval-report",
         default=None,
         help="path to an EvalReport JSON file (required when the manifest declares eval_suite)",
+    )
+    p_publish.add_argument(
+        "--artifact",
+        default=None,
+        help="agent project directory or artifact zip to attach",
+    )
+    p_publish.add_argument(
+        "--key",
+        default=None,
+        help="PEM Ed25519 private key used to sign the artifact digest",
+    )
+    p_publish.add_argument(
+        "--key-id",
+        default=None,
+        help="key id recorded with the artifact signature",
+    )
+    p_publish.add_argument(
+        "--artifact-dir",
+        default=None,
+        help="content-addressed directory for artifact bytes",
     )
 
     p_eval = sub.add_parser("eval", help="run an eval suite against agents")
@@ -987,8 +1050,9 @@ def main(argv: list[str] | None = None) -> None:
                 else None
             )
             enforce_eval_gate(manifest, report)
+            artifact = _publish_artifact(args, manifest)
             registry = FileAgentRegistry(args.registry)
-            stored = asyncio.run(registry.publish(published_from(manifest)))
+            stored = asyncio.run(registry.publish(published_from(manifest, artifact=artifact)))
             if report is not None:
                 asyncio.run(
                     FileEvalReportStore(args.registry).put(
@@ -1002,6 +1066,8 @@ def main(argv: list[str] | None = None) -> None:
             f"published {stored.manifest.tenant}/{stored.manifest.id}@{stored.manifest.version} "
             f"sha256:{stored.digest}"
         )
+        if stored.artifact is not None:
+            print(f"artifact {stored.artifact.digest}")
     elif args.cmd == "eval":
         from google.adk.runners import Runner
         from google.adk.sessions import InMemorySessionService
