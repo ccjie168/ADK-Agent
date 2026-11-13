@@ -2,12 +2,12 @@
 
 更新日期: 2026-11-13
 分支: master
-最新提交: `1b3b5d5` feat(console): show artifact trust in the registry (SLICE-069)
+最新提交: `PENDING` feat(registry): add the Postgres agent registry (SLICE-070)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
 
-企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线、服务面 OIDC 接线、MCP HTTP 认证、MCP principal 注入、共享配额、审批收件箱、MCP 运行审计、指标与 trace、A2A 运行审计、审批过期、服务指标端点、审批归档、配额行级隔离、审计轮转签名、模型熔断、文件状态备份恢复、压测基线、SSE 有界缓冲、入口限流、MCP/A2A 限流、审计密钥轮换、可选的会话租户隔离和审计只读查询和控制台共享审计、工件类型、工件存储、带签名发布、验签加载、注册表启动和市场视图三十四个切片。本地门禁全绿。OIDC 身份链路完整，多副本配额在 Postgres 上共享并由 RLS 约束，审批可以跨进程走通并有截止时间和归档，MCP 和 A2A 调用都有审计和配额，控制台、两个网关和 MCP 都有 Prometheus 指标，trace 能跨边界传播，审计链支持分段和 HMAC 验签，模型 provider 有熔断，注册表和审计可以打包备份并安全恢复，配额与审计吞吐有可复现的压测基线，控制台 SSE 在慢客户端下内存有界且会报告丢弃数，控制台、三个独立服务、MCP 和 A2A 都按调用方限流，审计签名密钥可轮换而不作废旧记录，会话可以按租户隔离，审计服务可按租户查询事件，控制台的审计与运行面板读同一份共享数据，工件可按 digest 存在文件或 Postgres，发布时可用 Ed25519 签名，注册的工件可按引用验签加载成 agent，控制台与 MCP 可直接从注册表启动，市场页显示工件摘要与验签状态，并附演示种子与截图。可做内部试点，未达对外多租户生产标准。
+企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线、服务面 OIDC 接线、MCP HTTP 认证、MCP principal 注入、共享配额、审批收件箱、MCP 运行审计、指标与 trace、A2A 运行审计、审批过期、服务指标端点、审批归档、配额行级隔离、审计轮转签名、模型熔断、文件状态备份恢复、压测基线、SSE 有界缓冲、入口限流、MCP/A2A 限流、审计密钥轮换、可选的会话租户隔离和审计只读查询和控制台共享审计、工件类型、工件存储、带签名发布、验签加载、注册表启动和市场视图、Postgres 注册表三十五个切片。本地门禁全绿。OIDC 身份链路完整，多副本配额在 Postgres 上共享并由 RLS 约束，审批可以跨进程走通并有截止时间和归档，MCP 和 A2A 调用都有审计和配额，控制台、两个网关和 MCP 都有 Prometheus 指标，trace 能跨边界传播，审计链支持分段和 HMAC 验签，模型 provider 有熔断，注册表和审计可以打包备份并安全恢复，配额与审计吞吐有可复现的压测基线，控制台 SSE 在慢客户端下内存有界且会报告丢弃数，控制台、三个独立服务、MCP 和 A2A 都按调用方限流，审计签名密钥可轮换而不作废旧记录，会话可以按租户隔离，审计服务可按租户查询事件，控制台的审计与运行面板读同一份共享数据，工件可按 digest 存在文件或 Postgres，发布时可用 Ed25519 签名，注册的工件可按引用验签加载成 agent，控制台与 MCP 可直接从注册表启动，市场页显示工件摘要与验签状态，并附演示种子与截图，已发布版本可从共享 Postgres 读写而不依赖共享卷。可做内部试点，未达对外多租户生产标准。
 
 ## 里程碑
 
@@ -69,6 +69,7 @@
 | SLICE-067 | 工件加载与验签 | `4427764` |
 | SLICE-068 | 从注册表启动（控制台与 MCP） | `3938322` |
 | SLICE-069 | 市场视图与工件状态（UI-3） | `1b3b5d5` |
+| SLICE-070 | Postgres 注册表 | `PENDING` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
@@ -76,8 +77,8 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 821 passed, 16 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 821 passed, 16 skipped，9 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 822 passed, 23 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS（测试集合同 `--fast`）
 - 本轮未推送，CI 未运行。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
 13 个 skip 是：7 条 Postgres 配额用例、4 条 RLS 用例、1 条 Postgres 会话用例（都需 `TEST_POSTGRES_URL`）、以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。设 `TEST_POSTGRES_URL` 后 11 条配额和 RLS 用例会跑，本地 `postgres:15-alpine` 已验证全过。CI 不装 `a2a-sdk`，另有 4 条 A2A 用例按条件跳过。

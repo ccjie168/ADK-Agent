@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import importlib
 import logging
 import time
@@ -12,6 +11,7 @@ from types import TracebackType
 from typing import Any
 
 from ..core import QuotaExceeded, QuotaManager, QuotaPolicy
+from ..pg import LazyPool
 from .quota import InMemoryQuotaManager
 
 logger = logging.getLogger(__name__)
@@ -69,53 +69,18 @@ class PostgresQuotaManager:
         self._dsn = dsn
         self._clock = clock
         self._lease_seconds = lease_seconds
-        self._pool: Any | None = None
-        self._pool_loop: asyncio.AbstractEventLoop | None = None
-        self._lock: asyncio.Lock | None = None
-        self._lock_loop: asyncio.AbstractEventLoop | None = None
+        self._pool = LazyPool(
+            dsn,
+            what="quota",
+            unavailable=QuotaStoreUnavailable,
+            setup=self._ensure_schema,
+        )
 
     def reserve(self, tenant: str, policy: QuotaPolicy) -> _Reservation:
         return _Reservation(self, tenant, policy)
 
     async def _ensure_pool(self) -> Any:
-        loop = asyncio.get_running_loop()
-        if self._pool is not None and self._pool_loop is loop:
-            return self._pool
-        if self._lock is None or self._lock_loop is not loop:
-            self._lock = asyncio.Lock()
-            self._lock_loop = loop
-            self._pool = None
-            self._pool_loop = None
-        async with self._lock:
-            if self._pool is not None and self._pool_loop is loop:
-                return self._pool
-            pool = await self._open_pool()
-            self._pool = pool
-            self._pool_loop = loop
-            return pool
-
-    async def _open_pool(self) -> Any:
-        try:
-            asyncpg = _import_module("asyncpg")
-        except ImportError as exc:
-            raise QuotaStoreUnavailable("asyncpg is not installed") from exc
-        try:
-            pool = await asyncpg.create_pool(self._dsn, min_size=1, max_size=5)
-        except Exception as exc:  # noqa: BLE001
-            raise QuotaStoreUnavailable(
-                f"could not open the quota database ({type(exc).__name__})"
-            ) from exc
-        try:
-            await self._ensure_schema(pool)
-        except Exception as exc:  # noqa: BLE001
-            try:
-                await pool.close()
-            except Exception:  # noqa: BLE001
-                logger.exception("failed to close the quota pool during setup")
-            raise QuotaStoreUnavailable(
-                f"could not initialize the quota schema ({type(exc).__name__})"
-            ) from exc
-        return pool
+        return await self._pool.get()
 
     async def _ensure_schema(self, pool: Any) -> None:
         async with pool.acquire() as conn:

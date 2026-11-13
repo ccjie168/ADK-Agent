@@ -1,0 +1,70 @@
+SLICE-070 Postgres registry
+===========================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/registry/test_registry_postgres.py -q --noconftest
+=================================== ERRORS ====================================
+__________ ERROR collecting tests/registry/test_registry_postgres.py __________
+ImportError while importing test module 'tests\registry\test_registry_postgres.py'.
+tests\registry\test_registry_postgres.py:17: in <module>
+    from adk_agent.registry import (
+E   ImportError: cannot import name 'PostgresAgentRegistry' from 'adk_agent.registry'
+ERROR tests/registry/test_registry_postgres.py
+1 error in 1.66s
+
+green, live Postgres 15-alpine at 127.0.0.1:55432
+-------------------------------------------------
+$ TEST_POSTGRES_URL='postgresql://adk:adk@127.0.0.1:55432/adk' \
+    ./.venv/Scripts/python.exe -m pytest tests/registry/test_registry_postgres.py -q
+........                                                                 [100%]
+8 passed in 4.01s
+
+affected suites on the same database
+$ TEST_POSTGRES_URL='postgresql://adk:adk@127.0.0.1:55432/adk' \
+    ./.venv/Scripts/python.exe -m pytest tests/registry tests/runtime/test_quota_postgres.py \
+    tests/runtime/test_sessions.py tests/test_cli_quota.py tests/test_console_quota.py -q
+93 passed in 6.75s
+
+live schema
+$ docker exec adk-postgres-070 psql -U adk -d adk -c '\d adk_agent_versions'
+                      Table "public.adk_agent_versions"
+     Column      |           Type           | Collation | Nullable | Default
+-----------------+--------------------------+-----------+----------+---------
+ tenant          | text                     |           | not null |
+ agent_id        | text                     |           | not null |
+ version         | text                     |           | not null |
+ digest          | text                     |           | not null |
+ artifact_digest | text                     |           |          |
+ record          | jsonb                    |           | not null |
+ published_at    | timestamp with time zone |           | not null |
+Indexes:
+    "adk_agent_versions_pkey" PRIMARY KEY, btree (tenant, agent_id, version)
+    "adk_agent_versions_tenant_idx" btree (tenant, published_at DESC)
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+822 passed, 23 skipped in 43.51s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+notes
+-----
+- The lazy pool moved to src/adk_agent/pg.py. The artifact store and the quota
+  store now share it, so the registry is the third caller of one implementation
+  rather than a third copy.
+- The 7 new live cases skip without TEST_POSTGRES_URL, which is why the skipped
+  count went from 16 to 23.
