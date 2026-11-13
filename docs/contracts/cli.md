@@ -49,6 +49,7 @@
 - 默认 provider 是 `litellm`。`--provider vllm` 需要 `--vllm-url` 或 `$VLLM_BASE_URL`。
 - 只有 `/healthz` 开放。`POST /v1/complete` 需要 bearer token，非回环地址没 token 拒绝启动。
 - 策略拒绝返回 403 `{"error":"model_denied"}`，provider 失败返回 502 `{"error":"model_call_failed"}`。
+- `GET /metrics` 需要 token，指标见 `metrics.md`。
 - 给了 `--audit-file` 时每个 `model.call` 事件追加一行 JSON。
 - 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。
 - `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
@@ -81,6 +82,7 @@
 - 只有 `/healthz` 开放。`POST /v1/invoke` 需要 bearer token，非回环地址没 token 拒绝启动。
 - 授权以 grants 过线，服务端用 `GrantPolicyEngine` 判定。拒绝和未注册工具返回 403 `{"error":"tool_denied"}`。
 - 执行失败返回 502 `{"error":"tool_call_failed"}`，输出不可 JSON 序列化返回 502 `{"error":"tool_output_invalid"}`。
+- `GET /metrics` 需要 token，指标见 `metrics.md`。
 - 给了 `--audit-file` 时每个 `tool.call` 事件追加一行 JSON。
 - 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。
 - `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
@@ -100,16 +102,18 @@
 - OIDC 模式下，agent 运行的用户 id 是 token 的 `subject`，会话按 subject 隔离。创建会话时把 `principal` 写进会话 state，键名是 `principal`。
 - 静态 token 和未鉴权模式仍使用 ADK 的 `mcp_user`。
 
-## `adk-agent serve` / `serve-many` 的审计与配额
+## `adk-agent serve` / `serve-many` 的审计、配额与指标
 
-两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR` 和 `--quota-config FILE`。
+两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE` 和 `--metrics`。
 
 - 每次 MCP 工具调用在 agent 运行前后写一条 `agent.run` 审计。`target` 是 `<agent>@dev`，`args_hash` 是请求文本的哈希，成功时写 `result_hash`。
 - 运行失败写 `status=error`，`error_code` 是异常类名。配额用尽写 `status=denied`、`error_code=quota_exceeded`，并且不运行 agent。
 - tenant 取 token 的 principal。没有 principal 的模式（stdio 和静态 token）用 `local`，principal 是 `local` 下的 `mcp_user`。
 - `--quota-config` 见 `quota_config.schema.json`，只有列出的租户受限制。`QUOTA_URL` 选择共享后端，规则同控制台。缺 `asyncpg` 时退出 1。
 - `--audit-file` 和 `--audit-url` 互斥，同时给退出 2。审计 token 规则同模型网关。
-- 配置了审计或配额时，`serve` 改用 `serve-many` 的单 agent 形态，以获得同样的运行包装。
+- `--metrics` 在 streamable-http 服务上暴露 `GET /metrics`，并记录运行计数、耗时和配额拒绝。stdio 下只计数，没有端点。
+- 指标名和聚合边界见 `metrics.md`。聚合由抓取端做，应用不跨副本共享计数。
+- 配置了审计、配额或指标时，`serve` 改用 `serve-many` 的单 agent 形态，以获得同样的运行包装。
 - 审计的 `trace_id` 取 `traceparent` 的 trace-id，规则见 `tracing.md`。没有时每次调用新生成。
 - `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
 
