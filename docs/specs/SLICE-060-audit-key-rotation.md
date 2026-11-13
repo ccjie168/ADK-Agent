@@ -1,6 +1,6 @@
 # SLICE-060 审计签名密钥轮换
 
-状态: planned
+状态: merged
 依据: SLICE-053，`docs/contracts/audit_record.schema.json`，`docs/contracts/cli.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -47,25 +47,25 @@ SigningKeyring:
 
 ## 完成判据（可执行）
 
-- [ ] 新记录带 `kid` 且用密钥环可验 -> `tests/audit/test_key_rotation.py::test_records_carry_kid`
-- [ ] 未知 `kid` 被拒 -> `tests/audit/test_key_rotation.py::test_unknown_kid_rejected`
-- [ ] 无 `kid` 的旧记录用 `legacy` 验 -> `tests/audit/test_key_rotation.py::test_legacy_key_for_old_records`
-- [ ] 没给 `legacy` 时旧记录被拒 -> `tests/audit/test_key_rotation.py::test_missing_legacy_rejected`
-- [ ] 轮换后新旧记录一起通过 -> `tests/audit/test_key_rotation.py::test_rotation_keeps_both_keys`
-- [ ] 删掉旧密钥后旧记录被拒 -> `tests/audit/test_key_rotation.py::test_old_key_removal_detected`
-- [ ] 密钥环要求 active 存在 -> `tests/audit/test_key_rotation.py::test_keyring_requires_active_key`
-- [ ] 密钥环拒绝空密钥 -> `tests/audit/test_key_rotation.py::test_keyring_rejects_empty_key`
-- [ ] 密钥环拒绝非法 kid -> `tests/audit/test_key_rotation.py::test_keyring_rejects_bad_kid`
-- [ ] 管道拒绝同时给 keyring 和 signing_key -> `tests/audit/test_key_rotation.py::test_pipeline_rejects_two_key_modes`
-- [ ] `verify-audit` 用密钥环通过 -> `tests/audit/test_key_rotation.py::test_cli_verify_with_keyring`
-- [ ] 两个环境变量同时设置退出 1 -> `tests/audit/test_key_rotation.py::test_cli_rejects_both_env`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 新记录带 `kid` 且用密钥环可验 -> `tests/audit/test_key_rotation.py::test_records_carry_kid`
+- [x] 未知 `kid` 被拒 -> `tests/audit/test_key_rotation.py::test_unknown_kid_rejected`
+- [x] 无 `kid` 的旧记录用 `legacy` 验 -> `tests/audit/test_key_rotation.py::test_legacy_key_for_old_records`
+- [x] 没给 `legacy` 时旧记录被拒 -> `tests/audit/test_key_rotation.py::test_missing_legacy_rejected`
+- [x] 轮换后新旧记录一起通过 -> `tests/audit/test_key_rotation.py::test_rotation_keeps_both_keys`
+- [x] 删掉旧密钥后旧记录被拒 -> `tests/audit/test_key_rotation.py::test_old_key_removal_detected`
+- [x] 密钥环要求 active 存在 -> `tests/audit/test_key_rotation.py::test_keyring_requires_active_key`
+- [x] 密钥环拒绝空密钥 -> `tests/audit/test_key_rotation.py::test_keyring_rejects_empty_key`
+- [x] 密钥环拒绝非法 kid -> `tests/audit/test_key_rotation.py::test_keyring_rejects_bad_kid`
+- [x] 管道拒绝同时给 keyring 和 signing_key -> `tests/audit/test_key_rotation.py::test_pipeline_rejects_two_key_modes`
+- [x] `verify-audit` 用密钥环通过 -> `tests/audit/test_key_rotation.py::test_cli_verify_with_keyring`
+- [x] 两个环境变量同时设置退出 1 -> `tests/audit/test_key_rotation.py::test_cli_rejects_both_env`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.audit import SigningKeyring` -> 当前 `ImportError`
-- [ ] 反例 2：`AuditRecord(..., kid="k1")` -> 当前校验失败（字段不存在，`extra="forbid"`）
-- [ ] 反例 3：`verify_audit_file(path, keyring=...)` -> 当前 `TypeError`
+- [x] 反例 1：`from adk_agent.audit import SigningKeyring` -> 当前 `ImportError`
+- [x] 反例 2：`AuditRecord(..., kid="k1")` -> 当前校验失败（字段不存在，`extra="forbid"`）
+- [x] 反例 3：`verify_audit_file(path, keyring=...)` -> 当前 `TypeError`
 
 ## 契约（如涉及对外接口）
 
@@ -87,6 +87,6 @@ SigningKeyring:
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-060-audit-key-rotation.txt` 的 red 段
+- 实现后绿: 同文件 green 段，43 个审计用例通过，全量 704 passed
+- 实机: 同文件 live 段。旧密钥写的 3 条无 `kid` 记录，密钥环轮换后追加 2 条 `kid=k2`，带 `legacy` 的密钥环验证 5 条通过；删掉旧密钥在记录 0 报错；单密钥模式在记录 3 报错；两个环境变量同时设置退出 1

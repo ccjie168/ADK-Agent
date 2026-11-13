@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:  # pragma: no cover
+    from .audit import SigningKeyring
     from .core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
     from .ratelimit import RateLimit
 
@@ -211,6 +212,27 @@ def _identity_provider(args: argparse.Namespace) -> IdentityProvider | None:
     except Exception as exc:  # noqa: BLE001
         print(f"invalid oidc config: {exc}", file=sys.stderr)
         raise SystemExit(1) from None
+
+
+def _audit_signing() -> tuple[str | None, SigningKeyring | None]:
+    from .audit import KeyringError, SigningKeyring
+
+    signing_key = os.environ.get("ADK_AUDIT_SIGNING_KEY")
+    keyring_value = os.environ.get("ADK_AUDIT_KEYRING")
+    if signing_key is not None and keyring_value is not None:
+        print(
+            "ADK_AUDIT_KEYRING and ADK_AUDIT_SIGNING_KEY cannot be set together",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if keyring_value is None:
+        return signing_key, None
+    try:
+        keyring = SigningKeyring.from_env(keyring_value)
+    except KeyringError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
+    return None, keyring
 
 
 def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
@@ -761,13 +783,14 @@ def main(argv: list[str] | None = None) -> None:
         if args.audit_max_records is not None and args.audit_max_records <= 0:
             print("--audit-max-records must be greater than 0", file=sys.stderr)
             raise SystemExit(1)
-        signing_key = os.environ.get("ADK_AUDIT_SIGNING_KEY")
+        signing_key, keyring = _audit_signing()
         oidc = _identity_provider(args)
         app = build_audit_pipeline_app(
             AuditPipeline(
                 args.out,
                 max_records=args.audit_max_records,
                 signing_key=signing_key,
+                keyring=keyring,
             ),
             host=args.host,
             auth_token=_auth_token(args),
@@ -782,9 +805,9 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "verify-audit":
         from .audit import AuditChainBroken, AuditSignatureInvalid, verify_audit_file
 
-        signing_key = os.environ.get("ADK_AUDIT_SIGNING_KEY")
+        signing_key, keyring = _audit_signing()
         try:
-            count = verify_audit_file(args.path, signing_key=signing_key)
+            count = verify_audit_file(args.path, signing_key=signing_key, keyring=keyring)
         except AuditSignatureInvalid as exc:
             print(f"audit signature invalid at record {exc.index}", file=sys.stderr)
             raise SystemExit(1) from None

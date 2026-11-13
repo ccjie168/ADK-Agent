@@ -59,3 +59,4 @@ class AuditRecord(BaseModel):
     prev_hash: str = Field(pattern=r"^([0-9a-f]{64})?$")
     hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    kid: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")

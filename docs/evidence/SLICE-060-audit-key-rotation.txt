@@ -14,3 +14,68 @@ ValidationError   (extra=forbid, no kid field)
 
 $ python -c "verify_audit_file('x', keyring=None)"
 TypeError: verify_audit_file() got an unexpected keyword argument 'keyring'
+
+== green: targeted tests ==
+$ python -m pytest tests/audit -q
+43 passed in 3.03s
+
+$ python -m pytest -q
+704 passed, 13 skipped in 40.69s
+
+The first gate run caught a mypy error in append (a local inferred str then assigned
+str | None); fixed with an explicit annotation.
+
+== live: rotate from a single key to a keyring ==
+1. Seeded 3 historical records with the legacy single key `key-one` (kid is null):
+$ python seed.py
+seeded 3 legacy records
+$ ADK_AUDIT_SIGNING_KEY=key-one adk-agent verify-audit audit.jsonl
+ok 3 records
+
+2. Started the real audit service with a keyring whose active key is k2 and whose
+   legacy key is k1:
+$ ADK_AUDIT_KEYRING='{"active":"k2","keys":{"k1":"key-one","k2":"key-two"},"legacy":"k1"}' \
+    ADK_AUDIT_TOKEN=... adk-agent serve-audit --out audit.jsonl --auth-token-env ADK_AUDIT_TOKEN
+$ python post.py
+202 {'hash': '9eff74...'}
+202 {'hash': '6d57c4...'}
+
+3. Record kids after rotation:
+0 None
+1 None
+2 None
+3 k2
+4 k2
+
+4. Verification matrix:
+$ ADK_AUDIT_KEYRING='{"active":"k2","keys":{"k1":"key-one","k2":"key-two"},"legacy":"k1"}' verify-audit
+ok 5 records
+$ ADK_AUDIT_KEYRING='{"active":"k2","keys":{"k2":"key-two"}}' verify-audit
+audit signature invalid at record 0        exit=1   (legacy key removed)
+$ ADK_AUDIT_SIGNING_KEY=key-one verify-audit
+audit signature invalid at record 3        exit=1   (kid records need the keyring)
+$ ADK_AUDIT_SIGNING_KEY=key-one ADK_AUDIT_KEYRING='...' verify-audit
+ADK_AUDIT_KEYRING and ADK_AUDIT_SIGNING_KEY cannot be set together   exit=1
+
+== reading ==
+- Rotation is additive: add the new key, point active at it, keep the old key, and set
+  legacy while history without a kid remains. Nothing is re-signed.
+- Removing a key too early fails closed at the first record that used it.
+- Error messages stay constant and never interpolate key material or kid values.
+- The record schema gained one optional field; the chain hash does not cover kid, so the
+  hash chain of existing records is untouched.
+
+== full gate ==
+$ python scripts/check.py --full
+704 passed, 13 skipped in 41.94s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS

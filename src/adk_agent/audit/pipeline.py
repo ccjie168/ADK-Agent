@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 from ..core import AuditEvent, AuditRecord
+from .keyring import SigningKeyring
 
 
 class AuditChainBroken(Exception):
@@ -79,8 +80,12 @@ def load_records(path: str | Path) -> list[AuditRecord]:
 
 
 def _scan_segments(
-    path: str | Path, signing_key: str | None = None
+    path: str | Path,
+    signing_key: str | None = None,
+    keyring: SigningKeyring | None = None,
 ) -> tuple[int, dict[str, str], int]:
+    if signing_key is not None and keyring is not None:
+        raise ValueError("pass signing_key or keyring, not both")
     file = Path(path)
     last: dict[str, str] = {}
     index = 0
@@ -93,8 +98,18 @@ def _scan_segments(
                 raise AuditChainBroken(index, tenant)
             if record_hash(record.event, record.prev_hash) != record.hash:
                 raise AuditChainBroken(index, tenant)
-            if signing_key is not None:
-                expected = record_signature(record.hash, signing_key)
+            if keyring is not None:
+                key = keyring.key_for(record.kid)
+                if key is None:
+                    raise AuditSignatureInvalid(index, tenant)
+            elif signing_key is not None:
+                if record.kid is not None:
+                    raise AuditSignatureInvalid(index, tenant)
+                key = signing_key
+            else:
+                key = None
+            if key is not None:
+                expected = record_signature(record.hash, key)
                 if record.signature is None or not hmac.compare_digest(record.signature, expected):
                     raise AuditSignatureInvalid(index, tenant)
             last[tenant] = record.hash
@@ -104,9 +119,13 @@ def _scan_segments(
     return index, last, current_count
 
 
-def verify_audit_file(path: str | Path, signing_key: str | None = None) -> int:
+def verify_audit_file(
+    path: str | Path,
+    signing_key: str | None = None,
+    keyring: SigningKeyring | None = None,
+) -> int:
     """Recompute every link and signature. Return the record count or raise."""
-    return _scan_segments(path, signing_key)[0]
+    return _scan_segments(path, signing_key, keyring)[0]
 
 
 def _next_sequence(path: Path) -> int:
@@ -127,10 +146,14 @@ class AuditPipeline:
         *,
         max_records: int | None = None,
         signing_key: str | None = None,
+        keyring: SigningKeyring | None = None,
     ) -> None:
+        if signing_key is not None and keyring is not None:
+            raise ValueError("pass signing_key or keyring, not both")
         self.path = Path(path)
         self.max_records = max_records
         self.signing_key = signing_key
+        self.keyring = keyring
         self._lock = asyncio.Lock()
         _, self._last, self._count = _scan_segments(self.path)
         self._next_segment = _next_sequence(self.path)
@@ -153,15 +176,21 @@ class AuditPipeline:
                 self._rotate()
             prev_hash = self._last.get(event.tenant, "")
             digest = record_hash(event, prev_hash)
+            signing_key: str | None
+            if self.keyring is not None:
+                signing_key = self.keyring.keys[self.keyring.active]
+                kid = self.keyring.active
+            else:
+                signing_key = self.signing_key
+                kid = None
             record = AuditRecord(
                 event=event,
                 prev_hash=prev_hash,
                 hash=digest,
                 signature=(
-                    record_signature(digest, self.signing_key)
-                    if self.signing_key is not None
-                    else None
+                    record_signature(digest, signing_key) if signing_key is not None else None
                 ),
+                kid=kid,
             )
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as handle:
