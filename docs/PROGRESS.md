@@ -70,7 +70,7 @@
 | SLICE-068 | 从注册表启动（控制台与 MCP） | `3938322` |
 | SLICE-069 | 市场视图与工件状态（UI-3） | `1b3b5d5` |
 | SLICE-070 | Postgres 注册表 | `a04828b` |
-| SLICE-071 | 注册表控制面与客户端 | `PENDING` |
+| SLICE-071 | 注册表控制面与客户端 | `325078e` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
