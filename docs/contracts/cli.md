@@ -42,9 +42,13 @@
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。
 
-## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE]`
+## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--breaker-failures N] [--breaker-reset SECONDS] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE]`
 
 把模型网关作为独立服务运行。
+
+- 每个 provider 有独立的熔断器。连续失败 N 次后打开，`--breaker-failures` 默认 5，`--breaker-reset` 默认 30 秒。
+- 打开期间不调用 provider，直接返回 503 `{"error":"model_unavailable"}`。重置时间过后放行一次探测，成功关闭，失败重新打开。
+- 两个参数都必须大于 0，否则退出 1。短路计数见 `metrics.md`。
 
 - 默认 provider 是 `litellm`。`--provider vllm` 需要 `--vllm-url` 或 `$VLLM_BASE_URL`。
 - 只有 `/healthz` 开放。`POST /v1/complete` 需要 bearer token，非回环地址没 token 拒绝启动。

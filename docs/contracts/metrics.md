@@ -18,6 +18,7 @@ A2A 目前没有 metrics 端点。
 - `adk_agent_quota_denials_total{tenant,limit}`：配额拒绝计数，`limit` 是 `max_runs` 或 `max_concurrent`。
 - `adk_agent_plan_runs_total{plan,tenant,status}` 和 `adk_plan_duration_seconds{plan,tenant}`：只在注入同一个注册表时出现。
 - `adk_model_calls_total{provider,status}` 和 `adk_model_call_duration_seconds{provider}`：模型网关。
+- `adk_model_breaker_short_circuits_total{provider}`：熔断器打开期间被直接拒绝的调用数。
 - `adk_tool_calls_total{tool,status}` 和 `adk_tool_call_duration_seconds{tool}`：工具网关。
 
 ## 聚合
