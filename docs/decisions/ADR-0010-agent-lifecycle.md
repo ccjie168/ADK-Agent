@@ -1,6 +1,6 @@
 # ADR-0010 Agent 版本生命周期
 
-状态: Proposed   日期: 2026-11-14   签字: 待签
+状态: Accepted   日期: 2026-11-14   签字: Jie CAO（会话确认）
 
 ## 背景
 
@@ -80,9 +80,9 @@ ADR-0009 把已发布版本放进共享注册表，版本不可变、按 digest 
 - 退役后已运行的进程仍能服务一段时间，这是已知窗口，不是缺陷。
 - 后续切片：存储与 API、控制台与加载拦截、市场页徽标、CLI 命令。回滚与保留策略另立 ADR。
 
-## 待签确认
+## 确认记录
 
-请确认三点，确认后状态改为 Accepted：
+2026-11-14 会话确认，三点均按本 ADR 采纳：
 
 1. 三态与转换规则，`retired` 为终态，`deprecated` 可撤销。
 2. 独立表 `adk_agent_lifecycle`（文件实现对应 `<version>.lifecycle.json`），缺行视为 `published`，历史以 `agent.lifecycle` 审计为准。
