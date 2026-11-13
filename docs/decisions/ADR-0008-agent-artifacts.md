@@ -1,6 +1,6 @@
 # ADR-0008 Agent 工件与可插拔加载
 
-状态: Proposed   日期: 2026-11-13   签字: 待签
+状态: Accepted   日期: 2026-11-13   签字: Jie CAO（会话确认）
 
 ## 背景
 
@@ -50,9 +50,9 @@
 - ADR-0002 第 3 条"发布时签名"在这里首次真正落地，落到工件而不是 manifest。
 - 后续切片顺序：契约与类型、`ArtifactStore` 两个实现、发布带工件与签名、`InProcessArtifactLoader` 与验签、`load_agent` 接线、Postgres 注册表、控制面 API（ADR-0009）。
 
-## 待签确认
+## 确认记录
 
-请确认三点，确认后状态改为 Accepted：
+2026-11-13 会话确认，三点均按本 ADR 采纳：
 
 1. 工件用确定性 zip，标识为归档 sha256。
 2. 工件字节先存 Postgres（单件 8 MiB），不引入对象存储。
