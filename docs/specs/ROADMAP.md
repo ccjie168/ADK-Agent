@@ -142,6 +142,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-049 审批过期与提交提醒：`expires_at`、收件箱过期语义、`on_submit` 回调和控制台 410。已完成。
 - SLICE-050 服务指标端点：模型网关、工具网关和 MCP 的 `/metrics`，运行和调用计数。已完成。跨副本聚合交给抓取端。
 - SLICE-051 审批记录归档与删除：`prune` 和 `approvals prune` 子命令。已完成。
+- SLICE-052 配额表行级隔离：Postgres RLS、事务级租户设置。进行中。
 
 ## 完成定义
 
