@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-13
 分支: master
-最新提交: 待填（SLICE-055 文件状态备份与恢复）
+最新提交: `08b157a` feat(cli): back up and restore file state (SLICE-055)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
@@ -54,7 +54,7 @@
 | SLICE-052 | 配额表行级隔离（Postgres RLS） | `9f25c78` |
 | SLICE-053 | 审计轮转与签名 | `ac62f02` |
 | SLICE-054 | 模型调用熔断 | `4c576b5` |
-| SLICE-055 | 文件状态备份与恢复 | 待填 |
+| SLICE-055 | 文件状态备份与恢复 | `08b157a` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
