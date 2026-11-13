@@ -19,3 +19,65 @@ exit=2
 
 $ python -m pytest tests/test_loadtest.py -q
 3 failed, 12 passed   (run_sse missing, sse subcommand missing)
+
+== green: targeted tests ==
+$ python -m pytest tests/test_console_sse_buffer.py tests/test_loadtest.py \
+    tests/test_console_stream.py tests/test_console_quota.py -q
+30 passed in 2.47s
+
+$ python -m ruff format --check src/adk_agent/console.py scripts/loadtest.py
+$ python -m ruff check src/adk_agent/cli.py scripts/loadtest.py src/adk_agent/console.py
+All checks passed!
+
+== live: real uvicorn console, slow SSE client ==
+A console app built with build_console_app(sse_queue_size=16), served by uvicorn on an ephemeral
+port. A patched Runner emits 5000 tool calls plus a final text event, so the run produces 5003
+progress events. The httpx client sleeps 20 ms per received chunk.
+
+{"emitted_events": 5000, "queue_size": 16, "read_delay_s": 0.02,
+ "progress_received": 1199,
+ "done": {"reply": "final answer", "dropped": 3804, ...},
+ "elapsed_s": 37.504}
+exit=0   (1199 + 3804 = 5003; terminal event carried the reply)
+
+Inference, not measured: the previous unbounded queue would have held all 5003 events until the
+client drained them. The old build was not run again.
+
+== live: sse scenario, burst 10000 with queue 256 ==
+$ python scripts/loadtest.py sse --events 10000 --queue-size 256
+{"ok": 256, "denied": 9744, "peak_depth": 257, "throughput_per_s": 60015.005,
+ "latency_ms": {"p50": 0.124, "p95": 0.125, "p99": 0.125, "max": 0.125},
+ "invariants": [counts_balance true, depth_within_limit true]}
+exit=0
+
+== live: sse scenario, slow consumer (1 ms per event) ==
+$ python scripts/loadtest.py sse --events 10000 --queue-size 256 --consumer-delay-ms 1
+{"ok": 256, "denied": 9744, "peak_depth": 257, "throughput_per_s": 64.598,
+ "latency_ms": {"p50": 1949.781, "p95": 3756.171, "p99": 3913.263, "max": 3943.475},
+ "invariants": [counts_balance true, depth_within_limit true]}
+exit=0
+
+== reading ==
+- Drops depend on how far the producer outruns the client, not on total run length. A burst of N
+  events against a buffer of B keeps the newest B and drops N - B. The run never blocks on the UI.
+- The queue bound is exact: peak_depth is queue_size + 1 because the terminal event sits on top.
+- A slow consumer sees only the newest B events and a queue wait of seconds at 1 ms per event
+  (p50 1.95 s, p99 3.9 s). The dropped count on the terminal event tells the UI how much it missed.
+- The 20 ms-per-chunk live client received 1199 events instead of 16 because uvicorn drains the
+  generator into its socket buffer whenever the client reads a chunk, so the buffer only fills while
+  the socket is blocked. The bound held, and the terminal event always arrived.
+
+== full gate ==
+$ python scripts/check.py --full
+657 passed, 13 skipped in 40.38s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS

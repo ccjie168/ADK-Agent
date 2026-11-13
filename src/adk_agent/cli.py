@@ -431,6 +431,12 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="fallback approval expiry in seconds for requests without expires_at",
     )
+    p_console.add_argument(
+        "--sse-queue-size",
+        type=int,
+        default=512,
+        help="max buffered progress events per SSE stream (default: 512)",
+    )
     _add_http_args(p_console)
     _add_runtime_args(p_console)
 
@@ -733,6 +739,10 @@ def main(argv: list[str] | None = None) -> None:
         from .console import run_console
         from .registry import FileAgentRegistry, FileEvalReportStore
 
+        if args.sse_queue_size < 1:
+            print("--sse-queue-size must be at least 1", file=sys.stderr)
+            raise SystemExit(1)
+
         oidc = _identity_provider(args)
         quota, quota_config = _quota_settings(args)
         approvals = None
@@ -757,6 +767,7 @@ def main(argv: list[str] | None = None) -> None:
             quota=quota,
             quota_config=quota_config,
             approvals=approvals,
+            sse_queue_size=args.sse_queue_size,
         )
     elif args.cmd == "approvals":
         from .approvals import FileApprovalInbox

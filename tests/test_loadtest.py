@@ -127,6 +127,33 @@ def test_cli_writes_report(tmp_path, capsys):
     assert report["verify_records"] == 5
 
 
+def test_sse_slow_consumer_drops_oldest():
+    report = asyncio.run(loadtest.run_sse(events=100, queue_size=10))
+
+    assert report["scenario"] == "sse"
+    assert report["ok"] == 10
+    assert report["denied"] == 90
+    assert report["queue_size"] == 10
+    assert report["peak_depth"] <= 11
+    assert all(item["holds"] is True for item in report["invariants"])
+
+
+def test_sse_fast_consumer_keeps_all():
+    report = asyncio.run(loadtest.run_sse(events=20, queue_size=100))
+
+    assert report["ok"] == 20
+    assert report["denied"] == 0
+
+
+def test_cli_sse_report(capsys):
+    code = loadtest.main(["sse", "--events", "12", "--queue-size", "5"])
+
+    assert code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["ok"] == 5
+    assert report["denied"] == 7
+
+
 def test_cli_requires_arguments():
     with pytest.raises(SystemExit) as exc:
         loadtest.main(["quota"])

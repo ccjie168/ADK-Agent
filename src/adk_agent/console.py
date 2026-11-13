@@ -835,6 +835,45 @@ def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
+class ProgressBuffer:
+    """Bounded queue for progress events that never drops terminal events."""
+
+    def __init__(self, max_progress: int) -> None:
+        if max_progress < 1:
+            raise ValueError("max_progress must be at least 1")
+        self._max_progress = max_progress
+        self._queue: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()
+        self._progress = 0
+        self.dropped = 0
+        self.peak_depth = 0
+
+    @property
+    def depth(self) -> int:
+        return self._queue.qsize()
+
+    def _observe(self) -> None:
+        self.peak_depth = max(self.peak_depth, self._queue.qsize())
+
+    def put_progress(self, payload: dict) -> None:
+        if self._progress >= self._max_progress:
+            self._queue.get_nowait()
+            self.dropped += 1
+            self._progress -= 1
+        self._queue.put_nowait(("progress", payload))
+        self._progress += 1
+        self._observe()
+
+    async def put_terminal(self, kind: str, payload: dict) -> None:
+        await self._queue.put((kind, {**payload, "dropped": self.dropped}))
+        self._observe()
+
+    async def get(self) -> tuple[str, dict]:
+        item = await self._queue.get()
+        if item[0] == "progress":
+            self._progress -= 1
+        return item
+
+
 def _wrap_model(agent: Any, audit: ListAuditSink) -> None:
     """Route an agent's ADK model through the policy gateway."""
     model = getattr(agent, "model", None)
@@ -894,6 +933,7 @@ def build_console_app(
     quota_config: QuotaConfig | None = None,
     approvals: FileApprovalInbox | None = None,
     metrics: MetricsRegistry | None = None,
+    sse_queue_size: int = 512,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -1323,10 +1363,12 @@ def build_console_app(
         quota_policy = quota_config.tenants.get(caller.tenant) if quota_config else None
 
         async def events():
-            queue: asyncio.Queue[tuple[str, dict]] = asyncio.Queue()
+            buffer = ProgressBuffer(sse_queue_size)
 
             async def on_progress(event: ProgressEvent) -> None:
-                await queue.put(("progress", event.model_dump(mode="json")))
+                buffer.put_progress(event.model_dump(mode="json"))
+                # Let the response generator drain before the run emits again.
+                await asyncio.sleep(0)
 
             async def work() -> None:
                 try:
@@ -1339,14 +1381,14 @@ def build_console_app(
                         quota_policy=quota_policy,
                     )
                 except QuotaExceeded:
-                    await queue.put(("error", {"error": "quota_exceeded"}))
+                    await buffer.put_terminal("error", {"error": "quota_exceeded"})
                 except QuotaStoreUnavailable:
                     logger.exception(
                         "quota store unavailable: agent=%s run=%s",
                         name,
                         invocation.run_id,
                     )
-                    await queue.put(("error", {"error": "quota_unavailable"}))
+                    await buffer.put_terminal("error", {"error": "quota_unavailable"})
                 except Exception:  # noqa: BLE001
                     logger.exception(
                         "agent run failed: agent=%s session=%s run=%s",
@@ -1354,28 +1396,28 @@ def build_console_app(
                         session_id,
                         invocation.run_id,
                     )
-                    await queue.put(("error", {"error": "agent run failed"}))
+                    await buffer.put_terminal("error", {"error": "agent run failed"})
                 else:
-                    await queue.put(
-                        (
-                            "done",
-                            {
-                                "session_id": session_id,
-                                "reply": result.text,
-                                "run_id": result.run_id,
-                                "trace_id": result.trace_id,
-                            },
-                        )
+                    await buffer.put_terminal(
+                        "done",
+                        {
+                            "session_id": session_id,
+                            "reply": result.text,
+                            "run_id": result.run_id,
+                            "trace_id": result.trace_id,
+                        },
                     )
                 finally:
-                    await queue.put(("__end__", {}))
+                    await buffer.put_terminal("__end__", {})
 
             task = asyncio.create_task(work())
             try:
                 while True:
-                    kind, payload = await queue.get()
+                    kind, payload = await buffer.get()
                     if kind == "__end__":
                         break
+                    if kind == "error" and payload["dropped"] == 0:
+                        payload = {"error": payload["error"]}
                     yield _sse(kind, payload)
             finally:
                 if not task.done():
@@ -1421,6 +1463,7 @@ def run_console(
     quota_config: QuotaConfig | None = None,
     approvals: FileApprovalInbox | None = None,
     metrics: MetricsRegistry | None = None,
+    sse_queue_size: int = 512,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -1439,6 +1482,7 @@ def run_console(
         quota_config=quota_config,
         approvals=approvals,
         metrics=metrics,
+        sse_queue_size=sse_queue_size,
     )
 
     import uvicorn

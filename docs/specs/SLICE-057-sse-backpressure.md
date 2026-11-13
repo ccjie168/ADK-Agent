@@ -1,6 +1,6 @@
 # SLICE-057 SSE 慢客户端与有界进度队列
 
-状态: planned
+状态: merged
 依据: SLICE-036，SLICE-056，`docs/contracts/console.md`，`docs/contracts/cli.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -51,22 +51,22 @@ loadtest sse 报告:
 
 ## 完成判据（可执行）
 
-- [ ] 满时丢最旧，保留最新 -> `tests/test_console_sse_buffer.py::test_buffer_drops_oldest_progress`
-- [ ] 终结事件不占上限且带 `dropped` -> `tests/test_console_sse_buffer.py::test_terminal_is_never_dropped`
-- [ ] 峰值深度不超过上限 -> `tests/test_console_sse_buffer.py::test_peak_depth_is_bounded`
-- [ ] 容量小于 1 被拒 -> `tests/test_console_sse_buffer.py::test_buffer_rejects_bad_size`
-- [ ] 流路由用有界缓冲并在 `done` 里报 `dropped` -> `tests/test_console_sse_buffer.py::test_stream_reports_dropped`
-- [ ] 控制台 `--sse-queue-size 0` 退出 1 -> `tests/test_console_sse_buffer.py::test_console_rejects_zero_queue`
-- [ ] 慢消费者场景投递数等于上限、丢弃数守恒 -> `tests/test_loadtest.py::test_sse_slow_consumer_drops_oldest`
-- [ ] 消费者跟得上时不丢 -> `tests/test_loadtest.py::test_sse_fast_consumer_keeps_all`
-- [ ] `sse` CLI 输出报告 -> `tests/test_loadtest.py::test_cli_sse_report`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 满时丢最旧，保留最新 -> `tests/test_console_sse_buffer.py::test_buffer_drops_oldest_progress`
+- [x] 终结事件不占上限且带 `dropped` -> `tests/test_console_sse_buffer.py::test_terminal_is_never_dropped`
+- [x] 峰值深度不超过上限 -> `tests/test_console_sse_buffer.py::test_peak_depth_is_bounded`
+- [x] 容量小于 1 被拒 -> `tests/test_console_sse_buffer.py::test_buffer_rejects_bad_size`
+- [x] 流路由用有界缓冲并在 `done` 里报 `dropped` -> `tests/test_console_sse_buffer.py::test_stream_reports_dropped`
+- [x] 控制台 `--sse-queue-size 0` 退出 1 -> `tests/test_console_sse_buffer.py::test_console_rejects_zero_queue`
+- [x] 慢消费者场景投递数等于上限、丢弃数守恒 -> `tests/test_loadtest.py::test_sse_slow_consumer_drops_oldest`
+- [x] 消费者跟得上时不丢 -> `tests/test_loadtest.py::test_sse_fast_consumer_keeps_all`
+- [x] `sse` CLI 输出报告 -> `tests/test_loadtest.py::test_cli_sse_report`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.console import ProgressBuffer` -> 当前 `ImportError`
-- [ ] 反例 2：`console --sse-queue-size 0` -> 当前 argparse 退出 2（参数不存在）
-- [ ] 反例 3：`loadtest sse --events 10` -> 当前 argparse 退出 2（子命令不存在）
+- [x] 反例 1：`from adk_agent.console import ProgressBuffer` -> 当前 `ImportError`
+- [x] 反例 2：`console --sse-queue-size 0` -> 当前 argparse 退出 2（参数不存在）
+- [x] 反例 3：`loadtest sse --events 10` -> 当前 argparse 退出 2（子命令不存在）
 
 ## 契约（如涉及对外接口）
 
@@ -88,6 +88,6 @@ loadtest sse 报告:
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-057-sse-backpressure.txt` 的 red 段
+- 实现后绿: 同文件 green 段，30 passed（含既有 SSE 与配额流用例）
+- 实机: 同文件 live 段。真 uvicorn 控制台队列 16，慢客户端收 1199 条、丢 3804 条、终结事件完整送达；`sse` 场景 10000 条突发只保留 256 条，峰值 257，不变量全成立

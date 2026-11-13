@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from adk_agent.audit import AuditPipeline, verify_audit_file
+from adk_agent.console import ProgressBuffer
 from adk_agent.core import AgentRef, AuditEvent, Principal, QuotaExceeded, QuotaPolicy
 from adk_agent.runtime.quota_postgres import PostgresQuotaManager, build_quota_manager
 
@@ -250,6 +251,61 @@ async def run_audit(
     }
 
 
+async def run_sse(
+    events: int,
+    *,
+    queue_size: int = 512,
+    consumer_delay: float = 0.0,
+) -> dict[str, object]:
+    """Buffer ``events`` progress items and drain them like a slow SSE client."""
+    _require_count("events", events, MAX_REQUESTS)
+    _require_count("queue_size", queue_size)
+    if consumer_delay < 0:
+        raise LoadtestError("consumer_delay must be non-negative")
+
+    started_at = datetime.now(timezone.utc).isoformat()
+    buffer = ProgressBuffer(max_progress=queue_size)
+    started = time.perf_counter()
+    for index in range(events):
+        buffer.put_progress({"seq": index, "at": time.perf_counter()})
+    await buffer.put_terminal("done", {})
+
+    delivered = 0
+    latencies: list[float] = []
+    while True:
+        kind, payload = await buffer.get()
+        if kind in ("done", "__end__"):
+            break
+        if kind == "progress":
+            delivered += 1
+            latencies.append(time.perf_counter() - payload["at"])
+        if consumer_delay > 0:
+            await asyncio.sleep(consumer_delay)
+    elapsed = time.perf_counter() - started
+
+    invariants = [
+        {"name": "counts_balance", "holds": delivered + buffer.dropped == events},
+        {
+            "name": "depth_within_limit",
+            "holds": buffer.peak_depth <= queue_size + 1,
+        },
+    ]
+
+    return {
+        "scenario": "sse",
+        "started_at": started_at,
+        "requests": events,
+        "ok": delivered,
+        "denied": buffer.dropped,
+        "errors": 0,
+        "latency_ms": _latency_stats(latencies),
+        "throughput_per_s": _throughput(delivered, elapsed),
+        "queue_size": queue_size,
+        "peak_depth": buffer.peak_depth,
+        "invariants": invariants,
+    }
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Reproducible quota and audit load baseline.")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -273,6 +329,12 @@ def _build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--max-records", type=int)
     audit.add_argument("--signing-key-env", default="ADK_AUDIT_SIGNING_KEY")
     audit.add_argument("--out")
+
+    sse = subcommands.add_parser("sse", help="drain buffered SSE progress with a slow client")
+    sse.add_argument("--events", type=int, required=True)
+    sse.add_argument("--queue-size", type=int, default=512)
+    sse.add_argument("--consumer-delay-ms", type=float, default=0.0)
+    sse.add_argument("--out")
 
     return parser
 
@@ -302,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
                     tenant=args.tenant,
                 )
             )
-        else:
+        elif args.command == "audit":
             report = asyncio.run(
                 run_audit(
                     args.records,
@@ -310,6 +372,14 @@ def main(argv: list[str] | None = None) -> int:
                     append=args.append,
                     max_records=args.max_records,
                     signing_key=os.environ.get(args.signing_key_env),
+                )
+            )
+        else:
+            report = asyncio.run(
+                run_sse(
+                    args.events,
+                    queue_size=args.queue_size,
+                    consumer_delay=args.consumer_delay_ms / 1000.0,
                 )
             )
     except LoadtestError as exc:
