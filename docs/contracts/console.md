@@ -188,6 +188,45 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - `granted_agents` 来自该租户注册表记录中 `manifest.tool_grants` 的同名工具，按 `(id, version)` 排序。没有注册表时为空列表；注册表损坏返回 500 `registry_corrupt`。
 - 结果按 `tool_id` 排序。
 
+## `GET /api/tool-grants?tenant=<name>&status=<status>` -> `[ToolGrantRequest]`
+
+列出工具临时授权请求，按 `requested_at` 倒序。`status` 取 `pending`、`approved`、`denied`、`expired`、`cancelled`，其他值 400 `invalid_status`。
+
+- 未配置授权存储返回 404 `tool_grants_not_configured`。
+- `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
+- 存储不可达返回 503 `grant_store_unavailable`。
+
+## `POST /api/tool-grants` -> `ToolGrantRequest`
+
+```json
+{
+  "tenant": "acme",
+  "agent_id": "support-bot",
+  "version": "1.0.0",
+  "digest": "sha256:...",
+  "tool_id": "crm.read",
+  "data_classes": ["internal"],
+  "reason": "temporary support access",
+  "expires_hours": 24
+}
+```
+
+- 版本必须已发布且 `digest` 与记录一致，否则 404 `not_found`；退役版本 409 `version_retired`。
+- `expires_hours` 默认 24，范围 1 到 168，否则 400 `invalid_request`；`reason` 不能为空。
+- 申请人取 principal 的 `subject`，状态 `pending`。
+- 成功 201。写 `tool_grant.request` 审计。
+- 非 `admin` 跨租户 403 `tenant_forbidden`；未配置存储 404 `tool_grants_not_configured`；存储不可达 503 `grant_store_unavailable`。
+
+## `POST /api/tool-grants/{request_id}/decide` -> `ToolGrantRequest`
+
+```json
+{"approved": true, "reason": "ok"}
+```
+
+- 只有 `admin` 能审批，非 admin 返回 403 `forbidden`。
+- 请求不存在 404 `grant_not_found`；终态 409 `grant_already_decided`；待审但已过期 410 `grant_expired`。
+- 成功 200，写 `tool_grant.decide` 审计。
+
 ## `GET /api/runs?limit=50` -> `[RunSummary]`
 
 从审计缓冲或审计服务读出的事件按 `run_id` 聚合，按最后事件时间倒序。`limit` 夹在 1 到 200。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。

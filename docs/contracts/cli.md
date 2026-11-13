@@ -96,6 +96,15 @@
 
 鉴权规则与写入相同，见上一节。
 
+## `adk-agent tool-grants list|request|decide [--tool-grants-dir DIR | $GRANT_URL]`
+
+管理工具临时授权请求。存储配置与 `console` 相同，二选一。
+
+- `list --tenant T [--status S]` 打印 JSON 数组。
+- `request --tenant T --id ID --version V --digest D --tool TOOL --reason TEXT [--expires-hours N]` 创建 pending 请求并打印记录。不校验版本是否存在；服务端与控制台的 `POST /api/tool-grants` 会校验。
+- `decide REQUEST_ID (--approve | --deny) [--reason TEXT]` 审批，打印更新后的记录。
+- 非法状态、过期小时越界、存储错误都退出 1。
+
 ## `adk-agent lifecycle set --tenant T --id ID --version V --status S [--reason TEXT] [--registry DIR | --registry-url URL [--registry-token-env VAR]]`
 
 修改已发布版本的生命周期状态，语义见 ADR-0010 与 `registry_service.md`。

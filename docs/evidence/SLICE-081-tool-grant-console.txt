@@ -1,0 +1,41 @@
+SLICE-081 tool grant request and approval entry points
+=====================================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console_tool_grants.py \
+    tests/test_cli_tool_grants.py -q
+10 failed in 2.43s
+  - GET/POST /api/tool-grants -> 404 (endpoints missing)
+  - `tool-grants` -> argparse exit 2
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console_tool_grants.py \
+    tests/test_cli_tool_grants.py -q
+10 passed in 2.39s
+
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] secrets
+ALL PASS
+940 passed, 28 skipped in 45.34s
+
+live, real console with a file grant store
+------------------------------------------
+Console on 8812 with the adk-075-live file registry (acme/support-bot@1.0.0)
+and `--tool-grants-dir`.
+
+  POST /api/tool-grants        -> 201 pending
+  GET  /api/tool-grants        -> [('crm.read', 'pending')]
+  POST .../decide approved     -> 200 approved by console_user
+  GET  /api/tool-grants        -> [('crm.read', 'approved')]
+  GET  /api/audit              -> ['tool_grant.request', 'tool_grant.decide']
+
+Screenshot: docs/evidence/ui/SLICE-081-grants.png shows the Grants tab with
+the approved request, the request row and the Approve/Deny buttons.

@@ -171,6 +171,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-078 工具授权请求存储（ADR-0011）：`ToolGrantRequest` 状态与到期、文件/Postgres 存储、有效授权查询。已完成。
 - SLICE-079 MCP 与 A2A 工具授权：`install_declared_guards`、manifest 授权优先、运行时 invocation 上下文与 `require_context`。已完成。
 - SLICE-080 运行时合并临时授权：`GrantPolicyEngine` overlay、`grant_store_unavailable`、三个命令的授权存储配置。已完成。
+- SLICE-081 工具授权申请与审批：控制台三个接口、Grants 面板、`tool-grants` 命令，ADR-0011 闭环。已完成。
 
 ## 完成定义
 

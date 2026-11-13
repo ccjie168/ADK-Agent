@@ -5,10 +5,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
+import json
 import os
 import re
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -913,6 +915,34 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_registry_client_args(p_lifecycle_set)
 
+    p_tool_grants = sub.add_parser("tool-grants", help="manage temporary tool grant requests")
+    tool_grants_sub = p_tool_grants.add_subparsers(dest="tool_grants_cmd", required=True)
+
+    p_tg_list = tool_grants_sub.add_parser("list", help="list grant requests")
+    p_tg_list.add_argument("--tenant", required=True)
+    p_tg_list.add_argument(
+        "--status", default=None, help="pending, approved, denied, expired, cancelled"
+    )
+    _add_tool_grant_args(p_tg_list)
+
+    p_tg_request = tool_grants_sub.add_parser("request", help="create a pending grant request")
+    p_tg_request.add_argument("--tenant", required=True)
+    p_tg_request.add_argument("--id", required=True)
+    p_tg_request.add_argument("--version", required=True)
+    p_tg_request.add_argument("--digest", required=True)
+    p_tg_request.add_argument("--tool", required=True)
+    p_tg_request.add_argument("--reason", required=True)
+    p_tg_request.add_argument("--expires-hours", type=int, default=24)
+    _add_tool_grant_args(p_tg_request)
+
+    p_tg_decide = tool_grants_sub.add_parser("decide", help="approve or deny a grant request")
+    p_tg_decide.add_argument("request_id")
+    decision = p_tg_decide.add_mutually_exclusive_group(required=True)
+    decision.add_argument("--approve", action="store_true")
+    decision.add_argument("--deny", action="store_true")
+    p_tg_decide.add_argument("--reason", default="")
+    _add_tool_grant_args(p_tg_decide)
+
     p_backup = sub.add_parser("backup", help="archive file-based state into a gzip tar")
     p_backup.add_argument("--out", required=True, help="archive path to write")
     p_backup.add_argument("--registry", default=None, help="registry directory to include")
@@ -1518,6 +1548,61 @@ def main(argv: list[str] | None = None) -> None:
             print(f"lifecycle failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
         print(f"{args.tenant}/{args.id}@{args.version} status={state.status}")
+    elif args.cmd == "tool-grants":
+        from pydantic import ValidationError
+
+        from .core import GrantStoreError, ToolGrantRequest
+
+        if args.tool_grants_cmd == "request" and not 1 <= args.expires_hours <= 168:
+            print("--expires-hours must be between 1 and 168", file=sys.stderr)
+            raise SystemExit(1)
+        if (
+            args.tool_grants_cmd == "list"
+            and args.status is not None
+            and args.status not in {"pending", "approved", "denied", "expired", "cancelled"}
+        ):
+            print(f"invalid status: {args.status!r}", file=sys.stderr)
+            raise SystemExit(1)
+        store = _tool_grant_store(args)
+        if store is None:
+            print("set --tool-grants-dir or GRANT_URL", file=sys.stderr)
+            raise SystemExit(1)
+
+        async def run_tool_grants() -> Any:
+            if args.tool_grants_cmd == "list":
+                return await store.list(args.tenant, status=args.status)
+            if args.tool_grants_cmd == "request":
+                now = datetime.now(timezone.utc)
+                request = ToolGrantRequest(
+                    request_id=uuid.uuid4().hex,
+                    tenant=args.tenant,
+                    agent_id=args.id,
+                    version=args.version,
+                    digest=args.digest,
+                    tool_id=args.tool,
+                    reason=args.reason,
+                    requested_by="cli",
+                    requested_at=now,
+                    expires_at=now + timedelta(hours=args.expires_hours),
+                )
+                return await store.add(request)
+            return await store.decide(
+                args.request_id,
+                approved=args.approve,
+                decided_by="cli",
+                reason=args.reason,
+            )
+
+        try:
+            result = asyncio.run(run_tool_grants())
+        except (GrantStoreError, ValidationError, ValueError) as exc:
+            print(f"tool-grants failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        if args.tool_grants_cmd == "list":
+            print(json.dumps([record.model_dump(mode="json") for record in result]))
+        else:
+            print(json.dumps(result.model_dump(mode="json")))
     elif args.cmd == "publish":
         from .core import EvalReport
         from .eval import enforce_eval_gate

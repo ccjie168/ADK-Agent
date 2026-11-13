@@ -13,8 +13,8 @@ import logging
 import re
 import uuid
 from collections.abc import Iterable
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
@@ -36,6 +36,11 @@ from .core import (
     AuditEvent,
     AuditSink,
     EvalReportStore,
+    GrantRequestConflict,
+    GrantRequestExpired,
+    GrantRequestNotFound,
+    GrantStatus,
+    GrantStoreError,
     IdentityProvider,
     Invocation,
     ModelPolicy,
@@ -44,6 +49,7 @@ from .core import (
     QuotaConfig,
     QuotaExceeded,
     QuotaManager,
+    ToolGrantRequest,
     ToolGrantStore,
 )
 from .mcp.http import resolve_port
@@ -74,6 +80,8 @@ logger = logging.getLogger(__name__)
 _USER_ID = "console_user"
 _OPEN_PATHS = frozenset({"/", "/healthz"})
 _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
+_SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
+_GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})
 
 _INDEX_HTML = """<!doctype html>
 <html lang="en">
@@ -137,6 +145,7 @@ _INDEX_HTML = """<!doctype html>
   <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
   <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
   <button id="tab-approvals" class="tab" data-tab="approvals">Approvals</button>
+  <button id="tab-grants" class="tab" data-tab="grants">Grants</button>
   <button id="tab-plans" class="tab" data-tab="plans">Plans</button>
   <button id="tab-policy" class="tab" data-tab="policy">Policy</button>
 </div>
@@ -235,6 +244,26 @@ _INDEX_HTML = """<!doctype html>
   </div>
 </section>
 
+<section id="grants" class="panel">
+  <div class="row">
+    <button id="refresh-grants">Refresh</button>
+  </div>
+  <div id="grants-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>tool</th><th>agent</th><th>version</th><th>status</th><th>expires</th></tr></thead>
+    <tbody id="grants-body"></tbody>
+  </table>
+  <div class="row">
+    <input id="grant-tool" placeholder="tool id (e.g. crm.read)" autocomplete="off">
+    <input id="grant-reason" placeholder="reason" autocomplete="off">
+    <button id="grant-request">Request for selected</button>
+  </div>
+  <div class="row">
+    <button id="grant-approve">Approve</button>
+    <button id="grant-deny">Deny</button>
+  </div>
+</section>
+
 <section id="plans" class="panel">
   <div class="row">
     <button id="refresh-plans">Refresh</button>
@@ -260,10 +289,11 @@ _INDEX_HTML = """<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["chat", "registry", "tools", "runs", "sessions", "approvals", "plans", "policy"];
+const TABS = ["chat", "registry", "tools", "runs", "sessions", "approvals", "grants", "plans", "policy"];
 let sessionId = null;
 let selectedApproval = null;
 let selectedRegistry = null;
+let selectedGrant = null;
 const token = () => $("token").value.trim();
 $("token").value = sessionStorage.getItem("adk_token") || "";
 $("token").addEventListener("change", () => sessionStorage.setItem("adk_token", token()));
@@ -599,6 +629,85 @@ async function decideApproval(approved) {
   loadAudit();
 }
 
+async function loadGrants() {
+  const tenant = $("tenant").value;
+  $("grants-msg").textContent = "";
+  const body = $("grants-body");
+  body.innerHTML = "";
+  if (!tenant) return;
+  const result = await getJson("/api/tool-grants?tenant=" + encodeURIComponent(tenant));
+  if (!result.ok) {
+    $("grants-msg").textContent = result.status === 404
+      ? "tool grants not configured"
+      : "tool grants unavailable (" + result.status + "): " +
+        ((result.data && result.data.error) || "error");
+    return;
+  }
+  for (const grant of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(grant.tool_id));
+    row.appendChild(cell(grant.agent_id));
+    row.appendChild(cell(grant.version));
+    row.appendChild(cell(grant.status));
+    const expires = document.createElement("td");
+    expires.textContent = String(grant.expires_at || "").replace("T", " ").slice(0, 19);
+    row.appendChild(expires);
+    row.addEventListener("click", () => {
+      selectedGrant = grant.request_id;
+      $("grants-msg").textContent = "selected " + grant.request_id;
+    });
+    body.appendChild(row);
+  }
+}
+
+async function requestGrant() {
+  if (!selectedRegistry) {
+    $("grants-msg").textContent = "select a registry entry first";
+    return;
+  }
+  const toolId = $("grant-tool").value.trim();
+  const reason = $("grant-reason").value.trim();
+  if (!toolId || !reason) {
+    $("grants-msg").textContent = "tool id and reason are required";
+    return;
+  }
+  const result = await postJson("/api/tool-grants", {
+    tenant: selectedRegistry.tenant,
+    agent_id: selectedRegistry.id,
+    version: selectedRegistry.version,
+    digest: selectedRegistry.digest,
+    tool_id: toolId,
+    reason: reason,
+  });
+  if (!result.ok) {
+    $("grants-msg").textContent = "request failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  await loadGrants();
+  $("grants-msg").textContent = "requested " + result.data.request_id;
+}
+
+async function decideGrant(approved) {
+  if (!selectedGrant) {
+    $("grants-msg").textContent = "select a request first";
+    return;
+  }
+  const result = await postJson(
+    "/api/tool-grants/" + encodeURIComponent(selectedGrant) + "/decide",
+    { approved: approved },
+  );
+  if (!result.ok) {
+    $("grants-msg").textContent = (result.data && result.data.error) ||
+      ("decision failed (" + result.status + ")");
+    return;
+  }
+  selectedGrant = null;
+  await loadGrants();
+  $("grants-msg").textContent = "decided " + result.data.request_id;
+  loadAudit();
+}
+
 async function loadPlans() {
   $("plans-msg").textContent = "";
   const body = $("plans-body");
@@ -631,6 +740,7 @@ async function connect() {
   await loadApprovals();
   await loadPlans();
   await loadTools();
+  await loadGrants();
   loadAudit();
 }
 
@@ -797,7 +907,7 @@ async function savePolicy() {
 }
 
 $("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
-$("tenant").addEventListener("change", () => { loadRegistry(); loadTools(); });
+$("tenant").addEventListener("change", () => { loadRegistry(); loadTools(); loadGrants(); });
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-registry").addEventListener("click", loadRegistry);
@@ -806,6 +916,10 @@ $("refresh-runs").addEventListener("click", loadRuns);
 $("refresh-tools").addEventListener("click", loadTools);
 $("refresh-sessions").addEventListener("click", loadSessions);
 $("refresh-approvals").addEventListener("click", loadApprovals);
+$("refresh-grants").addEventListener("click", loadGrants);
+$("grant-request").addEventListener("click", requestGrant);
+$("grant-approve").addEventListener("click", () => decideGrant(true));
+$("grant-deny").addEventListener("click", () => decideGrant(false));
 $("refresh-plans").addEventListener("click", loadPlans);
 $("approve").addEventListener("click", () => decideApproval(true));
 $("deny").addEventListener("click", () => decideApproval(false));
@@ -1418,6 +1532,201 @@ def build_console_app(
             )
         entries.sort(key=lambda entry: entry["tool_id"])
         return entries
+
+    @app.get("/api/tool-grants")
+    async def list_tool_grants(
+        request: Request, tenant: str | None = None, status: str | None = None
+    ) -> Any:
+        if tool_grants is None:
+            return JSONResponse({"error": "tool_grants_not_configured"}, status_code=404)
+        grant_status: GrantStatus | None = None
+        if status is not None:
+            if status not in _GRANT_STATUSES:
+                return JSONResponse({"error": "invalid_status"}, status_code=400)
+            grant_status = cast(GrantStatus, status)
+        caller = _principal_for(request)
+        target = tenant or caller.tenant
+        if tenant and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        try:
+            records = await tool_grants.list(target, status=grant_status)
+        except GrantStoreError:
+            logger.exception("tool grant list failed: tenant=%s", target)
+            return JSONResponse({"error": "grant_store_unavailable"}, status_code=503)
+        records.sort(key=lambda record: (record.requested_at, record.request_id), reverse=True)
+        return [record.model_dump(mode="json") for record in records]
+
+    @app.post("/api/tool-grants")
+    async def create_tool_grant(request: Request) -> Any:
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+
+        agent_id = body.get("agent_id")
+        version = body.get("version")
+        digest = body.get("digest")
+        tool_id = body.get("tool_id")
+        reason = body.get("reason")
+        if (
+            not isinstance(agent_id, str)
+            or not agent_id
+            or not isinstance(version, str)
+            or not version
+            or not isinstance(digest, str)
+            or not digest
+            or not isinstance(tool_id, str)
+            or not tool_id
+            or not isinstance(reason, str)
+            or not reason
+        ):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not _SAFE_NAME.fullmatch(agent_id) or not _SAFE_NAME.fullmatch(version):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+
+        tenant = body.get("tenant")
+        if tenant is not None and (not isinstance(tenant, str) or not _SAFE_NAME.fullmatch(tenant)):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        data_classes = body.get("data_classes", [])
+        if not isinstance(data_classes, list) or not all(
+            isinstance(item, str) for item in data_classes
+        ):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        expires_hours = body.get("expires_hours", 24)
+        if (
+            isinstance(expires_hours, bool)
+            or not isinstance(expires_hours, int)
+            or not 1 <= expires_hours <= 168
+        ):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+
+        if tool_grants is None:
+            return JSONResponse({"error": "tool_grants_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        target = tenant or caller.tenant
+        if target != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+
+        record = None
+        if registry is not None:
+            try:
+                records = await registry.list(target)
+            except ValueError:
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
+            except Exception:  # noqa: BLE001
+                logger.exception("tool grant registry read failed")
+                return JSONResponse({"error": "registry_corrupt"}, status_code=500)
+            record = next(
+                (
+                    item
+                    for item in records
+                    if item.manifest.id == agent_id and item.manifest.version == version
+                ),
+                None,
+            )
+        if record is None or record.digest != digest:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+
+        try:
+            state = await _lifecycle(record)
+        except Exception:  # noqa: BLE001
+            logger.exception("lifecycle read failed")
+            return JSONResponse({"error": "lifecycle_unavailable"}, status_code=503)
+        if state.status == "retired":
+            return JSONResponse({"error": "version_retired"}, status_code=409)
+
+        now = datetime.now(timezone.utc)
+        try:
+            grant = ToolGrantRequest(
+                request_id=uuid.uuid4().hex,
+                tenant=target,
+                agent_id=agent_id,
+                version=version,
+                digest=record.digest,
+                tool_id=tool_id,
+                data_classes=data_classes,
+                reason=reason,
+                requested_by=caller.subject,
+                requested_at=now,
+                expires_at=now + timedelta(hours=expires_hours),
+            )
+        except ValidationError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            created = await tool_grants.add(grant)
+        except GrantStoreError:
+            logger.exception("tool grant add failed: tenant=%s", target)
+            return JSONResponse({"error": "grant_store_unavailable"}, status_code=503)
+
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(id=agent_id, version=version, digest=record.digest),
+                action="tool_grant.request",
+                target=f"{agent_id}@{version}:{tool_id}",
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse(created.model_dump(mode="json"), status_code=201)
+
+    @app.post("/api/tool-grants/{request_id}/decide")
+    async def decide_tool_grant(request: Request, request_id: str) -> Any:
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict) or not isinstance(body.get("approved"), bool):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        reason = body.get("reason", "")
+        if not isinstance(reason, str):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+
+        if tool_grants is None:
+            return JSONResponse({"error": "tool_grants_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            decided = await tool_grants.decide(
+                request_id,
+                approved=body["approved"],
+                decided_by=caller.subject,
+                reason=reason,
+            )
+        except GrantRequestNotFound:
+            return JSONResponse({"error": "grant_not_found"}, status_code=404)
+        except GrantRequestConflict:
+            return JSONResponse({"error": "grant_already_decided"}, status_code=409)
+        except GrantRequestExpired:
+            return JSONResponse({"error": "grant_expired"}, status_code=410)
+        except GrantStoreError:
+            logger.exception("tool grant decide failed: %s", request_id)
+            return JSONResponse({"error": "grant_store_unavailable"}, status_code=503)
+
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(
+                    id=decided.agent_id, version=decided.version, digest=decided.digest
+                ),
+                action="tool_grant.decide",
+                target=request_id,
+                status="ok" if decided.status == "approved" else "denied",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse(decided.model_dump(mode="json"))
 
     @app.get("/api/runs")
     async def list_runs(request: Request, limit: int = 50) -> list[dict]:
