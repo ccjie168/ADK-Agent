@@ -76,7 +76,7 @@
 | SLICE-074 | 评测报告集中存储 | `fdcf6c8` |
 | SLICE-075 | 只读工具目录（UI-4） | `98d0544` |
 | SLICE-076 | 生命周期存储与接口 | `4931e0e` |
-| SLICE-077 | 生命周期拦截与控制台 | `PENDING` |
+| SLICE-077 | 生命周期拦截与控制台 | `515d7e1` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
