@@ -82,7 +82,7 @@
 | SLICE-080 | 临时授权运行时合并 | `f19bdb7` |
 | SLICE-081 | 工具授权申请与审批 | `8a578de` |
 | SLICE-082 | 工具授权使用统计与到期提示 | `5b8bc93` |
-| SLICE-083 | 市场页卸载与置换 | `PENDING` |
+| SLICE-083 | 市场页卸载与置换 | `0983ea0` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
