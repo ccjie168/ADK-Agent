@@ -1,6 +1,6 @@
 # SLICE-065 工件存储
 
-状态: planned
+状态: merged
 依据: ADR-0008 第 3 条，SLICE-064。
 
 ## 意图（要什么，不写怎么写）
@@ -50,23 +50,23 @@ PostgresArtifactStore(url)
 
 ## 完成判据（可执行）
 
-- [ ] 文件存储往返 -> `tests/registry/test_artifacts.py::test_file_roundtrip`
-- [ ] 文件存储按 digest 寻址 -> `tests/registry/test_artifacts.py::test_file_path_is_addressed`
-- [ ] 重复写幂等 -> `tests/registry/test_artifacts.py::test_file_put_is_idempotent`
-- [ ] 大小不符被拒且不落盘 -> `tests/registry/test_artifacts.py::test_file_rejects_size_mismatch`
-- [ ] 摘要不符被拒且不落盘 -> `tests/registry/test_artifacts.py::test_file_rejects_digest_mismatch`
-- [ ] 非法 digest 被拒 -> `tests/registry/test_artifacts.py::test_file_rejects_bad_digest`
-- [ ] 缺失返回 None -> `tests/registry/test_artifacts.py::test_file_missing`
-- [ ] Postgres 往返（需 `TEST_POSTGRES_URL`） -> `tests/registry/test_artifacts.py::test_postgres_roundtrip`
-- [ ] Postgres 重复写幂等 -> `tests/registry/test_artifacts.py::test_postgres_put_is_idempotent`
-- [ ] Postgres 缺失与非法 digest -> `tests/registry/test_artifacts.py::test_postgres_missing_and_bad_digest`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 文件存储往返 -> `tests/registry/test_artifacts.py::test_file_roundtrip`
+- [x] 文件存储按 digest 寻址 -> `tests/registry/test_artifacts.py::test_file_path_is_addressed`
+- [x] 重复写幂等 -> `tests/registry/test_artifacts.py::test_file_put_is_idempotent`
+- [x] 大小不符被拒且不落盘 -> `tests/registry/test_artifacts.py::test_file_rejects_size_mismatch`
+- [x] 摘要不符被拒且不落盘 -> `tests/registry/test_artifacts.py::test_file_rejects_digest_mismatch`
+- [x] 非法 digest 被拒 -> `tests/registry/test_artifacts.py::test_file_rejects_bad_digest`
+- [x] 缺失返回 None -> `tests/registry/test_artifacts.py::test_file_missing`
+- [x] Postgres 往返（需 `TEST_POSTGRES_URL`） -> `tests/registry/test_artifacts.py::test_postgres_roundtrip`
+- [x] Postgres 重复写幂等 -> `tests/registry/test_artifacts.py::test_postgres_put_is_idempotent`
+- [x] Postgres 缺失与非法 digest -> `tests/registry/test_artifacts.py::test_postgres_missing_and_bad_digest`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.registry import FileArtifactStore` -> 当前 `ImportError`
-- [ ] 反例 2：写入与声明摘要不符的数据如果不拒绝，会污染按 digest 的运行 -> `test_file_rejects_digest_mismatch`
-- [ ] 反例 3：`get("../x")` 若拼进路径就是穿越 -> `test_file_rejects_bad_digest`
+- [x] 反例 1：`from adk_agent.registry import FileArtifactStore` -> 当前 `ImportError`
+- [x] 反例 2：写入与声明摘要不符的数据如果不拒绝，会污染按 digest 的运行 -> `test_file_rejects_digest_mismatch`
+- [x] 反例 3：`get("../x")` 若拼进路径就是穿越 -> `test_file_rejects_bad_digest`
 
 ## 契约（如涉及对外接口）
 
@@ -88,6 +88,6 @@ PostgresArtifactStore(url)
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-065-artifact-stores.txt` 的 red 段
+- 实现后绿: 同文件 green 段，文件存储 7 个用例；设 `TEST_POSTGRES_URL` 后 10 个全过
+- 实机: 同文件 live 段。真 Postgres 15 写入两件工件，表内 digest 与大小正确，读回一致

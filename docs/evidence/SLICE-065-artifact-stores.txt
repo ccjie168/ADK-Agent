@@ -9,3 +9,46 @@ ERROR tests/registry/test_artifacts.py
 
 $ python -c "from adk_agent.registry import FileArtifactStore"
 ImportError: cannot import name 'FileArtifactStore' from 'adk_agent.registry'
+
+== green: targeted tests ==
+$ python -m pytest tests/registry/test_artifacts.py -q
+7 passed, 3 skipped in 1.92s        (Postgres cases skipped without TEST_POSTGRES_URL)
+
+== live: real Postgres 15 ==
+$ docker run -d --rm --name adk-artifact-pg -e POSTGRES_PASSWORD=adk -e POSTGRES_DB=adk \
+    -p 55432:5432 postgres:15-alpine
+$ TEST_POSTGRES_URL=postgresql://postgres:***@127.0.0.1:55432/adk \
+    python -m pytest tests/registry/test_artifacts.py -q
+10 passed in 2.35s
+
+$ psql> select count(*), min(size), max(size) from adk_artifacts;
+2|64|64
+$ psql> select digest, media_type, size from adk_artifacts limit 2;
+sha256:7f295dd7...|application/vnd.adk.agent+zip|64
+sha256:40e76210...|application/vnd.adk.agent+zip|64
+
+== file store layout ==
+<root>/sha256/<hex>                     bytes, written to a temp name and os.replace'd
+Invalid or mismatched digests/sizes leave the root untouched (tests assert no files).
+
+== reading ==
+- The store only trusts bytes that hash to the declared digest; a mismatched write is refused
+  before any directory is created.
+- Digest strings are validated before building a path, so get("..") cannot escape.
+- Postgres writes use ON CONFLICT DO NOTHING, so republishing the same artifact is idempotent.
+- No CLI or runtime wiring yet; that is SLICE-066/067.
+
+== full gate ==
+$ python scripts/check.py --full
+765 passed, 16 skipped in 45.53s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
