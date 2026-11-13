@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-13
 分支: master
-最新提交: 待填（SLICE-060 审计密钥轮换）
+最新提交: `4d268c8` feat(audit): rotate signing keys with a keyring (SLICE-060)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
@@ -59,7 +59,7 @@
 | SLICE-057 | SSE 慢客户端与有界进度队列 | `6f3a0bb` |
 | SLICE-058 | 入口限流（控制台与三个服务） | `12e402b` |
 | SLICE-059 | MCP 与 A2A 入口限流 | `4eddd72` |
-| SLICE-060 | 审计签名密钥轮换（`kid` 与密钥环） | 待填 |
+| SLICE-060 | 审计签名密钥轮换（`kid` 与密钥环） | `4d268c8` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
