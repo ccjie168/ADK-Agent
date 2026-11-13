@@ -23,7 +23,7 @@ from google.adk.tools import BaseTool
 from google.adk.tools.base_toolset import BaseToolset
 from pydantic import ValidationError
 
-from .approvals import ApprovalConflict, ApprovalNotFound, FileApprovalInbox
+from .approvals import ApprovalConflict, ApprovalExpired, ApprovalNotFound, FileApprovalInbox
 from .audit import ListAuditSink
 from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
@@ -1118,6 +1118,8 @@ def build_console_app(
             )
         except ApprovalConflict:
             return JSONResponse({"error": "approval_already_decided"}, status_code=409)
+        except ApprovalExpired:
+            return JSONResponse({"error": "approval_expired"}, status_code=410)
         except ApprovalNotFound:
             return JSONResponse({"error": "approval_not_found"}, status_code=404)
 

@@ -1,0 +1,64 @@
+SLICE-049 approval expiry and notification evidence
+date: 2026-11-12T23:57:35Z
+
+== red: new tests before implementation ==
+
+=================================== ERRORS ====================================
+_______________ ERROR collecting tests/test_approvals_expiry.py _______________
+ImportError while importing test module 'C:\AI_System\ADK-Agent\tests\test_approvals_expiry.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Python314\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\test_approvals_expiry.py:11: in <module>
+    from adk_agent.approvals import ApprovalConflict, ApprovalExpired, FileApprovalInbox
+E   ImportError: cannot import name 'ApprovalExpired' from 'adk_agent.approvals' (C:\AI_System\ADK-Agent\src\adk_agent\approvals.py). Did you mean: 'ApprovalRequired'?
+=========================== short test summary info ===========================
+ERROR tests/test_approvals_expiry.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.80s
+
+== red: console does not accept --approval-ttl ==
+adk-agent: error: unrecognized arguments: --approval-ttl 30
+exit=2
+
+== red: behavior probes without the missing import ==
+    
+        asyncio.run(
+            executor.run(_plan(), _parent(deadline=deadline), approvals=CallbackApprovalGate(approve))
+        )
+    
+        [request] = requests
+>       assert request.expires_at is not None
+E       AssertionError: assert None is not None
+E        +  where None = ApprovalRequest(request_id='b090bf9d0c744fa598b8f7342cbd51a5', run_id='4c386de30b4f4548a8131ba908fb6859', trace_id='tr...tion', requested_at=datetime.datetime(2026, 11, 12, 23, 57, 46, 766337, tzinfo=datetime.timezone.utc), expires_at=None).expires_at
+
+tests\orchestration\test_approval_expiry.py:98: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_console_approvals_expiry.py::test_decide_expired_returns_410
+FAILED tests/test_console_approvals_expiry.py::test_list_excludes_expired - V...
+FAILED tests/test_cli_approval_ttl.py::test_console_forwards_approval_ttl - S...
+FAILED tests/test_cli_approval_ttl.py::test_approval_ttl_defaults_to_none - A...
+FAILED tests/orchestration/test_approval_expiry.py::test_deadline_sets_expiry
+5 failed in 1.93s
+
+== green: targeted tests ==
+tests/test_approvals_expiry.py tests/test_console_approvals_expiry.py
+tests/test_cli_approval_ttl.py tests/orchestration/test_approval_expiry.py
+tests/test_approvals.py tests/test_console_approvals.py tests/orchestration/test_approval.py
+-> 41 passed in 3.21s
+
+== live: console with --approval-ttl 1 ==
+seeded "stale-ttl" (no expires_at, requested 10 minutes ago) and "fresh" (expires_at +1h)
+GET /api/approvals -> ["fresh"]          (stale-ttl hidden by the fallback TTL)
+POST /api/approvals/stale-ttl -> HTTP 410 {"error":"approval_expired"}
+POST /api/approvals/fresh -> HTTP 200, approver console_user
+
+== live: notifications and waiter expiry ==
+FileApprovalInbox.request with on_submit and expires_at = now + 1.5s
+  -> notified live-expire
+  -> expired after 1.5s (ApprovalExpired)
+
+== gate ==
+check.py --fast -> ALL PASS (569 passed, 9 skipped), 7 steps

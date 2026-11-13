@@ -1,6 +1,6 @@
 # SLICE-049 审批过期与提交提醒
 
-状态: spec'd
+状态: gated
 依据: SLICE-027，SLICE-045，`docs/contracts/console.md`，`docs/contracts/cli.md`
 
 ## 意图（要什么，不写怎么写）
@@ -54,28 +54,28 @@ ApprovalExpired(ApprovalInboxError)
 
 ## 完成判据（可执行）
 
-- [ ] 过期请求不进入待决 -> `tests/test_approvals_expiry.py::test_pending_excludes_expired`
-- [ ] 决定过期请求抛 `ApprovalExpired` -> `tests/test_approvals_expiry.py::test_decide_expired_raises`
-- [ ] 已决过期请求仍是冲突 -> `tests/test_approvals_expiry.py::test_decided_request_is_not_expired`
-- [ ] 带 `expires_at` 的门等待直接抛过期 -> `tests/test_approvals_expiry.py::test_gate_raises_when_expired`
-- [ ] 请求自带 `expires_at` 优先于 `ttl_seconds` -> `tests/test_approvals_expiry.py::test_request_expiry_wins_over_ttl`
-- [ ] 没有 `expires_at` 时用 ttl 兜底 -> `tests/test_approvals_expiry.py::test_ttl_fallback`
-- [ ] 没有两者时不过期 -> `tests/test_approvals_expiry.py::test_no_deadline_never_expires`
-- [ ] 提交回调被调用 -> `tests/test_approvals_expiry.py::test_on_submit_called`
-- [ ] 回调失败不阻止决定 -> `tests/test_approvals_expiry.py::test_on_submit_failure_is_logged`
-- [ ] 控制台过期决定返回 410 -> `tests/test_console_approvals_expiry.py::test_decide_expired_returns_410`
-- [ ] 列表带 `expires_at` 且不含过期项 -> `tests/test_console_approvals_expiry.py::test_list_excludes_expired`
-- [ ] CLI 转发 `--approval-ttl` -> `tests/test_cli_approval_ttl.py::test_console_forwards_approval_ttl`
-- [ ] 计划截止时间写入 `expires_at` -> `tests/orchestration/test_approval_expiry.py::test_deadline_sets_expiry`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 过期请求不进入待决 -> `tests/test_approvals_expiry.py::test_pending_excludes_expired`
+- [x] 决定过期请求抛 `ApprovalExpired` -> `tests/test_approvals_expiry.py::test_decide_expired_raises`
+- [x] 已决过期请求仍是冲突 -> `tests/test_approvals_expiry.py::test_decided_request_is_not_expired`
+- [x] 带 `expires_at` 的门等待直接抛过期 -> `tests/test_approvals_expiry.py::test_gate_raises_when_expired`
+- [x] 请求自带 `expires_at` 优先于 `ttl_seconds` -> `tests/test_approvals_expiry.py::test_request_expiry_wins_over_ttl`
+- [x] 没有 `expires_at` 时用 ttl 兜底 -> `tests/test_approvals_expiry.py::test_ttl_fallback`
+- [x] 没有两者时不过期 -> `tests/test_approvals_expiry.py::test_no_deadline_never_expires`
+- [x] 提交回调被调用 -> `tests/test_approvals_expiry.py::test_on_submit_called`
+- [x] 回调失败不阻止决定 -> `tests/test_approvals_expiry.py::test_on_submit_failure_is_logged`
+- [x] 控制台过期决定返回 410 -> `tests/test_console_approvals_expiry.py::test_decide_expired_returns_410`
+- [x] 列表带 `expires_at` 且不含过期项 -> `tests/test_console_approvals_expiry.py::test_list_excludes_expired`
+- [x] CLI 转发 `--approval-ttl` -> `tests/test_cli_approval_ttl.py::test_console_forwards_approval_ttl`
+- [x] 计划截止时间写入 `expires_at` -> `tests/orchestration/test_approval_expiry.py::test_deadline_sets_expiry`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.approvals import ApprovalExpired` -> 当前 `ImportError`
-- [ ] 反例 2：计划步骤带时间上限时 `expires_at` 仍为空 -> 当前确实为空（模型已按契约先加字段）
-- [ ] 反例 3：过期的待决请求仍出现在 `pending()` -> 当前确实出现
-- [ ] 反例 4：决定过期请求成功 -> 当前确实成功
-- [ ] 反例 5：`console --approval-ttl 30` -> 当前 argparse 退出 2
+- [x] 反例 1：`from adk_agent.approvals import ApprovalExpired` -> 当前 `ImportError`
+- [x] 反例 2：计划步骤带时间上限时 `expires_at` 仍为空 -> 当前确实为空（模型已按契约先加字段）
+- [x] 反例 3：过期的待决请求仍出现在 `pending()` -> 当前确实出现
+- [x] 反例 4：决定过期请求成功 -> 当前确实成功
+- [x] 反例 5：`console --approval-ttl 30` -> 当前 argparse 退出 2
 
 ## 契约（如涉及对外接口）
 
@@ -102,5 +102,7 @@ ApprovalExpired(ApprovalInboxError)
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-049-approval-expiry.txt`，`ApprovalExpired` ImportError，控制台 410 和列表过滤都失败，`--approval-ttl` 退出 2，执行器 `expires_at` 为空
+- 实现后绿: 同文件，41 passed；`check.py --fast` ALL PASS（569 passed, 9 skipped），`--full` ALL PASS
+- 真实控制台: 同文件，兜底 TTL 藏掉旧请求，决定旧请求 410，决定新请求 200
+- 真实等待进程: 同文件，提交回调触发一次，1.5 秒后抛 `ApprovalExpired`

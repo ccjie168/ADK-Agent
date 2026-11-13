@@ -812,6 +812,7 @@ class PlanExecutor:
         cancel: CancellationToken | None,
         step_started: float,
     ) -> None:
+        requested_at = datetime.now(timezone.utc)
         request = ApprovalRequest(
             request_id=uuid.uuid4().hex,
             run_id=child.run_id,
@@ -821,7 +822,8 @@ class PlanExecutor:
             principal=child.principal,
             input=input_text,
             reason=step.approval_reason,
-            requested_at=datetime.now(timezone.utc),
+            requested_at=requested_at,
+            expires_at=(requested_at + timedelta(seconds=timeout) if timeout is not None else None),
         )
         if approvals is None:
             await self._audit_step(

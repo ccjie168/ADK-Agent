@@ -397,6 +397,12 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_APPROVAL_DIR"),
         help="approval inbox directory (defaults to $ADK_APPROVAL_DIR)",
     )
+    p_console.add_argument(
+        "--approval-ttl",
+        type=float,
+        default=None,
+        help="fallback approval expiry in seconds for requests without expires_at",
+    )
     _add_http_args(p_console)
     _add_runtime_args(p_console)
 
@@ -622,7 +628,7 @@ def main(argv: list[str] | None = None) -> None:
         if args.approval_dir:
             from .approvals import FileApprovalInbox
 
-            approvals = FileApprovalInbox(Path(args.approval_dir))
+            approvals = FileApprovalInbox(Path(args.approval_dir), ttl_seconds=args.approval_ttl)
 
         agents = _load_agents(args.agents)
         run_console(

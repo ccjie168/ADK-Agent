@@ -10,12 +10,14 @@ process can share a request without sharing memory:
 from __future__ import annotations
 
 import asyncio
+import inspect
+import logging
 import os
 import re
 import tempfile
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .core import ApprovalDecision, ApprovalRequest
@@ -23,6 +25,8 @@ from .core import ApprovalDecision, ApprovalRequest
 _REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _REQUEST_SUFFIX = ".request.json"
 _DECISION_SUFFIX = ".decision.json"
+
+_logger = logging.getLogger(__name__)
 
 
 class ApprovalInboxError(Exception):
@@ -39,6 +43,10 @@ class ApprovalNotFound(ApprovalInboxError):
 
 class ApprovalConflict(ApprovalInboxError):
     """A request or decision already exists with different content."""
+
+
+class ApprovalExpired(ApprovalInboxError):
+    """The request deadline passed before a decision was recorded."""
 
 
 @dataclass(frozen=True)
@@ -74,16 +82,33 @@ class FileApprovalInbox:
         *,
         poll_seconds: float = 0.5,
         clock: Callable[[], datetime] | None = None,
+        ttl_seconds: float | None = None,
+        on_submit: Callable[[ApprovalRequest], Awaitable[None] | None] | None = None,
     ) -> None:
         self.root = Path(root)
         self.poll_seconds = poll_seconds
+        self.ttl_seconds = ttl_seconds
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._on_submit = on_submit
 
     def _request_path(self, request_id: str) -> Path:
         return self.root / f"{request_id}{_REQUEST_SUFFIX}"
 
     def _decision_path(self, request_id: str) -> Path:
         return self.root / f"{request_id}{_DECISION_SUFFIX}"
+
+    def expires_at(self, request: ApprovalRequest) -> datetime | None:
+        if request.expires_at is not None:
+            return request.expires_at
+        if self.ttl_seconds is None:
+            return None
+        return request.requested_at + timedelta(seconds=self.ttl_seconds)
+
+    def is_expired(self, request: ApprovalRequest, now: datetime | None = None) -> bool:
+        deadline = self.expires_at(request)
+        if deadline is None:
+            return False
+        return (now if now is not None else self._clock()) >= deadline
 
     def submit(self, request: ApprovalRequest) -> None:
         request_id = _checked_id(request.request_id)
@@ -110,6 +135,12 @@ class FileApprovalInbox:
         request_path = self._request_path(request_id)
         if not request_path.exists():
             raise ApprovalNotFound(f"no request {request_id!r}")
+        target = self._decision_path(request_id)
+        if target.exists():
+            raise ApprovalConflict(f"request {request_id!r} already has a decision")
+        request = ApprovalRequest.model_validate_json(request_path.read_text(encoding="utf-8"))
+        if self.is_expired(request):
+            raise ApprovalExpired(f"approval request {request_id!r} has expired")
         self.root.mkdir(parents=True, exist_ok=True)
         decision = ApprovalDecision(
             request_id=request_id,
@@ -118,7 +149,6 @@ class FileApprovalInbox:
             reason=reason,
             decided_at=self._clock(),
         )
-        target = self._decision_path(request_id)
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self.root, delete=False) as tmp:
             tmp.write(decision.model_dump_json())
             tmp.flush()
@@ -159,25 +189,46 @@ class FileApprovalInbox:
             if self._decision_path(request_id).exists():
                 continue
             try:
-                found.append(ApprovalRequest.model_validate_json(path.read_text(encoding="utf-8")))
+                request = ApprovalRequest.model_validate_json(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
+            if self.is_expired(request):
+                continue
+            found.append(request)
         found.sort(key=lambda request: (request.requested_at, request.request_id))
         return found
 
     async def request(self, request: ApprovalRequest) -> ApprovalDecision:
-        """Submit and wait for a decision file to appear."""
+        """Submit, notify, then wait for a decision file to appear."""
         self.submit(request)
+        await self._notify(request)
         request_id = request.request_id
         while True:
             record = self.get(request_id)
             if record is not None and record.decision is not None:
                 return record.decision
+            if self.is_expired(request):
+                raise ApprovalExpired(f"approval request {request_id!r} has expired")
             await asyncio.sleep(self.poll_seconds)
+
+    async def _notify(self, request: ApprovalRequest) -> None:
+        if self._on_submit is None:
+            return
+        try:
+            result = self._on_submit(request)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning(
+                "approval notification failed for %s: %s",
+                request.request_id,
+                type(exc).__name__,
+            )
 
 
 __all__ = [
     "ApprovalConflict",
+    "ApprovalExpired",
     "ApprovalNotFound",
     "ApprovalRecord",
     "FileApprovalInbox",
