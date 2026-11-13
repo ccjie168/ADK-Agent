@@ -1,6 +1,6 @@
 # SLICE-067 工件加载与验签
 
-状态: planned
+状态: merged
 依据: ADR-0008 第 3、4、6 条，SLICE-065，SLICE-066。
 
 ## 意图（要什么，不写怎么写）
@@ -42,29 +42,29 @@ load_agent(*, registry, ref: AgentRef, tenant, store, loader, trust) -> BaseAgen
 
 ## 完成判据（可执行）
 
-- [ ] 验签通过 -> `tests/registry/test_artifact_loader.py::test_trust_verifies`
-- [ ] 未知 key_id 被拒 -> `tests/registry/test_artifact_loader.py::test_trust_unknown_key`
-- [ ] 缺签名被拒 -> `tests/registry/test_artifact_loader.py::test_trust_requires_signature`
-- [ ] 篡改签名被拒 -> `tests/registry/test_artifact_loader.py::test_trust_rejects_tamper`
-- [ ] 正常工件加载成 agent -> `tests/registry/test_artifact_loader.py::test_loads_agent`
-- [ ] 缺字节被拒 -> `tests/registry/test_artifact_loader.py::test_missing_bytes`
-- [ ] 字节与摘要不符被拒 -> `tests/registry/test_artifact_loader.py::test_digest_mismatch`
-- [ ] 路径穿越条目被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_traversal`
-- [ ] 绝对路径被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_absolute`
-- [ ] 符号链接被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_symlink`
-- [ ] 白名单外文件被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_unexpected_file`
-- [ ] 缺入口被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_missing_entrypoint`
-- [ ] 名称不符被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_name_mismatch`
-- [ ] 模块不暴露 agent 被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_no_agent`
-- [ ] `load_agent` 验签后加载 -> `tests/registry/test_artifact_loader.py::test_load_agent`
-- [ ] `load_agent` 拒绝无工件的版本 -> `tests/registry/test_artifact_loader.py::test_load_agent_without_artifact`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 验签通过 -> `tests/registry/test_artifact_loader.py::test_trust_verifies`
+- [x] 未知 key_id 被拒 -> `tests/registry/test_artifact_loader.py::test_trust_unknown_key`
+- [x] 缺签名被拒 -> `tests/registry/test_artifact_loader.py::test_trust_requires_signature`
+- [x] 篡改签名被拒 -> `tests/registry/test_artifact_loader.py::test_trust_rejects_tamper`
+- [x] 正常工件加载成 agent -> `tests/registry/test_artifact_loader.py::test_loads_agent`
+- [x] 缺字节被拒 -> `tests/registry/test_artifact_loader.py::test_missing_bytes`
+- [x] 字节与摘要不符被拒 -> `tests/registry/test_artifact_loader.py::test_digest_mismatch`
+- [x] 路径穿越条目被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_traversal`
+- [x] 绝对路径被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_absolute`
+- [x] 符号链接被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_symlink`
+- [x] 白名单外文件被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_unexpected_file`
+- [x] 缺入口被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_missing_entrypoint`
+- [x] 名称不符被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_name_mismatch`
+- [x] 模块不暴露 agent 被拒 -> `tests/registry/test_artifact_loader.py::test_rejects_no_agent`
+- [x] `load_agent` 验签后加载 -> `tests/registry/test_artifact_loader.py::test_load_agent`
+- [x] `load_agent` 拒绝无工件的版本 -> `tests/registry/test_artifact_loader.py::test_load_agent_without_artifact`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.registry import InProcessArtifactLoader` -> 当前 `ImportError`
-- [ ] 反例 2：含 `../evil.py` 的 zip 若直接解包就是穿越 -> `test_rejects_traversal`
-- [ ] 反例 3：未验签就加载 -> `test_load_agent` 用错误公钥断言失败
+- [x] 反例 1：`from adk_agent.registry import InProcessArtifactLoader` -> 当前 `ImportError`
+- [x] 反例 2：含 `../evil.py` 的 zip 若直接解包就是穿越 -> `test_rejects_traversal`
+- [x] 反例 3：未验签就加载 -> `test_load_agent` 用错误公钥断言失败
 
 ## 契约（如涉及对外接口）
 
@@ -87,6 +87,6 @@ load_agent(*, registry, ref: AgentRef, tenant, store, loader, trust) -> BaseAgen
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-067-artifact-loader.txt` 的 red 段
+- 实现后绿: 同文件 green 段，16 个用例与全量 800 个用例通过
+- 实机: 同文件 live 段。用 SLICE-066 发布的真工件加载出 `bot` 的 `LlmAgent`；错误公钥报签名无效，缺字节报找不到工件

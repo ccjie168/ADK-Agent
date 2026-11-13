@@ -6,3 +6,47 @@ $ python -m pytest tests/registry/test_artifact_loader.py -q
 E   ImportError: cannot import name 'ArtifactLoadError' from 'adk_agent.registry'
 ERROR tests/registry/test_artifact_loader.py
 1 error in 1.94s
+
+== green: targeted tests ==
+$ python -m pytest tests/registry/test_artifact_loader.py -q
+16 passed in 1.92s
+
+$ python -m pytest -q
+800 passed, 16 skipped in 45.84s
+
+Gate found formatting and import-order issues in the new test file; fixed.
+
+== live: load the artifact published in SLICE-066 ==
+$ python - <<'PY'   (registry, store and key from the SLICE-066 live run)
+agent = asyncio.run(load_agent(trust=TrustStore({"publisher-1": <public key>}),
+                               registry=FileAgentRegistry(...), ref=AgentRef(...),
+                               tenant="acme", store=FileArtifactStore(...),
+                               loader=InProcessArtifactLoader()))
+loaded: bot LlmAgent
+wrong key: artifact signature is invalid
+missing bytes: artifact bytes not found
+
+== reading ==
+- The loader re-hashes the bytes against the declared digest before touching the zip, even though
+  the store already verified on write.
+- Entries are read, not extracted: path traversal, absolute paths, symlinks, duplicate names,
+  unexpected files, oversized expansion and too many entries are rejected before any code runs.
+- Trust is checked before load_agent calls the loader. An unknown key id or a bad signature stops
+  the run; there is no unsigned fallback.
+- Executing the module is the intended trust boundary of ADR-0008. It runs in-process with the
+  platform's privileges, not in a sandbox.
+
+== full gate ==
+$ python scripts/check.py --full
+800 passed, 16 skipped in 44.07s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
