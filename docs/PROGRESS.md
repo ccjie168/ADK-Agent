@@ -78,7 +78,7 @@
 | SLICE-076 | 生命周期存储与接口 | `4931e0e` |
 | SLICE-077 | 生命周期拦截与控制台 | `515d7e1` |
 | SLICE-078 | 工具授权请求存储 | `c1c5d4f` |
-| SLICE-079 | MCP 与 A2A 工具授权 | `PENDING` |
+| SLICE-079 | MCP 与 A2A 工具授权 | `a6ce1cb` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
