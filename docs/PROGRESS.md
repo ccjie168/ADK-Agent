@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-13
 分支: master
-最新提交: 待填（SLICE-066 发布带工件与签名）
+最新提交: `577e6ec` feat(registry): publish signed deterministic artifacts (SLICE-066)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
@@ -65,7 +65,7 @@
 | SLICE-063 | 控制台接共享审计 | `59b58c5` |
 | SLICE-064 | 工件类型与端口（ADR-0008） | `00b504d` |
 | SLICE-065 | 工件存储（文件与 Postgres） | `b3a4c25` |
-| SLICE-066 | 发布带工件与签名 | 待填 |
+| SLICE-066 | 发布带工件与签名 | `577e6ec` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
