@@ -136,7 +136,8 @@ def test_trust_rejects_tamper(tmp_path):
     key = _key()
     data = pack_agent(_project(tmp_path))
     artifact = _signed(data, key)
-    bad = "0" + artifact.signature[1:] if artifact.signature else "0" * 128
+    signature = artifact.signature or "0" * 128
+    bad = ("1" if signature[0] != "1" else "2") + signature[1:]
 
     with pytest.raises(ArtifactTrustError):
         _trust(key).verify(artifact.model_copy(update={"signature": bad}))
