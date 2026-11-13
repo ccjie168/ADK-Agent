@@ -11,6 +11,8 @@ from .client import (
     RegistryServiceUnavailable,
 )
 from .file import FileAgentRegistry, RegistryConflict, RegistryError, RegistryIntegrityError
+from .lifecycle import FileAgentLifecycleStore
+from .lifecycle_postgres import PostgresAgentLifecycleStore
 from .loader import ArtifactLoadError, InProcessArtifactLoader, load_agent
 from .manifest import load_manifest, published_from
 from .packaging import PackagingError, pack_agent, read_artifact_zip
@@ -26,9 +28,11 @@ __all__ = [
     "ArtifactStoreError",
     "ArtifactTrustError",
     "EvalReportConflict",
+    "FileAgentLifecycleStore",
     "FileArtifactStore",
     "InProcessArtifactLoader",
     "PackagingError",
+    "PostgresAgentLifecycleStore",
     "PostgresAgentRegistry",
     "PostgresEvalReportStore",
     "PublishUnavailable",

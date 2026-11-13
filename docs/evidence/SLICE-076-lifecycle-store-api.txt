@@ -1,0 +1,71 @@
+SLICE-076 lifecycle store and control-plane API
+===============================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/core/test_lifecycle.py \
+    tests/registry/test_lifecycle_store.py tests/registry/test_registry_lifecycle_service.py \
+    tests/test_cli_registry_service.py -q
+tests\registry\test_registry_lifecycle_service.py:11: in <module>
+    from adk_agent.core import (
+E   ImportError: cannot import name 'AgentLifecycle' from 'adk_agent.core'
+ERROR tests/core/test_lifecycle.py
+ERROR tests/registry/test_lifecycle_store.py
+ERROR tests/registry/test_registry_lifecycle_service.py
+3 errors in 2.77s
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/core/test_lifecycle.py \
+    tests/registry/test_lifecycle_store.py tests/registry/test_registry_lifecycle_service.py \
+    tests/test_cli_registry_service.py -q
+20 passed, 1 skipped
+
+$ TEST_POSTGRES_URL='postgresql://adk:adk@127.0.0.1:55432/adk' ... tests/registry/test_lifecycle_store.py
+3 passed
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+900 passed, 27 skipped in 46.81s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+An earlier full run failed sast: bandit B608 flagged the f-string SELECT in the
+lifecycle store. The query now uses plain constants and the value placeholders
+stay parameterized.
+
+live, real Postgres and a service with an audit file
+----------------------------------------------------
+Fresh database `adk_live5`; service on 8809 with `--audit-file`.
+
+  GET  .../lifecycle -> 200 {'status': 'published', 'changed_at': None, ...}
+  PUT  deprecated    -> 200 changed_by=registry_operator reason=superseded
+  GET  /v1/agents    -> record carries the same lifecycle object
+  PUT  retired       -> 200 changed_at moved, reason=bad build
+  PUT  published     -> 409 {'error': 'invalid_transition'}
+  PUT  retired again -> 200 with the original changed_at (idempotent)
+
+Audit file: two `agent.lifecycle` events, target `acme/support-bot@1.0.0`,
+status ok, tenant acme. The idempotent call wrote no event.
+
+notes
+-----
+- `FileAgentRegistry.list` now skips `.lifecycle.json` so the file store can
+  live inside the demo registry tree.
+- `HttpAgentRegistry` drops the service-layer `lifecycle` field before parsing
+  `PublishedAgent`, whose model forbids extra fields.
+- Audit is written only when the status actually changes.
+- Postgres writes lock the row FOR UPDATE and re-read after an insert race.

@@ -1,0 +1,49 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "changed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Changed At"
+    },
+    "changed_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Changed By"
+    },
+    "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "published",
+        "deprecated",
+        "retired"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "AgentLifecycle",
+  "type": "object"
+}

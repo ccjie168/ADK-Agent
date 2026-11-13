@@ -64,7 +64,7 @@ class FileAgentRegistry:
             if not agent_dir.is_dir():
                 continue
             for path in agent_dir.glob("*.json"):
-                if path.name.endswith(".eval.json"):
+                if path.name.endswith((".eval.json", ".lifecycle.json")):
                     continue
                 records.append(self._load(path))
         records.sort(key=lambda record: (record.manifest.id, record.manifest.version))

@@ -6,7 +6,14 @@ import builtins
 from typing import Any
 from urllib.parse import quote
 
-from ..core import AgentArtifact, AgentRef, EvalReport, PublishedAgent
+from ..core import (
+    AgentArtifact,
+    AgentLifecycle,
+    AgentRef,
+    EvalReport,
+    LifecycleStatus,
+    PublishedAgent,
+)
 from ..core.artifact import MEDIA_TYPE
 from .file import RegistryConflict, RegistryError
 from .reports import EvalReportConflict
@@ -36,6 +43,13 @@ def _raise_for_status(response: Any, *, conflict: bool = False) -> None:
     if status in (400, 413, 415):
         raise RegistryRejected(message)
     raise RegistryServiceUnavailable(message)
+
+
+def _published(payload: dict[str, Any]) -> PublishedAgent:
+    """Drop the service-layer ``lifecycle`` field before parsing a record."""
+    return PublishedAgent.model_validate(
+        {key: value for key, value in payload.items() if key != "lifecycle"}
+    )
 
 
 class HttpAgentRegistry:
@@ -87,7 +101,7 @@ class HttpAgentRegistry:
         if response.status_code == 404:
             return None
         _raise_for_status(response)
-        return PublishedAgent.model_validate(response.json())
+        return _published(response.json())
 
     async def publish(self, agent: PublishedAgent) -> PublishedAgent:
         import httpx
@@ -115,7 +129,7 @@ class HttpAgentRegistry:
         except httpx.HTTPError as exc:
             raise RegistryServiceUnavailable("registry service unreachable") from exc
         _raise_for_status(response)
-        return [PublishedAgent.model_validate(item) for item in response.json()["agents"]]
+        return [_published(item) for item in response.json()["agents"]]
 
     async def tenants(self) -> builtins.list[str]:
         import httpx
@@ -128,6 +142,45 @@ class HttpAgentRegistry:
             raise RegistryServiceUnavailable("registry service unreachable") from exc
         _raise_for_status(response)
         return builtins.list(response.json()["tenants"])
+
+    def _lifecycle_path(self, tenant: str, agent_id: str, version: str) -> str:
+        return "/v1/agents/{}/{}/{}/lifecycle".format(
+            quote(tenant, safe=""), quote(agent_id, safe=""), quote(version, safe="")
+        )
+
+    async def get_lifecycle(self, tenant: str, agent_id: str, version: str) -> AgentLifecycle:
+        import httpx
+
+        try:
+            response = await self._http().get(
+                f"{self.base_url}{self._lifecycle_path(tenant, agent_id, version)}",
+                headers=self._headers(),
+            )
+        except httpx.HTTPError as exc:
+            raise RegistryServiceUnavailable("registry service unreachable") from exc
+        _raise_for_status(response)
+        return AgentLifecycle.model_validate(response.json())
+
+    async def set_lifecycle(
+        self,
+        tenant: str,
+        agent_id: str,
+        version: str,
+        status: LifecycleStatus,
+        reason: str = "",
+    ) -> AgentLifecycle:
+        import httpx
+
+        try:
+            response = await self._http().put(
+                f"{self.base_url}{self._lifecycle_path(tenant, agent_id, version)}",
+                json={"status": status, "reason": reason},
+                headers=self._headers(),
+            )
+        except httpx.HTTPError as exc:
+            raise RegistryServiceUnavailable("registry service unreachable") from exc
+        _raise_for_status(response)
+        return AgentLifecycle.model_validate(response.json())
 
     async def upload_artifact(self, artifact: AgentArtifact, data: bytes) -> None:
         import httpx

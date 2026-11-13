@@ -10,6 +10,12 @@ from .eval import EvalCase, EvalCaseResult, EvalReport, EvalSuiteSpec
 from .gateway import ModelGatewayRequest
 from .identity import Principal
 from .invocation import Invocation, InvocationResult
+from .lifecycle import (
+    AgentLifecycle,
+    LifecycleStatus,
+    LifecycleTransitionError,
+    transition_lifecycle,
+)
 from .manifest import (
     AgentManifest,
     AgentRef,
@@ -32,6 +38,7 @@ from .orchestration import (
 )
 from .policy import DataClass, PolicyDecision, ToolGrant
 from .ports import (
+    AgentLifecycleStore,
     AgentRegistry,
     ApprovalGate,
     ArtifactLoader,
@@ -55,6 +62,8 @@ from .tool import ToolGatewayRequest, ToolRequest, ToolResponse
 __all__ = [
     "AccessPolicy",
     "AgentArtifact",
+    "AgentLifecycle",
+    "AgentLifecycleStore",
     "AgentManifest",
     "AgentRef",
     "AgentRegistry",
@@ -77,6 +86,8 @@ __all__ = [
     "IdentityProvider",
     "Invocation",
     "InvocationResult",
+    "LifecycleStatus",
+    "LifecycleTransitionError",
     "MAX_ARTIFACT_BYTES",
     "MEDIA_TYPE",
     "Message",
@@ -114,4 +125,5 @@ __all__ = [
     "manifest_digest",
     "plan_digest",
     "plan_ref",
+    "transition_lifecycle",
 ]

@@ -13,6 +13,7 @@ from .audit import AuditEvent
 from .eval import EvalReport
 from .identity import Principal
 from .invocation import Invocation
+from .lifecycle import AgentLifecycle, LifecycleStatus
 from .manifest import AgentRef, ModelPolicy, PublishedAgent
 from .model import ModelRequest, ModelResponse
 from .policy import PolicyDecision
@@ -28,6 +29,21 @@ class AgentRegistry(Protocol):
     async def list(self, tenant: str) -> builtins.list[PublishedAgent]: ...
 
     async def tenants(self) -> builtins.list[str]: ...
+
+
+class AgentLifecycleStore(Protocol):
+    async def get(self, tenant: str, agent_id: str, version: str) -> AgentLifecycle: ...
+
+    async def set(
+        self,
+        tenant: str,
+        agent_id: str,
+        version: str,
+        *,
+        status: LifecycleStatus,
+        changed_by: str,
+        reason: str,
+    ) -> AgentLifecycle: ...
 
 
 class EvalReportStore(Protocol):
@@ -100,6 +116,7 @@ class ToolGateway(Protocol):
 
 
 __all__ = [
+    "AgentLifecycleStore",
     "AgentRegistry",
     "ApprovalGate",
     "AuditSink",

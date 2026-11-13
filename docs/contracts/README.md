@@ -15,6 +15,7 @@
 - `manifest.schema.json`：`AgentManifest`，agent 的注册单元。
 - `agent_ref.schema.json`：`AgentRef`，运行的版本锚点；`artifact_digest` 是可选的工作工件锚点。
 - `agent_artifact.schema.json`：`AgentArtifact`，ADR-0008 的工件元数据（摘要、大小、入口、签名）。
+- `agent_lifecycle.schema.json`：`AgentLifecycle`，ADR-0010 的版本生命周期状态。
 - `principal.schema.json`：`Principal`，每次调用的主体。
 - `invocation.schema.json`：`Invocation`，数据面的调用形状。
 - `audit_event.schema.json`：`AuditEvent`，追加审计事件。

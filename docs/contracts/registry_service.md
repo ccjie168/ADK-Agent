@@ -58,6 +58,33 @@
 
 评测报告与发布记录同库存储在 `adk_eval_reports`，服务总是配置这个存储。
 
+## `GET /v1/agents/{tenant}/{agent_id}/{version}/lifecycle`
+
+返回 200：
+
+```json
+{"status": "published", "changed_at": null, "changed_by": null, "reason": ""}
+```
+
+没有生命周期行时就是上面这份默认值。OIDC 非 admin 跨租户 403。生命周期存储不可用返回 503 `lifecycle_store_unavailable`。
+
+`GET /v1/agents` 与单条读取的每个版本额外带只读字段 `lifecycle`，形状与上面相同。它是服务层附加字段，不属于 `PublishedAgent`。
+
+## `PUT /v1/agents/{tenant}/{agent_id}/{version}/lifecycle`
+
+请求体：
+
+```json
+{"status": "deprecated", "reason": "superseded by 1.1.0"}
+```
+
+- `status` 取 `published`、`deprecated`、`retired`。非法值 400 `invalid_status`；请求体不是 JSON 或不是对象 400 `invalid_request`。
+- 版本必须已发布，否则 404 `not_found`。
+- 只有 admin 或静态 token 操作者可以改。OIDC 非 admin 返回 403 `forbidden`；跨租户仍按 403 `tenant_forbidden`。
+- 非法转换（`retired` 到其他状态）返回 409 `invalid_transition`。设置成当前状态是幂等的，返回 200 且不更新 `changed_at`。
+- 成功返回 200 和新的生命周期记录。变化写一条 `agent.lifecycle` 审计，`target` 是 `<tenant>/<id>@<version>`，状态为 `ok`。
+- 生命周期存储不可用返回 503 `lifecycle_store_unavailable`。
+
 ## 错误
 
 | 状态 | 错误码 | 含义 |
@@ -69,14 +96,18 @@
 | 400 | `size_mismatch` | 上传字节大小与记录不符 |
 | 400 | `artifact_untrusted` | 工件签名不可信 |
 | 400 | `invalid_report` | `EvalReport` 非法 |
+| 400 | `invalid_status` | 生命周期状态非法 |
+| 400 | `invalid_request` | 生命周期请求体非法 |
 | 401 | `unauthorized` | 缺少或错误的凭证 |
 | 403 | `tenant_forbidden` | 跨租户访问 |
+| 403 | `forbidden` | 非 admin 修改生命周期 |
 | 404 | `not_found` | 版本不存在 |
 | 404 | `eval_report_not_found` | 该版本没有评测报告 |
 | 409 | `version_conflict` | 同版本不同内容 |
 | 409 | `artifact_not_published` | 没有引用该摘要的发布记录 |
 | 409 | `artifact_untrusted` | 上传时记录的签名不可信 |
 | 409 | `eval_report_conflict` | 同版本已有不同评测报告 |
+| 409 | `invalid_transition` | 生命周期转换非法 |
 | 413 | `too_large` | 超过 8 MiB |
 | 415 | `unsupported_media_type` | 工件 Content-Type 不对 |
 | 502 | `artifact_store_failed` | 工件存储写入失败 |
@@ -84,6 +115,7 @@
 | 502 | `registry_unavailable` | 注册表存储不可达 |
 | 502 | `registry_integrity_error` | 存储的记录与摘要不符 |
 | 503 | `artifact_store_unavailable` | 服务没有配置工件存储 |
+| 503 | `lifecycle_store_unavailable` | 服务没有配置生命周期存储 |
 | 503 | `artifact_trust_unavailable` | 发布带工件但服务没有可信公钥 |
 
 ## 客户端

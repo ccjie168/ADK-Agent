@@ -5,19 +5,29 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from typing import Any
+import uuid
+from datetime import datetime, timezone
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from ..audit.hashing import hash_text
 from ..auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from ..core import (
+    AgentLifecycle,
+    AgentLifecycleStore,
+    AgentRef,
     AgentRegistry,
     ArtifactStore,
+    AuditEvent,
+    AuditSink,
     EvalReport,
     EvalReportStore,
     IdentityProvider,
+    LifecycleStatus,
+    LifecycleTransitionError,
     Principal,
     PublishedAgent,
     manifest_digest,
@@ -33,6 +43,8 @@ from .trust import ArtifactTrustError, TrustStore
 logger = logging.getLogger(__name__)
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+_LIFECYCLE_STATUSES = frozenset({"published", "deprecated", "retired"})
 
 
 def _error(code: str, status: int) -> JSONResponse:
@@ -60,6 +72,20 @@ async def _collect(registry: AgentRegistry, tenants: list[str]) -> list[Publishe
     return records
 
 
+async def _lifecycle_state(
+    store: AgentLifecycleStore | None, record: PublishedAgent
+) -> AgentLifecycle:
+    if store is None:
+        return AgentLifecycle.default()
+    return await store.get(record.manifest.tenant, record.manifest.id, record.manifest.version)
+
+
+def _with_lifecycle(record: PublishedAgent, state: AgentLifecycle) -> dict[str, Any]:
+    payload = record.model_dump(mode="json")
+    payload["lifecycle"] = state.model_dump(mode="json")
+    return payload
+
+
 def _read_error(exc: RegistryError) -> JSONResponse:
     if isinstance(exc, RegistryIntegrityError):
         return _error("registry_integrity_error", 502)
@@ -71,6 +97,8 @@ def build_registry_service_app(
     *,
     artifact_store: ArtifactStore | None = None,
     eval_reports: EvalReportStore | None = None,
+    lifecycle: AgentLifecycleStore | None = None,
+    audit: AuditSink | None = None,
     trust: TrustStore | None = None,
     host: str = "127.0.0.1",
     auth_token: str | None = None,
@@ -107,12 +135,15 @@ def build_registry_service_app(
         records.sort(
             key=lambda record: (record.manifest.tenant, record.manifest.id, record.manifest.version)
         )
-        return JSONResponse(
-            {
-                "agents": [record.model_dump(mode="json") for record in records],
-                "count": len(records),
-            }
-        )
+        try:
+            agents = [
+                _with_lifecycle(record, await _lifecycle_state(lifecycle, record))
+                for record in records
+            ]
+        except Exception:  # noqa: BLE001
+            logger.exception("lifecycle read failure")
+            return _error("lifecycle_store_unavailable", 503)
+        return JSONResponse({"agents": agents, "count": len(agents)})
 
     @app.get("/v1/agents/{tenant}/{agent_id}/{version}")
     async def get_agent(request: Request, tenant: str, agent_id: str, version: str) -> JSONResponse:
@@ -124,8 +155,109 @@ def build_registry_service_app(
             return _read_error(exc)
         for record in records:
             if record.manifest.id == agent_id and record.manifest.version == version:
-                return JSONResponse(record.model_dump(mode="json"))
+                try:
+                    state = await _lifecycle_state(lifecycle, record)
+                except Exception:  # noqa: BLE001
+                    logger.exception("lifecycle read failure")
+                    return _error("lifecycle_store_unavailable", 503)
+                return JSONResponse(_with_lifecycle(record, state))
         return _error("not_found", 404)
+
+    @app.get("/v1/agents/{tenant}/{agent_id}/{version}/lifecycle")
+    async def get_lifecycle(
+        request: Request, tenant: str, agent_id: str, version: str
+    ) -> JSONResponse:
+        if _cross_tenant(_principal(request), tenant):
+            return _error("tenant_forbidden", 403)
+        if lifecycle is None:
+            return _error("lifecycle_store_unavailable", 503)
+        try:
+            state = await lifecycle.get(tenant, agent_id, version)
+        except Exception:  # noqa: BLE001
+            logger.exception("lifecycle read failure")
+            return _error("lifecycle_store_unavailable", 503)
+        return JSONResponse(state.model_dump(mode="json"))
+
+    @app.put("/v1/agents/{tenant}/{agent_id}/{version}/lifecycle")
+    async def put_lifecycle(
+        request: Request, tenant: str, agent_id: str, version: str
+    ) -> JSONResponse:
+        try:
+            body: Any = await request.json()
+        except ValueError:
+            return _error("invalid_request", 400)
+        if not isinstance(body, dict):
+            return _error("invalid_request", 400)
+        raw_status = body.get("status")
+        if not isinstance(raw_status, str) or raw_status not in _LIFECYCLE_STATUSES:
+            return _error("invalid_status", 400)
+        status = cast(LifecycleStatus, raw_status)
+        reason = body.get("reason", "")
+        if not isinstance(reason, str):
+            return _error("invalid_request", 400)
+
+        principal = _principal(request)
+        if _cross_tenant(principal, tenant):
+            return _error("tenant_forbidden", 403)
+        if principal is not None and "admin" not in principal.roles:
+            return _error("forbidden", 403)
+
+        try:
+            records = await registry.list(tenant)
+        except RegistryError as exc:
+            return _read_error(exc)
+        except Exception:  # noqa: BLE001
+            logger.exception("registry list failure")
+            return _error("registry_unavailable", 502)
+        record = next(
+            (
+                candidate
+                for candidate in records
+                if candidate.manifest.id == agent_id and candidate.manifest.version == version
+            ),
+            None,
+        )
+        if record is None:
+            return _error("not_found", 404)
+        if lifecycle is None:
+            return _error("lifecycle_store_unavailable", 503)
+
+        actor = principal or Principal(
+            tenant=tenant, subject="registry_operator", kind="human", roles=["admin"]
+        )
+        try:
+            previous = await lifecycle.get(tenant, agent_id, version)
+            changed = await lifecycle.set(
+                tenant,
+                agent_id,
+                version,
+                status=status,
+                changed_by=actor.subject,
+                reason=reason,
+            )
+        except LifecycleTransitionError:
+            return _error("invalid_transition", 409)
+        except Exception:  # noqa: BLE001
+            logger.exception("lifecycle write failure")
+            return _error("lifecycle_store_unavailable", 503)
+
+        if audit is not None and changed.status != previous.status:
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=uuid.uuid4().hex,
+                    tenant=actor.tenant,
+                    principal=actor,
+                    agent_ref=AgentRef(id=agent_id, version=version, digest=record.digest),
+                    action="agent.lifecycle",
+                    target=f"{tenant}/{agent_id}@{version}",
+                    args_hash=hash_text(f"{previous.status}->{changed.status}"),
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse(changed.model_dump(mode="json"))
 
     @app.get("/v1/agents/{tenant}/{agent_id}/{version}/eval")
     async def get_eval_report(

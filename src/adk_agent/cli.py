@@ -739,6 +739,7 @@ def main(argv: list[str] | None = None) -> None:
             "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
         ),
     )
+    _add_audit_args(p_registry)
 
     p_verify = sub.add_parser("verify-audit", help="verify an audit chain file")
     p_verify.add_argument("path", help="path to a chained audit JSONL file")
@@ -1173,6 +1174,7 @@ def main(argv: list[str] | None = None) -> None:
         from .registry import (
             ArtifactStoreError,
             FileArtifactStore,
+            PostgresAgentLifecycleStore,
             PostgresAgentRegistry,
             PostgresEvalReportStore,
             RegistryStoreUnavailable,
@@ -1189,6 +1191,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             registry = PostgresAgentRegistry(args.database_url)
             eval_reports = PostgresEvalReportStore(args.database_url)
+            lifecycle = PostgresAgentLifecycleStore(args.database_url)
         except RegistryStoreUnavailable as exc:
             print(f"registry store unavailable: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
@@ -1212,6 +1215,8 @@ def main(argv: list[str] | None = None) -> None:
             registry,
             artifact_store=store,
             eval_reports=eval_reports,
+            lifecycle=lifecycle,
+            audit=_audit_sink(args),
             trust=_artifact_trust(args),
             host=args.host,
             auth_token=_auth_token(args),
