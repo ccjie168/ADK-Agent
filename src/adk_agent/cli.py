@@ -60,6 +60,78 @@ def _load_agents(path: str) -> dict:
     raise SystemExit(f"no `agents` dict or `agent`/`root_agent` found in {path}")
 
 
+def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Load agents named by ``--agent-ref`` from the registry."""
+    refs = getattr(args, "agent_ref", None)
+    if not refs:
+        return None
+
+    from .registry import (
+        ArtifactLoadError,
+        ArtifactStoreError,
+        ArtifactTrustError,
+        FileAgentRegistry,
+        FileArtifactStore,
+        PublishUnavailable,
+        RefError,
+        TrustStore,
+        load_registry_agents,
+    )
+    from .registry.artifacts_postgres import PostgresArtifactStore
+
+    keys_file = getattr(args, "artifact_keys", None)
+    try:
+        keys_text = (
+            Path(keys_file).read_text(encoding="utf-8")
+            if keys_file
+            else os.environ.get("ADK_ARTIFACT_KEYS")
+        )
+    except OSError as exc:
+        print(f"cannot read artifact keys: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    if not keys_text:
+        print(
+            "artifact trust keys are required: provide --artifact-keys FILE "
+            "or set ADK_ARTIFACT_KEYS",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    artifact_dir = getattr(args, "artifact_dir", None)
+    url = os.environ.get("ARTIFACT_URL")
+    if url and artifact_dir:
+        print("set exactly one of --artifact-dir or ARTIFACT_URL", file=sys.stderr)
+        raise SystemExit(1)
+
+    try:
+        trust = TrustStore.from_json(keys_text)
+        store: Any
+        if url:
+            store = PostgresArtifactStore(url)
+        elif artifact_dir:
+            store = FileArtifactStore(artifact_dir)
+        else:
+            print("set exactly one of --artifact-dir or ARTIFACT_URL", file=sys.stderr)
+            raise SystemExit(1)
+        return asyncio.run(
+            load_registry_agents(
+                refs,
+                registry=FileAgentRegistry(args.registry),
+                store=store,
+                trust=trust,
+            )
+        )
+    except (
+        RefError,
+        ArtifactLoadError,
+        ArtifactTrustError,
+        ArtifactStoreError,
+        PublishUnavailable,
+    ) as exc:
+        print(f"registry load failed: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def _load_tools(path: str) -> Any:
     """Load a ``tools`` mapping of tool_id to callable or ``ToolSpec``."""
     from .tools import FunctionRegistry, ToolSpec
@@ -352,6 +424,26 @@ def main(argv: list[str] | None = None) -> None:
     p_serve = sub.add_parser("serve", help="serve an ADK agent over MCP")
     p_serve.add_argument("--agent", default=None, help="path to a Python file defining `agent`")
     p_serve.add_argument("--config", default=None, help="path to a JSON FrameworkConfig file")
+    p_serve.add_argument(
+        "--agent-ref",
+        action="append",
+        dest="agent_ref",
+        default=None,
+        help="registry reference TENANT/ID@VERSION (repeatable; one for serve)",
+    )
+    p_serve.add_argument(
+        "--registry",
+        default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
+        help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
+    )
+    p_serve.add_argument(
+        "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
+    )
+    p_serve.add_argument(
+        "--artifact-keys",
+        default=None,
+        help="JSON file mapping key id to a 64 hex Ed25519 public key",
+    )
     p_serve.add_argument("--name", default=None, help="MCP tool name (defaults to the agent name)")
     p_serve.add_argument(
         "--transport",
@@ -384,8 +476,28 @@ def main(argv: list[str] | None = None) -> None:
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
     p_many.add_argument(
         "--agents",
-        required=True,
+        default=None,
         help="path to a Python file defining an `agents` dict (name -> agent)",
+    )
+    p_many.add_argument(
+        "--agent-ref",
+        action="append",
+        dest="agent_ref",
+        default=None,
+        help="registry reference TENANT/ID@VERSION (repeatable)",
+    )
+    p_many.add_argument(
+        "--registry",
+        default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
+        help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
+    )
+    p_many.add_argument(
+        "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
+    )
+    p_many.add_argument(
+        "--artifact-keys",
+        default=None,
+        help="JSON file mapping key id to a 64 hex Ed25519 public key",
     )
     p_many.add_argument("--name", default="adk_agents", help="MCP server name")
     p_many.add_argument(
@@ -530,8 +642,23 @@ def main(argv: list[str] | None = None) -> None:
     p_console = sub.add_parser("console", help="serve a private web console for agents")
     p_console.add_argument(
         "--agents",
-        required=True,
+        default=None,
         help="path to a Python file defining an `agents` dict (name -> agent)",
+    )
+    p_console.add_argument(
+        "--agent-ref",
+        action="append",
+        dest="agent_ref",
+        default=None,
+        help="registry reference TENANT/ID@VERSION (repeatable)",
+    )
+    p_console.add_argument(
+        "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
+    )
+    p_console.add_argument(
+        "--artifact-keys",
+        default=None,
+        help="JSON file mapping key id to a 64 hex Ed25519 public key",
     )
     p_console.add_argument(
         "--policy",
@@ -692,6 +819,10 @@ def main(argv: list[str] | None = None) -> None:
         rate_limit = _rate_limit(args)
         from .mcp.server import serve_agent
 
+        if sum(bool(value) for value in (args.config, args.agent, args.agent_ref)) > 1:
+            print("--config, --agent and --agent-ref are mutually exclusive", file=sys.stderr)
+            raise SystemExit(1)
+
         if args.config:
             from .config import load_config
             from .factory import build_agent
@@ -706,8 +837,17 @@ def main(argv: list[str] | None = None) -> None:
             agent = _load_agent(args.agent)
             name = args.name
             transport = args.transport or "stdio"
+        elif args.agent_ref:
+            if len(args.agent_ref) > 1:
+                print("serve accepts exactly one --agent-ref", file=sys.stderr)
+                raise SystemExit(1)
+            agents = _registry_agents(args) or {}
+            agent = next(iter(agents.values()))
+            name = args.name or agent.name
+            transport = args.transport or "stdio"
         else:
-            raise SystemExit("provide --agent <file> or --config <file>")
+            print("provide --agent <file>, --config <file> or --agent-ref", file=sys.stderr)
+            raise SystemExit(1)
 
         if rate_limit is not None and transport != "streamable-http":
             print("--rate-limit requires streamable-http", file=sys.stderr)
@@ -728,7 +868,7 @@ def main(argv: list[str] | None = None) -> None:
 
             metrics = MetricsRegistry()
         serve_agent(
-            agent,
+            agent=agent,
             name=name,
             transport=cast(Transport, transport),
             host=args.host,
@@ -749,7 +889,10 @@ def main(argv: list[str] | None = None) -> None:
         from .factory import build_runner
         from .mcp.server import serve_many
 
-        agents = _load_agents(args.agents)
+        if bool(args.agents) == bool(args.agent_ref):
+            print("provide exactly one of --agents or --agent-ref", file=sys.stderr)
+            raise SystemExit(1)
+        agents = _load_agents(args.agents) if args.agents else (_registry_agents(args) or {})
         transport = args.transport or "stdio"
         if rate_limit is not None and transport != "streamable-http":
             print("--rate-limit requires streamable-http", file=sys.stderr)
@@ -943,11 +1086,21 @@ def main(argv: list[str] | None = None) -> None:
 
             approvals = FileApprovalInbox(Path(args.approval_dir), ttl_seconds=args.approval_ttl)
 
-        agents = _load_agents(args.agents)
+        if args.agents and args.agent_ref:
+            print("--agents and --agent-ref are mutually exclusive", file=sys.stderr)
+            raise SystemExit(1)
+        if args.agents:
+            agents = _load_agents(args.agents)
+        elif args.agent_ref:
+            agents = _registry_agents(args) or {}
+        else:
+            print("provide --agents or --agent-ref", file=sys.stderr)
+            raise SystemExit(1)
+
         audit_query = _audit_query(args)
         audit_sink = _audit_sink(args)
         run_console(
-            agents,
+            agents=agents,
             host=args.host,
             port=args.port,
             auth_token=_auth_token(args),

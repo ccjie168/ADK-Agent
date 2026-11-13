@@ -1,6 +1,6 @@
 # SLICE-068 从注册表启动
 
-状态: planned
+状态: merged
 依据: ADR-0008 第 6 条，SLICE-067，`docs/contracts/cli.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -40,22 +40,22 @@ load_registry_agents(refs, *, registry, store, trust, loader) -> dict[str, BaseA
 
 ## 完成判据（可执行）
 
-- [ ] 解析引用 -> `tests/test_registry_startup.py::test_parse_agent_ref`
-- [ ] 非法引用被拒 -> `tests/test_registry_startup.py::test_parse_rejects_bad_ref`
-- [ ] 按引用加载出 agent -> `tests/test_registry_startup.py::test_load_registry_agents`
-- [ ] 版本不存在被拒 -> `tests/test_registry_startup.py::test_unknown_version`
-- [ ] 重名被拒 -> `tests/test_registry_startup.py::test_duplicate_name`
-- [ ] 控制台用 `--agent-ref` 启动 -> `tests/test_registry_startup.py::test_console_loads_from_registry`
-- [ ] `serve` 用 `--agent-ref` 启动 -> `tests/test_registry_startup.py::test_serve_loads_from_registry`
-- [ ] 两种来源互斥 -> `tests/test_registry_startup.py::test_sources_are_exclusive`
-- [ ] 缺工件来源或公钥退出 1 -> `tests/test_registry_startup.py::test_missing_artifact_config`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 解析引用 -> `tests/test_registry_startup.py::test_parse_agent_ref`
+- [x] 非法引用被拒 -> `tests/test_registry_startup.py::test_parse_rejects_bad_ref`
+- [x] 按引用加载出 agent -> `tests/test_registry_startup.py::test_load_registry_agents`
+- [x] 版本不存在被拒 -> `tests/test_registry_startup.py::test_unknown_version`
+- [x] 重名被拒 -> `tests/test_registry_startup.py::test_duplicate_name`
+- [x] 控制台用 `--agent-ref` 启动 -> `tests/test_registry_startup.py::test_console_loads_from_registry`
+- [x] `serve` 用 `--agent-ref` 启动 -> `tests/test_registry_startup.py::test_serve_loads_from_registry`
+- [x] 两种来源互斥 -> `tests/test_registry_startup.py::test_sources_are_exclusive`
+- [x] 缺工件来源或公钥退出 1 -> `tests/test_registry_startup.py::test_missing_artifact_config`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.registry import parse_agent_ref` -> 当前 `ImportError`
-- [ ] 反例 2：`console --agent-ref acme/bot@1.0.0` -> 当前 argparse 退出 2（参数不存在）
-- [ ] 反例 3：不配 `ADK_ARTIFACT_KEYS` 仍加载 -> `test_missing_artifact_config`
+- [x] 反例 1：`from adk_agent.registry import parse_agent_ref` -> 当前 `ImportError`
+- [x] 反例 2：`console --agent-ref acme/bot@1.0.0` -> 当前 argparse 退出 2（参数不存在）
+- [x] 反例 3：不配 `ADK_ARTIFACT_KEYS` 仍加载 -> `test_missing_artifact_config`
 
 ## 契约（如涉及对外接口）
 
@@ -77,6 +77,6 @@ load_registry_agents(refs, *, registry, store, trust, loader) -> dict[str, BaseA
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-068-registry-startup.txt` 的 red 段
+- 实现后绿: 同文件 green 段，14 个新用例与全量 814 个用例通过
+- 实机: 同文件 live 段。真控制台用 `--agent-ref acme/bot@1.0.0` 从注册表加载，`/api/agents` 列出 `bot`；真 MCP streamable-http 用同一引用启动，`initialize` 返回 200

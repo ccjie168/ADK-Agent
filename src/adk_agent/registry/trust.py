@@ -30,8 +30,10 @@ class TrustStore:
             from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
             public_key = Ed25519PublicKey.from_public_bytes(key_bytes)
-        except ImportError:
-            raise
+        except ImportError as exc:
+            from .signing import PublishUnavailable
+
+            raise PublishUnavailable("cryptography is not installed") from exc
         except Exception as exc:  # noqa: BLE001
             raise ArtifactTrustError("trusted key is not a valid Ed25519 public key") from exc
         if not verify_digest(artifact.digest, artifact.signature, public_key):

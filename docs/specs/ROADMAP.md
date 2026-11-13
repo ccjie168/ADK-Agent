@@ -158,7 +158,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-065 工件存储：文件内容寻址与 Postgres `adk_artifacts` 两个实现。已完成。
 - SLICE-066 发布带工件与签名：确定性 zip、Ed25519、`publish --artifact`。已完成。
 - SLICE-067 工件加载与验签：可信密钥表、进程内加载器、`load_agent`。已完成。
-- SLICE-068 从注册表启动：控制台与 MCP 的 `--agent-ref` 加载路径。进行中。
+- SLICE-068 从注册表启动：控制台与 MCP 的 `--agent-ref` 加载路径。已完成。
 
 ## 完成定义
 

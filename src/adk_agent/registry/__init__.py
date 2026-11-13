@@ -7,6 +7,7 @@ from .file import FileAgentRegistry, RegistryConflict, RegistryError, RegistryIn
 from .loader import ArtifactLoadError, InProcessArtifactLoader, load_agent
 from .manifest import load_manifest, published_from
 from .packaging import PackagingError, pack_agent, read_artifact_zip
+from .refs import RefError, load_registry_agents, parse_agent_ref
 from .reports import EvalReportConflict, FileEvalReportStore
 from .signing import PublishUnavailable, load_private_key, sign_digest, verify_digest
 from .trust import ArtifactTrustError, TrustStore
@@ -22,6 +23,7 @@ __all__ = [
     "PublishUnavailable",
     "FileAgentRegistry",
     "FileEvalReportStore",
+    "RefError",
     "RegistryConflict",
     "RegistryError",
     "RegistryIntegrityError",
@@ -30,7 +32,9 @@ __all__ = [
     "load_agent",
     "load_manifest",
     "load_private_key",
+    "load_registry_agents",
     "pack_agent",
+    "parse_agent_ref",
     "published_from",
     "read_artifact_zip",
     "sign_digest",

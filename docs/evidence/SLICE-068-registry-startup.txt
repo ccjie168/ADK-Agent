@@ -10,3 +10,53 @@ ERROR tests/test_registry_startup.py
 $ adk-agent console --agent-ref acme/bot@1.0.0
 adk-agent: error: the following arguments are required: --agents
 exit=2
+
+== green: targeted tests ==
+$ python -m pytest tests/test_registry_startup.py -q
+14 passed in 2.00s
+
+$ python -m pytest -q
+814 passed, 16 skipped in 43.72s
+
+Review fixes:
+- My new test bound `agent` as a named lambda parameter, so the captured kwargs could never contain it.
+  Fixed the test to `lambda **k`; the implementation was right.
+- mypy could not narrow the artifact store ternary; replaced it with explicit branches and an `Any`
+  annotation. Also mapped a missing `cryptography` install to `PublishUnavailable` in TrustStore.
+
+== live: console started from a published reference ==
+$ PUB=$(cat public.hex)
+$ ADK_CONSOLE_TOKEN=... ADK_ARTIFACT_KEYS='{"publisher-1":"<hex>"}' \
+    adk-agent console --agent-ref acme/bot@1.0.0 \
+    --registry .../registry --artifact-dir .../store --port 18090 ...
+$ GET /api/agents
+[{"name": "bot", "description": ""}]
+$ POST /api/chat {"agent":"bot"} -> 500 (no model credentials; the run path was reached)
+
+== live: MCP streamable-http started from the same reference ==
+$ ADK_MCP_TOKEN=... ADK_ARTIFACT_KEYS=... adk-agent serve --agent-ref acme/bot@1.0.0 ...
+    --transport streamable-http --port 18089 ...
+healthz=200
+POST /mcp without token -> 401
+POST /mcp initialize with token -> 200 {"capabilities": {...}}
+
+== reading ==
+- The console and MCP now load code from the signed artifact, not from a local agent.py.
+- All three startup paths (console, serve, serve-many) share one loader and one trust store.
+- Failure modes are startup failures: unknown version, missing artifact, untrusted signature, missing
+  keys, or an ambiguous store configuration all exit before the server binds.
+
+== full gate ==
+$ python scripts/check.py --full
+814 passed, 16 skipped in 43.40s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
