@@ -1,0 +1,48 @@
+SLICE-083 marketplace unload and in-place swap
+==============================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console_unload.py -q
+6 failed in 2.59s
+  - POST /api/registry/unload -> 404 (endpoint missing)
+  - swapping versions still returns 409 name_conflict
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console_unload.py -q
+6 passed in 2.60s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+951 passed, 28 skipped in 48.56s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, real console with two published versions
+----------------------------------------------
+Two versions of acme/bot with signed artifacts were published to a file
+registry; console on 8814 with probe-only startup agents.
+
+  load 1.0.0 -> 200 loaded
+  load 2.0.0 -> 409 name_conflict
+  unload     -> 200 unloaded
+  agents     -> [probe]
+  load 2.0.0 -> 200 loaded
+  audit      -> [agent.load, agent.unload, agent.load]
+
+The browser Open chat path performs the same unload-then-retry when the load
+returns name_conflict; the Unload button calls the endpoint directly.

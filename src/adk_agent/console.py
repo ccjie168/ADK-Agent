@@ -186,6 +186,7 @@ _INDEX_HTML = """<!doctype html>
   <pre id="lifecycle-info"></pre>
   <div class="row">
     <button id="open-chat">Open chat</button>
+    <button id="unload-agent">Unload</button>
     <span id="artifact-msg" class="panel-msg"></span>
   </div>
 </section>
@@ -488,9 +489,29 @@ async function openChat() {
       version: selectedRegistry.version,
     });
     if (!result.ok) {
-      $("artifact-msg").textContent = "load failed (" + result.status + "): " +
-        ((result.data && result.data.error) || "error");
-      return;
+      const conflict = result.status === 409 && result.data &&
+        result.data.error === "name_conflict";
+      if (!conflict) {
+        $("artifact-msg").textContent = "load failed (" + result.status + "): " +
+          ((result.data && result.data.error) || "error");
+        return;
+      }
+      const removed = await postJson("/api/registry/unload", { name: name });
+      if (!removed.ok) {
+        $("artifact-msg").textContent = "swap failed (" + removed.status + "): " +
+          ((removed.data && removed.data.error) || "error");
+        return;
+      }
+      const retry = await postJson("/api/registry/load", {
+        tenant: selectedRegistry.tenant,
+        id: name,
+        version: selectedRegistry.version,
+      });
+      if (!retry.ok) {
+        $("artifact-msg").textContent = "swap failed (" + retry.status + "): " +
+          ((retry.data && retry.data.error) || "error");
+        return;
+      }
     }
     await refreshAgents();
     loaded = Array.from($("agent").options).some((option) => option.value === name);
@@ -527,6 +548,22 @@ async function loadTools() {
     row.appendChild(cell(agents || "-"));
     body.appendChild(row);
   }
+}
+
+async function unloadAgent() {
+  if (!selectedRegistry) {
+    $("artifact-msg").textContent = "select a registry entry first";
+    return;
+  }
+  const result = await postJson("/api/registry/unload", { name: selectedRegistry.id });
+  if (!result.ok) {
+    $("artifact-msg").textContent = "unload failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("artifact-msg").textContent = "unloaded " + selectedRegistry.id;
+  await refreshAgents();
+  await loadRegistry();
 }
 
 async function loadRuns() {
@@ -940,6 +977,7 @@ $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-registry").addEventListener("click", loadRegistry);
 $("open-chat").addEventListener("click", openChat);
+$("unload-agent").addEventListener("click", unloadAgent);
 $("refresh-runs").addEventListener("click", loadRuns);
 $("refresh-tools").addEventListener("click", loadTools);
 $("refresh-sessions").addEventListener("click", loadSessions);
@@ -1295,6 +1333,7 @@ def build_console_app(
         _register(name, agent)
 
     loaded_versions: dict[str, str] = {}
+    loaded_tenants: dict[str, str] = {}
     load_lock = asyncio.Lock()
 
     async def allowed(invocation: Invocation, name: str) -> bool:
@@ -1485,6 +1524,7 @@ def build_console_app(
 
             _register(agent_id, agent)
             loaded_versions[agent_id] = version
+            loaded_tenants[agent_id] = tenant
             await audit.emit(
                 AuditEvent(
                     event_id=uuid.uuid4().hex,
@@ -1500,6 +1540,47 @@ def build_console_app(
                 )
             )
         return JSONResponse({"name": agent_id, "version": version, "loaded": True})
+
+    @app.post("/api/registry/unload")
+    async def unload_registry_entry(request: Request) -> Any:
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        name = body.get("name")
+        if not isinstance(name, str) or not name:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        caller = _principal_for(request)
+        async with load_lock:
+            if name not in agents:
+                return JSONResponse({"error": "not_found"}, status_code=404)
+            tenant = loaded_tenants.get(name)
+            if tenant is None:
+                return JSONResponse({"error": "not_unloadable"}, status_code=409)
+            if tenant != caller.tenant and "admin" not in caller.roles:
+                return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+            agents.pop(name, None)
+            runners.pop(name, None)
+            runtimes.pop(name, None)
+            loaded_versions.pop(name, None)
+            loaded_tenants.pop(name, None)
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=_trace_id(request),
+                    tenant=caller.tenant,
+                    principal=caller,
+                    agent_ref=dev_agent_ref(name),
+                    action="agent.unload",
+                    target=name,
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse({"name": name, "unloaded": True})
 
     @app.get("/api/registry/{tenant}/{agent_id}/{version}/eval")
     async def get_eval_report(request: Request, tenant: str, agent_id: str, version: str) -> Any:

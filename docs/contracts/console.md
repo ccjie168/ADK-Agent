@@ -239,6 +239,19 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 请求不存在 404 `grant_not_found`；终态 409 `grant_already_decided`；待审但已过期 410 `grant_expired`。
 - 成功 200，写 `tool_grant.decide` 审计。
 
+## `POST /api/registry/unload` -> `{"name", "unloaded"}`
+
+卸载一个按需加载的 agent，释放运行时与聊天目标。启动时加载的 agent 不能卸载。
+
+```json
+{"name": "support-bot"}
+```
+
+- 成功 200 `{"name": "support-bot", "unloaded": true}`，写 `agent.unload` 审计。
+- agent 不存在 404 `not_found`；启动时加载的 agent 409 `not_unloadable`；非 `admin` 加载其他租户的版本 403 `tenant_forbidden`。
+- 正在进行的运行持有自己的运行时引用，不会被中断；卸载只影响后续加载与聊天选择。
+- 市场页对按需加载的版本提供 Unload 按钮；Open chat 遇到 `name_conflict` 时先卸载再重试一次，实现同位置换版本。
+
 ## `GET /api/runs?limit=50` -> `[RunSummary]`
 
 从审计缓冲或审计服务读出的事件按 `run_id` 聚合，按最后事件时间倒序。`limit` 夹在 1 到 200。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。
