@@ -69,7 +69,9 @@
 - 成功返回 202 `{"hash":"..."}`。写入失败返回 502 `{"error":"audit_write_failed"}`。
 - `FILE` 每行一条 `AuditRecord`，同租户串成哈希链，每租户首条 `prev_hash` 为空串。
 - `--audit-max-records` 大于 0 时按段轮转。当前段写满 N 条后改名为 `FILE.000001`、`FILE.000002`，新记录继续写 `FILE`。哈希链跨段连续。
-- 设置了 `ADK_AUDIT_SIGNING_KEY` 时，每条记录用 HMAC-SHA256 对记录 `hash` 签名，写入 `signature`。密钥只从环境变量读，不出现在命令行和仓库里。
+- 设置了 `ADK_AUDIT_KEYRING` 时使用密钥环：值是 JSON `{"active": "<kid>", "keys": {"<kid>": "<key>", ...}, "legacy": "<kid>"}`。新记录用 `active` 对应的密钥对 `hash` 做 HMAC-SHA256，并把 `active` 写入 `kid`。`legacy` 可选，指定没有 `kid` 的旧记录用哪把密钥验签。`active` 必须在 `keys` 里，`legacy` 给了也必须在 `keys` 里，密钥不能为空，`kid` 必须匹配 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`。
+- 没有密钥环但设置了 `ADK_AUDIT_SIGNING_KEY` 时，沿用单密钥模式：签名写入 `signature`，`kid` 为 `null`。
+- 两个变量同时设置时退出 1。密钥只从环境变量读，不出现在命令行和仓库里。
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，事件的 `tenant` 和 `principal.subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
@@ -111,7 +113,8 @@
 
 - 通过：stdout 输出 `ok <N> records`，退出 0。
 - 断链或文件非法：stderr 输出原因，退出 1。
-- 设置了 `ADK_AUDIT_SIGNING_KEY` 时，每条记录都必须有匹配的 `signature`；缺失或不匹配退出 1。没设置时只验哈希链。
+- 设置了 `ADK_AUDIT_KEYRING` 时按记录的 `kid` 选密钥验签：未知 `kid` 退出 1；没有 `kid` 的记录用 `legacy` 指定的密钥，没给 `legacy` 时退出 1。`ADK_AUDIT_SIGNING_KEY` 单密钥模式要求每条记录都没有 `kid` 且签名匹配。两个变量同时设置时退出 1。都设置时以外的缺失签名也退出 1。没设置任何密钥时只验哈希链。
+- 轮换步骤：把新密钥加进 `keys`，把 `active` 指向它，保留旧密钥；如果旧历史没有 `kid`，把 `legacy` 指向旧密钥。全部旧记录验完之前不要删掉旧密钥。
 
 ## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 

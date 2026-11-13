@@ -1,0 +1,16 @@
+SLICE-060 audit key rotation evidence
+date: 2026-11-13
+
+== red: keyring type and kid field do not exist ==
+$ python -m pytest tests/audit/test_key_rotation.py -q
+tests\audit\test_key_rotation.py:13: in <module>
+    from adk_agent.audit import (
+E   ImportError: cannot import name 'SigningKeyring' from 'adk_agent.audit'
+ERROR tests/audit/test_key_rotation.py
+1 error in 1.77s
+
+$ python -c "AuditRecord(event=None, prev_hash='', hash='a'*64, kid='k1')"
+ValidationError   (extra=forbid, no kid field)
+
+$ python -c "verify_audit_file('x', keyring=None)"
+TypeError: verify_audit_file() got an unexpected keyword argument 'keyring'
