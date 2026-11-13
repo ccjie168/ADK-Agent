@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 
 from ..core import AuditEvent, AuditRecord
@@ -77,6 +78,64 @@ def load_records(path: str | Path) -> list[AuditRecord]:
     for segment in _segment_paths(path):
         records.extend(_read_segment(segment))
     return records
+
+
+def query_events(
+    path: str | Path,
+    *,
+    tenant: str | None = None,
+    trace_id: str | None = None,
+    run_id: str | None = None,
+    action: str | None = None,
+    status: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 100,
+    order: str = "desc",
+) -> list[AuditEvent]:
+    """Read every segment and return the matching events."""
+    if not 1 <= limit <= 1000:
+        raise ValueError("limit must be between 1 and 1000")
+    if order not in {"asc", "desc"}:
+        raise ValueError("order must be 'asc' or 'desc'")
+    segments = _segment_paths(path)
+    current = Path(path)
+    matched: list[AuditEvent] = []
+    for segment in segments:
+        is_current = segment == current
+        lines = segment.read_text(encoding="utf-8").splitlines()
+        for line_index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            try:
+                record = AuditRecord.model_validate_json(line)
+            except ValueError:
+                if is_current and line_index == len(lines) - 1:
+                    continue
+                raise
+            event = record.event
+            if tenant is not None and event.tenant != tenant:
+                continue
+            if trace_id is not None and event.trace_id != trace_id:
+                continue
+            if run_id is not None and event.run_id != run_id:
+                continue
+            if action is not None and event.action != action:
+                continue
+            if status is not None and event.status != status:
+                continue
+            if since is not None and event.timestamp < since:
+                continue
+            if until is not None and event.timestamp > until:
+                continue
+            matched.append(event)
+    ordered = [
+        event
+        for _, event in sorted(enumerate(matched), key=lambda item: (item[1].timestamp, item[0]))
+    ]
+    if order == "desc":
+        ordered.reverse()
+    return ordered[:limit]
 
 
 def _scan_segments(
@@ -207,6 +266,7 @@ __all__ = [
     "AuditPipeline",
     "AuditSignatureInvalid",
     "load_records",
+    "query_events",
     "record_hash",
     "record_signature",
     "verify_audit_file",

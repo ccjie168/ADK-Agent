@@ -11,3 +11,49 @@ ERROR tests/audit/test_query.py
 
 $ GET /v1/events with a valid token
 405   (route not registered)
+
+== green: targeted tests ==
+$ python -m pytest tests/audit/test_query.py -q
+17 passed in 1.91s
+
+$ python -m pytest -q
+728 passed, 13 skipped in 43.03s
+
+Review change: partial-line tolerance was limited to the base file. The delegate's version
+also tolerated a half line in the last archived segment, which rotation never produces.
+Added tests/audit/test_query.py::test_partial_line_in_archived_segment_rejected.
+
+== live: audit service, three posted events ==
+$ ADK_AUDIT_TOKEN=... adk-agent serve-audit --out audit.jsonl --port 18093 --auth-token-env ADK_AUDIT_TOKEN
+POST /v1/events x3 -> 202, 202, 202 (live-1 acme, live-2 acme, live-3 other)
+
+GET /v1/events?tenant=acme            -> ["live-2", "live-1"]      (newest first, other excluded)
+GET /v1/events?order=asc&limit=2      -> ["live-1", "live-2"]
+GET /v1/events?token missing          -> 401
+GET /v1/events?limit=0                -> 400 {"error": "invalid_limit"}
+GET /v1/events?trace_id=tr2           -> ["live-2"]
+GET /v1/events  (no filters)          -> 3 ["live-3", "live-2", "live-1"]
+
+== reading ==
+- The read path uses the same file the writer owns. A query reads all segments and filters
+  in memory, so cost grows with retained history; limit caps the response, not the scan.
+  Paging or a database backend is the next step if history grows.
+- OIDC binds queries to the token tenant; admin can cross tenants. Static-token deployments
+  are treated as operators.
+- Chain verification is unchanged and still lives in verify-audit; the query returns events,
+  not proof.
+
+== full gate ==
+$ python scripts/check.py --full
+728 passed, 13 skipped in 42.60s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS

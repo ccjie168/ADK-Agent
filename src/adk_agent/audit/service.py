@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -17,8 +18,16 @@ from ..auth import (
 )
 from ..core import AuditEvent, IdentityProvider
 from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
+from .pipeline import query_events
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_time(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("timezone required")
+    return parsed
 
 
 def build_audit_pipeline_app(
@@ -60,6 +69,62 @@ def build_audit_pipeline_app(
             logger.exception("audit pipeline write failure")
             return JSONResponse({"error": "audit_write_failed"}, status_code=502)
         return JSONResponse({"hash": record.hash}, status_code=202)
+
+    @app.get("/v1/events")
+    async def query(
+        request: Request,
+        tenant: str | None = None,
+        trace_id: str | None = None,
+        run_id: str | None = None,
+        action: str | None = None,
+        status: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: str | None = None,
+        order: str = "desc",
+    ) -> JSONResponse:
+        try:
+            parsed_limit = 100 if limit is None else int(limit)
+        except ValueError:
+            return JSONResponse({"error": "invalid_limit"}, status_code=400)
+        if not 1 <= parsed_limit <= 1000:
+            return JSONResponse({"error": "invalid_limit"}, status_code=400)
+        if order not in {"asc", "desc"}:
+            return JSONResponse({"error": "invalid_order"}, status_code=400)
+        if status is not None and status not in {"ok", "error", "denied"}:
+            return JSONResponse({"error": "invalid_status"}, status_code=400)
+        try:
+            since_time = _parse_time(since) if since is not None else None
+            until_time = _parse_time(until) if until is not None else None
+        except ValueError:
+            return JSONResponse({"error": "invalid_time"}, status_code=400)
+
+        principal = getattr(request.state, "principal", None)
+        if principal is not None:
+            if tenant is None:
+                tenant = principal.tenant
+            elif tenant != principal.tenant and "admin" not in principal.roles:
+                return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+
+        try:
+            events = query_events(
+                pipeline.path,
+                tenant=tenant,
+                trace_id=trace_id,
+                run_id=run_id,
+                action=action,
+                status=status,
+                since=since_time,
+                until=until_time,
+                limit=parsed_limit,
+                order=order,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("audit query read failure")
+            return JSONResponse({"error": "audit_read_failed"}, status_code=502)
+        return JSONResponse(
+            {"events": [event.model_dump(mode="json") for event in events], "count": len(events)}
+        )
 
     if rate_limit is not None:
         app.add_middleware(

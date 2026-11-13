@@ -11,6 +11,7 @@ from .pipeline import (
     AuditPipeline,
     AuditSignatureInvalid,
     load_records,
+    query_events,
     record_signature,
     verify_audit_file,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "ListAuditSink",
     "SigningKeyring",
     "load_records",
+    "query_events",
     "record_signature",
     "verify_audit_file",
 ]

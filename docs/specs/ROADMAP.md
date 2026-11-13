@@ -152,7 +152,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-059 MCP 与 A2A 入口限流：同一中间件接到 `serve` / `serve-many` / `serve-a2a`。已完成。
 - SLICE-060 审计签名密钥轮换：记录加 `kid`、密钥环、按 `kid` 验签。已完成。
 - SLICE-061 会话按租户隔离：可选的 `<tenant>:<subject>` 会话键。已完成。
-- SLICE-062 审计只读查询：`GET /v1/events` 与 `query_events`，集中可见性的第一步。进行中。
+- SLICE-062 审计只读查询：`GET /v1/events` 与 `query_events`，集中可见性的第一步。已完成。
 
 ## 完成定义
 

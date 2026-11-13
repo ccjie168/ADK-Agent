@@ -1,6 +1,6 @@
 # SLICE-062 审计只读查询 API
 
-状态: planned
+状态: merged
 依据: SLICE-035，SLICE-053，`docs/contracts/cli.md`，`docs/reviews/architecture-direction-20261113.md` 的 Phase A。
 
 ## 意图（要什么，不写怎么写）
@@ -44,25 +44,26 @@ GET /v1/events -> 200 {"events": [AuditEvent], "count": int}
 
 ## 完成判据（可执行）
 
-- [ ] 按租户过滤且默认最新在前 -> `tests/audit/test_query.py::test_filters_by_tenant`
-- [ ] `order=asc` 反转 -> `tests/audit/test_query.py::test_order_asc`
-- [ ] limit 生效 -> `tests/audit/test_query.py::test_limit`
-- [ ] trace、run、action、status 过滤 -> `tests/audit/test_query.py::test_field_filters`
-- [ ] 时间区间过滤 -> `tests/audit/test_query.py::test_time_range`
-- [ ] 末尾半行被忽略 -> `tests/audit/test_query.py::test_trailing_partial_line_ignored`
-- [ ] 分段的记录都能查到 -> `tests/audit/test_query.py::test_reads_segments`
-- [ ] HTTP 查询返回事件与数量 -> `tests/audit/test_query.py::test_http_query`
-- [ ] 非法参数返回 400 -> `tests/audit/test_query.py::test_http_rejects_bad_params`
-- [ ] OIDC 非 admin 跨租户 403 -> `tests/audit/test_query.py::test_oidc_tenant_forbidden`
-- [ ] OIDC 缺省租户取 token -> `tests/audit/test_query.py::test_oidc_defaults_to_token_tenant`
-- [ ] OIDC admin 可跨租户 -> `tests/audit/test_query.py::test_oidc_admin_cross_tenant`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 按租户过滤且默认最新在前 -> `tests/audit/test_query.py::test_filters_by_tenant`
+- [x] `order=asc` 反转 -> `tests/audit/test_query.py::test_order_asc`
+- [x] limit 生效 -> `tests/audit/test_query.py::test_limit`
+- [x] trace、run、action、status 过滤 -> `tests/audit/test_query.py::test_field_filters`
+- [x] 时间区间过滤 -> `tests/audit/test_query.py::test_time_range`
+- [x] 末尾半行被忽略 -> `tests/audit/test_query.py::test_trailing_partial_line_ignored`
+- [x] 归档段里的半行不被忽略 -> `tests/audit/test_query.py::test_partial_line_in_archived_segment_rejected`
+- [x] 分段的记录都能查到 -> `tests/audit/test_query.py::test_reads_segments`
+- [x] HTTP 查询返回事件与数量 -> `tests/audit/test_query.py::test_http_query`
+- [x] 非法参数返回 400 -> `tests/audit/test_query.py::test_http_rejects_bad_params`
+- [x] OIDC 非 admin 跨租户 403 -> `tests/audit/test_query.py::test_oidc_tenant_forbidden`
+- [x] OIDC 缺省租户取 token -> `tests/audit/test_query.py::test_oidc_defaults_to_token_tenant`
+- [x] OIDC admin 可跨租户 -> `tests/audit/test_query.py::test_oidc_admin_cross_tenant`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.audit import query_events` -> 当前 `ImportError`
-- [ ] 反例 2：`GET /v1/events` -> 当前 405 / 404（路由不存在）
-- [ ] 反例 3：`limit=0` 若直接返回全部记录而不是 400 -> 由 `test_http_rejects_bad_params` 覆盖
+- [x] 反例 1：`from adk_agent.audit import query_events` -> 当前 `ImportError`
+- [x] 反例 2：`GET /v1/events` -> 当前 405 / 404（路由不存在）
+- [x] 反例 3：`limit=0` 若直接返回全部记录而不是 400 -> 由 `test_http_rejects_bad_params` 覆盖
 
 ## 契约（如涉及对外接口）
 
@@ -85,6 +86,6 @@ GET /v1/events -> 200 {"events": [AuditEvent], "count": int}
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-062-audit-query-api.txt` 的 red 段
+- 实现后绿: 同文件 green 段，17 个查询用例与全量 728 个用例通过
+- 实机: 同文件 live 段。真审计服务写入 3 条事件后，租户过滤、排序、limit、trace 过滤都正确；无 token 401，`limit=0` 返回 400 `invalid_limit`
