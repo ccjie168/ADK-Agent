@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-13
 分支: master
-最新提交: 待填（SLICE-068 从注册表启动）
+最新提交: `3938322` feat(cli): start the console and MCP from registry refs (SLICE-068)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
@@ -67,7 +67,7 @@
 | SLICE-065 | 工件存储（文件与 Postgres） | `b3a4c25` |
 | SLICE-066 | 发布带工件与签名 | `577e6ec` |
 | SLICE-067 | 工件加载与验签 | `4427764` |
-| SLICE-068 | 从注册表启动（控制台与 MCP） | 待填 |
+| SLICE-068 | 从注册表启动（控制台与 MCP） | `3938322` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
