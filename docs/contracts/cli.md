@@ -42,7 +42,7 @@
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。
 
-## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--breaker-failures N] [--breaker-reset SECONDS] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE]`
+## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--breaker-failures N] [--breaker-reset SECONDS] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把模型网关作为独立服务运行。
 
@@ -61,7 +61,7 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥，同时给退出 1。
 - OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
-## `adk-agent serve-audit --out FILE [--audit-max-records N] [--oidc-config FILE]`
+## `adk-agent serve-audit --out FILE [--audit-max-records N] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把审计管线作为独立服务运行。
 
@@ -113,7 +113,7 @@
 - 断链或文件非法：stderr 输出原因，退出 1。
 - 设置了 `ADK_AUDIT_SIGNING_KEY` 时，每条记录都必须有匹配的 `signature`；缺失或不匹配退出 1。没设置时只验哈希链。
 
-## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE]`
+## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把工具网关作为独立服务运行。
 
@@ -169,7 +169,7 @@
 - 配额拒绝在 A2A 里表现为 task 的 `status.state="failed"`，消息是 `tenant '<name>' exceeded <limit>`，HTTP 状态仍是 200。审计里是 `status=denied`、`error_code=quota_exceeded`。
 - 配置了审计或配额且没有传入 runner 时，服务自行构建默认 runner 并包一层。`--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
 
-## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR]`
+## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS]`
 
 启动私有控制台。
 
@@ -181,6 +181,7 @@
 - `--approval-dir` 指向审批收件箱目录，默认 `$ADK_APPROVAL_DIR`。不设置时审批接口返回 404，收件箱禁用。目录在第一次写入时创建。
 - `--approval-ttl` 是控制台侧的兜底过期秒数，只作用于没有 `expires_at` 的请求。请求自带 `expires_at` 时以请求为准。不设置时这类请求一直待决。
 - `--sse-queue-size` 是每条 SSE 流最多缓冲的 `progress` 事件数，默认 512。必须大于 0，否则退出 1。慢客户端超过缓冲时丢弃最早的 `progress`，丢弃数在终结事件里报，见 `console.md`。
+- `--rate-limit` 和 `--rate-limit-window` 启用入口限流，语义见下面的「入口限流」一节。不给 `--rate-limit` 时不限流。
 - 配置文件缺失或非法退出 1。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
 - `--role` 可重复，设置控制台 principal 的角色。默认 `admin`。
@@ -189,3 +190,14 @@
 - 没给 `--policy` 时控制台不做 RBAC，`/api/policy` 返回 404。
 
 M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名，M4 会替换。
+
+## 入口限流
+
+`console`、`serve-model-gateway`、`serve-tool-gateway` 和 `serve-audit` 接受 `--rate-limit N` 和 `--rate-limit-window SECONDS`（默认 60）。
+
+- 不给 `--rate-limit` 时不限流。`--rate-limit` 必须是大于 0 的整数，`--rate-limit-window` 必须是大于 0 的秒数，否则退出 1。只给 `--rate-limit-window` 也退出 1。
+- 计数键是 principal 的 `tenant:subject`；没有 principal 的模式（静态 token、未鉴权）用客户端地址。
+- 固定窗口。超过上限返回 429 `{"error":"rate_limited"}`，并带 `Retry-After` 秒数。
+- `/healthz` 不限流。鉴权在限流之前，没有 token 的请求仍返回 401。
+- 计数在进程内，多副本时每个副本各算一份。跨副本限流交给入口网关或反向代理。
+- 拒绝计数见 `metrics.md`。MCP 和 A2A 端点不在这一节范围内。

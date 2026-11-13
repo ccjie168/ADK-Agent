@@ -1,0 +1,18 @@
+SLICE-058 ingress rate limit evidence
+date: 2026-11-13
+
+== red: limiter module and flags do not exist ==
+$ python -m pytest tests/test_ratelimit.py -q
+tests\test_ratelimit.py:20: in <module>
+    from adk_agent.ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
+E   ModuleNotFoundError: No module named 'adk_agent.ratelimit'
+ERROR tests/test_ratelimit.py
+1 error in 2.22s
+
+$ adk-agent console --agents examples/minimal/agent.py --rate-limit 0
+adk-agent: error: unrecognized arguments: --rate-limit 0
+exit=2
+
+$ adk-agent serve-model-gateway --rate-limit 0
+adk-agent: error: unrecognized arguments: --rate-limit 0
+exit=2
