@@ -57,13 +57,15 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥，同时给退出 1。
 - OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
-## `adk-agent serve-audit --out FILE [--oidc-config FILE]`
+## `adk-agent serve-audit --out FILE [--audit-max-records N] [--oidc-config FILE]`
 
 把审计管线作为独立服务运行。
 
 - 只有 `/healthz` 开放。`POST /v1/events` 需要 bearer token，非回环地址没 token 拒绝启动。
 - 成功返回 202 `{"hash":"..."}`。写入失败返回 502 `{"error":"audit_write_failed"}`。
 - `FILE` 每行一条 `AuditRecord`，同租户串成哈希链，每租户首条 `prev_hash` 为空串。
+- `--audit-max-records` 大于 0 时按段轮转。当前段写满 N 条后改名为 `FILE.000001`、`FILE.000002`，新记录继续写 `FILE`。哈希链跨段连续。
+- 设置了 `ADK_AUDIT_SIGNING_KEY` 时，每条记录用 HMAC-SHA256 对记录 `hash` 签名，写入 `signature`。密钥只从环境变量读，不出现在命令行和仓库里。
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，事件的 `tenant` 和 `principal.subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
@@ -81,10 +83,11 @@
 
 ## `adk-agent verify-audit FILE`
 
-逐条重算审计链。
+逐条重算审计链，包括 `FILE.000001` 这类轮转段，按序号顺序处理。
 
 - 通过：stdout 输出 `ok <N> records`，退出 0。
 - 断链或文件非法：stderr 输出原因，退出 1。
+- 设置了 `ADK_AUDIT_SIGNING_KEY` 时，每条记录都必须有匹配的 `signature`；缺失或不匹配退出 1。没设置时只验哈希链。
 
 ## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE]`
 
