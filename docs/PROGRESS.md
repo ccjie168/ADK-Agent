@@ -191,7 +191,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 按优先级：
 
-1. 注册表 Postgres 后端与控制面 API（ADR-0009）。
+1. ADR-0009 注册表服务与 Postgres 后端已拟好，状态 Proposed，待签字：`docs/decisions/ADR-0009-registry-service.md`。签字后按 Postgres 实现 → 服务与客户端 → 控制台/MCP/发布接线 → 市场页切服务的顺序开工。
 2. 按需加载未启动的版本（市场页的 Open chat 目前只对启动时已加载的 agent 生效）。
 4. 注册表 Postgres 后端与控制面 API（ADR-0009）。
 2. 注册表 Postgres 后端（Phase B2）：元数据与 manifest 先入库，保留 `AgentRegistry` 端口，文件实现降级。
