@@ -1,0 +1,13 @@
+SLICE-069 marketplace UI evidence
+date: 2026-11-13
+
+== red: trust wiring and artifact status do not exist ==
+$ python -m pytest tests/test_console_marketplace.py -q
+FAILED test_listing_includes_verified_artifact - TypeError: build_console_app() got an unexpected keyword argument 'artifact_trust'
+FAILED test_untrusted_status - TypeError
+FAILED test_unknown_without_trust - TypeError
+FAILED test_unsigned_status - TypeError
+FAILED test_no_artifact - TypeError
+FAILED test_cli_wires_trust - KeyError: 'artifact_trust'
+FAILED test_cli_rejects_bad_keys - Failed: DID NOT RAISE
+7 failed in 1.91s

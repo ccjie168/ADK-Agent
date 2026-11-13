@@ -121,9 +121,12 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
   "description": "support",
   "published_at": "2026-11-12T10:00:00Z",
   "has_eval_report": true,
-  "manifest": {}
+  "manifest": {},
+  "artifact": {"digest": "sha256:...", "size": 450, "key_id": "publisher-1", "status": "verified"}
 }
 ```
+
+`artifact` 为 `null` 表示该版本没有工件。`status` 是 `verified`、`untrusted`、`unknown`（控制台没有配置可信密钥）或 `unsigned`（工件没有签名）。
 
 - 非法租户返回 400 `unsafe_tenant`。
 - 非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
