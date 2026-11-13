@@ -1,0 +1,43 @@
+SLICE-052 quota RLS evidence
+date: 2026-11-13T02:17:44Z
+
+== red: new RLS tests before implementation ==
+C:\Python314\Lib\asyncio\base_events.py:720: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def scenario() -> None:
+        app_dsn = await _prepare()
+        manager = PostgresQuotaManager(app_dsn, clock=Clock())
+        async with manager.reserve("tenant-a", QuotaPolicy(max_concurrent=1)):
+            conn = await asyncpg.connect(app_dsn)
+            try:
+>               assert await conn.fetchval("select count(*) from adk_quota_leases") == 0
+E               assert 1 == 0
+
+tests\runtime\test_quota_rls.py:113: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/runtime/test_quota_rls.py::test_manager_enables_rls_policies - A...
+FAILED tests/runtime/test_quota_rls.py::test_runs_are_hidden_without_tenant_setting
+FAILED tests/runtime/test_quota_rls.py::test_leases_are_hidden_without_tenant_setting
+3 failed, 1 passed in 2.59s
+
+== green: RLS tests and existing quota tests (real Postgres 15) ==
+TEST_POSTGRES_URL=postgresql://postgres:adk@127.0.0.1:55432/adk
+tests/runtime/test_quota_rls.py tests/runtime/test_quota_postgres.py -> 15 passed in 3.26s
+
+== live: catalog state ==
+pg_policies:
+  adk_quota_leases | adk_quota_leases_tenant | ALL
+  adk_quota_runs   | adk_quota_runs_tenant   | ALL
+pg_class:
+  adk_quota_runs   | rowsecurity=t | forcerowsecurity=t
+  adk_quota_leases | rowsecurity=t | forcerowsecurity=t
+
+The app role adk_quota_rls is NOSUPERUSER NOBYPASSRLS; without app.tenant_id the
+raw SELECT returns 0 rows, with tenant-a it returns the row, with tenant-b it
+returns 0.
+
+== gate ==
+check.py --fast -> ALL PASS (594 passed, 13 skipped), 7 steps

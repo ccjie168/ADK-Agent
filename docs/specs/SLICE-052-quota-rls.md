@@ -1,6 +1,6 @@
 # SLICE-052 配额表的行级隔离
 
-状态: spec'd
+状态: gated
 依据: SLICE-044，SLICE-050
 
 ## 意图（要什么，不写怎么写）
@@ -49,19 +49,19 @@ policy adk_quota_leases_tenant: 同形
 
 ## 完成判据（可执行）
 
-- [ ] 两张表都有租户策略 -> `tests/runtime/test_quota_rls.py::test_manager_enables_rls_policies`
-- [ ] 未设置租户时看不到运行行 -> `tests/runtime/test_quota_rls.py::test_runs_are_hidden_without_tenant_setting`
-- [ ] 设置其他租户时看不到运行行 -> 同测试
-- [ ] 未设置租户时看不到租约 -> `tests/runtime/test_quota_rls.py::test_leases_are_hidden_without_tenant_setting`
-- [ ] 强制 RLS 下配额仍按租户生效 -> `tests/runtime/test_quota_rls.py::test_manager_still_enforces_limits_under_rls`
-- [ ] 原有 Postgres 配额用例全绿 -> `tests/runtime/test_quota_postgres.py`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 两张表都有租户策略 -> `tests/runtime/test_quota_rls.py::test_manager_enables_rls_policies`
+- [x] 未设置租户时看不到运行行 -> `tests/runtime/test_quota_rls.py::test_runs_are_hidden_without_tenant_setting`
+- [x] 设置其他租户时看不到运行行 -> 同测试
+- [x] 未设置租户时看不到租约 -> `tests/runtime/test_quota_rls.py::test_leases_are_hidden_without_tenant_setting`
+- [x] 强制 RLS 下配额仍按租户生效 -> `tests/runtime/test_quota_rls.py::test_manager_still_enforces_limits_under_rls`
+- [x] 原有 Postgres 配额用例全绿 -> `tests/runtime/test_quota_postgres.py`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`pg_policies` 里没有配额表的策略 -> 当前为空
-- [ ] 反例 2：非超级用户不设 `app.tenant_id` 直接 `SELECT count(*)` -> 当前能看到租户 A 的行，期望 0
-- [ ] 反例 3：把 `app.tenant_id` 设成租户 B 再查租户 A 的行 -> 当前仍能看到，期望 0
+- [x] 反例 1：`pg_policies` 里没有配额表的策略 -> 当前为空
+- [x] 反例 2：非超级用户不设 `app.tenant_id` 直接 `SELECT count(*)` -> 当前能看到租户 A 的行，期望 0
+- [x] 反例 3：把 `app.tenant_id` 设成租户 B 再查租户 A 的行 -> 当前仍能看到，期望 0
 
 ## 契约（如涉及对外接口）
 
@@ -84,5 +84,6 @@ policy adk_quota_leases_tenant: 同形
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-052-quota-rls.txt`，策略为空，未设置租户时运行行和租约都可见
+- 实现后绿: 同文件，4 个 RLS 用例和原有 11 个 Postgres 配额用例全过；`check.py --fast` ALL PASS（594 passed, 13 skipped），`--full` ALL PASS
+- 真实目录: 同文件，`pg_policies` 两条策略，两张表 `rowsecurity` 和 `forcerowsecurity` 都是 true

@@ -136,6 +136,15 @@ class PostgresQuotaManager:
                 "CREATE INDEX IF NOT EXISTS adk_quota_leases_tenant_expires_at "
                 "ON adk_quota_leases (tenant, expires_at)"
             )
+            for table in ("adk_quota_runs", "adk_quota_leases"):
+                await conn.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+                await conn.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
+                await conn.execute(f"DROP POLICY IF EXISTS {table}_tenant ON {table}")
+                await conn.execute(
+                    f"CREATE POLICY {table}_tenant ON {table} "
+                    "USING (tenant = current_setting('app.tenant_id', true)) "
+                    "WITH CHECK (tenant = current_setting('app.tenant_id', true))"
+                )
 
     async def _enter(self, tenant: str, policy: QuotaPolicy) -> str | None:
         pool = await self._ensure_pool()
@@ -147,6 +156,7 @@ class PostgresQuotaManager:
                     "SELECT pg_advisory_xact_lock(hashtext('adk_quota'), hashtext($1))",
                     tenant,
                 )
+                await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant)
                 await conn.execute(
                     "DELETE FROM adk_quota_leases WHERE tenant = $1 AND expires_at <= $2",
                     tenant,
@@ -192,10 +202,16 @@ class PostgresQuotaManager:
             raise QuotaStoreUnavailable(f"quota transaction failed ({type(exc).__name__})") from exc
         return lease_id
 
-    async def _release(self, lease_id: str) -> None:
+    async def _release(self, lease_id: str, tenant: str) -> None:
         try:
             pool = await self._ensure_pool()
-            await pool.execute("DELETE FROM adk_quota_leases WHERE lease_id = $1", lease_id)
+            async with pool.acquire() as conn, conn.transaction():
+                await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant)
+                await conn.execute(
+                    "DELETE FROM adk_quota_leases WHERE lease_id = $1 AND tenant = $2",
+                    lease_id,
+                    tenant,
+                )
         except Exception:  # noqa: BLE001
             logger.exception("failed to release quota lease %s", lease_id)
 
@@ -219,7 +235,7 @@ class _Reservation:
         lease_id = self._lease_id
         self._lease_id = None
         if lease_id is not None:
-            await self._manager._release(lease_id)
+            await self._manager._release(lease_id, self._tenant)
 
 
 __all__ = ["PostgresQuotaManager", "QuotaStoreUnavailable", "build_quota_manager"]
