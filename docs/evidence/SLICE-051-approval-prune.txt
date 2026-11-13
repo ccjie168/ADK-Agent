@@ -1,0 +1,42 @@
+SLICE-051 approval prune evidence
+date: 2026-11-13T01:23:46Z
+
+== red: new tests before implementation ==
+=========================== short test summary info ===========================
+FAILED tests/test_approvals_prune.py::test_archive_moves_terminal - Attribute...
+FAILED tests/test_approvals_prune.py::test_delete_removes_terminal - Attribut...
+FAILED tests/test_approvals_prune.py::test_recent_terminal_kept - AttributeEr...
+FAILED tests/test_approvals_prune.py::test_pending_kept - AttributeError: 'Fi...
+FAILED tests/test_approvals_prune.py::test_expired_without_decision_archived
+FAILED tests/test_approvals_prune.py::test_no_deadline_pending_kept - Attribu...
+FAILED tests/test_approvals_prune.py::test_result_counts - AttributeError: 'F...
+FAILED tests/test_approvals_prune.py::test_archived_request_is_gone - Attribu...
+FAILED tests/test_approvals_prune.py::test_archive_target_exists_is_kept - At...
+FAILED tests/test_cli_approvals_prune.py::test_cli_archives - SystemExit: 2
+FAILED tests/test_cli_approvals_prune.py::test_cli_deletes - SystemExit: 2
+FAILED tests/test_cli_approvals_prune.py::test_cli_requires_dir - assert 2 == 1
+FAILED tests/test_cli_approvals_prune.py::test_cli_rejects_nonpositive - asse...
+13 failed in 2.17s
+
+== red: CLI has no approvals subcommand ==
+adk-agent: error: argument cmd: invalid choice: 'approvals' (choose from 'serve', 'serve-many', 'serve-a2a', 'serve-model-gateway', 'serve-tool-gateway', 'serve-audit', 'verify-audit', 'console', 'new', 'validate', 'publish', 'eval')
+exit=2
+
+== green: targeted tests ==
+tests/test_approvals_prune.py tests/test_cli_approvals_prune.py
+tests/test_approvals.py tests/test_approvals_expiry.py -> 32 passed in 2.08s
+
+== live: archive mode ==
+seeded 3 records: decided (2026-01-01), expired (2026-01-01), pending (expires tomorrow)
+approvals prune --dir ... --older-than 60
+  -> archived 2 requests
+root: pending.request.json
+archive: decided.request.json, decided.decision.json, expired.request.json
+
+== live: delete mode ==
+seeded 1 decided record, approvals prune --dir ... --older-than 60 --delete
+  -> deleted 1 requests
+root: empty
+
+== gate ==
+check.py --fast -> ALL PASS (594 passed, 9 skipped), 7 steps

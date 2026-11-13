@@ -1,6 +1,6 @@
 # SLICE-051 审批记录归档与删除
 
-状态: spec'd
+状态: gated
 依据: SLICE-045，SLICE-049，`docs/contracts/cli.md`
 
 ## 意图（要什么，不写怎么写）
@@ -47,26 +47,26 @@ FileApprovalInbox.prune(max_age_seconds: float, *, archive: bool = True, now: da
 
 ## 完成判据（可执行）
 
-- [ ] 默认归档旧的决定记录 -> `tests/test_approvals_prune.py::test_archive_moves_terminal`
-- [ ] `archive=False` 删除 -> `tests/test_approvals_prune.py::test_delete_removes_terminal`
-- [ ] 保留期内的终结记录不动 -> `tests/test_approvals_prune.py::test_recent_terminal_kept`
-- [ ] 待决请求不动 -> `tests/test_approvals_prune.py::test_pending_kept`
-- [ ] 没有决定但已过期的记录被归档 -> `tests/test_approvals_prune.py::test_expired_without_decision_archived`
-- [ ] 没有截止时间的待决请求不动 -> `tests/test_approvals_prune.py::test_no_deadline_pending_kept`
-- [ ] 计数正确 -> `tests/test_approvals_prune.py::test_result_counts`
-- [ ] 归档后不再出现在待决列表 -> `tests/test_approvals_prune.py::test_archived_request_is_gone`
-- [ ] CLI 默认归档 -> `tests/test_cli_approvals_prune.py::test_cli_archives`
-- [ ] CLI `--delete` 删除 -> `tests/test_cli_approvals_prune.py::test_cli_deletes`
-- [ ] CLI 缺目录退出 1 -> `tests/test_cli_approvals_prune.py::test_cli_requires_dir`
-- [ ] CLI 拒绝非正的保留期 -> `tests/test_cli_approvals_prune.py::test_cli_rejects_nonpositive`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 默认归档旧的决定记录 -> `tests/test_approvals_prune.py::test_archive_moves_terminal`
+- [x] `archive=False` 删除 -> `tests/test_approvals_prune.py::test_delete_removes_terminal`
+- [x] 保留期内的终结记录不动 -> `tests/test_approvals_prune.py::test_recent_terminal_kept`
+- [x] 待决请求不动 -> `tests/test_approvals_prune.py::test_pending_kept`
+- [x] 没有决定但已过期的记录被归档 -> `tests/test_approvals_prune.py::test_expired_without_decision_archived`
+- [x] 没有截止时间的待决请求不动 -> `tests/test_approvals_prune.py::test_no_deadline_pending_kept`
+- [x] 计数正确 -> `tests/test_approvals_prune.py::test_result_counts`
+- [x] 归档后不再出现在待决列表 -> `tests/test_approvals_prune.py::test_archived_request_is_gone`
+- [x] CLI 默认归档 -> `tests/test_cli_approvals_prune.py::test_cli_archives`
+- [x] CLI `--delete` 删除 -> `tests/test_cli_approvals_prune.py::test_cli_deletes`
+- [x] CLI 缺目录退出 1 -> `tests/test_cli_approvals_prune.py::test_cli_requires_dir`
+- [x] CLI 拒绝非正的保留期 -> `tests/test_cli_approvals_prune.py::test_cli_rejects_nonpositive`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.approvals import PruneResult` -> 当前 `ImportError`
-- [ ] 反例 2：`FileApprovalInbox.prune` -> 当前没有这个方法
-- [ ] 反例 3：`adk-agent approvals prune ...` -> 当前 argparse 退出 2，没有 approvals 子命令
-- [ ] 反例 4：归档旧记录后待决列表仍包含它 -> 当前没有归档能力，确实仍在
+- [x] 反例 1：`from adk_agent.approvals import PruneResult` -> 当前 `ImportError`
+- [x] 反例 2：`FileApprovalInbox.prune` -> 当前没有这个方法
+- [x] 反例 3：`adk-agent approvals prune ...` -> 当前 argparse 退出 2，没有 approvals 子命令
+- [x] 反例 4：归档旧记录后待决列表仍包含它 -> 当前没有归档能力，确实仍在
 
 ## 契约（如涉及对外接口）
 
@@ -89,5 +89,7 @@ FileApprovalInbox.prune(max_age_seconds: float, *, archive: bool = True, now: da
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-051-approval-prune.txt`，`PruneResult` ImportError，`prune` 不存在，`approvals` 子命令 argparse 退出 2
+- 实现后绿: 同文件，32 passed；`check.py --fast` ALL PASS（594 passed, 9 skipped），`--full` ALL PASS
+- 真实归档: 同文件，两条旧记录进 archive，待决请求保留在根目录
+- 真实删除: 同文件，`--delete` 后目录清空

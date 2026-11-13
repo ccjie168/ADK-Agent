@@ -55,6 +55,13 @@ class ApprovalRecord:
     decision: ApprovalDecision | None
 
 
+@dataclass(frozen=True)
+class PruneResult:
+    archived: int = 0
+    deleted: int = 0
+    kept: int = 0
+
+
 def _checked_id(request_id: str) -> str:
     if not _REQUEST_ID.fullmatch(request_id):
         raise InvalidApprovalRequest(f"unsafe request id: {request_id!r}")
@@ -198,6 +205,81 @@ class FileApprovalInbox:
         found.sort(key=lambda request: (request.requested_at, request.request_id))
         return found
 
+    def prune(
+        self,
+        max_age_seconds: float,
+        *,
+        archive: bool = True,
+        now: datetime | None = None,
+    ) -> PruneResult:
+        if max_age_seconds <= 0:
+            raise ValueError("max_age_seconds must be greater than 0")
+        current = now if now is not None else self._clock()
+        cutoff = current - timedelta(seconds=max_age_seconds)
+        archive_dir = self.root / "archive"
+        archived = 0
+        deleted = 0
+        kept = 0
+
+        if not self.root.is_dir():
+            return PruneResult()
+
+        for path in self.root.glob(f"*{_REQUEST_SUFFIX}"):
+            request_id = path.name[: -len(_REQUEST_SUFFIX)]
+            if not _REQUEST_ID.fullmatch(request_id):
+                kept += 1
+                continue
+            try:
+                request = ApprovalRequest.model_validate_json(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                kept += 1
+                continue
+            decision_path = self._decision_path(request_id)
+            try:
+                decision = (
+                    ApprovalDecision.model_validate_json(decision_path.read_text(encoding="utf-8"))
+                    if decision_path.exists()
+                    else None
+                )
+            except (OSError, ValueError):
+                kept += 1
+                continue
+
+            if decision is not None:
+                terminal = decision.decided_at
+            elif self.is_expired(request, current):
+                deadline = self.expires_at(request)
+                if deadline is None:
+                    kept += 1
+                    continue
+                terminal = deadline
+            else:
+                kept += 1
+                continue
+
+            if not terminal < cutoff:
+                kept += 1
+                continue
+
+            if archive:
+                target_request = archive_dir / path.name
+                target_decision = archive_dir / decision_path.name
+                if target_request.exists() or (decision is not None and target_decision.exists()):
+                    kept += 1
+                    continue
+                archive_dir.mkdir(parents=True, exist_ok=True)
+                os.replace(path, target_request)
+                if decision is not None:
+                    os.replace(decision_path, target_decision)
+                archived += 1
+            else:
+                path.unlink()
+                if decision is not None:
+                    decision_path.unlink()
+                deleted += 1
+
+        return PruneResult(archived=archived, deleted=deleted, kept=kept)
+
     async def request(self, request: ApprovalRequest) -> ApprovalDecision:
         """Submit, notify, then wait for a decision file to appear."""
         self.submit(request)
@@ -233,4 +315,5 @@ __all__ = [
     "ApprovalRecord",
     "FileApprovalInbox",
     "InvalidApprovalRequest",
+    "PruneResult",
 ]

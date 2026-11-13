@@ -416,6 +416,26 @@ def main(argv: list[str] | None = None) -> None:
     _add_http_args(p_console)
     _add_runtime_args(p_console)
 
+    p_approvals = sub.add_parser("approvals", help="manage approval records")
+    approvals_sub = p_approvals.add_subparsers(dest="approvals_cmd", required=True)
+    p_prune = approvals_sub.add_parser("prune", help="archive or delete terminal approval records")
+    p_prune.add_argument(
+        "--dir",
+        default=os.environ.get("ADK_APPROVAL_DIR"),
+        help="approval inbox directory (defaults to $ADK_APPROVAL_DIR)",
+    )
+    p_prune.add_argument(
+        "--older-than",
+        type=float,
+        required=True,
+        help="retention period in seconds; terminal records older than this are pruned",
+    )
+    p_prune.add_argument(
+        "--delete",
+        action="store_true",
+        help="delete records instead of moving them to <dir>/archive",
+    )
+
     p_new = sub.add_parser("new", help="scaffold a new agent project")
     p_new.add_argument("name", help="agent name, created as a directory")
     p_new.add_argument(
@@ -669,6 +689,27 @@ def main(argv: list[str] | None = None) -> None:
             quota_config=quota_config,
             approvals=approvals,
         )
+    elif args.cmd == "approvals":
+        from .approvals import FileApprovalInbox
+
+        if not args.dir:
+            print(
+                "approval dir is required: provide --dir or set ADK_APPROVAL_DIR",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        if args.older_than <= 0:
+            print("--older-than must be greater than 0", file=sys.stderr)
+            raise SystemExit(1)
+        try:
+            result = FileApprovalInbox(args.dir).prune(args.older_than, archive=not args.delete)
+        except OSError as exc:
+            print(f"prune failed: {type(exc).__name__}", file=sys.stderr)
+            raise SystemExit(1) from None
+        if args.delete:
+            print(f"deleted {result.deleted} requests")
+        else:
+            print(f"archived {result.archived} requests")
     elif args.cmd == "validate":
         from .core import manifest_digest
         from .registry import load_manifest
