@@ -1,0 +1,31 @@
+SLICE-064 agent artifact types evidence
+date: 2026-11-13
+
+== red: artifact type and schema do not exist ==
+$ python -m pytest tests/core/test_artifact.py -q
+tests\core\test_artifact.py:13: in <module>
+    from adk_agent.core import (
+E   ImportError: cannot import name 'AgentArtifact' from 'adk_agent.core'
+ERROR tests/core/test_artifact.py
+1 error in 2.05s
+
+$ ls docs/contracts/agent_artifact.schema.json
+No such file or directory
+
+== green: targeted tests ==
+$ python -m pytest tests/core/test_artifact.py tests/core/test_contracts.py -q
+34 passed in 1.90s
+
+$ python -m pytest -q
+758 passed, 13 skipped in 44.28s
+
+The first gate run caught an import-order error and a mypy Literal error; both fixed.
+
+== contracts ==
+$ python scripts/export_contracts.py
+wrote docs/contracts/agent_artifact.schema.json      (new)
+regenerated agent_ref, invocation, approval_request, audit_event, audit_record,
+model_gateway_request, orchestration_plan, tool_gateway_request
+
+All eight regenerated diffs add only the optional `artifact_digest` to the embedded
+AgentRef, 13 lines each, nothing removed. The contract test compares model and file.

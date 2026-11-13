@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from adk_agent.config import FrameworkConfig  # noqa: E402
 from adk_agent.core import (  # noqa: E402
     AccessPolicy,
+    AgentArtifact,
     AgentManifest,
     AgentRef,
     ApprovalDecision,
@@ -39,6 +40,7 @@ CONTRACTS = ROOT / "docs" / "contracts"
 
 SCHEMAS: dict[str, type[BaseModel]] = {
     "manifest.schema.json": AgentManifest,
+    "agent_artifact.schema.json": AgentArtifact,
     "agent_ref.schema.json": AgentRef,
     "principal.schema.json": Principal,
     "invocation.schema.json": Invocation,

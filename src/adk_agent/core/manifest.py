@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .artifact import AgentArtifact
 from .policy import DataClass, ToolGrant
 
 Exposure = Literal["none", "mcp", "http", "a2a"]
@@ -62,6 +63,7 @@ class AgentRef(BaseModel):
     id: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
     version: str = Field(min_length=1, pattern=_SAFE_NAME_PATTERN)
     digest: str = Field(min_length=1)
+    artifact_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
 
 
 class PublishedAgent(BaseModel):
@@ -71,6 +73,7 @@ class PublishedAgent(BaseModel):
     digest: str = Field(min_length=1)
     signature: str = Field(min_length=1)
     published_at: datetime
+    artifact: AgentArtifact | None = None
 
     @field_validator("published_at")
     @classmethod

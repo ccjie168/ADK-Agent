@@ -1,0 +1,61 @@
+{
+  "additionalProperties": false,
+  "description": "A deterministic zip of agent code, addressed by its sha256.",
+  "properties": {
+    "digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Digest",
+      "type": "string"
+    },
+    "entrypoint": {
+      "default": "agent.py",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.py$",
+      "title": "Entrypoint",
+      "type": "string"
+    },
+    "key_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Key Id"
+    },
+    "media_type": {
+      "const": "application/vnd.adk.agent+zip",
+      "default": "application/vnd.adk.agent+zip",
+      "title": "Media Type",
+      "type": "string"
+    },
+    "signature": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Signature"
+    },
+    "size": {
+      "exclusiveMinimum": 0,
+      "maximum": 8388608,
+      "title": "Size",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "digest",
+    "size"
+  ],
+  "title": "AgentArtifact",
+  "type": "object"
+}

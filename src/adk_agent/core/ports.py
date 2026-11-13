@@ -5,9 +5,10 @@ from __future__ import annotations
 import builtins
 from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from .approval import ApprovalDecision, ApprovalRequest
+from .artifact import AgentArtifact
 from .audit import AuditEvent
 from .eval import EvalReport
 from .identity import Principal
@@ -61,6 +62,18 @@ class PolicyEngine(Protocol):
 
 class AuditSink(Protocol):
     async def emit(self, event: AuditEvent) -> None: ...
+
+
+class ArtifactStore(Protocol):
+    async def put(self, artifact: AgentArtifact, data: bytes) -> None: ...
+
+    async def get(self, digest: str) -> bytes | None: ...
+
+    async def has(self, digest: str) -> bool: ...
+
+
+class ArtifactLoader(Protocol):
+    async def load(self, artifact: AgentArtifact, store: ArtifactStore) -> Any: ...
 
 
 class TemplateSource(Protocol):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .approval import ApprovalDecision, ApprovalRequest
+from .artifact import MAX_ARTIFACT_BYTES, MEDIA_TYPE, AgentArtifact
 from .audit import AuditEvent, AuditRecord
 from .canary import CanaryPolicy
 from .eval import EvalCase, EvalCaseResult, EvalReport, EvalSuiteSpec
@@ -33,6 +34,8 @@ from .policy import DataClass, PolicyDecision, ToolGrant
 from .ports import (
     AgentRegistry,
     ApprovalGate,
+    ArtifactLoader,
+    ArtifactStore,
     AuditSink,
     EvalReportStore,
     IdentityProvider,
@@ -51,9 +54,12 @@ from .tool import ToolGatewayRequest, ToolRequest, ToolResponse
 
 __all__ = [
     "AccessPolicy",
+    "AgentArtifact",
     "AgentManifest",
     "AgentRef",
     "AgentRegistry",
+    "ArtifactLoader",
+    "ArtifactStore",
     "ApprovalDecision",
     "ApprovalGate",
     "ApprovalRequest",
@@ -71,6 +77,8 @@ __all__ = [
     "IdentityProvider",
     "Invocation",
     "InvocationResult",
+    "MAX_ARTIFACT_BYTES",
+    "MEDIA_TYPE",
     "Message",
     "ModelGateway",
     "ModelGatewayRequest",

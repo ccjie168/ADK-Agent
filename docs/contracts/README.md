@@ -13,7 +13,8 @@
 ## 文件
 
 - `manifest.schema.json`：`AgentManifest`，agent 的注册单元。
-- `agent_ref.schema.json`：`AgentRef`，运行的版本锚点。
+- `agent_ref.schema.json`：`AgentRef`，运行的版本锚点；`artifact_digest` 是可选的工作工件锚点。
+- `agent_artifact.schema.json`：`AgentArtifact`，ADR-0008 的工件元数据（摘要、大小、入口、签名）。
 - `principal.schema.json`：`Principal`，每次调用的主体。
 - `invocation.schema.json`：`Invocation`，数据面的调用形状。
 - `audit_event.schema.json`：`AuditEvent`，追加审计事件。
@@ -27,4 +28,4 @@
 - `tracing.md`：入站 trace 头和出站 `X-Trace-Id` 的传播规则。
 - `metrics.md`：各服务的 `/metrics` 端点、指标名和聚合边界。
 
-`PublishedAgent` 不是独立契约，它是注册表对 `AgentManifest` 加 digest、签名和发布时间的包装。
+`PublishedAgent` 不是独立契约，它是注册表对 `AgentManifest` 加 digest、签名和发布时间的包装，可选携带 `AgentArtifact`。

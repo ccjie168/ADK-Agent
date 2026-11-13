@@ -3,6 +3,19 @@
     "AgentRef": {
       "additionalProperties": false,
       "properties": {
+        "artifact_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Digest"
+        },
         "digest": {
           "minLength": 1,
           "title": "Digest",
