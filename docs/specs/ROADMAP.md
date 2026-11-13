@@ -151,6 +151,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-058 入口限流：固定窗口限流器、四个服务的 `--rate-limit`、429 与拒绝计数。已完成。
 - SLICE-059 MCP 与 A2A 入口限流：同一中间件接到 `serve` / `serve-many` / `serve-a2a`。已完成。
 - SLICE-060 审计签名密钥轮换：记录加 `kid`、密钥环、按 `kid` 验签。已完成。
+- SLICE-061 会话按租户隔离：可选的 `<tenant>:<subject>` 会话键。进行中。
 
 ## 完成定义
 

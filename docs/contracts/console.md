@@ -166,7 +166,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/sessions?agent=<name>` -> `[SessionSummary]`
 
-列出该 agent 在本地用户下的会话，按最后更新时间倒序。
+列出该 agent 在当前主体下的会话，按最后更新时间倒序。开启 `--session-tenant-scope` 时主体键是 `<tenant>:<subject>`，否则是 `<subject>`。
 
 ```json
 {"session_id": "s1", "last_update_time": "2026-11-12T10:00:00Z"}

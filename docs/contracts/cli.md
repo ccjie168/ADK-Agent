@@ -146,7 +146,7 @@
 
 ## `adk-agent serve` / `serve-many` 的审计、配额与指标
 
-两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE`、`--metrics` 和 `--rate-limit N --rate-limit-window SECONDS`。
+两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE`、`--metrics`、`--rate-limit N --rate-limit-window SECONDS` 和 `--session-tenant-scope`。
 
 - 每次 MCP 工具调用在 agent 运行前后写一条 `agent.run` 审计。`target` 是 `<agent>@dev`，`args_hash` 是请求文本的哈希，成功时写 `result_hash`。
 - 运行失败写 `status=error`，`error_code` 是异常类名。配额用尽写 `status=denied`、`error_code=quota_exceeded`，并且不运行 agent。
@@ -158,6 +158,7 @@
 - 配置了审计、配额或指标时，`serve` 改用 `serve-many` 的单 agent 形态，以获得同样的运行包装。
 - `--rate-limit N --rate-limit-window SECONDS` 只对 `streamable-http` 生效，语义见「入口限流」。
   配 `stdio` 同时给 `--rate-limit` 退出 1。
+- `--session-tenant-scope` 只对 OIDC 模式的 `streamable-http` 生效。打开后 OIDC 会话键从 `<subject>` 变成 `<tenant>:<subject>`，同一 subject 跨租户的会话和会话缓存互不可见。默认关闭；开启后旧会话按旧键存在，不会出现。
 - 审计的 `trace_id` 取 `traceparent` 的 trace-id，规则见 `tracing.md`。没有时每次调用新生成。
 - `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
 
@@ -187,6 +188,7 @@
 - `--approval-dir` 指向审批收件箱目录，默认 `$ADK_APPROVAL_DIR`。不设置时审批接口返回 404，收件箱禁用。目录在第一次写入时创建。
 - `--approval-ttl` 是控制台侧的兜底过期秒数，只作用于没有 `expires_at` 的请求。请求自带 `expires_at` 时以请求为准。不设置时这类请求一直待决。
 - `--sse-queue-size` 是每条 SSE 流最多缓冲的 `progress` 事件数，默认 512。必须大于 0，否则退出 1。慢客户端超过缓冲时丢弃最早的 `progress`，丢弃数在终结事件里报，见 `console.md`。
+- `--session-tenant-scope` 打开后，控制台的会话键从 `<subject>` 变成 `<tenant>:<subject>`，同一 subject 在不同租户下的会话互不可见。默认关闭。开启后已有会话按旧键存在，不会出现在列表里，等价于让所有用户重新开始会话。
 - `--rate-limit` 和 `--rate-limit-window` 启用入口限流，语义见下面的「入口限流」一节。不给 `--rate-limit` 时不限流。
 - 配置文件缺失或非法退出 1。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。

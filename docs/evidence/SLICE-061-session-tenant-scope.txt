@@ -1,0 +1,24 @@
+SLICE-061 session tenant scope evidence
+date: 2026-11-13
+
+== investigation ==
+ADK keys sessions by (app_name, user_id, session_id). It exposes no tenant column and
+generates its own SQL, so app.tenant_id cannot be injected. Both of our entry points own
+the user_id they pass: the console calls the session service directly, and the MCP path
+rewrites user_id in _PrincipalSessionService / _PrincipalRunner. The seam is our key,
+not the ADK schema.
+
+== red: scoped key, flag and parameter do not exist ==
+$ python -m pytest tests/test_session_tenant_scope.py -q
+tests\test_session_tenant_scope.py:15: in <module>
+    from adk_agent.runtime.sessions import scoped_user_id
+E   ImportError: cannot import name 'scoped_user_id' from 'adk_agent.runtime.sessions'
+ERROR tests/test_session_tenant_scope.py
+1 error in 2.40s
+
+$ adk-agent console --agents examples/minimal/agent.py --session-tenant-scope
+adk-agent: error: unrecognized arguments: --session-tenant-scope
+exit=2
+
+$ python -c "build_console_app({}, auth_token=None, session_tenant_scope=True)"
+TypeError: build_console_app() got an unexpected keyword argument 'session_tenant_scope'
