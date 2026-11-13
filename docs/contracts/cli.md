@@ -212,6 +212,14 @@
 - 配置审计时写 `tool.call` 事件，`status=ok` 或 `denied`；没有审计时仍然拦截。
 - 控制台行为不变，仍然按声明工具安装守卫。
 
+## `console` / `serve` / `serve-many` 的临时工具授权
+
+三个命令接受 `--tool-grants-dir DIR` 或 `GRANT_URL`（`postgresql://` 或 `postgresql+asyncpg://`），二选一，都不给时只用 manifest 与声明工具。
+
+- 配置后，工具调用在 manifest 授权之外再查一次“已批准且未过期”的临时授权，锚点是 `(tenant, agent_id, version, digest, tool_id)`。
+- 每次调用查询，不加缓存；存储不可达时拒绝，审计错误码为 `grant_store_unavailable`。
+- 两者同时给退出 1；`GRANT_URL` 需要 `asyncpg`，缺失时退出 1。
+
 ## `adk-agent serve` / `serve-many` 的审计、配额与指标
 
 两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE`、`--metrics`、`--rate-limit N --rate-limit-window SECONDS` 和 `--session-tenant-scope`。

@@ -44,6 +44,7 @@ from .core import (
     QuotaConfig,
     QuotaExceeded,
     QuotaManager,
+    ToolGrantStore,
 )
 from .mcp.http import resolve_port
 from .metrics import MetricsRegistry
@@ -1057,6 +1058,7 @@ def build_console_app(
     eval_reports: EvalReportStore | None = None,
     tool_catalog: ToolCatalog | None = None,
     lifecycle: AgentLifecycleStore | None = None,
+    tool_grants: ToolGrantStore | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1141,7 +1143,7 @@ def build_console_app(
     def _register(name: str, agent: Any) -> None:
         _wrap_model(agent, audit)
         install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
-        install_declared_guards(agent, audit)
+        install_declared_guards(agent, audit, overlay=tool_grants)
         runner = Runner(app_name=name, agent=agent, session_service=service)
         agents[name] = agent
         runners[name] = runner
@@ -1807,6 +1809,7 @@ def run_console(
     eval_reports: EvalReportStore | None = None,
     tool_catalog: ToolCatalog | None = None,
     lifecycle: AgentLifecycleStore | None = None,
+    tool_grants: ToolGrantStore | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1836,6 +1839,7 @@ def run_console(
         eval_reports=eval_reports,
         tool_catalog=tool_catalog,
         lifecycle=lifecycle,
+        tool_grants=tool_grants,
         artifact_store=artifact_store,
         artifact_loader=artifact_loader,
         artifact_trust=artifact_trust,

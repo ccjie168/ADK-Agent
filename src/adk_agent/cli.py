@@ -108,6 +108,22 @@ def _artifact_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _tool_grant_store(args: argparse.Namespace) -> Any:
+    """Build the tool grant store from ``--tool-grants-dir`` or ``$GRANT_URL``."""
+    from .registry import FileToolGrantStore, PostgresToolGrantStore
+
+    grants_dir = getattr(args, "tool_grants_dir", None)
+    url = os.environ.get("GRANT_URL")
+    if url and grants_dir:
+        print("set exactly one of --tool-grants-dir or GRANT_URL", file=sys.stderr)
+        raise SystemExit(1)
+    if grants_dir:
+        return FileToolGrantStore(grants_dir)
+    if url:
+        return PostgresToolGrantStore(url)
+    return None
+
+
 def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
     """Load agents named by ``--agent-ref`` from the registry."""
     refs = getattr(args, "agent_ref", None)
@@ -281,6 +297,14 @@ def _add_audit_args(parser: argparse.ArgumentParser) -> None:
 def _add_audit_quota_args(parser: argparse.ArgumentParser) -> None:
     _add_audit_args(parser)
     parser.add_argument("--quota-config", default=None, help="JSON QuotaConfig file")
+
+
+def _add_tool_grant_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--tool-grants-dir",
+        default=None,
+        help="directory of temporary tool grant requests (or set GRANT_URL)",
+    )
 
 
 def _auth_token(args: argparse.Namespace) -> str | None:
@@ -558,6 +582,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_runtime_args(p_serve)
     _add_audit_quota_args(p_serve)
+    _add_tool_grant_args(p_serve)
     _add_rate_limit_args(p_serve)
     p_serve.add_argument(
         "--metrics",
@@ -614,6 +639,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_runtime_args(p_many)
     _add_audit_quota_args(p_many)
+    _add_tool_grant_args(p_many)
     _add_rate_limit_args(p_many)
     p_many.add_argument(
         "--metrics",
@@ -850,6 +876,7 @@ def main(argv: list[str] | None = None) -> None:
     _add_http_args(p_console)
     _add_rate_limit_args(p_console)
     _add_runtime_args(p_console)
+    _add_tool_grant_args(p_console)
 
     p_approvals = sub.add_parser("approvals", help="manage approval records")
     approvals_sub = p_approvals.add_subparsers(dest="approvals_cmd", required=True)
@@ -1014,7 +1041,7 @@ def main(argv: list[str] | None = None) -> None:
         audit = _audit_sink(args)
         from .tools import install_declared_guards
 
-        install_declared_guards(agent, audit)
+        install_declared_guards(agent, audit, overlay=_tool_grant_store(args))
         quota, quota_config = _quota_settings(args)
         metrics = None
         if args.metrics:
@@ -1062,8 +1089,9 @@ def main(argv: list[str] | None = None) -> None:
         audit = _audit_sink(args)
         from .tools import install_declared_guards
 
+        tool_grants = _tool_grant_store(args)
         for loaded_agent in agents.values():
-            install_declared_guards(loaded_agent, audit)
+            install_declared_guards(loaded_agent, audit, overlay=tool_grants)
         quota, quota_config = _quota_settings(args)
         metrics = None
         if args.metrics:
@@ -1335,6 +1363,7 @@ def main(argv: list[str] | None = None) -> None:
         artifact_store = _artifact_store(args)
         registry_client = _agent_registry(args)
         console_lifecycle = _lifecycle_source(args, registry_client)
+        tool_grants = _tool_grant_store(args)
         run_console(
             agents=agents,
             host=args.host,
@@ -1347,6 +1376,7 @@ def main(argv: list[str] | None = None) -> None:
             registry=registry_client,
             tool_catalog=_tool_catalog(args),
             lifecycle=console_lifecycle,
+            tool_grants=tool_grants,
             eval_reports=(
                 HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
                 if args.registry_url

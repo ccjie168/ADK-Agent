@@ -62,7 +62,7 @@ class ToolGuard:
             args,
             response=None,
             status="denied",
-            error_code="policy_denied",
+            error_code=decision.error_code or "policy_denied",
             key=key,
         )
         return {"error": "tool_denied", "reason": decision.reason, "tool": tool.name}

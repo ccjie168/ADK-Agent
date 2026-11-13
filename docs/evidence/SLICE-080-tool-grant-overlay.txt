@@ -1,0 +1,44 @@
+SLICE-080 temporary grant overlay in the tool policy
+====================================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_grant_overlay.py -q
+9 failed in 2.14s
+  - GrantPolicyEngine() got an unexpected keyword argument 'overlay'
+  - console/serve do not accept --tool-grants-dir (argparse exit 2)
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_grant_overlay.py tests/test_tool_guard_mcp.py tests/tools/test_guard.py -q
+24 passed in 2.20s
+
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+930 passed, 28 skipped
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, real Postgres store inside the policy engine
+--------------------------------------------------
+Seeded a pending request in adk_tool_grant_requests, built
+`GrantPolicyEngine([], overlay=PostgresToolGrantStore(url))` and decided:
+
+  before approval: deny
+  after approval: allow grants-v2
+  other digest:   deny
+  other tool:     deny
+
+The temporary grant is scoped by tenant, agent, version, digest and tool id,
+and only counts once approved and unexpired.
