@@ -205,6 +205,7 @@
 - `--approval-dir` 指向审批收件箱目录，默认 `$ADK_APPROVAL_DIR`。不设置时审批接口返回 404，收件箱禁用。目录在第一次写入时创建。
 - `--approval-ttl` 是控制台侧的兜底过期秒数，只作用于没有 `expires_at` 的请求。请求自带 `expires_at` 时以请求为准。不设置时这类请求一直待决。
 - `--sse-queue-size` 是每条 SSE 流最多缓冲的 `progress` 事件数，默认 512。必须大于 0，否则退出 1。慢客户端超过缓冲时丢弃最早的 `progress`，丢弃数在终结事件里报，见 `console.md`。
+- `--audit-file PATH` 把审计事件追加到 JSONL；`--audit-url URL` 改建到审计服务，读面板（审计、运行、trace）也从该服务查询。两者互斥，同时给退出 2。审计 token 从 `--audit-token-env` 指定（默认 `ADK_AUDIT_AUTH_TOKEN`），非回环地址没有 token 时拒绝启动。都不给时审计只留在进程内，多副本之间不共享。
 - `--session-tenant-scope` 打开后，控制台的会话键从 `<subject>` 变成 `<tenant>:<subject>`，同一 subject 在不同租户下的会话互不可见。默认关闭。开启后已有会话按旧键存在，不会出现在列表里，等价于让所有用户重新开始会话。
 - `--rate-limit` 和 `--rate-limit-window` 启用入口限流，语义见下面的「入口限流」一节。不给 `--rate-limit` 时不限流。
 - 配置文件缺失或非法退出 1。

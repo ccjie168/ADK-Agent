@@ -93,12 +93,12 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 根是最后一条 `agent.run` 或 `orchestration.run` 事件，`children` 是同一 trace 的其余事件。
 非 `admin` 身份只能看到自己租户的事件，别的租户的 trace 视为找不到。
-找不到根时 `root` 为 `null`，`error` 为 `trace_not_found`。`trace_id` 必须匹配
+找不到根时 `root` 为 `null`，`error` 为 `trace_not_found`。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。`trace_id` 必须匹配
 `^[A-Za-z0-9._-]{1,128}$`。
 
 ## `GET /api/audit?limit=50` -> `[AuditEvent]`
 
-`limit` 上限 200。事件按时间正序，最多返回最近 200 条。非 `admin` 身份只返回自己租户的事件。
+`limit` 上限 200。事件按时间正序，最多返回最近 200 条。非 `admin` 身份只返回自己租户的事件。配置了 `--audit-url` 时从审计服务读取，服务不可用返回 502 `audit_unavailable`。
 
 事件结构见 `audit_event.schema.json`。
 
@@ -141,7 +141,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/runs?limit=50` -> `[RunSummary]`
 
-从当前进程的审计缓冲按 `run_id` 聚合，按最后事件时间倒序。`limit` 夹在 1 到 200。
+从审计缓冲或审计服务读出的事件按 `run_id` 聚合，按最后事件时间倒序。`limit` 夹在 1 到 200。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。
 
 ```json
 {

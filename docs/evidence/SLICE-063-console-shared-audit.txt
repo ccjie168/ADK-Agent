@@ -1,0 +1,14 @@
+SLICE-063 console shared audit evidence
+date: 2026-11-13
+
+== red: query clients and console flags do not exist ==
+$ python -m pytest tests/test_console_shared_audit.py -q
+tests\test_console_shared_audit.py:15: in <module>
+    from adk_agent.audit import (
+E   ImportError: cannot import name 'AuditQueryUnavailable' from 'adk_agent.audit'
+ERROR tests/test_console_shared_audit.py
+1 error in 2.02s
+
+$ adk-agent console --agents examples/minimal/agent.py --audit-url http://127.0.0.1:8000
+adk-agent: error: unrecognized arguments: --audit-url http://127.0.0.1:8000
+exit=2
