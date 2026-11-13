@@ -67,6 +67,18 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，事件的 `tenant` 和 `principal.subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
+## `adk-agent approvals prune --dir DIR --older-than SECONDS [--delete]`
+
+归档或删除已经终结、且超过保留期的审批记录。
+
+- `--dir` 默认 `$ADK_APPROVAL_DIR`，两者都没有时退出 1。
+- `--older-than` 必须是大于 0 的秒数，否则退出 1。
+- 终结时间取决定的 `decided_at`；没有决定但已过期的请求取 `expires_at`。没有决定且未过期的请求永远保留。
+- 默认把 `<id>.request.json` 和 `<id>.decision.json` 移到 `<dir>/archive/`。归档目录里已有同名文件时跳过该条，源文件保留。
+- `--delete` 改为删除，不归档。
+- 成功输出 `archived N requests` 或 `deleted N requests`，退出 0。
+- 这个命令不写审计事件。
+
 ## `adk-agent verify-audit FILE`
 
 逐条重算审计链。
