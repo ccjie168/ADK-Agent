@@ -72,7 +72,7 @@
 | SLICE-070 | Postgres 注册表 | `a04828b` |
 | SLICE-071 | 注册表控制面与客户端 | `325078e` |
 | SLICE-072 | 命令接注册表服务 | `6d88dcc` |
-| SLICE-073 | 市场页按需加载版本 | `PENDING` |
+| SLICE-073 | 市场页按需加载版本 | `3f0c495` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
