@@ -1,6 +1,6 @@
 # SLICE-050 服务指标端点
 
-状态: spec'd
+状态: gated
 依据: SLICE-037，SLICE-038，SLICE-046，SLICE-047，`docs/contracts/metrics.md`
 
 ## 意图（要什么，不写怎么写）
@@ -63,26 +63,26 @@ adk_tool_call_duration_seconds{tool}
 
 ## 完成判据（可执行）
 
-- [ ] 模型网关成功调用计数 -> `tests/test_gateway_metrics.py::test_model_gateway_counts_calls`
-- [ ] 模型网关拒绝计数 -> `tests/test_gateway_metrics.py::test_model_gateway_counts_denials`
-- [ ] 模型网关 `/metrics` 要 token -> `tests/test_gateway_metrics.py::test_model_metrics_require_token`
-- [ ] 工具网关成功和拒绝计数 -> `tests/test_gateway_metrics.py::test_tool_gateway_counts_calls`
-- [ ] 工具网关 `/metrics` 要 token -> `tests/test_gateway_metrics.py::test_tool_metrics_require_token`
-- [ ] MCP 工具调用计数 -> `tests/test_mcp_metrics.py::test_serve_many_counts_runs`
-- [ ] MCP 配额拒绝计数 -> `tests/test_mcp_metrics.py::test_serve_many_counts_quota_denials`
-- [ ] MCP `/metrics` 端点 -> `tests/test_mcp_metrics.py::test_mcp_metrics_endpoint`
-- [ ] MCP `/metrics` 要 token -> `tests/test_mcp_metrics.py::test_mcp_metrics_require_token`
-- [ ] CLI `serve --metrics` 转发 -> `tests/test_cli_mcp_metrics.py::test_serve_forwards_metrics`
-- [ ] 默认不开启 -> `tests/test_cli_mcp_metrics.py::test_metrics_default_off`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 模型网关成功调用计数 -> `tests/test_gateway_metrics.py::test_model_gateway_counts_calls`
+- [x] 模型网关拒绝计数 -> `tests/test_gateway_metrics.py::test_model_gateway_counts_denials`
+- [x] 模型网关 `/metrics` 要 token -> `tests/test_gateway_metrics.py::test_model_metrics_require_token`
+- [x] 工具网关成功和拒绝计数 -> `tests/test_gateway_metrics.py::test_tool_gateway_counts_calls`
+- [x] 工具网关 `/metrics` 要 token -> `tests/test_gateway_metrics.py::test_tool_metrics_require_token`
+- [x] MCP 工具调用计数 -> `tests/test_mcp_metrics.py::test_serve_many_counts_runs`
+- [x] MCP 配额拒绝计数 -> `tests/test_mcp_metrics.py::test_serve_many_counts_quota_denials`
+- [x] MCP `/metrics` 端点 -> `tests/test_mcp_metrics.py::test_mcp_metrics_endpoint`
+- [x] MCP `/metrics` 要 token -> `tests/test_mcp_metrics.py::test_mcp_metrics_require_token`
+- [x] CLI `serve --metrics` 转发 -> `tests/test_cli_mcp_metrics.py::test_serve_forwards_metrics`
+- [x] 默认不开启 -> `tests/test_cli_mcp_metrics.py::test_metrics_default_off`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：模型网关 `GET /metrics` -> 当前 404
-- [ ] 反例 2：工具网关 `GET /metrics` -> 当前 404
-- [ ] 反例 3：`build_http_app(server, metrics=...)` -> 当前 `TypeError`
-- [ ] 反例 4：`serve --metrics` -> 当前 argparse 退出 2
-- [ ] 反例 5：MCP 工具调用后注册表为空 -> 当前没有指标包装
+- [x] 反例 1：模型网关 `GET /metrics` -> 当前 404
+- [x] 反例 2：工具网关 `GET /metrics` -> 当前 404
+- [x] 反例 3：`build_http_app(server, metrics=...)` -> 当前 `TypeError`
+- [x] 反例 4：`serve --metrics` -> 当前 argparse 退出 2
+- [x] 反例 5：MCP 工具调用后注册表为空 -> 当前没有指标包装
 
 ## 契约（如涉及对外接口）
 
@@ -105,5 +105,7 @@ adk_tool_call_duration_seconds{tool}
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
+- 反例红: `docs/evidence/SLICE-050-metrics-endpoints.txt`，两个网关 `/metrics` 404，三个 builder 不认识 `metrics`，`serve --metrics` 退出 2，MCP 注册表为空
+- 实现后绿: 同文件，37 passed；`check.py --fast` ALL PASS（581 passed, 9 skipped），`--full` ALL PASS
+- 真实工具网关: 同文件，一次成功一次拒绝后 `/metrics` 出现 ok/denied 计数和耗时，未鉴权 401
+- 真实 MCP: 同文件，`--metrics` 下调用一次后 `/metrics` 出现 `source="mcp"` 的运行计数和耗时，未鉴权 401

@@ -1,0 +1,50 @@
+SLICE-050 service metrics endpoints evidence
+date: 2026-11-13T01:08:47Z
+
+== red: new tests before implementation ==
+adk-agent: error: unrecognized arguments: --metrics
+=========================== short test summary info ===========================
+FAILED tests/test_gateway_metrics.py::test_model_gateway_counts_calls - TypeE...
+FAILED tests/test_gateway_metrics.py::test_model_gateway_counts_denials - Typ...
+FAILED tests/test_gateway_metrics.py::test_model_metrics_require_token - Type...
+FAILED tests/test_gateway_metrics.py::test_tool_gateway_counts_calls - TypeEr...
+FAILED tests/test_gateway_metrics.py::test_tool_metrics_require_token - TypeE...
+FAILED tests/test_mcp_metrics.py::test_serve_many_counts_runs - TypeError: se...
+FAILED tests/test_mcp_metrics.py::test_serve_many_counts_quota_denials - Type...
+FAILED tests/test_mcp_metrics.py::test_mcp_metrics_endpoint - TypeError: MCPS...
+FAILED tests/test_mcp_metrics.py::test_mcp_metrics_require_token - TypeError:...
+FAILED tests/test_cli_mcp_metrics.py::test_serve_forwards_metrics - SystemExi...
+FAILED tests/test_cli_mcp_metrics.py::test_metrics_default_off - KeyError: 'm...
+FAILED tests/test_cli_mcp_metrics.py::test_serve_many_forwards_metrics - Syst...
+12 failed in 3.19s
+
+== red: gateway /metrics routes are absent ==
+/metrics 404 {'detail': 'Not Found'}
+
+== green: targeted tests ==
+tests/test_gateway_metrics.py tests/test_mcp_metrics.py tests/test_cli_mcp_metrics.py
+tests/models/test_http_gateway.py tests/tools/test_http_tool_gateway.py
+tests/test_mcp_runtime.py tests/test_mcp_runtime_wiring.py tests/test_a2a_runtime.py
+-> 37 passed in 3.08s
+
+== live: tool gateway on 8095 ==
+POST /v1/invoke with grant -> HTTP 200
+POST /v1/invoke without grant -> HTTP 403
+GET /metrics without token -> HTTP 401
+GET /metrics with token ->
+  adk_tool_calls_total{status="ok",tool="add"} 1
+  adk_tool_calls_total{status="denied",tool="add"} 1
+  adk_tool_call_duration_seconds_count{tool="add"} 2
+
+== live: MCP streamable-http with --metrics on 8094 ==
+call minimal_agent -> isError=False text="ok" (real model reply)
+GET /metrics without token -> HTTP 401
+GET /metrics with token ->
+  adk_agent_runs_total{agent="minimal_agent",source="mcp",status="ok",tenant="local"} 1
+  adk_agent_run_duration_seconds_count{agent="minimal_agent",tenant="local"} 1
+
+== scope note ==
+Cross-replica aggregation is left to the scraper; each process renders only its own counters.
+
+== gate ==
+check.py --fast -> ALL PASS (581 passed, 9 skipped), 7 steps

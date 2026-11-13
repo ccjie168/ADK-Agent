@@ -17,6 +17,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
 
     from ..core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
+    from ..metrics import MetricsRegistry
 
 _MCP_USER_ID = "mcp_user"
 _MAX_REAP_ATTEMPTS = 3
@@ -173,6 +174,7 @@ def serve_agent(
     audit: AuditSink | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
+    metrics: MetricsRegistry | None = None,
 ) -> Any:
     """Expose one ADK agent as an MCP server and run it (blocking).
 
@@ -189,7 +191,7 @@ def serve_agent(
     from google.adk.tools.mcp_tool import to_mcp_server
 
     if (transport == "streamable-http" and oidc is not None) or (
-        audit is not None or quota is not None or quota_config is not None
+        audit is not None or quota is not None or quota_config is not None or metrics is not None
     ):
         tool_name = name or agent.name
         return serve_many(
@@ -206,6 +208,7 @@ def serve_agent(
             audit=audit,
             quota=quota,
             quota_config=quota_config,
+            metrics=metrics,
         )
 
     server = to_mcp_server(agent, name=name, runner=runner, instructions=instructions)
@@ -221,6 +224,7 @@ def serve_agent(
             auth_token=auth_token,
             allow_unauthenticated=allow_unauthenticated,
             oidc=oidc,
+            metrics=metrics,
         )
     return server
 
@@ -240,6 +244,7 @@ def serve_many(
     audit: AuditSink | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
+    metrics: MetricsRegistry | None = None,
 ) -> Any:
     """Expose several ADK agents as separate MCP tools in one server.
 
@@ -288,6 +293,7 @@ def serve_many(
             _audit: AuditSink | None,
             _quota: QuotaManager | None,
             _quota_config: QuotaConfig | None,
+            _metrics: MetricsRegistry | None,
         ) -> Callable[..., Any]:
             async def _tool(request: str, ctx: Context[ServerSession, Any]) -> list[Any]:
                 principal = _principal_from_ctx(ctx)
@@ -316,7 +322,7 @@ def serve_many(
                     tenant="local", subject=_MCP_USER_ID, kind="service"
                 )
                 policy = _quota_config.tenants.get(run_principal.tenant) if _quota_config else None
-                if _audit is not None or _quota is not None:
+                if _audit is not None or _quota is not None or _metrics is not None:
                     scoped_runner = wrap_runner(
                         scoped_runner,
                         agent_name=_agent_name,
@@ -326,6 +332,8 @@ def serve_many(
                         quota=_quota,
                         quota_policy=policy,
                         trace_id=_trace_id_from_ctx(ctx),
+                        metrics=_metrics,
+                        source="mcp",
                     )
                 return await _run_agent(
                     scoped_runner,
@@ -347,6 +355,7 @@ def serve_many(
             audit,
             quota,
             quota_config,
+            metrics,
         )
         tool_fn.__name__ = f"call_{tool_name}"
         description = agent.description or f"Run the {tool_name} agent."
@@ -370,5 +379,6 @@ def serve_many(
             auth_token=auth_token,
             allow_unauthenticated=allow_unauthenticated,
             oidc=oidc,
+            metrics=metrics,
         )
     return server

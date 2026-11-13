@@ -107,6 +107,7 @@ def build_a2a_app(
             quota=quota,
             quota_policy=quota_config.tenants.get(_A2A_TENANT) if quota_config else None,
             trace_id=lambda: _current_trace_id.get(),
+            source="a2a",
         )
     app = _to_a2a()(
         agent,

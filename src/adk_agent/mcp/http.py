@@ -10,10 +10,11 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 
 from ..auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from ..core import IdentityProvider
+from ..metrics import MetricsRegistry
 
 
 def resolve_port(port: int | None, default: int = 8000) -> int:
@@ -36,6 +37,7 @@ def build_http_app(
     host: str = "127.0.0.1",
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
+    metrics: MetricsRegistry | None = None,
     **kwargs: Any,
 ) -> Any:
     """Build the streamable-http ASGI app, wrapping it in bearer auth if set."""
@@ -46,6 +48,15 @@ def build_http_app(
     @server.custom_route("/healthz", methods=["GET"], include_in_schema=False)
     async def _healthz(_request: Any) -> Any:
         return JSONResponse({"status": "ok"})
+
+    if metrics is not None:
+
+        @server.custom_route("/metrics", methods=["GET"], include_in_schema=False)
+        async def _metrics(_request: Any) -> Any:
+            return PlainTextResponse(
+                metrics.render(),
+                media_type="text/plain; version=0.0.4; charset=utf-8",
+            )
 
     app = server.streamable_http_app(host=host, **kwargs)
 
@@ -65,6 +76,7 @@ def run_http(
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
+    metrics: MetricsRegistry | None = None,
     **kwargs: Any,
 ) -> None:
     """Serve an MCP server over streamable-http (blocking)."""
@@ -74,6 +86,7 @@ def run_http(
         host=host,
         allow_unauthenticated=allow_unauthenticated,
         oidc=oidc,
+        metrics=metrics,
         **kwargs,
     )
 

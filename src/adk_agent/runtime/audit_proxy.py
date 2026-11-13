@@ -23,6 +23,7 @@ from ..core import (
     QuotaManager,
     QuotaPolicy,
 )
+from ..metrics import MetricsRegistry
 from .execution import dev_agent_ref
 
 __all__ = ["AuditedRunner", "wrap_runner"]
@@ -55,6 +56,8 @@ class AuditedRunner:
         quota: QuotaManager | None,
         quota_policy: QuotaPolicy | None,
         trace_id: TraceId = None,
+        metrics: MetricsRegistry | None = None,
+        source: str = "agent",
     ) -> None:
         self._inner = inner
         self._agent_name = agent_name
@@ -64,6 +67,8 @@ class AuditedRunner:
         self._quota = quota
         self._quota_policy = quota_policy
         self._trace_id = trace_id
+        self._metrics = metrics
+        self._source = source
 
     @property  # type: ignore[misc]
     def __class__(self) -> type[Any]:
@@ -91,7 +96,7 @@ class AuditedRunner:
                 await stack.enter_async_context(
                     self._quota.reserve(self._principal.tenant, self._quota_policy)
                 )
-            except QuotaExceeded:
+            except QuotaExceeded as exc:
                 await self._emit(
                     run_id=run_id,
                     trace_id=trace_id,
@@ -101,6 +106,7 @@ class AuditedRunner:
                     args_text=input_text,
                     started=started,
                 )
+                self._record("denied", started, exc.limit)
                 raise
 
         try:
@@ -122,6 +128,7 @@ class AuditedRunner:
                     args_text=input_text,
                     started=started,
                 )
+                self._record("error", started)
                 raise
 
             text = "".join(reply_parts).strip()
@@ -134,8 +141,33 @@ class AuditedRunner:
                 args_text=input_text,
                 started=started,
             )
+            self._record("ok", started)
         finally:
             await stack.aclose()
+
+    def _record(self, status: str, started: float, limit: str | None = None) -> None:
+        if self._metrics is None:
+            return
+        tenant = self._principal.tenant
+        self._metrics.inc(
+            "adk_agent_runs_total",
+            {
+                "source": self._source,
+                "tenant": tenant,
+                "agent": self._agent_name,
+                "status": status,
+            },
+        )
+        self._metrics.observe(
+            "adk_agent_run_duration_seconds",
+            time.perf_counter() - started,
+            {"agent": self._agent_name, "tenant": tenant},
+        )
+        if limit is not None:
+            self._metrics.inc(
+                "adk_agent_quota_denials_total",
+                {"tenant": tenant, "limit": limit},
+            )
 
     def _resolved_trace_id(self) -> str:
         trace = self._trace_id() if callable(self._trace_id) else self._trace_id
@@ -182,7 +214,11 @@ def _text_from(message: Any) -> str:
 
 
 def wrap_runner(inner: Any, **kwargs: Any) -> Any:
-    """Wrap ``inner`` only when an audit sink or quota manager is configured."""
-    if kwargs.get("audit") is None and kwargs.get("quota") is None:
+    """Wrap ``inner`` only when audit, quota or metrics is configured."""
+    if (
+        kwargs.get("audit") is None
+        and kwargs.get("quota") is None
+        and kwargs.get("metrics") is None
+    ):
         return inner
     return AuditedRunner(inner, **kwargs)

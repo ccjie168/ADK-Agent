@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from collections.abc import Sequence
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import ValidationError
 
 from ..auth import (
@@ -18,6 +19,7 @@ from ..auth import (
     resolve_http_auth,
 )
 from ..core import IdentityProvider, ModelGatewayRequest, ModelProvider
+from ..metrics import MetricsRegistry
 from .gateway import ModelDenied, PolicyModelGateway
 from .providers import LiteLlmProvider, VllmProvider
 
@@ -54,14 +56,22 @@ def build_model_gateway_app(
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
+    metrics: MetricsRegistry | None = None,
 ) -> FastAPI:
     """Build the gateway app. Every path except /healthz needs the token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
+    metrics = metrics if metrics is not None else MetricsRegistry()
     app = FastAPI(title="ADK Model Gateway", docs_url=None, redoc_url=None)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/metrics")
+    async def metrics_endpoint() -> PlainTextResponse:
+        return PlainTextResponse(
+            metrics.render(), media_type="text/plain; version=0.0.4; charset=utf-8"
+        )
 
     @app.post("/v1/complete")
     async def complete(request: Request) -> JSONResponse:
@@ -80,13 +90,18 @@ def build_model_gateway_app(
             return JSONResponse({"error": "principal_mismatch"}, status_code=403)
         invocation = invocation.model_copy(update={"principal": bound})
 
+        provider = call.request.provider
+        started = time.perf_counter()
         try:
             response = await gateway.complete(invocation, call.request, call.policy)
         except ModelDenied:
+            _record_model_call(metrics, provider, "denied", started)
             return JSONResponse({"error": "model_denied"}, status_code=403)
         except Exception:  # noqa: BLE001
+            _record_model_call(metrics, provider, "error", started)
             logger.exception("model gateway provider failure")
             return JSONResponse({"error": "model_call_failed"}, status_code=502)
+        _record_model_call(metrics, provider, "ok", started)
 
         return JSONResponse(response.model_dump(mode="json"))
 
@@ -95,6 +110,17 @@ def build_model_gateway_app(
     elif token:
         app.add_middleware(BearerAuthMiddleware, token=token, open_paths=frozenset({"/healthz"}))
     return app
+
+
+def _record_model_call(
+    metrics: MetricsRegistry, provider: str, status: str, started: float
+) -> None:
+    metrics.inc("adk_model_calls_total", {"provider": provider, "status": status})
+    metrics.observe(
+        "adk_model_call_duration_seconds",
+        time.perf_counter() - started,
+        {"provider": provider},
+    )
 
 
 __all__ = ["build_model_gateway_app", "build_providers"]

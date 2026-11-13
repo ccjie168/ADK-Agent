@@ -243,6 +243,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_runtime_args(p_serve)
     _add_audit_quota_args(p_serve)
+    p_serve.add_argument(
+        "--metrics",
+        action="store_true",
+        help="count runs and expose /metrics on streamable-http",
+    )
 
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
     p_many.add_argument(
@@ -267,6 +272,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_runtime_args(p_many)
     _add_audit_quota_args(p_many)
+    p_many.add_argument(
+        "--metrics",
+        action="store_true",
+        help="count runs and expose /metrics on streamable-http",
+    )
 
     p_a2a = sub.add_parser("serve-a2a", help="serve an ADK agent over A2A (needs a2a-sdk)")
     p_a2a.add_argument("--agent", required=True, help="path to a Python file defining `agent`")
@@ -479,6 +489,11 @@ def main(argv: list[str] | None = None) -> None:
 
         audit = _audit_sink(args)
         quota, quota_config = _quota_settings(args)
+        metrics = None
+        if args.metrics:
+            from .metrics import MetricsRegistry
+
+            metrics = MetricsRegistry()
         serve_agent(
             agent,
             name=name,
@@ -492,6 +507,7 @@ def main(argv: list[str] | None = None) -> None:
             audit=audit,
             quota=quota,
             quota_config=quota_config,
+            metrics=metrics,
         )
     elif args.cmd == "serve-many":
         from .factory import build_runner
@@ -508,6 +524,11 @@ def main(argv: list[str] | None = None) -> None:
         )
         audit = _audit_sink(args)
         quota, quota_config = _quota_settings(args)
+        metrics = None
+        if args.metrics:
+            from .metrics import MetricsRegistry
+
+            metrics = MetricsRegistry()
         serve_many(
             agents,
             name=args.name,
@@ -521,6 +542,7 @@ def main(argv: list[str] | None = None) -> None:
             audit=audit,
             quota=quota,
             quota_config=quota_config,
+            metrics=metrics,
         )
     elif args.cmd == "serve-a2a":
         from .a2a import A2aUnavailable, serve_a2a
