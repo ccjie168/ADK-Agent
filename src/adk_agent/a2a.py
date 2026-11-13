@@ -18,6 +18,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from .auth import BearerAuthMiddleware, resolve_http_auth
 from .core import Principal
 from .mcp.http import resolve_port
+from .ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
 from .runtime.audit_proxy import wrap_runner
 from .tracing import resolve_trace_id
 
@@ -90,6 +91,7 @@ def build_a2a_app(
     audit: AuditSink | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
+    rate_limit: RateLimit | None = None,
 ) -> Any:
     """Build the A2A Starlette app. A token protects every path, card included."""
     audited = audit is not None or quota is not None
@@ -116,6 +118,13 @@ def build_a2a_app(
         rpc_path=rpc_path,
         runner=runner,
     )
+    if rate_limit is not None:
+        app.add_middleware(
+            RateLimitMiddleware,
+            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            surface="a2a",
+            exempt=frozenset(),
+        )
     if auth_token:
         app.add_middleware(BearerAuthMiddleware, token=auth_token, open_paths=frozenset())
     if audited:
@@ -135,6 +144,7 @@ def serve_a2a(
     audit: AuditSink | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
+    rate_limit: RateLimit | None = None,
 ) -> None:
     """Serve an agent over A2A (blocking). Network binds require a token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated)
@@ -149,6 +159,7 @@ def serve_a2a(
         audit=audit,
         quota=quota,
         quota_config=quota_config,
+        rate_limit=rate_limit,
     )
 
     import uvicorn

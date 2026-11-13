@@ -18,6 +18,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from ..core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
     from ..metrics import MetricsRegistry
+    from ..ratelimit import RateLimit
 
 _MCP_USER_ID = "mcp_user"
 _MAX_REAP_ATTEMPTS = 3
@@ -175,6 +176,7 @@ def serve_agent(
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
     metrics: MetricsRegistry | None = None,
+    rate_limit: RateLimit | None = None,
 ) -> Any:
     """Expose one ADK agent as an MCP server and run it (blocking).
 
@@ -190,8 +192,16 @@ def serve_agent(
     """
     from google.adk.tools.mcp_tool import to_mcp_server
 
-    if (transport == "streamable-http" and oidc is not None) or (
-        audit is not None or quota is not None or quota_config is not None or metrics is not None
+    if rate_limit is not None and transport != "streamable-http":
+        raise ValueError("rate limit requires streamable-http")
+
+    if (
+        (transport == "streamable-http" and oidc is not None)
+        or audit is not None
+        or quota is not None
+        or quota_config is not None
+        or metrics is not None
+        or rate_limit is not None
     ):
         tool_name = name or agent.name
         return serve_many(
@@ -209,6 +219,7 @@ def serve_agent(
             quota=quota,
             quota_config=quota_config,
             metrics=metrics,
+            rate_limit=rate_limit,
         )
 
     server = to_mcp_server(agent, name=name, runner=runner, instructions=instructions)
@@ -225,6 +236,7 @@ def serve_agent(
             allow_unauthenticated=allow_unauthenticated,
             oidc=oidc,
             metrics=metrics,
+            rate_limit=rate_limit,
         )
     return server
 
@@ -245,6 +257,7 @@ def serve_many(
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
     metrics: MetricsRegistry | None = None,
+    rate_limit: RateLimit | None = None,
 ) -> Any:
     """Expose several ADK agents as separate MCP tools in one server.
 
@@ -271,6 +284,8 @@ def serve_many(
 
     if not agents:
         raise ValueError("serve_many needs at least one agent")
+    if rate_limit is not None and transport != "streamable-http":
+        raise ValueError("rate limit requires streamable-http")
 
     server = FastMCP(name=name, instructions=instructions)
 
@@ -380,5 +395,6 @@ def serve_many(
             allow_unauthenticated=allow_unauthenticated,
             oidc=oidc,
             metrics=metrics,
+            rate_limit=rate_limit,
         )
     return server

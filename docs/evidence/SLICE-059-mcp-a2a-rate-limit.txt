@@ -20,3 +20,52 @@ exit=2
 $ adk-agent serve-a2a --agent examples/minimal/agent.py --rate-limit 5
 adk-agent: error: unrecognized arguments: --rate-limit 5
 exit=2
+
+== green: targeted tests ==
+$ python -m pytest tests/test_mcp_a2a_rate_limit.py -q
+12 passed in 2.81s
+
+$ python -m pytest -q
+690 passed, 13 skipped in 42.99s
+
+== live: MCP streamable-http, limit 2 per 30 s ==
+$ ADK_MCP_TOKEN=live-token adk-agent serve --agent agent.py --transport streamable-http \
+    --host 127.0.0.1 --port 18098 --auth-token-env ADK_MCP_TOKEN --metrics \
+    --rate-limit 2 --rate-limit-window 30
+$ curl -H "Authorization: Bearer live-token" http://127.0.0.1:18098/nope   (x3)
+status=404
+status=404
+status=429 retry=30   body {"error":"rate_limited"}
+$ curl http://127.0.0.1:18098/healthz          -> 200
+$ curl -H "Authorization: ..." .../metrics     -> 200, adk_http_rate_limited_total{surface="mcp"} 2
+
+== live: A2A, limit 1 per 30 s ==
+$ ADK_A2A_TOKEN=live-token adk-agent serve-a2a --agent agent.py --host 127.0.0.1 --port 18097 \
+    --auth-token-env ADK_A2A_TOKEN --rate-limit 1 --rate-limit-window 30
+$ curl -H "Authorization: Bearer live-token" http://127.0.0.1:18097/   (x3)
+status=405
+status=429 retry=30
+status=429 retry=30
+$ curl http://127.0.0.1:18097/                 -> 401 (auth runs first)
+
+== reading ==
+- Both entries now use the same limiter as the HTTP services; no new type was added.
+- Auth stays outermost: an unauthenticated A2A request gets 401 even after the budget is gone.
+- MCP exempts /healthz and /metrics; A2A has neither path, so every request counts.
+- The MCP counter needs --metrics to have a /metrics endpoint to read. A2A has no metrics
+  surface, so its denials are only visible to clients as 429s.
+
+== full gate ==
+$ python scripts/check.py --full
+690 passed, 13 skipped in 43.22s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS

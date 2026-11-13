@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from ..auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from ..core import IdentityProvider
 from ..metrics import MetricsRegistry
+from ..ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
 
 
 def resolve_port(port: int | None, default: int = 8000) -> int:
@@ -38,6 +39,7 @@ def build_http_app(
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
     metrics: MetricsRegistry | None = None,
+    rate_limit: RateLimit | None = None,
     **kwargs: Any,
 ) -> Any:
     """Build the streamable-http ASGI app, wrapping it in bearer auth if set."""
@@ -60,6 +62,15 @@ def build_http_app(
 
     app = server.streamable_http_app(host=host, **kwargs)
 
+    if rate_limit is not None:
+        app.add_middleware(
+            RateLimitMiddleware,
+            limiter=FixedWindowLimiter(rate_limit.limit, rate_limit.window_seconds),
+            surface="mcp",
+            metrics=metrics,
+            exempt=frozenset({"/healthz", "/metrics"}),
+        )
+
     if oidc is not None:
         app.add_middleware(OidcAuthMiddleware, provider=oidc)
     elif token:
@@ -77,6 +88,7 @@ def run_http(
     allow_unauthenticated: bool = False,
     oidc: IdentityProvider | None = None,
     metrics: MetricsRegistry | None = None,
+    rate_limit: RateLimit | None = None,
     **kwargs: Any,
 ) -> None:
     """Serve an MCP server over streamable-http (blocking)."""
@@ -87,6 +99,7 @@ def run_http(
         allow_unauthenticated=allow_unauthenticated,
         oidc=oidc,
         metrics=metrics,
+        rate_limit=rate_limit,
         **kwargs,
     )
 

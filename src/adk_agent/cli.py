@@ -280,6 +280,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_runtime_args(p_serve)
     _add_audit_quota_args(p_serve)
+    _add_rate_limit_args(p_serve)
     p_serve.add_argument(
         "--metrics",
         action="store_true",
@@ -309,6 +310,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_runtime_args(p_many)
     _add_audit_quota_args(p_many)
+    _add_rate_limit_args(p_many)
     p_many.add_argument(
         "--metrics",
         action="store_true",
@@ -324,6 +326,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_http_args(p_a2a)
     _add_audit_quota_args(p_a2a)
+    _add_rate_limit_args(p_a2a)
 
     p_gateway = sub.add_parser(
         "serve-model-gateway", help="serve the model gateway as a standalone service"
@@ -561,6 +564,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.cmd == "serve":
+        rate_limit = _rate_limit(args)
         from .mcp.server import serve_agent
 
         if args.config:
@@ -579,6 +583,10 @@ def main(argv: list[str] | None = None) -> None:
             transport = args.transport or "stdio"
         else:
             raise SystemExit("provide --agent <file> or --config <file>")
+
+        if rate_limit is not None and transport != "streamable-http":
+            print("--rate-limit requires streamable-http", file=sys.stderr)
+            raise SystemExit(1)
 
         oidc = _identity_provider(args)
         if oidc is not None and transport != "streamable-http":
@@ -608,13 +616,18 @@ def main(argv: list[str] | None = None) -> None:
             quota=quota,
             quota_config=quota_config,
             metrics=metrics,
+            rate_limit=rate_limit,
         )
     elif args.cmd == "serve-many":
+        rate_limit = _rate_limit(args)
         from .factory import build_runner
         from .mcp.server import serve_many
 
         agents = _load_agents(args.agents)
         transport = args.transport or "stdio"
+        if rate_limit is not None and transport != "streamable-http":
+            print("--rate-limit requires streamable-http", file=sys.stderr)
+            raise SystemExit(1)
         oidc = _identity_provider(args)
         if oidc is not None and transport != "streamable-http":
             print("oidc config requires streamable-http", file=sys.stderr)
@@ -643,8 +656,10 @@ def main(argv: list[str] | None = None) -> None:
             quota=quota,
             quota_config=quota_config,
             metrics=metrics,
+            rate_limit=rate_limit,
         )
     elif args.cmd == "serve-a2a":
+        rate_limit = _rate_limit(args)
         from .a2a import A2aUnavailable, serve_a2a
 
         agent = _load_agent(args.agent)
@@ -661,6 +676,7 @@ def main(argv: list[str] | None = None) -> None:
                 audit=audit,
                 quota=quota,
                 quota_config=quota_config,
+                rate_limit=rate_limit,
             )
         except A2aUnavailable as exc:
             print(str(exc), file=sys.stderr)

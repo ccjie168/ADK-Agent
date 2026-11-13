@@ -1,6 +1,6 @@
 # SLICE-059 MCP 与 A2A 入口限流
 
-状态: planned
+状态: merged
 依据: SLICE-042，SLICE-048，SLICE-058，`docs/contracts/cli.md`，`docs/contracts/metrics.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -36,21 +36,22 @@ serve_agent / serve_many / serve_a2a / CLI 透传 rate_limit
 
 ## 完成判据（可执行）
 
-- [ ] MCP 请求超过上限返回 429 -> `tests/test_mcp_a2a_rate_limit.py::test_mcp_rate_limited`
-- [ ] MCP `/healthz` 和 `/metrics` 不计数 -> `tests/test_mcp_a2a_rate_limit.py::test_mcp_exempt_paths`
-- [ ] MCP 拒绝计数进入指标 -> `tests/test_mcp_a2a_rate_limit.py::test_mcp_metric`
-- [ ] MCP 未认证请求先 401 -> `tests/test_mcp_a2a_rate_limit.py::test_mcp_auth_precedes_limit`
-- [ ] A2A 请求超过上限返回 429 -> `tests/test_mcp_a2a_rate_limit.py::test_a2a_rate_limited`
-- [ ] A2A 未认证请求先 401 -> `tests/test_mcp_a2a_rate_limit.py::test_a2a_auth_precedes_limit`
-- [ ] `serve` / `serve-many` / `serve-a2a` 的非法参数退出 1 -> `tests/test_mcp_a2a_rate_limit.py::test_cli_rejects_bad_flags`
-- [ ] stdio 配 `--rate-limit` 退出 1 -> `tests/test_mcp_a2a_rate_limit.py::test_stdio_rejects_rate_limit`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] MCP 请求超过上限返回 429 -> `tests/test_mcp_a2a_rate_limit.py::test_mcp_rate_limited`
+- [x] MCP `/healthz` 和 `/metrics` 不计数 -> `tests/test_mcp_a2a_rate_limit.py::test_mcp_exempt_paths`
+- [x] MCP 拒绝计数进入指标 -> `tests/test_mcp_a2a_rate_limit.py::test_mcp_metric`
+- [x] MCP 未认证请求先 401 -> `tests/test_mcp_a2a_rate_limit.py::test_mcp_auth_precedes_limit`
+- [x] A2A 请求超过上限返回 429 -> `tests/test_mcp_a2a_rate_limit.py::test_a2a_rate_limited`
+- [x] A2A 未认证请求先 401 -> `tests/test_mcp_a2a_rate_limit.py::test_a2a_auth_precedes_limit`
+- [x] `serve` / `serve-many` / `serve-a2a` 的非法参数退出 1 -> `tests/test_mcp_a2a_rate_limit.py::test_cli_rejects_bad_flags`
+- [x] stdio 配 `--rate-limit` 退出 1 -> `tests/test_mcp_a2a_rate_limit.py::test_stdio_rejects_rate_limit`
+- [x] 库调用 stdio 配限流抛 `ValueError` -> `tests/test_mcp_a2a_rate_limit.py::test_library_rejects_stdio_rate_limit`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`build_http_app(..., rate_limit=...)` -> 当前 `TypeError: unexpected keyword argument`
-- [ ] 反例 2：`build_a2a_app(..., rate_limit=...)` -> 当前 `TypeError`
-- [ ] 反例 3：`adk-agent serve --agent x --rate-limit 5` -> 当前 argparse 退出 2（参数不存在）
+- [x] 反例 1：`build_http_app(..., rate_limit=...)` -> 当前 `TypeError: unexpected keyword argument`
+- [x] 反例 2：`build_a2a_app(..., rate_limit=...)` -> 当前 `TypeError`
+- [x] 反例 3：`adk-agent serve --agent x --rate-limit 5` -> 当前 argparse 退出 2（参数不存在）
 
 ## 契约（如涉及对外接口）
 
@@ -72,6 +73,6 @@ serve_agent / serve_many / serve_a2a / CLI 透传 rate_limit
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-059-mcp-a2a-rate-limit.txt` 的 red 段
+- 实现后绿: 同文件 green 段，12 passed，全量 690 passed
+- 实机: 同文件 live 段。真 MCP 服务限 2 次每 30 秒，前两次 404，第三次 429（Retry-After 30），`/healthz` 与 `/metrics` 豁免，计数 2；真 A2A 服务限 1 次，第二次起 429，无 token 仍 401
