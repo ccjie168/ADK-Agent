@@ -192,6 +192,7 @@ def serve_agent(
     metrics: MetricsRegistry | None = None,
     rate_limit: RateLimit | None = None,
     session_tenant_scope: bool = False,
+    tool_guard: bool = False,
 ) -> Any:
     """Expose one ADK agent as an MCP server and run it (blocking).
 
@@ -217,6 +218,7 @@ def serve_agent(
         or quota_config is not None
         or metrics is not None
         or rate_limit is not None
+        or tool_guard
     ):
         tool_name = name or agent.name
         return serve_many(
@@ -236,6 +238,7 @@ def serve_agent(
             metrics=metrics,
             rate_limit=rate_limit,
             session_tenant_scope=session_tenant_scope,
+            tool_guard=tool_guard,
         )
 
     server = to_mcp_server(agent, name=name, runner=runner, instructions=instructions)
@@ -275,6 +278,7 @@ def serve_many(
     metrics: MetricsRegistry | None = None,
     rate_limit: RateLimit | None = None,
     session_tenant_scope: bool = False,
+    tool_guard: bool = False,
 ) -> Any:
     """Expose several ADK agents as separate MCP tools in one server.
 
@@ -327,6 +331,7 @@ def serve_many(
             _quota_config: QuotaConfig | None,
             _metrics: MetricsRegistry | None,
             _tenant_scope: bool,
+            _tool_guard: bool,
         ) -> Callable[..., Any]:
             async def _tool(request: str, ctx: Context[ServerSession, Any]) -> list[Any]:
                 principal = _principal_from_ctx(ctx)
@@ -356,7 +361,7 @@ def serve_many(
                     tenant="local", subject=_MCP_USER_ID, kind="service"
                 )
                 policy = _quota_config.tenants.get(run_principal.tenant) if _quota_config else None
-                if _audit is not None or _quota is not None or _metrics is not None:
+                if _audit is not None or _quota is not None or _metrics is not None or _tool_guard:
                     scoped_runner = wrap_runner(
                         scoped_runner,
                         agent_name=_agent_name,
@@ -368,6 +373,7 @@ def serve_many(
                         trace_id=_trace_id_from_ctx(ctx),
                         metrics=_metrics,
                         source="mcp",
+                        require_context=_tool_guard,
                     )
                 return await _run_agent(
                     scoped_runner,
@@ -391,6 +397,7 @@ def serve_many(
             quota_config,
             metrics,
             session_tenant_scope,
+            tool_guard,
         )
         tool_fn.__name__ = f"call_{tool_name}"
         description = agent.description or f"Run the {tool_name} agent."

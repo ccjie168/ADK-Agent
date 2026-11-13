@@ -69,6 +69,7 @@ async def load_registry_agents(
             loader=artifact_loader,
             trust=trust,
         )
+        object.__setattr__(agent, "_adk_tool_grants", tuple(record.manifest.tool_grants))
         if agent.name in agents:
             raise RefError(f"duplicate agent name: {agent.name}")
         agents[agent.name] = agent

@@ -1,0 +1,51 @@
+SLICE-079 tool authorization on MCP and A2A
+==========================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_guard_mcp.py -q
+tests\test_tool_guard_mcp.py:21: in <module>
+    from adk_agent.tools.enforcement import install_declared_guards
+E   ModuleNotFoundError: No module named 'adk_agent.tools.enforcement'
+1 error in 1.73s
+
+Behavioral red: the MCP and A2A runners never installed a ToolGuard, so an
+undeclared tool would execute, and wrap_runner had no require_context option.
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_guard_mcp.py tests/tools/test_guard.py tests/test_cli_mcp_runtime.py tests/test_a2a_runtime.py -q
+24 passed in 2.83s
+
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+921 passed, 28 skipped
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, real stdio MCP server
+---------------------------
+An agent file defines a scripted LlmAgent named bot with an `add` tool that
+writes the result to a marker file. A real MCP client session (mcp SDK
+stdio_client) called the served agent:
+
+  tools: ['bot']
+  result: ['done']
+  marker file: 3
+
+The tool executed through the MCP server with the guard installed and the
+invocation context set. The denied path is covered end to end by
+`test_undeclared_tool_is_denied`, which runs the same scripted model through
+`wrap_runner(require_context=True)` with an empty grant list and asserts the
+tool body never runs.

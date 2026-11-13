@@ -19,8 +19,6 @@ from typing import TYPE_CHECKING, Any
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from google.adk.models import BaseLlm
-from google.adk.tools import BaseTool
-from google.adk.tools.base_toolset import BaseToolset
 from pydantic import ValidationError
 
 from .approvals import ApprovalConflict, ApprovalExpired, ApprovalNotFound, FileApprovalInbox
@@ -46,7 +44,6 @@ from .core import (
     QuotaConfig,
     QuotaExceeded,
     QuotaManager,
-    ToolGrant,
 )
 from .mcp.http import resolve_port
 from .metrics import MetricsRegistry
@@ -65,13 +62,7 @@ from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .runtime.sessions import scoped_user_id
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
-from .tools import (
-    GrantPolicyEngine,
-    ToolCatalog,
-    ToolGuard,
-    install_tool_guard,
-    toolset_tool_ids,
-)
+from .tools import ToolCatalog, install_declared_guards
 from .tracing import resolve_trace_id
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -1052,30 +1043,6 @@ def _wrap_model(agent: Any, audit: AuditSink) -> None:
         _wrap_model(sub, audit)
 
 
-def _declared_tool_ids(agent: Any) -> set[str]:
-    """Collect the tool names an agent tree declares."""
-    tool_ids: set[str] = set()
-    for tool in getattr(agent, "tools", None) or ():
-        if isinstance(tool, BaseTool):
-            tool_ids.add(tool.name)
-            continue
-        if isinstance(tool, BaseToolset):
-            tool_ids |= toolset_tool_ids(tool)
-            continue
-        name = getattr(tool, "__name__", None)
-        if isinstance(name, str):
-            tool_ids.add(name)
-    for sub in getattr(agent, "sub_agents", None) or ():
-        tool_ids |= _declared_tool_ids(sub)
-    return tool_ids
-
-
-def _install_tool_guard(agent: Any, audit: AuditSink) -> None:
-    """Allow the agent's declared tools and deny everything else."""
-    grants = [ToolGrant(tool_id=tool_id) for tool_id in sorted(_declared_tool_ids(agent))]
-    install_tool_guard(agent, ToolGuard(GrantPolicyEngine(grants), audit=audit))
-
-
 def build_console_app(
     agents: dict[str, BaseAgent],
     *,
@@ -1174,7 +1141,7 @@ def build_console_app(
     def _register(name: str, agent: Any) -> None:
         _wrap_model(agent, audit)
         install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
-        _install_tool_guard(agent, audit)
+        install_declared_guards(agent, audit)
         runner = Runner(app_name=name, agent=agent, session_service=service)
         agents[name] = agent
         runners[name] = runner

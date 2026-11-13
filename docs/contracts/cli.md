@@ -203,6 +203,15 @@
 - OIDC 模式下，agent 运行的用户 id 是 token 的 `subject`，会话按 subject 隔离。创建会话时把 `principal` 写进会话 state，键名是 `principal`。
 - 静态 token 和未鉴权模式仍使用 ADK 的 `mcp_user`。
 
+## `serve` / `serve-many` / `serve-a2a` 的工具授权
+
+三个运行命令在启动时给 agent 树安装工具守卫。
+
+- 允许清单：按 `--agent-ref` 加载时取已发布 manifest 的 `tool_grants`；否则取 agent 树声明的工具（`BaseTool`、toolset 与函数工具）。
+- 清单外的工具调用返回 `{"error": "tool_denied", ...}`，工具不执行。
+- 配置审计时写 `tool.call` 事件，`status=ok` 或 `denied`；没有审计时仍然拦截。
+- 控制台行为不变，仍然按声明工具安装守卫。
+
 ## `adk-agent serve` / `serve-many` 的审计、配额与指标
 
 两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE`、`--metrics`、`--rate-limit N --rate-limit-window SECONDS` 和 `--session-tenant-scope`。

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .catalog import ToolCatalog, ToolCatalogError, ToolEntry, load_tool_catalog
+from .enforcement import declared_tool_ids, install_declared_guards
 from .gateway import FunctionToolGateway, ToolDenied
 from .guard import ToolGuard, install_tool_guard
 from .http_gateway import HttpToolGateway, ToolGatewayError
@@ -24,6 +25,8 @@ __all__ = [
     "ToolGuard",
     "ToolSpec",
     "build_tool_gateway_app",
+    "declared_tool_ids",
+    "install_declared_guards",
     "install_tool_guard",
     "load_openapi_spec",
     "load_tool_catalog",

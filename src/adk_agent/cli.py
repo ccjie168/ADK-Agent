@@ -40,11 +40,18 @@ def _load_module(path: str):
 
 
 def _load_agent(path: str):
-    """Load ``agent`` (or ``root_agent``) from a Python file path."""
+    """Load ``agent`` (or ``root_agent``) from a Python file path.
+
+    A file that defines only a single-entry ``agents`` mapping also counts, so
+    ``serve`` can reuse the same file as ``serve-many``.
+    """
     module = _load_module(path)
     for attr in ("agent", "root_agent"):
         if hasattr(module, attr):
             return getattr(module, attr)
+    agents = getattr(module, "agents", None)
+    if isinstance(agents, dict) and len(agents) == 1:
+        return next(iter(agents.values()))
     raise SystemExit(f"no `agent` or `root_agent` found in {path}")
 
 
@@ -1005,6 +1012,9 @@ def main(argv: list[str] | None = None) -> None:
         from .factory import build_runner
 
         audit = _audit_sink(args)
+        from .tools import install_declared_guards
+
+        install_declared_guards(agent, audit)
         quota, quota_config = _quota_settings(args)
         metrics = None
         if args.metrics:
@@ -1027,6 +1037,7 @@ def main(argv: list[str] | None = None) -> None:
             metrics=metrics,
             rate_limit=rate_limit,
             session_tenant_scope=args.session_tenant_scope,
+            tool_guard=True,
         )
     elif args.cmd == "serve-many":
         rate_limit = _rate_limit(args)
@@ -1049,6 +1060,10 @@ def main(argv: list[str] | None = None) -> None:
             partial(build_runner, session_db=args.session_db) if args.session_db else None
         )
         audit = _audit_sink(args)
+        from .tools import install_declared_guards
+
+        for loaded_agent in agents.values():
+            install_declared_guards(loaded_agent, audit)
         quota, quota_config = _quota_settings(args)
         metrics = None
         if args.metrics:
@@ -1056,7 +1071,7 @@ def main(argv: list[str] | None = None) -> None:
 
             metrics = MetricsRegistry()
         serve_many(
-            agents,
+            agents=agents,
             name=args.name,
             transport=cast(Transport, transport),
             host=args.host,
@@ -1071,6 +1086,7 @@ def main(argv: list[str] | None = None) -> None:
             metrics=metrics,
             rate_limit=rate_limit,
             session_tenant_scope=args.session_tenant_scope,
+            tool_guard=True,
         )
     elif args.cmd == "serve-a2a":
         rate_limit = _rate_limit(args)
@@ -1078,10 +1094,13 @@ def main(argv: list[str] | None = None) -> None:
 
         agent = _load_agent(args.agent)
         audit = _audit_sink(args)
+        from .tools import install_declared_guards
+
+        install_declared_guards(agent, audit)
         quota, quota_config = _quota_settings(args)
         try:
             serve_a2a(
-                agent,
+                agent=agent,
                 host=args.host,
                 port=args.port,
                 rpc_path=args.rpc_path,
@@ -1091,6 +1110,7 @@ def main(argv: list[str] | None = None) -> None:
                 quota=quota,
                 quota_config=quota_config,
                 rate_limit=rate_limit,
+                require_context=True,
             )
         except A2aUnavailable as exc:
             print(str(exc), file=sys.stderr)

@@ -92,9 +92,10 @@ def build_a2a_app(
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
     rate_limit: RateLimit | None = None,
+    require_context: bool = False,
 ) -> Any:
     """Build the A2A Starlette app. A token protects every path, card included."""
-    audited = audit is not None or quota is not None
+    audited = audit is not None or quota is not None or require_context
     if audited:
         if runner is None:
             from google.adk.tools.mcp_tool._agent_to_mcp import _build_runner
@@ -110,6 +111,7 @@ def build_a2a_app(
             quota_policy=quota_config.tenants.get(_A2A_TENANT) if quota_config else None,
             trace_id=lambda: _current_trace_id.get(),
             source="a2a",
+            require_context=require_context,
         )
     app = _to_a2a()(
         agent,
@@ -145,6 +147,7 @@ def serve_a2a(
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
     rate_limit: RateLimit | None = None,
+    require_context: bool = False,
 ) -> None:
     """Serve an agent over A2A (blocking). Network binds require a token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated)
@@ -160,6 +163,7 @@ def serve_a2a(
         quota=quota,
         quota_config=quota_config,
         rate_limit=rate_limit,
+        require_context=require_context,
     )
 
     import uvicorn

@@ -16,13 +16,16 @@ from typing import Any, Literal
 
 from ..audit.hashing import hash_text
 from ..core import (
+    AgentRef,
     AuditEvent,
     AuditSink,
+    Invocation,
     Principal,
     QuotaExceeded,
     QuotaManager,
     QuotaPolicy,
 )
+from ..core.context import reset_invocation, set_invocation
 from ..metrics import MetricsRegistry
 from .execution import dev_agent_ref
 
@@ -58,6 +61,8 @@ class AuditedRunner:
         trace_id: TraceId = None,
         metrics: MetricsRegistry | None = None,
         source: str = "agent",
+        agent_ref: AgentRef | None = None,
+        require_context: bool = False,
     ) -> None:
         self._inner = inner
         self._agent_name = agent_name
@@ -69,6 +74,8 @@ class AuditedRunner:
         self._trace_id = trace_id
         self._metrics = metrics
         self._source = source
+        self._agent_ref = agent_ref
+        self._require_context = require_context
 
     @property  # type: ignore[misc]
     def __class__(self) -> type[Any]:
@@ -90,26 +97,35 @@ class AuditedRunner:
             else _text_from(kwargs.get("new_message"))
         )
 
-        stack = AsyncExitStack()
-        if self._quota is not None and self._quota_policy is not None:
-            try:
-                await stack.enter_async_context(
-                    self._quota.reserve(self._principal.tenant, self._quota_policy)
-                )
-            except QuotaExceeded as exc:
-                await self._emit(
-                    run_id=run_id,
-                    trace_id=trace_id,
-                    status="denied",
-                    error_code="quota_exceeded",
-                    result_hash=None,
-                    args_text=input_text,
-                    started=started,
-                )
-                self._record("denied", started, exc.limit)
-                raise
+        invocation = Invocation(
+            run_id=run_id,
+            trace_id=trace_id,
+            principal=self._principal,
+            agent_ref=self._agent_ref or dev_agent_ref(self._agent_name),
+            input=input_text,
+        )
 
+        stack = AsyncExitStack()
+        token = set_invocation(invocation)
         try:
+            if self._quota is not None and self._quota_policy is not None:
+                try:
+                    await stack.enter_async_context(
+                        self._quota.reserve(self._principal.tenant, self._quota_policy)
+                    )
+                except QuotaExceeded as exc:
+                    await self._emit(
+                        run_id=run_id,
+                        trace_id=trace_id,
+                        status="denied",
+                        error_code="quota_exceeded",
+                        result_hash=None,
+                        args_text=input_text,
+                        started=started,
+                    )
+                    self._record("denied", started, exc.limit)
+                    raise
+
             reply_parts: list[str] = []
             try:
                 async for event in self._inner.run_async(**kwargs):
@@ -143,6 +159,7 @@ class AuditedRunner:
             )
             self._record("ok", started)
         finally:
+            reset_invocation(token)
             await stack.aclose()
 
     def _record(self, status: str, started: float, limit: str | None = None) -> None:
@@ -214,11 +231,12 @@ def _text_from(message: Any) -> str:
 
 
 def wrap_runner(inner: Any, **kwargs: Any) -> Any:
-    """Wrap ``inner`` only when audit, quota or metrics is configured."""
+    """Wrap ``inner`` when audit, quota, metrics or invocation context is needed."""
     if (
         kwargs.get("audit") is None
         and kwargs.get("quota") is None
         and kwargs.get("metrics") is None
+        and not kwargs.get("require_context")
     ):
         return inner
     return AuditedRunner(inner, **kwargs)
