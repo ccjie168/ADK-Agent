@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 from .artifacts import ArtifactStoreError, FileArtifactStore, artifact_digest
+from .client import (
+    HttpAgentRegistry,
+    RegistryForbidden,
+    RegistryRejected,
+    RegistryServiceUnavailable,
+)
 from .file import FileAgentRegistry, RegistryConflict, RegistryError, RegistryIntegrityError
 from .loader import ArtifactLoadError, InProcessArtifactLoader, load_agent
 from .manifest import load_manifest, published_from
@@ -25,10 +31,14 @@ __all__ = [
     "PublishUnavailable",
     "FileAgentRegistry",
     "FileEvalReportStore",
+    "HttpAgentRegistry",
     "RefError",
     "RegistryConflict",
     "RegistryError",
+    "RegistryForbidden",
     "RegistryIntegrityError",
+    "RegistryRejected",
+    "RegistryServiceUnavailable",
     "RegistryStoreUnavailable",
     "TrustStore",
     "artifact_digest",

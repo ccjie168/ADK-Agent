@@ -1,0 +1,82 @@
+SLICE-071 registry control plane and client
+===========================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/registry/test_registry_service.py \
+    tests/registry/test_registry_client.py tests/test_cli_registry_service.py -q
+tests\registry\test_registry_service.py:27: in <module>
+    from adk_agent.registry.service import build_registry_service_app
+E   ModuleNotFoundError: No module named 'adk_agent.registry.service'
+tests\registry\test_registry_client.py:11: in <module>
+    from adk_agent.registry import (
+E   ImportError: cannot import name 'HttpAgentRegistry' from 'adk_agent.registry'
+ERROR tests/registry/test_registry_service.py
+ERROR tests/registry/test_registry_client.py
+2 errors in 2.22s
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/registry/test_registry_service.py \
+    tests/registry/test_registry_client.py tests/test_cli_registry_service.py -q
+........................                                                 [100%]
+24 passed in 2.08s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+846 passed, 23 skipped in 45.19s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, real Postgres 15-alpine and a separate client process
+-----------------------------------------------------------
+Database: fresh `adk_live` on 127.0.0.1:55432 (the SLICE-070 test database held
+random test tenants). Service started with:
+
+$ ADK_REGISTRY_AUTH_TOKEN=secret ./.venv/Scripts/python.exe -m adk_agent.cli serve-registry \
+    --database-url postgresql://adk:adk@127.0.0.1:55432/adk_live \
+    --artifact-dir .../store2 --artifact-keys .../keys.json \
+    --auth-token-env ADK_REGISTRY_AUTH_TOKEN --port 8800
+INFO: Application startup complete.
+
+Client process, HttpAgentRegistry over HTTP:
+  publish digest=cf876db73977de4eba941f0984c698ac9664f2a9ca6054a836504ff179213938
+  upload digest=sha256:90803c79fa164cddec700412811d022ed86d4d0696e009f141ed6a29059ef5b6
+  get manifest=bot artifact=sha256:90803c79fa164cddec700412811d022ed86d4d0696e009f141ed6a29059ef5b6
+  tenants=['acme']
+  list=['1.0.0']
+
+Negative paths over the same service:
+  no-token tenants:     (401, '{"error":"unauthorized"}')
+  missing version:      (404, '{"error":"not_found"}')
+  changed digest:       (409, '{"error":"version_conflict"}')
+  unknown artifact:     (409, '{"error":"artifact_not_published"}')
+  same record again:    201
+  tampered bytes:       (400, '{"error":"digest_mismatch"}')
+  wrong media type:     (415, '{"error":"unsupported_media_type"}')
+
+Artifact bytes on disk after upload:
+  store2/sha256/90803c79fa164cddec700412811d022ed86d4d0696e009f141ed6a29059ef5b6
+
+notes
+-----
+- Port 8765 was already bound on this machine; the check ran on 8800.
+- The service refuses a publish that carries an artifact when no artifact store
+  is configured (503 artifact_store_unavailable). docs/contracts/cli.md now
+  says so explicitly.
+- The two immutable test files got formatting only (line wrapping) and the DSN
+  literal in tests/test_cli_registry_service.py got the repo's standard
+  `# pragma: allowlist secret`; no assertion changed.

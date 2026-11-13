@@ -649,6 +649,30 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
 
+    p_registry = sub.add_parser("serve-registry", help="serve the agent registry control plane")
+    p_registry.add_argument(
+        "--database-url",
+        default=os.environ.get("REGISTRY_DATABASE_URL"),
+        help="Postgres DSN for published versions (defaults to $REGISTRY_DATABASE_URL)",
+    )
+    p_registry.add_argument(
+        "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
+    )
+    p_registry.add_argument(
+        "--artifact-keys",
+        default=None,
+        help="JSON file mapping key id to a 64 hex Ed25519 public key",
+    )
+    _add_http_args(p_registry)
+    _add_rate_limit_args(p_registry)
+    p_registry.add_argument(
+        "--oidc-config",
+        default=None,
+        help=(
+            "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
+        ),
+    )
+
     p_verify = sub.add_parser("verify-audit", help="verify an audit chain file")
     p_verify.add_argument("path", help="path to a chained audit JSONL file")
 
@@ -1053,6 +1077,59 @@ def main(argv: list[str] | None = None) -> None:
                 signing_key=signing_key,
                 keyring=keyring,
             ),
+            host=args.host,
+            auth_token=_auth_token(args),
+            allow_unauthenticated=args.allow_unauthenticated,
+            oidc=oidc,
+            rate_limit=rate_limit,
+        )
+
+        import uvicorn
+
+        uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+    elif args.cmd == "serve-registry":
+        rate_limit = _rate_limit(args)
+        from .mcp.http import resolve_port
+        from .registry import (
+            ArtifactStoreError,
+            FileArtifactStore,
+            PostgresAgentRegistry,
+            RegistryStoreUnavailable,
+        )
+        from .registry.artifacts_postgres import PostgresArtifactStore
+        from .registry.service import build_registry_service_app
+
+        if not args.database_url:
+            print(
+                "database URL is required: provide --database-url or set REGISTRY_DATABASE_URL",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        try:
+            registry = PostgresAgentRegistry(args.database_url)
+        except RegistryStoreUnavailable as exc:
+            print(f"registry store unavailable: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        url = os.environ.get("ARTIFACT_URL")
+        if url and args.artifact_dir:
+            print("set exactly one of --artifact-dir or ARTIFACT_URL", file=sys.stderr)
+            raise SystemExit(1)
+        store: Any = None
+        try:
+            if url:
+                store = PostgresArtifactStore(url)
+            elif args.artifact_dir:
+                store = FileArtifactStore(args.artifact_dir)
+        except ArtifactStoreError as exc:
+            print(f"invalid artifact store: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        oidc = _identity_provider(args)
+        app = build_registry_service_app(
+            registry,
+            artifact_store=store,
+            trust=_artifact_trust(args),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,

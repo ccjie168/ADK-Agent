@@ -21,6 +21,7 @@
 - `framework_config.schema.json`：`FrameworkConfig`，当前配置接口。M1 由 `AgentManifest` 取代，过渡期保留。
 - `cli.md`：`adk-agent validate`、`adk-agent publish`、`adk-agent new` 的命令契约。
 - `console.md`：控制台 `/api/agents`、`/api/chat`、`/api/audit` 的 HTTP 契约。
+- `registry_service.md`：`serve-registry` 控制面端点、错误码与 HTTP 客户端语义。
 - `oidc_config.schema.json`：`OidcConfig`，OIDC 身份适配器的配置。它是唯一从 `identity` 适配器导出的契约。
 - `quota_config.schema.json`：`QuotaConfig`，按租户配置配额策略。
 - `approval_request.schema.json`：`ApprovalRequest`，待人工审批的计划步骤。

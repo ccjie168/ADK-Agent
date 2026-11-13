@@ -153,6 +153,23 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
+## `adk-agent serve-registry --database-url URL [--artifact-dir DIR | $ARTIFACT_URL] [--artifact-keys FILE | $ADK_ARTIFACT_KEYS] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+
+启动注册表控制面服务，接口见 `registry_service.md`。
+
+- `--database-url` 指向 Postgres，接受 `postgresql://` 或 `postgresql+asyncpg://`；默认取 `$REGISTRY_DATABASE_URL`。缺失或非 Postgres 退出 1。
+- 工件字节存储用 `--artifact-dir DIR` 或 `$ARTIFACT_URL`，二选一；都不给时带工件的发布和工件上传返回 503 `artifact_store_unavailable`，不带工件的发布与读取照常。两者同时给退出 1。
+- `--artifact-keys` 或 `$ADK_ARTIFACT_KEYS` 提供可信公钥，用于发布与上传时验签。
+- 鉴权、`/healthz`、限流与其他服务一致。
+
+## 客户端 `--registry-url URL [--registry-token-env VAR]`
+
+`console`、`serve`、`serve-many` 和 `publish` 接受这两个参数。给了 `--registry-url` 时注册表元数据走 HTTP，忽略 `--registry DIR`；`--registry-token-env` 默认 `ADK_REGISTRY_AUTH_TOKEN`，token 只从环境变量读。
+
+- `console`、`serve`、`serve-many` 的运行工件仍从 `--artifact-dir` 或 `$ARTIFACT_URL` 读取，可信公钥仍为必需。
+- `publish --registry-url` 先 `POST /v1/agents`；带 `--artifact` 时再用 `PUT /v1/artifacts/{digest}` 上传字节。此模式下 `--artifact-dir` 与 `$ARTIFACT_URL` 不参与，同时给退出 1。
+- `publish --registry-url` 不接受 `--eval-report`，因为评测报告还没有集中存储；同时给退出 1。
+
 ## 从注册表启动（`console` / `serve` / `serve-many`）
 
 `console`、`serve` 和 `serve-many` 可以用 `--agent-ref TENANT/ID@VERSION` 代替本地 agent 文件。可重复。

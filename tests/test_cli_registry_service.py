@@ -1,0 +1,54 @@
+"""SLICE-071: serve-registry builds the control plane from the environment."""
+
+from __future__ import annotations
+
+import pytest
+
+from adk_agent import cli
+
+DSN = "postgresql://adk:adk@127.0.0.1:55432/adk"  # pragma: allowlist secret
+
+
+def _argv(*extra: str) -> list[str]:
+    return ["serve-registry", "--auth-token-env", "REG_TOKEN", *extra]
+
+
+def test_missing_database_url(monkeypatch, capsys):
+    monkeypatch.delenv("REGISTRY_DATABASE_URL", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_argv())
+
+    assert exc.value.code == 1
+    assert "database" in capsys.readouterr().err.lower()
+
+
+def test_invalid_database_url(monkeypatch, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_argv("--database-url", "mysql://localhost/adk"))
+
+    assert exc.value.code == 1
+    assert "registry" in capsys.readouterr().err.lower()
+
+
+def test_builds_service(monkeypatch):
+    monkeypatch.setenv("REG_TOKEN", "secret")
+    captured: dict = {}
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: captured.update(app=app, **kwargs))
+
+    cli.main(_argv("--database-url", DSN))
+
+    paths = {route.path for route in captured["app"].routes}
+    assert {"/v1/tenants", "/v1/agents", "/v1/agents/{tenant}/{agent_id}/{version}"} <= paths
+    assert "/v1/artifacts/{digest}" in paths
+
+
+def test_artifact_source_exclusive(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("REG_TOKEN", "secret")
+    monkeypatch.setenv("ARTIFACT_URL", DSN)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_argv("--database-url", DSN, "--artifact-dir", str(tmp_path)))
+
+    assert exc.value.code == 1
+    assert "artifact" in capsys.readouterr().err.lower()
