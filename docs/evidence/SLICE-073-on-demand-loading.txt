@@ -1,0 +1,67 @@
+SLICE-073 on-demand marketplace loading
+=======================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console_on_demand.py -q
+13 failed in 2.95s
+  - build_console_app() got an unexpected keyword argument 'artifact_store'
+  - cli.main(["console", ..., "--max-loaded-agents", "5"]) exited 2
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console_on_demand.py -q
+.............                                                            [100%]
+13 passed in 2.71s
+
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console.py tests/test_console_registry.py \
+    tests/test_console_marketplace.py -q
+32 passed in 2.70s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+868 passed, 23 skipped in 45.49s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, real registry service plus a console in another process
+-------------------------------------------------------------
+Fresh database `adk_live3`; service on 8804 with the shared file artifact store
+and trusted key file. `publish --registry-url` put acme/bot@1.0.0 there.
+
+Console on 8803 started with `--agents agents.py` (only `probe`), the same
+artifact store and keys, and `--registry-url http://127.0.0.1:8804`.
+
+  before:           200 [{'name': 'probe', 'description': ''}]
+  load:             200 {'name': 'bot', 'version': '1.0.0', 'loaded': True}
+  after:            200 [{'name': 'probe', ...}, {'name': 'bot', ...}]
+  sessions?agent=bot: 200 []
+  load again:       200 {'name': 'bot', 'version': '1.0.0', 'loaded': False}
+
+Rejections and audit over the same console:
+  missing version:  404 {'error': 'not_found'}
+  bad body:         400 {'error': 'invalid_request'}
+  audit:            [('agent.load', 'bot', 'local', 'ok')]
+
+notes
+-----
+- The console registers the runner and runtime only after the artifact loads
+  and verifies, so a failed load leaves the agent set unchanged.
+- Loaded versions are tracked per name; loading another version of a loaded
+  name returns 409 name_conflict instead of swapping the running agent.
+- AuditEvent requires tenant == principal.tenant, so the agent.load event is
+  recorded under the caller's tenant even when an admin loads another tenant's
+  version. The target tenant is visible on the registry record itself.

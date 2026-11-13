@@ -84,6 +84,23 @@ def _artifact_trust(args: argparse.Namespace) -> TrustStore | None:
         raise SystemExit(1) from None
 
 
+def _artifact_store(args: argparse.Namespace) -> Any:
+    """Build the artifact store from ``--artifact-dir`` or ``$ARTIFACT_URL``."""
+    from .registry import FileArtifactStore
+    from .registry.artifacts_postgres import PostgresArtifactStore
+
+    artifact_dir = getattr(args, "artifact_dir", None)
+    url = os.environ.get("ARTIFACT_URL")
+    if url and artifact_dir:
+        print("set exactly one of --artifact-dir or ARTIFACT_URL", file=sys.stderr)
+        raise SystemExit(1)
+    if url:
+        return PostgresArtifactStore(url)
+    if artifact_dir:
+        return FileArtifactStore(artifact_dir)
+    return None
+
+
 def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
     """Load agents named by ``--agent-ref`` from the registry."""
     refs = getattr(args, "agent_ref", None)
@@ -94,13 +111,11 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         ArtifactLoadError,
         ArtifactStoreError,
         ArtifactTrustError,
-        FileArtifactStore,
         HttpAgentRegistry,
         PublishUnavailable,
         RefError,
         load_registry_agents,
     )
-    from .registry.artifacts_postgres import PostgresArtifactStore
 
     trust = _artifact_trust(args)
     if trust is None:
@@ -111,21 +126,12 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         )
         raise SystemExit(1)
 
-    artifact_dir = getattr(args, "artifact_dir", None)
-    url = os.environ.get("ARTIFACT_URL")
-    if url and artifact_dir:
+    store = _artifact_store(args)
+    if store is None:
         print("set exactly one of --artifact-dir or ARTIFACT_URL", file=sys.stderr)
         raise SystemExit(1)
 
     try:
-        store: Any
-        if url:
-            store = PostgresArtifactStore(url)
-        elif artifact_dir:
-            store = FileArtifactStore(artifact_dir)
-        else:
-            print("set exactly one of --artifact-dir or ARTIFACT_URL", file=sys.stderr)
-            raise SystemExit(1)
         registry = _agent_registry(args)
 
         async def load():
@@ -789,6 +795,12 @@ def main(argv: list[str] | None = None) -> None:
         help="max buffered progress events per SSE stream (default: 512)",
     )
     p_console.add_argument(
+        "--max-loaded-agents",
+        type=int,
+        default=20,
+        help="max agents the console may hold, startup plus on-demand (default: 20)",
+    )
+    p_console.add_argument(
         "--session-tenant-scope",
         action="store_true",
         help="scope session keys to <tenant>:<subject> (default: off)",
@@ -1208,10 +1220,13 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "console":
         rate_limit = _rate_limit(args)
         from .console import run_console
-        from .registry import FileEvalReportStore
+        from .registry import FileEvalReportStore, InProcessArtifactLoader
 
         if args.sse_queue_size < 1:
             print("--sse-queue-size must be at least 1", file=sys.stderr)
+            raise SystemExit(1)
+        if args.max_loaded_agents < 1:
+            print("--max-loaded-agents must be at least 1", file=sys.stderr)
             raise SystemExit(1)
 
         oidc = _identity_provider(args)
@@ -1236,6 +1251,7 @@ def main(argv: list[str] | None = None) -> None:
         audit_query = _audit_query(args)
         audit_sink = _audit_sink(args)
         artifact_trust = _artifact_trust(args)
+        artifact_store = _artifact_store(args)
         run_console(
             agents=agents,
             host=args.host,
@@ -1247,7 +1263,10 @@ def main(argv: list[str] | None = None) -> None:
             roles=args.roles,
             registry=_agent_registry(args),
             eval_reports=FileEvalReportStore(args.registry),
+            artifact_store=artifact_store,
+            artifact_loader=InProcessArtifactLoader() if artifact_store else None,
             artifact_trust=artifact_trust,
+            max_loaded_agents=args.max_loaded_agents,
             audit_sink=audit_sink,
             audit_query=audit_query,
             oidc=oidc,

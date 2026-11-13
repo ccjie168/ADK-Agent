@@ -142,6 +142,26 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 非法路径分量返回 400 `unsafe_tenant`。
 - 未配置注册表返回 404 `registry_not_configured`。
 
+## `POST /api/registry/load` -> `{"name", "version", "loaded"}`
+
+按需把一个已发布版本加载成聊天目标。控制台进程内执行，不是沙箱。
+
+```json
+{"tenant": "team-a", "id": "support-bot", "version": "1.0.0"}
+```
+
+成功返回 200 `{"name": "support-bot", "version": "1.0.0", "loaded": true}`。同名 agent 已在控制台加载时返回 200 且 `loaded=false`，不切换版本。
+
+- 需要注册表、工件存储和可信公钥。缺注册表返回 404 `registry_not_configured`，缺存储返回 503 `artifact_store_unavailable`，缺公钥返回 503 `artifact_trust_unavailable`。
+- 请求体不是 JSON 或字段不合法返回 400 `invalid_request`。
+- 非 `admin` 身份加载其他租户返回 403 `tenant_forbidden`。
+- 版本不存在返回 404 `not_found`。
+- 该版本没有工件返回 409 `artifact_missing`；签名缺失或不可信返回 409 `artifact_untrusted`。
+- 同名 agent 已按另一版本按需加载返回 409 `name_conflict`。
+- 已加载数量达到 `--max-loaded-agents` 返回 409 `load_limit`。
+- 工件无法加载成同名 ADK agent 返回 500 `load_failed`。
+- 成功加载写一条 `agent.load` 审计，`status=ok`，`target` 是 agent 名，`tenant` 是调用方的租户（审计事件要求租户等于 principal 的租户）。
+
 ## `GET /api/runs?limit=50` -> `[RunSummary]`
 
 从审计缓冲或审计服务读出的事件按 `run_id` 聚合，按最后事件时间倒序。`limit` 夹在 1 到 200。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。

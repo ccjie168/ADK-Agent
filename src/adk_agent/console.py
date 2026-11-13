@@ -29,7 +29,10 @@ from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from .core import (
     AccessPolicy,
+    AgentRef,
     AgentRegistry,
+    ArtifactLoader,
+    ArtifactStore,
     AuditEvent,
     AuditSink,
     EvalReportStore,
@@ -48,7 +51,14 @@ from .metrics import MetricsRegistry
 from .models.gateway_llm import GatewayLlm, provider_for_model
 from .ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
 from .rbac import FilePolicyStore, RolePolicyEngine
-from .registry import ArtifactTrustError, RegistryIntegrityError, TrustStore
+from .registry import (
+    ArtifactLoadError,
+    ArtifactTrustError,
+    InProcessArtifactLoader,
+    PublishUnavailable,
+    RegistryIntegrityError,
+    TrustStore,
+)
 from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .runtime.sessions import scoped_user_id
@@ -260,6 +270,20 @@ async function getJson(path) {
   return { ok: response.ok, status: response.status, data: data };
 }
 
+async function postJson(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + token(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await response.json(); } catch (e) { data = null; }
+  return { ok: response.ok, status: response.status, data: data };
+}
+
 function cell(text) {
   const td = document.createElement("td");
   td.textContent = text == null ? "-" : String(text);
@@ -286,9 +310,9 @@ function append(who, text) {
   $("log").scrollTop = $("log").scrollHeight;
 }
 
-async function loadAgents() {
+async function refreshAgents() {
   const result = await getJson("/api/agents");
-  if (!result.ok) { append("system", "connect failed (" + result.status + ")"); return; }
+  if (!result.ok) return result;
   const agents = result.data || [];
   for (const selectId of ["agent", "session-agent"]) {
     const select = $(selectId);
@@ -300,7 +324,13 @@ async function loadAgents() {
       select.appendChild(o);
     }
   }
-  append("system", "connected: " + agents.map((a) => a.name).join(", "));
+  return { ok: true, status: result.status, agents: agents };
+}
+
+async function loadAgents() {
+  const result = await refreshAgents();
+  if (!result.ok) { append("system", "connect failed (" + result.status + ")"); return; }
+  append("system", "connected: " + result.agents.map((a) => a.name).join(", "));
 }
 
 async function loadTenants() {
@@ -373,18 +403,35 @@ async function selectRegistryEntry(tenant, entry) {
       ((result.data && result.data.error) || "error");
 }
 
-function openChat() {
+async function openChat() {
   if (!selectedRegistry) {
     $("artifact-msg").textContent = "select a registry entry first";
     return;
   }
   const select = $("agent");
   const name = selectedRegistry.id;
-  const loaded = Array.from(select.options).some((option) => option.value === name);
+  let loaded = Array.from(select.options).some((option) => option.value === name);
   if (!loaded) {
-    $("artifact-msg").textContent = "agent " + name + " is not loaded in this console";
-    return;
+    $("artifact-msg").textContent =
+      "loading " + name + " " + selectedRegistry.version + "...";
+    const result = await postJson("/api/registry/load", {
+      tenant: selectedRegistry.tenant,
+      id: name,
+      version: selectedRegistry.version,
+    });
+    if (!result.ok) {
+      $("artifact-msg").textContent = "load failed (" + result.status + "): " +
+        ((result.data && result.data.error) || "error");
+      return;
+    }
+    await refreshAgents();
+    loaded = Array.from($("agent").options).some((option) => option.value === name);
+    if (!loaded) {
+      $("artifact-msg").textContent = "agent " + name + " is not available";
+      return;
+    }
   }
+  $("artifact-msg").textContent = "";
   select.value = name;
   sessionId = null;
   showTab("chat");
@@ -974,7 +1021,10 @@ def build_console_app(
     roles: list[str] | None = None,
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
+    artifact_store: ArtifactStore | None = None,
+    artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
+    max_loaded_agents: int = 20,
     session_service: Any | None = None,
     audit_sink: AuditSink | None = None,
     audit_query: AuditQuery | None = None,
@@ -1042,18 +1092,23 @@ def build_console_app(
         return await audit_query.events(tenant=tenant, limit=limit)
 
     sandbox_policy = sandbox or SandboxPolicy()
-    for agent in agents.values():
+    runners: dict[str, Runner] = {}
+    runtimes: dict[str, AgentRuntime] = {}
+
+    def _register(name: str, agent: Any) -> None:
         _wrap_model(agent, audit)
         install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
         _install_tool_guard(agent, audit)
-    runners = {
-        name: Runner(app_name=name, agent=agent, session_service=service)
-        for name, agent in agents.items()
-    }
-    runtimes = {
-        name: AgentRuntime(runner, audit=audit, metrics=metrics, source="console")
-        for name, runner in runners.items()
-    }
+        runner = Runner(app_name=name, agent=agent, session_service=service)
+        agents[name] = agent
+        runners[name] = runner
+        runtimes[name] = AgentRuntime(runner, audit=audit, metrics=metrics, source="console")
+
+    for name, agent in list(agents.items()):
+        _register(name, agent)
+
+    loaded_versions: dict[str, str] = {}
+    load_lock = asyncio.Lock()
 
     async def allowed(invocation: Invocation, name: str) -> bool:
         if policy_engine is None:
@@ -1157,6 +1212,94 @@ def build_console_app(
                 }
             )
         return entries
+
+    @app.post("/api/registry/load")
+    async def load_registry_entry(request: Request) -> Any:
+        if registry is None:
+            return JSONResponse({"error": "registry_not_configured"}, status_code=404)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        tenant = body.get("tenant")
+        agent_id = body.get("id")
+        version = body.get("version")
+        if not isinstance(tenant, str) or not tenant:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(agent_id, str) or not agent_id:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(version, str) or not version:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+
+        caller = _principal_for(request)
+        if tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        if artifact_trust is None:
+            return JSONResponse({"error": "artifact_trust_unavailable"}, status_code=503)
+        if artifact_store is None:
+            return JSONResponse({"error": "artifact_store_unavailable"}, status_code=503)
+
+        try:
+            records = await registry.list(tenant)
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        except Exception:  # noqa: BLE001
+            logger.exception("registry load failed: tenant=%s", tenant)
+            return JSONResponse({"error": "load_failed"}, status_code=500)
+        record = next(
+            (
+                item
+                for item in records
+                if item.manifest.id == agent_id and item.manifest.version == version
+            ),
+            None,
+        )
+        if record is None:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+
+        async with load_lock:
+            if agent_id in agents:
+                if agent_id in loaded_versions and loaded_versions[agent_id] != version:
+                    return JSONResponse({"error": "name_conflict"}, status_code=409)
+                return JSONResponse({"name": agent_id, "version": version, "loaded": False})
+            if len(agents) >= max_loaded_agents:
+                return JSONResponse({"error": "load_limit"}, status_code=409)
+            artifact = record.artifact
+            if artifact is None:
+                return JSONResponse({"error": "artifact_missing"}, status_code=409)
+            try:
+                artifact_trust.verify(artifact)
+            except ArtifactTrustError:
+                return JSONResponse({"error": "artifact_untrusted"}, status_code=409)
+            except PublishUnavailable:
+                return JSONResponse({"error": "artifact_trust_unavailable"}, status_code=503)
+
+            loader = artifact_loader or InProcessArtifactLoader()
+            try:
+                agent = await loader.load(artifact, artifact_store)
+            except ArtifactLoadError:
+                logger.exception("artifact load failed: %s/%s@%s", tenant, agent_id, version)
+                return JSONResponse({"error": "load_failed"}, status_code=500)
+
+            _register(agent_id, agent)
+            loaded_versions[agent_id] = version
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=_trace_id(request),
+                    tenant=caller.tenant,
+                    principal=caller,
+                    agent_ref=AgentRef(id=agent_id, version=version, digest=record.digest),
+                    action="agent.load",
+                    target=agent_id,
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse({"name": agent_id, "version": version, "loaded": True})
 
     @app.get("/api/registry/{tenant}/{agent_id}/{version}/eval")
     async def get_eval_report(request: Request, tenant: str, agent_id: str, version: str) -> Any:
@@ -1563,7 +1706,10 @@ def run_console(
     roles: list[str] | None = None,
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
+    artifact_store: ArtifactStore | None = None,
+    artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
+    max_loaded_agents: int = 20,
     audit_sink: AuditSink | None = None,
     audit_query: AuditQuery | None = None,
     oidc: IdentityProvider | None = None,
@@ -1587,7 +1733,10 @@ def run_console(
         roles=roles,
         registry=registry,
         eval_reports=eval_reports,
+        artifact_store=artifact_store,
+        artifact_loader=artifact_loader,
         artifact_trust=artifact_trust,
+        max_loaded_agents=max_loaded_agents,
         audit_sink=audit_sink,
         audit_query=audit_query,
         oidc=oidc,
