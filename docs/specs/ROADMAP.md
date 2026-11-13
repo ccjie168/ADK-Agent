@@ -159,7 +159,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-066 发布带工件与签名：确定性 zip、Ed25519、`publish --artifact`。已完成。
 - SLICE-067 工件加载与验签：可信密钥表、进程内加载器、`load_agent`。已完成。
 - SLICE-068 从注册表启动：控制台与 MCP 的 `--agent-ref` 加载路径。已完成。
-- SLICE-069 市场视图与工件状态（UI-3）：注册表页展示工件摘要与验签徽标。进行中。
+- SLICE-069 市场视图与工件状态（UI-3）：注册表页展示工件摘要与验签徽标。已完成。
 
 ## 完成定义
 

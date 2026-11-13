@@ -1,6 +1,6 @@
 # SLICE-069 市场视图与工件状态（UI-3）
 
-状态: planned
+状态: merged
 依据: ADR-0008，SLICE-066，SLICE-068，`docs/contracts/console.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -49,22 +49,22 @@ status:
 
 ## 完成判据（可执行）
 
-- [ ] 可信签名显示 verified -> `tests/test_console_marketplace.py::test_listing_includes_verified_artifact`
-- [ ] 错误密钥显示 untrusted -> `tests/test_console_marketplace.py::test_untrusted_status`
-- [ ] 未配置密钥显示 unknown -> `tests/test_console_marketplace.py::test_unknown_without_trust`
-- [ ] 未签名显示 unsigned -> `tests/test_console_marketplace.py::test_unsigned_status`
-- [ ] 无工件为 null -> `tests/test_console_marketplace.py::test_no_artifact`
-- [ ] CLI 把密钥文件接成 TrustStore -> `tests/test_console_marketplace.py::test_cli_wires_trust`
-- [ ] 非法密钥文件退出 1 -> `tests/test_console_marketplace.py::test_cli_rejects_bad_keys`
-- [ ] 演示脚本可生成注册表与审批 -> 手工执行 `scripts/demo_seed.py`
-- [ ] 截图写入 `docs/evidence/ui/` -> 证据文件
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 可信签名显示 verified -> `tests/test_console_marketplace.py::test_listing_includes_verified_artifact`
+- [x] 错误密钥显示 untrusted -> `tests/test_console_marketplace.py::test_untrusted_status`
+- [x] 未配置密钥显示 unknown -> `tests/test_console_marketplace.py::test_unknown_without_trust`
+- [x] 未签名显示 unsigned -> `tests/test_console_marketplace.py::test_unsigned_status`
+- [x] 无工件为 null -> `tests/test_console_marketplace.py::test_no_artifact`
+- [x] CLI 把密钥文件接成 TrustStore -> `tests/test_console_marketplace.py::test_cli_wires_trust`
+- [x] 非法密钥文件退出 1 -> `tests/test_console_marketplace.py::test_cli_rejects_bad_keys`
+- [x] 演示脚本可生成注册表与审批 -> 手工执行 `scripts/demo_seed.py`
+- [x] 截图写入 `docs/evidence/ui/` -> 证据文件
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`build_console_app(..., artifact_trust=...)` -> 当前 `TypeError`
-- [ ] 反例 2：`/api/registry` 没有 `artifact` 字段 -> 当前条目缺字段，测试 `KeyError`
-- [ ] 反例 3：未配置可信密钥却显示 `verified` -> `test_unknown_without_trust`
+- [x] 反例 1：`build_console_app(..., artifact_trust=...)` -> 当前 `TypeError`
+- [x] 反例 2：`/api/registry` 没有 `artifact` 字段 -> 当前条目缺字段，测试 `KeyError`
+- [x] 反例 3：未配置可信密钥却显示 `verified` -> `test_unknown_without_trust`
 
 ## 契约（如涉及对外接口）
 
@@ -87,7 +87,7 @@ status:
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
-- 截图: 待补
+- 反例红: `docs/evidence/SLICE-069-marketplace-ui.txt` 的 red 段
+- 实现后绿: 同文件 green 段，14 个市场用例与全量 821 个用例通过
+- 实机: 同文件 live 段。种子脚本生成两个已签名发布，真控制台 API 返回 `verified`
+- 截图: `docs/evidence/ui/SLICE-069-marketplace.png` 与 `SLICE-069-marketplace-detail.png`

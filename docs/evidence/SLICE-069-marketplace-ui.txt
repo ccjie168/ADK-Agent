@@ -11,3 +11,53 @@ FAILED test_no_artifact - TypeError
 FAILED test_cli_wires_trust - KeyError: 'artifact_trust'
 FAILED test_cli_rejects_bad_keys - Failed: DID NOT RAISE
 7 failed in 1.91s
+
+== green: targeted tests ==
+$ python -m pytest tests/test_console_marketplace.py tests/test_console_registry.py -q
+14 passed in 1.90s
+
+$ python -m pytest -q
+821 passed, 16 skipped in 44.75s
+
+Gate findings: one ruff-format pass and one bandit B110 (try/except/pass) in demo_seed.py; fixed.
+
+== live: seeded demo, real console, real browser ==
+$ python scripts/demo_seed.py --root .../demo --tenant acme
+demo seed complete (key.pem, keys.json, registry, store, eval report, one pending approval)
+console command with --agent-ref acme/bot_a@1.0.0 --agent-ref acme/bot_b@1.0.0
+
+$ GET /api/agents
+[{"name":"bot_a"},{"name":"bot_b"}]
+$ GET /api/registry?tenant=acme
+[('bot_a','verified','demo-publisher',727), ('bot_b','verified','demo-publisher',727)]
+
+Screenshots captured with headless Edge over CDP:
+- docs/evidence/ui/SLICE-069-marketplace.png: two rows, eval badge, green "verified <digest prefix>"
+- docs/evidence/ui/SLICE-069-marketplace-detail.png: manifest, eval report, artifact block
+  {"digest": "sha256:580bc682...", "size": 727, "key_id": "demo-publisher", "status": "verified"}
+  and the Open chat button
+
+Seed ids are bot_a/bot_b because ADK rejects hyphens in agent names and the loader requires
+agent.name == manifest.id.
+
+== reading ==
+- The badge distinguishes verified, untrusted, unknown and unsigned; unknown is shown when the
+  console has no trusted keys, so absence of configuration never looks like a pass.
+- The listing stays tenant-scoped and the existing entry fields are unchanged; artifact is additive.
+- Open chat only switches to an agent already loaded at startup; loading another version remains a
+  separate slice.
+
+== full gate ==
+$ python scripts/check.py --full
+821 passed, 16 skipped in 44.75s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS

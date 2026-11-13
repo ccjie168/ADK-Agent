@@ -48,7 +48,7 @@ from .metrics import MetricsRegistry
 from .models.gateway_llm import GatewayLlm, provider_for_model
 from .ratelimit import FixedWindowLimiter, RateLimit, RateLimitMiddleware
 from .rbac import FilePolicyStore, RolePolicyEngine
-from .registry import RegistryIntegrityError
+from .registry import ArtifactTrustError, RegistryIntegrityError, TrustStore
 from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .runtime.sessions import scoped_user_id
@@ -90,6 +90,8 @@ _INDEX_HTML = """<!doctype html>
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: #f5f8ff; }
   .badge { background: #e6f5ea; color: #0b5; border-radius: 4px; padding: 0 .35rem; font-size: .75rem; }
+  .badge.bad { background: #fde8e8; color: #a00; }
+  .badge.muted { background: #eee; color: #666; }
   pre { background: #f7f7f7; border: 1px solid #ddd; border-radius: 6px; padding: .6rem; overflow: auto; max-height: 260px; font-size: .78rem; }
   .panel-msg { color: #a00; font-size: .85rem; min-height: 1.2rem; }
   #audit { border: 1px solid #ccc; border-radius: 6px; padding: .5rem .75rem; max-height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; }
@@ -151,13 +153,19 @@ _INDEX_HTML = """<!doctype html>
   </div>
   <div id="registry-msg" class="panel-msg"></div>
   <table>
-    <thead><tr><th>id</th><th>version</th><th>published</th><th>eval</th></tr></thead>
+    <thead><tr><th>id</th><th>version</th><th>published</th><th>eval</th><th>artifact</th></tr></thead>
     <tbody id="registry-body"></tbody>
   </table>
   <h3>Manifest</h3>
   <pre id="manifest"></pre>
   <h3>Eval report</h3>
   <pre id="eval-report"></pre>
+  <h3>Artifact</h3>
+  <pre id="artifact-info"></pre>
+  <div class="row">
+    <button id="open-chat">Open chat</button>
+    <span id="artifact-msg" class="panel-msg"></span>
+  </div>
 </section>
 
 <section id="runs" class="panel">
@@ -231,6 +239,7 @@ const $ = (id) => document.getElementById(id);
 const TABS = ["chat", "registry", "runs", "sessions", "approvals", "plans", "policy"];
 let sessionId = null;
 let selectedApproval = null;
+let selectedRegistry = null;
 const token = () => $("token").value.trim();
 $("token").value = sessionStorage.getItem("adk_token") || "";
 $("token").addEventListener("change", () => sessionStorage.setItem("adk_token", token()));
@@ -254,6 +263,18 @@ async function getJson(path) {
 function cell(text) {
   const td = document.createElement("td");
   td.textContent = text == null ? "-" : String(text);
+  return td;
+}
+
+function artifactCell(info) {
+  const td = document.createElement("td");
+  if (!info) { td.textContent = "-"; return td; }
+  const badge = document.createElement("span");
+  badge.className = info.status === "verified" ? "badge"
+    : info.status === "untrusted" ? "badge bad" : "badge muted";
+  const hex = String(info.digest || "").replace(/^sha256:/, "").slice(0, 12);
+  badge.textContent = info.status + " " + hex;
+  td.appendChild(badge);
   return td;
 }
 
@@ -328,12 +349,18 @@ async function loadRegistry() {
       evalCell.textContent = "-";
     }
     row.appendChild(evalCell);
+    row.appendChild(artifactCell(entry.artifact));
     row.addEventListener("click", () => selectRegistryEntry(tenant, entry));
     body.appendChild(row);
   }
 }
 
 async function selectRegistryEntry(tenant, entry) {
+  selectedRegistry = entry;
+  $("artifact-info").textContent = entry.artifact
+    ? JSON.stringify(entry.artifact, null, 2)
+    : "no artifact";
+  $("artifact-msg").textContent = "";
   $("manifest").textContent = JSON.stringify(entry.manifest, null, 2);
   $("eval-report").textContent = "";
   if (!entry.has_eval_report) { $("eval-report").textContent = "no eval report"; return; }
@@ -344,6 +371,23 @@ async function selectRegistryEntry(tenant, entry) {
     ? JSON.stringify(result.data, null, 2)
     : "eval report unavailable (" + result.status + "): " +
       ((result.data && result.data.error) || "error");
+}
+
+function openChat() {
+  if (!selectedRegistry) {
+    $("artifact-msg").textContent = "select a registry entry first";
+    return;
+  }
+  const select = $("agent");
+  const name = selectedRegistry.id;
+  const loaded = Array.from(select.options).some((option) => option.value === name);
+  if (!loaded) {
+    $("artifact-msg").textContent = "agent " + name + " is not loaded in this console";
+    return;
+  }
+  select.value = name;
+  sessionId = null;
+  showTab("chat");
 }
 
 async function loadRuns() {
@@ -652,6 +696,7 @@ $("tenant").addEventListener("change", loadRegistry);
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-registry").addEventListener("click", loadRegistry);
+$("open-chat").addEventListener("click", openChat);
 $("refresh-runs").addEventListener("click", loadRuns);
 $("refresh-sessions").addEventListener("click", loadSessions);
 $("refresh-approvals").addEventListener("click", loadApprovals);
@@ -929,6 +974,7 @@ def build_console_app(
     roles: list[str] | None = None,
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
+    artifact_trust: TrustStore | None = None,
     session_service: Any | None = None,
     audit_sink: AuditSink | None = None,
     audit_query: AuditQuery | None = None,
@@ -954,6 +1000,28 @@ def build_console_app(
 
     def _session_user(caller: Principal) -> str:
         return scoped_user_id(caller) if session_tenant_scope else caller.subject
+
+    def _artifact_info(record: Any) -> dict[str, Any] | None:
+        artifact = record.artifact
+        if artifact is None:
+            return None
+        if artifact.signature is None or artifact.key_id is None:
+            status = "unsigned"
+        elif artifact_trust is None:
+            status = "unknown"
+        else:
+            try:
+                artifact_trust.verify(artifact)
+            except ArtifactTrustError:
+                status = "untrusted"
+            else:
+                status = "verified"
+        return {
+            "digest": artifact.digest,
+            "size": artifact.size,
+            "key_id": artifact.key_id,
+            "status": status,
+        }
 
     policy_store = FilePolicyStore(policy_file) if policy_file else None
     policy_engine = RolePolicyEngine(policy_store.load()) if policy_store else None
@@ -1085,6 +1153,7 @@ def build_console_app(
                     "published_at": record.published_at.isoformat(),
                     "has_eval_report": has_report,
                     "manifest": record.manifest.model_dump(mode="json"),
+                    "artifact": _artifact_info(record),
                 }
             )
         return entries
@@ -1494,6 +1563,7 @@ def run_console(
     roles: list[str] | None = None,
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
+    artifact_trust: TrustStore | None = None,
     audit_sink: AuditSink | None = None,
     audit_query: AuditQuery | None = None,
     oidc: IdentityProvider | None = None,
@@ -1517,6 +1587,7 @@ def run_console(
         roles=roles,
         registry=registry,
         eval_reports=eval_reports,
+        artifact_trust=artifact_trust,
         audit_sink=audit_sink,
         audit_query=audit_query,
         oidc=oidc,

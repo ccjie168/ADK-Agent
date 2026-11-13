@@ -18,6 +18,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from .audit import AuditQuery, SigningKeyring
     from .core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
     from .ratelimit import RateLimit
+    from .registry import TrustStore
 
 Transport = Literal["stdio", "streamable-http"]
 
@@ -60,6 +61,29 @@ def _load_agents(path: str) -> dict:
     raise SystemExit(f"no `agents` dict or `agent`/`root_agent` found in {path}")
 
 
+def _artifact_trust(args: argparse.Namespace) -> TrustStore | None:
+    """Build a trust store from ``--artifact-keys`` or ``$ADK_ARTIFACT_KEYS``."""
+    from .registry import ArtifactTrustError, TrustStore
+
+    keys_file = getattr(args, "artifact_keys", None)
+    try:
+        keys_text = (
+            Path(keys_file).read_text(encoding="utf-8")
+            if keys_file
+            else os.environ.get("ADK_ARTIFACT_KEYS")
+        )
+    except OSError as exc:
+        print(f"cannot read artifact keys: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    if not keys_text:
+        return None
+    try:
+        return TrustStore.from_json(keys_text)
+    except ArtifactTrustError as exc:
+        print(f"invalid artifact keys: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
     """Load agents named by ``--agent-ref`` from the registry."""
     refs = getattr(args, "agent_ref", None)
@@ -74,22 +98,12 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         FileArtifactStore,
         PublishUnavailable,
         RefError,
-        TrustStore,
         load_registry_agents,
     )
     from .registry.artifacts_postgres import PostgresArtifactStore
 
-    keys_file = getattr(args, "artifact_keys", None)
-    try:
-        keys_text = (
-            Path(keys_file).read_text(encoding="utf-8")
-            if keys_file
-            else os.environ.get("ADK_ARTIFACT_KEYS")
-        )
-    except OSError as exc:
-        print(f"cannot read artifact keys: {exc}", file=sys.stderr)
-        raise SystemExit(1) from None
-    if not keys_text:
+    trust = _artifact_trust(args)
+    if trust is None:
         print(
             "artifact trust keys are required: provide --artifact-keys FILE "
             "or set ADK_ARTIFACT_KEYS",
@@ -104,7 +118,6 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         raise SystemExit(1)
 
     try:
-        trust = TrustStore.from_json(keys_text)
         store: Any
         if url:
             store = PostgresArtifactStore(url)
@@ -1099,6 +1112,7 @@ def main(argv: list[str] | None = None) -> None:
 
         audit_query = _audit_query(args)
         audit_sink = _audit_sink(args)
+        artifact_trust = _artifact_trust(args)
         run_console(
             agents=agents,
             host=args.host,
@@ -1110,6 +1124,7 @@ def main(argv: list[str] | None = None) -> None:
             roles=args.roles,
             registry=FileAgentRegistry(args.registry),
             eval_reports=FileEvalReportStore(args.registry),
+            artifact_trust=artifact_trust,
             audit_sink=audit_sink,
             audit_query=audit_query,
             oidc=oidc,
