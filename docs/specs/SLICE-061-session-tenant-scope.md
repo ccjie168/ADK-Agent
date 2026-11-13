@@ -1,6 +1,6 @@
 # SLICE-061 会话按租户隔离（可选）
 
-状态: planned
+状态: merged
 依据: SLICE-034，SLICE-040，SLICE-043，`docs/contracts/cli.md`，`docs/contracts/console.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -40,20 +40,20 @@ mcp    (session_tenant_scope=True):  代理把所有 user_id 改写成 scoped_us
 
 ## 完成判据（可执行）
 
-- [ ] 会话键是 `tenant:subject` -> `tests/test_session_tenant_scope.py::test_scoped_user_id`
-- [ ] 打开开关后同名 subject 跨租户会话互不可见 -> `tests/test_session_tenant_scope.py::test_console_isolates_tenants`
-- [ ] 关闭开关时保持 subject 行为 -> `tests/test_session_tenant_scope.py::test_console_default_keeps_subject`
-- [ ] 列表接口按开关过滤 -> `tests/test_session_tenant_scope.py::test_console_lists_own_tenant_only`
-- [ ] MCP 代理改写为 `tenant:subject` -> `tests/test_session_tenant_scope.py::test_mcp_proxy_scopes_user_id`
-- [ ] MCP 代理默认保持 subject -> `tests/test_session_tenant_scope.py::test_mcp_proxy_default_subject`
-- [ ] 控制台 CLI 透传开关 -> `tests/test_session_tenant_scope.py::test_console_cli_wires_flag`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 会话键是 `tenant:subject` -> `tests/test_session_tenant_scope.py::test_scoped_user_id`
+- [x] 打开开关后同名 subject 跨租户会话互不可见 -> `tests/test_session_tenant_scope.py::test_console_isolates_tenants`
+- [x] 关闭开关时保持 subject 行为 -> `tests/test_session_tenant_scope.py::test_console_default_keeps_subject`
+- [x] 列表接口按开关过滤 -> `tests/test_session_tenant_scope.py::test_console_lists_own_tenant_only`
+- [x] MCP 代理改写为 `tenant:subject` -> `tests/test_session_tenant_scope.py::test_mcp_proxy_scopes_user_id`
+- [x] MCP 代理默认保持 subject -> `tests/test_session_tenant_scope.py::test_mcp_proxy_default_subject`
+- [x] 控制台 CLI 透传开关 -> `tests/test_session_tenant_scope.py::test_console_cli_wires_flag`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.runtime.sessions import scoped_user_id` -> 当前 `ImportError`
-- [ ] 反例 2：`console --session-tenant-scope` -> 当前 argparse 退出 2（参数不存在）
-- [ ] 反例 3：`build_console_app(..., session_tenant_scope=True)` -> 当前 `TypeError`
+- [x] 反例 1：`from adk_agent.runtime.sessions import scoped_user_id` -> 当前 `ImportError`
+- [x] 反例 2：`console --session-tenant-scope` -> 当前 argparse 退出 2（参数不存在）
+- [x] 反例 3：`build_console_app(..., session_tenant_scope=True)` -> 当前 `TypeError`
 
 ## 契约（如涉及对外接口）
 
@@ -76,6 +76,6 @@ mcp    (session_tenant_scope=True):  代理把所有 user_id 改写成 scoped_us
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-061-session-tenant-scope.txt` 的 red 段
+- 实现后绿: 同文件 green 段，7 个新用例与全量 711 个用例通过
+- 实机: 同文件 live 段。真控制台加 SQLite 会话库，默认写入 `console_user`；打开开关后写入 `local:console_user`，列表只显示后者，旧键会话不可见

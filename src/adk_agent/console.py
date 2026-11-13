@@ -50,6 +50,7 @@ from .rbac import FilePolicyStore, RolePolicyEngine
 from .registry import RegistryIntegrityError
 from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
+from .runtime.sessions import scoped_user_id
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
 from .tools import GrantPolicyEngine, ToolGuard, install_tool_guard, toolset_tool_ids
 from .tracing import resolve_trace_id
@@ -936,6 +937,7 @@ def build_console_app(
     metrics: MetricsRegistry | None = None,
     sse_queue_size: int = 512,
     rate_limit: RateLimit | None = None,
+    session_tenant_scope: bool = False,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -947,6 +949,9 @@ def build_console_app(
     def _principal_for(request: Request) -> Principal:
         found = getattr(request.state, "principal", None)
         return found if found is not None else principal
+
+    def _session_user(caller: Principal) -> str:
+        return scoped_user_id(caller) if session_tenant_scope else caller.subject
 
     policy_store = FilePolicyStore(policy_file) if policy_file else None
     policy_engine = RolePolicyEngine(policy_store.load()) if policy_store else None
@@ -1192,7 +1197,7 @@ def build_console_app(
         if agent not in agents:
             return JSONResponse({"error": "unknown_agent"}, status_code=400)
         listed = await service.list_sessions(
-            app_name=agent, user_id=_principal_for(request).subject
+            app_name=agent, user_id=_session_user(_principal_for(request))
         )
         sessions = sorted(
             listed.sessions, key=lambda session: session.last_update_time, reverse=True
@@ -1289,7 +1294,9 @@ def build_console_app(
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
         caller = _principal_for(request)
-        session_id = await _session_id_for(service, name, body.get("session_id"), caller.subject)
+        session_id = await _session_id_for(
+            service, name, body.get("session_id"), _session_user(caller)
+        )
 
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
@@ -1304,7 +1311,7 @@ def build_console_app(
         try:
             result = await runtime.run(
                 invocation,
-                user_id=caller.subject,
+                user_id=_session_user(caller),
                 session_id=session_id,
                 quota=quota,
                 quota_policy=quota_policy,
@@ -1352,7 +1359,9 @@ def build_console_app(
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
         caller = _principal_for(request)
-        session_id = await _session_id_for(service, name, body.get("session_id"), caller.subject)
+        session_id = await _session_id_for(
+            service, name, body.get("session_id"), _session_user(caller)
+        )
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
             trace_id=_trace_id(request),
@@ -1376,7 +1385,7 @@ def build_console_app(
                 try:
                     result = await runtime.run(
                         invocation,
-                        user_id=caller.subject,
+                        user_id=_session_user(caller),
                         session_id=session_id,
                         on_progress=on_progress,
                         quota=quota,
@@ -1475,6 +1484,7 @@ def run_console(
     metrics: MetricsRegistry | None = None,
     sse_queue_size: int = 512,
     rate_limit: RateLimit | None = None,
+    session_tenant_scope: bool = False,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -1495,6 +1505,7 @@ def run_console(
         metrics=metrics,
         sse_queue_size=sse_queue_size,
         rate_limit=rate_limit,
+        session_tenant_scope=session_tenant_scope,
     )
 
     import uvicorn

@@ -308,6 +308,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="count runs and expose /metrics on streamable-http",
     )
+    p_serve.add_argument(
+        "--session-tenant-scope",
+        action="store_true",
+        help="scope OIDC session keys to <tenant>:<subject> (default: off)",
+    )
 
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
     p_many.add_argument(
@@ -337,6 +342,11 @@ def main(argv: list[str] | None = None) -> None:
         "--metrics",
         action="store_true",
         help="count runs and expose /metrics on streamable-http",
+    )
+    p_many.add_argument(
+        "--session-tenant-scope",
+        action="store_true",
+        help="scope OIDC session keys to <tenant>:<subject> (default: off)",
     )
 
     p_a2a = sub.add_parser("serve-a2a", help="serve an ADK agent over A2A (needs a2a-sdk)")
@@ -502,6 +512,11 @@ def main(argv: list[str] | None = None) -> None:
         default=512,
         help="max buffered progress events per SSE stream (default: 512)",
     )
+    p_console.add_argument(
+        "--session-tenant-scope",
+        action="store_true",
+        help="scope session keys to <tenant>:<subject> (default: off)",
+    )
     _add_http_args(p_console)
     _add_rate_limit_args(p_console)
     _add_runtime_args(p_console)
@@ -639,6 +654,7 @@ def main(argv: list[str] | None = None) -> None:
             quota_config=quota_config,
             metrics=metrics,
             rate_limit=rate_limit,
+            session_tenant_scope=args.session_tenant_scope,
         )
     elif args.cmd == "serve-many":
         rate_limit = _rate_limit(args)
@@ -679,6 +695,7 @@ def main(argv: list[str] | None = None) -> None:
             quota_config=quota_config,
             metrics=metrics,
             rate_limit=rate_limit,
+            session_tenant_scope=args.session_tenant_scope,
         )
     elif args.cmd == "serve-a2a":
         rate_limit = _rate_limit(args)
@@ -856,6 +873,7 @@ def main(argv: list[str] | None = None) -> None:
             approvals=approvals,
             sse_queue_size=args.sse_queue_size,
             rate_limit=rate_limit,
+            session_tenant_scope=args.session_tenant_scope,
         )
     elif args.cmd == "approvals":
         from .approvals import FileApprovalInbox

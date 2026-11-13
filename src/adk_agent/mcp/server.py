@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from google.adk.dependencies._mcp import Context, ServerSession
 
 from ..core import Principal
+from ..runtime.sessions import scoped_user_id
 from ..tracing import trace_id_from_traceparent
 from .runtime import wrap_runner
 
@@ -32,6 +33,10 @@ def _principal_from_ctx(ctx: Any) -> Principal | None:
     return getattr(getattr(request, "state", None), "principal", None)
 
 
+def _session_user(principal: Principal, tenant_scope: bool) -> str:
+    return scoped_user_id(principal) if tenant_scope else principal.subject
+
+
 def _trace_id_from_ctx(ctx: Any) -> str | None:
     try:
         request = ctx.request_context.request
@@ -46,16 +51,20 @@ def _trace_id_from_ctx(ctx: Any) -> str | None:
 class _PrincipalSessionService:
     """Session service proxy that attributes every call to the token subject."""
 
-    def __init__(self, inner: Any, principal: Principal) -> None:
+    def __init__(self, inner: Any, principal: Principal, *, tenant_scope: bool = False) -> None:
         self._inner = inner
         self._principal = principal
+        self._tenant_scope = tenant_scope
+
+    def _user_id(self) -> str:
+        return _session_user(self._principal, self._tenant_scope)
 
     async def create_session(self, *, app_name, user_id, state=None, session_id=None):
         merged = dict(state or {})
         merged["principal"] = self._principal.model_dump(mode="json")
         return await self._inner.create_session(
             app_name=app_name,
-            user_id=self._principal.subject,
+            user_id=self._user_id(),
             state=merged,
             session_id=session_id,
         )
@@ -63,7 +72,7 @@ class _PrincipalSessionService:
     async def get_session(self, *, app_name, user_id, session_id, config=None):
         return await self._inner.get_session(
             app_name=app_name,
-            user_id=self._principal.subject,
+            user_id=self._user_id(),
             session_id=session_id,
             config=config,
         )
@@ -71,14 +80,14 @@ class _PrincipalSessionService:
     async def delete_session(self, *, app_name, user_id, session_id):
         return await self._inner.delete_session(
             app_name=app_name,
-            user_id=self._principal.subject,
+            user_id=self._user_id(),
             session_id=session_id,
         )
 
     async def list_sessions(self, *, app_name, user_id=None):
         return await self._inner.list_sessions(
             app_name=app_name,
-            user_id=self._principal.subject,
+            user_id=self._user_id(),
         )
 
     async def append_event(self, session, event):
@@ -87,7 +96,7 @@ class _PrincipalSessionService:
     async def get_user_state(self, *, app_name, user_id):
         return await self._inner.get_user_state(
             app_name=app_name,
-            user_id=self._principal.subject,
+            user_id=self._user_id(),
         )
 
     async def flush(self):
@@ -100,14 +109,19 @@ class _PrincipalSessionService:
 class _PrincipalRunner:
     """Runner proxy that runs the agent as the token subject."""
 
-    def __init__(self, runner: Any, principal: Principal) -> None:
+    def __init__(self, runner: Any, principal: Principal, *, tenant_scope: bool = False) -> None:
         self._runner = runner
         self._principal = principal
+        self._tenant_scope = tenant_scope
         self.app_name = runner.app_name
-        self.session_service = _PrincipalSessionService(runner.session_service, principal)
+        self.session_service = _PrincipalSessionService(
+            runner.session_service, principal, tenant_scope=tenant_scope
+        )
 
     def run_async(self, *, user_id, **kwargs):
-        return self._runner.run_async(user_id=self._principal.subject, **kwargs)
+        return self._runner.run_async(
+            user_id=_session_user(self._principal, self._tenant_scope), **kwargs
+        )
 
     def __getattr__(self, name):
         return getattr(self._runner, name)
@@ -177,6 +191,7 @@ def serve_agent(
     quota_config: QuotaConfig | None = None,
     metrics: MetricsRegistry | None = None,
     rate_limit: RateLimit | None = None,
+    session_tenant_scope: bool = False,
 ) -> Any:
     """Expose one ADK agent as an MCP server and run it (blocking).
 
@@ -220,6 +235,7 @@ def serve_agent(
             quota_config=quota_config,
             metrics=metrics,
             rate_limit=rate_limit,
+            session_tenant_scope=session_tenant_scope,
         )
 
     server = to_mcp_server(agent, name=name, runner=runner, instructions=instructions)
@@ -258,6 +274,7 @@ def serve_many(
     quota_config: QuotaConfig | None = None,
     metrics: MetricsRegistry | None = None,
     rate_limit: RateLimit | None = None,
+    session_tenant_scope: bool = False,
 ) -> Any:
     """Expose several ADK agents as separate MCP tools in one server.
 
@@ -309,6 +326,7 @@ def serve_many(
             _quota: QuotaManager | None,
             _quota_config: QuotaConfig | None,
             _metrics: MetricsRegistry | None,
+            _tenant_scope: bool,
         ) -> Callable[..., Any]:
             async def _tool(request: str, ctx: Context[ServerSession, Any]) -> list[Any]:
                 principal = _principal_from_ctx(ctx)
@@ -316,8 +334,9 @@ def serve_many(
                     state = _anonymous_state
                     scoped_runner = _runner
                 else:
-                    state = _state_for(_state_by_subject, principal.subject)
-                    scoped_runner = _PrincipalRunner(_runner, principal)
+                    scoped_key = _session_user(principal, _tenant_scope)
+                    state = _state_for(_state_by_subject, scoped_key)
+                    scoped_runner = _PrincipalRunner(_runner, principal, tenant_scope=_tenant_scope)
                 if _reap:
                     if principal is None:
                         await _reap_orphaned_sessions(
@@ -371,6 +390,7 @@ def serve_many(
             quota,
             quota_config,
             metrics,
+            session_tenant_scope,
         )
         tool_fn.__name__ = f"call_{tool_name}"
         description = agent.description or f"Run the {tool_name} agent."

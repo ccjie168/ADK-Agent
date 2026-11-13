@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from ..core import Principal
+
 _INSTALL_HINT = (
     "the Postgres session store needs optional drivers; install them with "
     "`pip install 'sqlalchemy[asyncio]>=2' asyncpg`."
@@ -63,4 +65,13 @@ def configured_session_service(session_db: str | None) -> Any | None:
     return None
 
 
-__all__ = ["SessionStoreUnavailable", "build_session_service", "configured_session_service"]
+def scoped_user_id(principal: Principal) -> str:
+    return f"{principal.tenant}:{principal.subject}"
+
+
+__all__ = [
+    "SessionStoreUnavailable",
+    "build_session_service",
+    "configured_session_service",
+    "scoped_user_id",
+]

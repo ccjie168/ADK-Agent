@@ -22,3 +22,54 @@ exit=2
 
 $ python -c "build_console_app({}, auth_token=None, session_tenant_scope=True)"
 TypeError: build_console_app() got an unexpected keyword argument 'session_tenant_scope'
+
+== green: targeted tests ==
+$ python -m pytest tests/test_session_tenant_scope.py -q
+7 passed in 1.88s
+
+$ python -m pytest -q
+711 passed, 13 skipped in 41.87s
+
+The first gate run failed on format because the new test file was not ruff-formatted; formatted and re-ran.
+
+== live: SQLite session store, default vs scoped ==
+A real console on 127.0.0.1, SQLite session DB, one chat each (the model call fails without
+credentials, but the session is created before the run).
+
+Default run:
+$ adk-agent console --agents agent.py --session-db sessions.db --port 18095 ...
+$ sqlite> select app_name, user_id, id from sessions;
+('probe', 'console_user', 'ab90097c-...')
+
+Scoped run, same DB:
+$ adk-agent console --agents agent.py --session-db sessions.db --port 18094 --session-tenant-scope ...
+$ GET /api/sessions?agent=probe
+[{"session_id": "44bdcfd9-...", ...}]
+$ sqlite> select app_name, user_id, id from sessions;
+('probe', 'console_user', 'ab90097c-...')
+('probe', 'local:console_user', '44bdcfd9-...')
+
+The scoped console lists only the scoped session; the pre-flag row is invisible, which is the
+documented migration cost of turning the flag on.
+
+== reading ==
+- The seam is our own user_id, not an ADK table change. No SQL was touched.
+- Default stays `<subject>`, so existing deployments and tests are unaffected.
+- Turning the flag on changes the key, so old sessions do not appear. There is no automatic
+  migration; sessions are ephemeral by design.
+- Transports without a principal (static token, stdio) keep `mcp_user` / `console_user` semantics.
+
+== full gate ==
+$ python scripts/check.py --full
+711 passed, 13 skipped in 41.58s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
