@@ -53,11 +53,24 @@ from .ports import (
     SecretProvider,
     TemplateSource,
     ToolGateway,
+    ToolGrantStore,
 )
 from .progress import ProgressEvent, ProgressKind
 from .quota import QuotaConfig, QuotaExceeded, QuotaPolicy
 from .rbac import AccessPolicy, RoleBinding
 from .tool import ToolGatewayRequest, ToolRequest, ToolResponse
+from .tool_grants import (
+    GrantRequestConflict,
+    GrantRequestError,
+    GrantRequestExpired,
+    GrantRequestNotFound,
+    GrantStatus,
+    GrantStoreError,
+    GrantStoreUnavailable,
+    ToolGrantRequest,
+    effective_status,
+    is_active,
+)
 
 __all__ = [
     "AccessPolicy",
@@ -83,6 +96,13 @@ __all__ = [
     "EvalReportStore",
     "EvalSuite",
     "EvalSuiteSpec",
+    "GrantRequestConflict",
+    "GrantRequestError",
+    "GrantRequestExpired",
+    "GrantRequestNotFound",
+    "GrantStatus",
+    "GrantStoreError",
+    "GrantStoreUnavailable",
     "IdentityProvider",
     "Invocation",
     "InvocationResult",
@@ -120,8 +140,12 @@ __all__ = [
     "ToolGateway",
     "ToolGatewayRequest",
     "ToolGrant",
+    "ToolGrantRequest",
+    "ToolGrantStore",
     "ToolRequest",
     "ToolResponse",
+    "effective_status",
+    "is_active",
     "manifest_digest",
     "plan_digest",
     "plan_ref",

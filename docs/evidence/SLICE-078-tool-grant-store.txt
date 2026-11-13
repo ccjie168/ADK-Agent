@@ -1,0 +1,65 @@
+SLICE-078 tool grant request types and stores
+=============================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/core/test_tool_grants.py \
+    tests/registry/test_tool_grant_store.py -q
+tests\registry\test_tool_grant_store.py:13: in <module>
+    from adk_agent.core import ToolGrantRequest
+E   ImportError: cannot import name 'ToolGrantRequest' from 'adk_agent.core'
+ERROR tests/core/test_tool_grants.py
+ERROR tests/registry/test_tool_grant_store.py
+2 errors in 1.81s
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/core/test_tool_grants.py \
+    tests/registry/test_tool_grant_store.py -q            (no TEST_POSTGRES_URL)
+7 passed, 1 skipped
+
+$ TEST_POSTGRES_URL='postgresql://adk:adk@127.0.0.1:55432/adk' ... -q
+8 passed in 2.04s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+914 passed, 28 skipped
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, real Postgres
+-------------------
+A run against adk-postgres-070 with a random tenant:
+
+  add: pending
+  active before: False
+  decide: approved bob
+  active after: True
+  active expired: False        (now + 3h, request expires at +2h)
+  list status: approved
+
+  $ psql -c "select status, tool_id from adk_tool_grant_requests ..."
+  approved|crm.read
+
+notes
+-----
+- `effective_status` owns expiry; both stores derive list/active from it.
+- File add uses temp file + os.link, decide/cancel rewrite with os.replace under
+  a process lock. Postgres decide/cancel is a conditional UPDATE with RETURNING.
+- Bandit B608 on the earlier f-string column list was avoided by inlining the
+  column lists into constant SQL.
+- The ADR's 7-day maximum expiry and the retired-version rejection are not in
+  this store; they belong in the API layer (SLICE-080) and the loader/runtime.

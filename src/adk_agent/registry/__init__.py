@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+from ..core import (
+    GrantRequestConflict,
+    GrantRequestError,
+    GrantRequestExpired,
+    GrantRequestNotFound,
+    GrantStoreError,
+    GrantStoreUnavailable,
+)
 from .artifacts import ArtifactStoreError, FileArtifactStore, artifact_digest
 from .client import (
     HttpAgentLifecycleStore,
@@ -22,6 +30,8 @@ from .refs import RefError, load_registry_agents, parse_agent_ref
 from .reports import EvalReportConflict, FileEvalReportStore
 from .reports_postgres import PostgresEvalReportStore
 from .signing import PublishUnavailable, load_private_key, sign_digest, verify_digest
+from .tool_grants import FileToolGrantStore
+from .tool_grants_postgres import PostgresToolGrantStore
 from .trust import ArtifactTrustError, TrustStore
 
 __all__ = [
@@ -31,11 +41,19 @@ __all__ = [
     "EvalReportConflict",
     "FileAgentLifecycleStore",
     "FileArtifactStore",
+    "FileToolGrantStore",
+    "GrantRequestConflict",
+    "GrantRequestError",
+    "GrantRequestExpired",
+    "GrantRequestNotFound",
+    "GrantStoreError",
+    "GrantStoreUnavailable",
     "InProcessArtifactLoader",
     "PackagingError",
     "PostgresAgentLifecycleStore",
     "PostgresAgentRegistry",
     "PostgresEvalReportStore",
+    "PostgresToolGrantStore",
     "PublishUnavailable",
     "FileAgentRegistry",
     "FileEvalReportStore",

@@ -168,6 +168,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-075 只读工具目录（UI-4）：`ToolCatalog`、`--tool-catalog`、`/api/tools` 叠加注册表授权、Tools 面板。已完成。
 - SLICE-076 生命周期存储与接口（ADR-0010）：`AgentLifecycle` 转换、文件/Postgres 存储、控制面 GET/PUT、审计。已完成。
 - SLICE-077 生命周期拦截与控制台：按引用与按需加载拒绝退役版本、市场页徽标、`lifecycle set` 命令。已完成。
+- SLICE-078 工具授权请求存储（ADR-0011）：`ToolGrantRequest` 状态与到期、文件/Postgres 存储、有效授权查询。已完成。
 
 ## 完成定义
 

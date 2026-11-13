@@ -5,6 +5,7 @@ from __future__ import annotations
 import builtins
 from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
+from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from .approval import ApprovalDecision, ApprovalRequest
@@ -19,6 +20,7 @@ from .model import ModelRequest, ModelResponse
 from .policy import PolicyDecision
 from .quota import QuotaPolicy
 from .tool import ToolRequest, ToolResponse
+from .tool_grants import GrantStatus, ToolGrantRequest
 
 
 class AgentRegistry(Protocol):
@@ -44,6 +46,49 @@ class AgentLifecycleStore(Protocol):
         changed_by: str,
         reason: str,
     ) -> AgentLifecycle: ...
+
+
+class ToolGrantStore(Protocol):
+    async def add(self, request: ToolGrantRequest) -> ToolGrantRequest: ...
+
+    async def get(self, request_id: str) -> ToolGrantRequest | None: ...
+
+    async def list(
+        self,
+        tenant: str,
+        *,
+        status: GrantStatus | None = None,
+        now: datetime | None = None,
+    ) -> builtins.list[ToolGrantRequest]: ...
+
+    async def decide(
+        self,
+        request_id: str,
+        *,
+        approved: bool,
+        decided_by: str,
+        reason: str,
+        now: datetime | None = None,
+    ) -> ToolGrantRequest: ...
+
+    async def cancel(
+        self,
+        request_id: str,
+        *,
+        by: str,
+        reason: str = "",
+        now: datetime | None = None,
+    ) -> ToolGrantRequest: ...
+
+    async def active(
+        self,
+        tenant: str,
+        agent_id: str,
+        version: str,
+        digest: str,
+        tool_id: str,
+        now: datetime | None = None,
+    ) -> bool: ...
 
 
 class EvalReportStore(Protocol):
@@ -129,4 +174,5 @@ __all__ = [
     "SecretProvider",
     "TemplateSource",
     "ToolGateway",
+    "ToolGrantStore",
 ]
