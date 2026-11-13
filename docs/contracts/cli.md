@@ -153,6 +153,16 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
+## 从注册表启动（`console` / `serve` / `serve-many`）
+
+`console`、`serve` 和 `serve-many` 可以用 `--agent-ref TENANT/ID@VERSION` 代替本地 agent 文件。可重复。
+
+- `--agent-ref` 与 `--agents`（或 `serve` 的 `--agent`/`--config`）互斥，同时给退出 1。二者都不给也退出 1。
+- 加载前要求两个配置：工件字节来源 `--artifact-dir DIR` 或 `ARTIFACT_URL`（互斥，必须给一个），以及可信公钥 `--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`（JSON 映射 `key_id -> 64 hex 公钥`）。缺任一项退出 1。
+- 解析顺序：按租户列出注册表，找 `id@version`，用记录摘要调 `load_agent`；工件必须存在，签名必须被信任，否则退出 1。
+- agent 的名字取 manifest 的 `id`；同一批里重名退出 1。
+- `serve` 只接受一个 `--agent-ref`。
+
 ## `adk-agent serve` / `serve-many` 的 MCP HTTP 鉴权
 
 `serve` 和 `serve-many` 的 `streamable-http` 传输支持 `--oidc-config FILE`。
@@ -197,7 +207,7 @@
 - 配置了审计或配额且没有传入 runner 时，服务自行构建默认 runner 并包一层。`--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
 - `--rate-limit N --rate-limit-window SECONDS` 按客户端地址计数，对所有路径生效。A2A 没有 `/healthz` 和 `/metrics`，没有豁免路径。
 
-## `adk-agent console --agents FILE [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS]`
 
 启动私有控制台。
 

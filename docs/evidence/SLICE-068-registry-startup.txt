@@ -1,0 +1,12 @@
+SLICE-068 registry startup evidence
+date: 2026-11-13
+
+== red: refs module and --agent-ref do not exist ==
+$ python -m pytest tests/test_registry_startup.py -q
+E   ImportError: cannot import name 'RefError' from 'adk_agent.registry'
+ERROR tests/test_registry_startup.py
+1 error in 1.84s
+
+$ adk-agent console --agent-ref acme/bot@1.0.0
+adk-agent: error: the following arguments are required: --agents
+exit=2
