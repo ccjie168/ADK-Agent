@@ -24,13 +24,14 @@ from google.adk.tools.base_toolset import BaseToolset
 from pydantic import ValidationError
 
 from .approvals import ApprovalConflict, ApprovalExpired, ApprovalNotFound, FileApprovalInbox
-from .audit import ListAuditSink
+from .audit import AuditQuery, AuditQueryUnavailable, ListAuditSink, query_events
 from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from .core import (
     AccessPolicy,
     AgentRegistry,
     AuditEvent,
+    AuditSink,
     EvalReportStore,
     IdentityProvider,
     Invocation,
@@ -876,7 +877,7 @@ class ProgressBuffer:
         return item
 
 
-def _wrap_model(agent: Any, audit: ListAuditSink) -> None:
+def _wrap_model(agent: Any, audit: AuditSink) -> None:
     """Route an agent's ADK model through the policy gateway."""
     model = getattr(agent, "model", None)
     if isinstance(model, BaseLlm):
@@ -910,7 +911,7 @@ def _declared_tool_ids(agent: Any) -> set[str]:
     return tool_ids
 
 
-def _install_tool_guard(agent: Any, audit: ListAuditSink) -> None:
+def _install_tool_guard(agent: Any, audit: AuditSink) -> None:
     """Allow the agent's declared tools and deny everything else."""
     grants = [ToolGrant(tool_id=tool_id) for tool_id in sorted(_declared_tool_ids(agent))]
     install_tool_guard(agent, ToolGuard(GrantPolicyEngine(grants), audit=audit))
@@ -929,7 +930,8 @@ def build_console_app(
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
     session_service: Any | None = None,
-    audit_sink: ListAuditSink | None = None,
+    audit_sink: AuditSink | None = None,
+    audit_query: AuditQuery | None = None,
     oidc: IdentityProvider | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
@@ -960,6 +962,17 @@ def build_console_app(
 
     service = session_service if session_service is not None else _session_service(session_db)
     audit = audit_sink if audit_sink is not None else ListAuditSink()
+
+    async def _query_events(request: Request, limit: int = 1000) -> list[AuditEvent]:
+        if audit_query is None:
+            if isinstance(audit, ListAuditSink):
+                return audit.recent(limit)
+            path = getattr(audit, "path", None)
+            return query_events(path, limit=limit, order="desc") if path is not None else []
+        caller = _principal_for(request)
+        tenant = None if "admin" in caller.roles else caller.tenant
+        return await audit_query.events(tenant=tenant, limit=limit)
+
     sandbox_policy = sandbox or SandboxPolicy()
     for agent in agents.values():
         _wrap_model(agent, audit)
@@ -1000,6 +1013,10 @@ def build_console_app(
 
     app = FastAPI(title="ADK Console", docs_url=None, redoc_url=None)
 
+    @app.exception_handler(AuditQueryUnavailable)
+    async def audit_unavailable(_request: Request, _exc: Exception) -> JSONResponse:
+        return JSONResponse({"error": "audit_unavailable"}, status_code=502)
+
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
@@ -1023,7 +1040,7 @@ def build_console_app(
     @app.get("/api/audit")
     async def list_audit(request: Request, limit: int = 50) -> list[dict]:
         limit = min(max(limit, 1), 200)
-        events = _visible_events(audit.recent(1000), _principal_for(request))
+        events = _visible_events(await _query_events(request), _principal_for(request))
         return [event.model_dump(mode="json") for event in events[-limit:]]
 
     @app.get("/api/tenants")
@@ -1091,7 +1108,7 @@ def build_console_app(
 
     @app.get("/api/runs")
     async def list_runs(request: Request, limit: int = 50) -> list[dict]:
-        events = _visible_events(audit.recent(1000), _principal_for(request))
+        events = _visible_events(await _query_events(request), _principal_for(request))
         return _summarize_runs(events, limit)
 
     @app.get("/api/approvals")
@@ -1189,7 +1206,7 @@ def build_console_app(
 
     @app.get("/api/plans")
     async def list_plans(request: Request, limit: int = 50) -> list[dict]:
-        events = _visible_events(audit.recent(1000), _principal_for(request))
+        events = _visible_events(await _query_events(request), _principal_for(request))
         return _summarize_plans(events, limit)
 
     @app.get("/api/sessions")
@@ -1445,7 +1462,7 @@ def build_console_app(
     async def get_trace(request: Request, trace_id: str) -> dict:
         if not _TRACE_ID.fullmatch(trace_id):
             return {"trace_id": trace_id, "root": None, "error": "trace_not_found"}
-        events = _visible_events(audit.recent(1000), _principal_for(request))
+        events = _visible_events(await _query_events(request), _principal_for(request))
         return _trace_payload(events, trace_id)
 
     if rate_limit is not None:
@@ -1477,6 +1494,8 @@ def run_console(
     roles: list[str] | None = None,
     registry: AgentRegistry | None = None,
     eval_reports: EvalReportStore | None = None,
+    audit_sink: AuditSink | None = None,
+    audit_query: AuditQuery | None = None,
     oidc: IdentityProvider | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
@@ -1498,6 +1517,8 @@ def run_console(
         roles=roles,
         registry=registry,
         eval_reports=eval_reports,
+        audit_sink=audit_sink,
+        audit_query=audit_query,
         oidc=oidc,
         quota=quota,
         quota_config=quota_config,

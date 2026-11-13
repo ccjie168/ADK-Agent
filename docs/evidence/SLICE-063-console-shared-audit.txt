@@ -12,3 +12,55 @@ ERROR tests/test_console_shared_audit.py
 $ adk-agent console --agents examples/minimal/agent.py --audit-url http://127.0.0.1:8000
 adk-agent: error: unrecognized arguments: --audit-url http://127.0.0.1:8000
 exit=2
+
+== green: targeted tests ==
+$ python -m pytest tests/test_console_shared_audit.py -q
+11 passed in 1.91s
+
+$ python -m pytest -q
+739 passed, 13 skipped in 45.80s
+
+Two review fixes:
+- The delegate found a contradictory fixture in my new test (principal tenant acme, fixture produced
+  t1/other events, expectation e0). Fixed the fixture to write an acme event; the implementation
+  was right.
+- build_console_app with a JsonlAuditSink but no audit_query returned no history. It now falls back
+  to query_events on the sink's path, so a library caller gets reads without wiring a query.
+
+== live: console reads and writes one audit service ==
+Audit service on 127.0.0.1:18092 writing audit.jsonl; console on 127.0.0.1:18091 with
+--audit-url http://127.0.0.1:18092 --audit-token-env ADK_AUDIT_TOKEN.
+
+POST /api/chat (the model call fails without credentials, the run is still audited) -> 500
+GET /api/audit?limit=10 -> 1 event: [('agent.run', 'error', 'local')]
+GET /api/runs?limit=5     -> [('b0c0d1ed', 'error', 1)]
+
+The event was written through HttpAuditSink and read back through HttpAuditQuery.
+
+Stopped the audit service, same console:
+GET /api/audit -> 502 {"error": "audit_unavailable"}
+GET /api/runs  -> 502 {"error": "audit_unavailable"}
+
+== reading ==
+- The console no longer owns a second history. With --audit-url, every replica reads the same
+  events; the process buffer is only the no-flag fallback.
+- Reads are tenant-scoped by the console principal and enforced again by the audit service.
+- A dead audit service fails the panels closed with a fixed 502; it does not fall back to stale
+  local data.
+- Writes and reads both depend on the service. If it is down, the panels return 502 and the run
+  write path raises AuditSinkUnavailable, so the chat also fails; there is no local fallback.
+
+== full gate ==
+$ python scripts/check.py --full
+739 passed, 13 skipped in 43.08s
+No known vulnerabilities found
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS

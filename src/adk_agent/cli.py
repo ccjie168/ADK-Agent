@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import urlsplit
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .audit import SigningKeyring
+    from .audit import AuditQuery, SigningKeyring
     from .core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
     from .ratelimit import RateLimit
 
@@ -155,7 +155,7 @@ def _add_rate_limit_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_audit_quota_args(parser: argparse.ArgumentParser) -> None:
+def _add_audit_args(parser: argparse.ArgumentParser) -> None:
     audit = parser.add_mutually_exclusive_group()
     audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
     audit.add_argument(
@@ -169,6 +169,10 @@ def _add_audit_quota_args(parser: argparse.ArgumentParser) -> None:
             "never pass tokens on the command line)"
         ),
     )
+
+
+def _add_audit_quota_args(parser: argparse.ArgumentParser) -> None:
+    _add_audit_args(parser)
     parser.add_argument("--quota-config", default=None, help="JSON QuotaConfig file")
 
 
@@ -250,6 +254,26 @@ def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
         return HttpAuditSink(args.audit_url, auth_token=token)
     if args.audit_file:
         return JsonlAuditSink(args.audit_file)
+    return None
+
+
+def _audit_query(args: argparse.Namespace) -> AuditQuery | None:
+    from .audit import FileAuditQuery, HttpAuditQuery
+    from .auth import LOOPBACK_HOSTS
+
+    if args.audit_url:
+        host = urlsplit(args.audit_url).hostname
+        token = os.environ.get(args.audit_token_env) if args.audit_token_env else None
+        if host not in LOOPBACK_HOSTS and token is None:
+            print(
+                f"refusing a non-loopback audit URL without a token: set "
+                f"{args.audit_token_env} or use a loopback --audit-url",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        return HttpAuditQuery(args.audit_url, auth_token=token)
+    if args.audit_file:
+        return FileAuditQuery(args.audit_file)
     return None
 
 
@@ -517,6 +541,7 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="scope session keys to <tenant>:<subject> (default: off)",
     )
+    _add_audit_args(p_console)
     _add_http_args(p_console)
     _add_rate_limit_args(p_console)
     _add_runtime_args(p_console)
@@ -856,6 +881,8 @@ def main(argv: list[str] | None = None) -> None:
             approvals = FileApprovalInbox(Path(args.approval_dir), ttl_seconds=args.approval_ttl)
 
         agents = _load_agents(args.agents)
+        audit_query = _audit_query(args)
+        audit_sink = _audit_sink(args)
         run_console(
             agents,
             host=args.host,
@@ -867,6 +894,8 @@ def main(argv: list[str] | None = None) -> None:
             roles=args.roles,
             registry=FileAgentRegistry(args.registry),
             eval_reports=FileEvalReportStore(args.registry),
+            audit_sink=audit_sink,
+            audit_query=audit_query,
             oidc=oidc,
             quota=quota,
             quota_config=quota_config,

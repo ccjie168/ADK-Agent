@@ -1,6 +1,6 @@
 # SLICE-063 控制台接共享审计
 
-状态: planned
+状态: merged
 依据: SLICE-038，SLICE-062，`docs/contracts/console.md`，`docs/contracts/cli.md`。
 
 ## 意图（要什么，不写怎么写）
@@ -47,23 +47,24 @@ build_console_app(..., audit_query: AuditQuery | None = None)
 
 ## 完成判据（可执行）
 
-- [ ] 文件查询按租户和 limit 过滤 -> `tests/test_console_shared_audit.py::test_file_query`
-- [ ] HTTP 查询传参并解析事件 -> `tests/test_console_shared_audit.py::test_http_query`
-- [ ] HTTP 非 200 抛 `AuditQueryUnavailable` -> `tests/test_console_shared_audit.py::test_http_query_failure`
-- [ ] `/api/audit` 从注入的 query 读 -> `tests/test_console_shared_audit.py::test_console_reads_from_query`
-- [ ] 非 admin 只查本租户 -> `tests/test_console_shared_audit.py::test_console_scopes_tenant`
-- [ ] admin 查询不带租户 -> `tests/test_console_shared_audit.py::test_console_admin_query`
-- [ ] query 失败返回 502 -> `tests/test_console_shared_audit.py::test_console_maps_outage`
-- [ ] CLI `--audit-url` 装配读写两端 -> `tests/test_console_shared_audit.py::test_cli_wires_audit_url`
-- [ ] CLI `--audit-file` 装配文件读写 -> `tests/test_console_shared_audit.py::test_cli_wires_audit_file`
-- [ ] 非回环无 token 退出 1 -> `tests/test_console_shared_audit.py::test_cli_requires_token`
-- [ ] `python scripts/check.py --fast` 全绿 -> 证据文件
+- [x] 文件查询按租户和 limit 过滤 -> `tests/test_console_shared_audit.py::test_file_query`
+- [x] HTTP 查询传参并解析事件 -> `tests/test_console_shared_audit.py::test_http_query`
+- [x] HTTP 非 200 抛 `AuditQueryUnavailable` -> `tests/test_console_shared_audit.py::test_http_query_failure`
+- [x] `/api/audit` 从注入的 query 读 -> `tests/test_console_shared_audit.py::test_console_reads_from_query`
+- [x] 非 admin 只查本租户 -> `tests/test_console_shared_audit.py::test_console_scopes_tenant`
+- [x] admin 查询不带租户 -> `tests/test_console_shared_audit.py::test_console_admin_query`
+- [x] query 失败返回 502 -> `tests/test_console_shared_audit.py::test_console_maps_outage`
+- [x] 只给 JSONL sink 时从文件读历史 -> `tests/test_console_shared_audit.py::test_console_reads_jsonl_sink_without_query`
+- [x] CLI `--audit-url` 装配读写两端 -> `tests/test_console_shared_audit.py::test_cli_wires_audit_url`
+- [x] CLI `--audit-file` 装配文件读写 -> `tests/test_console_shared_audit.py::test_cli_wires_audit_file`
+- [x] 非回环无 token 退出 1 -> `tests/test_console_shared_audit.py::test_cli_requires_token`
+- [x] `python scripts/check.py --fast` 全绿 -> 证据文件
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.audit import HttpAuditQuery` -> 当前 `ImportError`
-- [ ] 反例 2：`console --audit-url ...` -> 当前 argparse 退出 2（参数不存在）
-- [ ] 反例 3：注入 query 后服务失败若返回空列表而不是 502 -> 由 `test_console_maps_outage` 覆盖
+- [x] 反例 1：`from adk_agent.audit import HttpAuditQuery` -> 当前 `ImportError`
+- [x] 反例 2：`console --audit-url ...` -> 当前 argparse 退出 2（参数不存在）
+- [x] 反例 3：注入 query 后服务失败若返回空列表而不是 502 -> 由 `test_console_maps_outage` 覆盖
 
 ## 契约（如涉及对外接口）
 
@@ -85,6 +86,6 @@ build_console_app(..., audit_query: AuditQuery | None = None)
 
 ## 证据
 
-- 反例红: 待补
-- 实现后绿: 待补
-- 实机: 待补
+- 反例红: `docs/evidence/SLICE-063-console-shared-audit.txt` 的 red 段
+- 实现后绿: 同文件 green 段，11 个新用例与全量 739 个用例通过
+- 实机: 同文件 live 段。真审计服务与真控制台之间，一次聊天写入的 `agent.run` 能从 `/api/audit` 和 `/api/runs` 读回；停掉审计服务后两个面板都返回 502 `audit_unavailable`
