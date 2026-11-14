@@ -195,6 +195,8 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-102 构建供应链收尾：构建后端进锁、`--no-build-isolation`、CI action 固定 SHA。已完成。
 - SLICE-103 会话存储租户 RLS（ADR-0019）：Postgres RLS 策略、principal 上下文、`--session-rls`、`sessions enable-rls`。已完成。
 - SLICE-104 会话 RLS 运维收口：启用顺序、角色要求、回滚与排障、跨进程实测。已完成。
+- SLICE-105 应用级状态租户 RLS（ADR-0020）：`app_states` 策略、`app_name` 租户前缀、四张表启用。已完成。
+- SLICE-106 应用级状态 RLS 运维收口：四张表说明、`app_name` 前缀与旧数据影响、跨进程实测。已完成。
 
 ## 完成定义
 
