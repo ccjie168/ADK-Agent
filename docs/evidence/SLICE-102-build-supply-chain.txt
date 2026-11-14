@@ -1,0 +1,85 @@
+SLICE-102 build supply chain
+============================
+
+red, before the lock and build changes
+--------------------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_release_lock.py -q
+FAILED tests/test_release_lock.py::test_build_backend_is_locked
+  AssertionError: runtime.lock lacks hatchling
+FAILED tests/test_release_lock.py::test_builds_disable_build_isolation
+  assert None
+FAILED tests/test_release_lock.py::test_actions_are_pinned_by_sha
+  AssertionError: - uses: actions/checkout@v4
+3 failed, 6 passed in 0.12s
+
+locks
+-----
+generated in python:3.13-slim with pip-tools 7.6.2
+$ pip-compile --generate-hashes --no-emit-index-url --no-emit-trusted-host \
+    --output-file requirements/runtime.lock \
+    --extra build --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml
+$ pip-compile --generate-hashes --no-emit-index-url --no-emit-trusted-host \
+    --output-file requirements/dev.lock \
+    --extra dev --extra build --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml
+
+runtime.lock: 91 -> 96 pins
+  added hatchling 1.33.0, pathspec 1.1.1, pluggy 1.7.0, tomlkit 0.15.2,
+  trove-classifiers 2026.9.21.13
+dev.lock: 129 -> 132 pins
+  added hatchling 1.33.0, tomlkit 0.15.2, trove-classifiers 2026.9.21.13
+no existing pin changed version; no index-url or trusted-host line is emitted
+
+actions
+-------
+resolved with git ls-remote --tags
+actions/checkout v4.4.0           11d5960a326750d5838078e36cf38b85af677262
+actions/setup-python v5.6.0       a26af69be951a213d495a4c3e4e4022e16d87065
+aquasecurity/trivy-action v0.28.0 915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
+actions/upload-artifact v4.6.2    ea165f8d65b6e75b540449e92b4886f43607fa02
+note: the previous CI ref was trivy-action@0.28.0 and the repository tag is
+v0.28.0. The SHA fixes the ref regardless of tag spelling.
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_release_lock.py -q
+9 passed in 0.03s
+
+image
+-----
+$ docker build -t adk-agent:slice102 .
+...
+Successfully built adk-agent
+Successfully installed adk-agent-0.1.0
+naming to docker.io/library/adk-agent:slice102 done
+
+$ docker run -d -e ADK_MCP_AUTH_TOKEN=<redacted> -e PORT=8841 -p 8841:8841 adk-agent:slice102
+$ curl http://127.0.0.1:8841/healthz
+healthz=200
+{"status":"ok"}
+$ docker logs ...
+GET /healthz HTTP/1.1 200 OK
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1161 passed, 58 skipped in 47.68s
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+notes
+-----
+- The project install runs with --no-build-isolation in both Dockerfile and CI,
+  so hatchling comes from the hash-checked lock instead of being fetched at
+  build time.
+- hatchling and its build-only dependencies now ship in the runtime image.
+  A builder stage that keeps them out of the final image is possible follow-up
+  work and is not claimed here.
+- Registry push and digest write-back remain out of scope for this slice.

@@ -28,15 +28,17 @@ COPY src ./src
 COPY examples ./examples
 
 # runtime.lock is compiled in python:3.13-slim and carries a hash for every
-# artifact, so the build fails on any registry substitution. Regenerate it with
-# pip-compile in the same image whenever pyproject.toml changes.
+# artifact, so the build fails on any registry substitution. It also pins the
+# build backend, so the project install runs without build isolation and never
+# fetches a build-time package from the index. Regenerate it with pip-compile in
+# the same image whenever pyproject.toml changes.
 # PIP_INDEX_URL is optional and lets restricted networks use a mirror; it is
 # not persisted in the image, and the hashes still come from the lock.
 ARG PIP_INDEX_URL
 RUN python -m pip install --root-user-action=ignore --upgrade pip \
     && python -m pip install --root-user-action=ignore --only-binary :all: \
         --require-hashes -r requirements/runtime.lock \
-    && python -m pip install --root-user-action=ignore --no-deps .
+    && python -m pip install --root-user-action=ignore --no-build-isolation --no-deps .
 
 USER app
 

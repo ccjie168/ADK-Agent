@@ -22,6 +22,7 @@ http = ["uvicorn>=0.30"]
 oidc = ["PyJWT[crypto]>=2,<3"]
 publish = ["cryptography>=42"]
 redis = ["redis>=5"]
+build = ["hatchling"]
 dev = [
     "pytest>=8.0",
     "ruff",

@@ -98,6 +98,30 @@ def test_ci_uses_locks_builds_and_scans():
     assert "pip install -e" not in text
 
 
+def test_build_backend_is_locked():
+    for path in (RUNTIME, DEV):
+        names = _names(_entries(path))
+        assert "hatchling" in names, f"{path.name} lacks hatchling"
+
+
+def test_builds_disable_build_isolation():
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    assert re.search(r"--no-build-isolation\s+--no-deps \.", dockerfile)
+    ci = CI.read_text(encoding="utf-8")
+    assert re.search(r"--no-build-isolation\s+--no-deps \.", ci)
+
+
+def test_actions_are_pinned_by_sha():
+    lines = [
+        line.strip() for line in CI.read_text(encoding="utf-8").splitlines() if "uses:" in line
+    ]
+    assert lines
+    for line in lines:
+        ref = line.split("uses:", 1)[1].strip().split()[0]
+        assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", ref), line
+        assert re.search(r"#\s*v?\d+\.\d+\.\d+", line), line
+
+
 def test_manifests_pin_image_digest():
     for path in MANIFESTS:
         text = path.read_text(encoding="utf-8")
