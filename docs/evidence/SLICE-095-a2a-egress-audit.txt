@@ -1,0 +1,56 @@
+SLICE-095 outbound A2A audit
+============================
+
+red, pre-slice commit 7c5491c
+-----------------------------
+$ git worktree add <tmp>/adk-095-red 7c5491c
+$ PYTHONPATH=<tmp>/adk-095-red/src ./.venv/Scripts/python.exe <tmp>/adk-095-red-probe.py
+source: <tmp>\adk-095-red\src\adk_agent\__init__.py
+case1: ModuleNotFoundError No module named 'adk_agent.a2a_egress'
+case2: TypeError remote_agent() got an unexpected keyword argument 'audit'
+case3: no audit parameter on remote_agent -> True
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_a2a_egress.py \
+    tests/test_a2a.py tests/test_a2a_runtime.py -q
+20 passed in 2.84s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1128 passed, 33 skipped in 57.16s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, real loopback socket and JSONL audit
+------------------------------------------
+emitter: AuditTransport(httpx.AsyncHTTPTransport()) with peer crm, target crm/bot
+sink: JsonlAuditSink
+invocation: run-95, trace-95
+
+GET /card -> 200
+GET /boom -> 500
+server stopped, GET /card -> ReadTimeout propagated to the caller
+
+audit lines:
+  a2a.call third_party ok    crm/bot trace=trace-95 args=d8f97d0a015e
+  a2a.call third_party error crm/bot trace=trace-95 args=08ee316cbc71
+  a2a.call third_party error crm/bot trace=trace-95 args=d8f97d0a015e
+
+notes
+-----
+- The success and the 500 differ only in `status`; both are one event per
+  request. The transport exception records `error` and then re-raises, so the
+  caller sees `ReadTimeout` and the audit still has the line.
+- Every event carries the invocation trace, the peer/agent target and a hash of
+  `"<method> <path>"`. The path query string is not recorded, and the tests
+  assert that request bodies, response bodies, the host and query values never
+  appear in the serialized event.
+- `AuditTransport.aclose()` delegates to the inner transport, so wrapping a
+  client does not leak the real `AsyncHTTPTransport`.
+- Audit emission failures are logged and swallowed, so an audit outage cannot
+  turn a working outbound call into a failure.
+- Boundary: this records our side only. The remote's internal events are not
+  reachable; correlation is by trace id, as `docs/contracts/a2a.md` states.

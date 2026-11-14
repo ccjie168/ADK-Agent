@@ -15,14 +15,16 @@ from typing import TYPE_CHECKING, Any
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from .a2a_egress import AuditTransport
 from .a2a_peer import (
     PeerAuthzMiddleware,
     PeerIdentityMiddleware,
     PeerTokenMiddleware,
     current_peer_principal,
 )
+from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
-from .core import Principal
+from .core import AgentRef, Principal
 from .mcp.http import resolve_port
 from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .runtime.audit_proxy import wrap_runner
@@ -45,6 +47,7 @@ _A2A_TENANT = "local"
 _EXPOSURE_ERROR = 'peer mode requires a manifest with exposure "a2a"'
 _IDENTITY_ERROR = "peer mode requires exactly one of oidc or peer_tokens"
 _STORES_ERROR = "peer mode requires both peers and peer_grants stores"
+_PEER_ID_ERROR = "peer_id is required when audit is set"
 
 
 def _peer_quota_policy(quota_config: QuotaConfig | None) -> Any:
@@ -249,13 +252,40 @@ def remote_agent(
     description: str = "",
     timeout: float = 600.0,
     auth_token: str | None = None,
+    audit: AuditSink | None = None,
+    peer_id: str | None = None,
+    tenant: str = "local",
+    subject: str = "a2a_consumer",
 ) -> Any:
     """Build a ``RemoteA2aAgent``. With a token, card fetch and calls send it."""
+    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else None
     client = None
-    if auth_token:
+    if audit is not None:
+        if peer_id is None:
+            raise ValueError(_PEER_ID_ERROR)
         import httpx
 
-        client = httpx.AsyncClient(headers={"Authorization": f"Bearer {auth_token}"})
+        agent_ref = AgentRef(
+            id=name,
+            version="remote",
+            digest=f"sha256:{hash_text(agent_card)}",
+        )
+        client = httpx.AsyncClient(
+            transport=AuditTransport(
+                inner=httpx.AsyncHTTPTransport(),
+                audit=audit,
+                tenant=tenant,
+                subject=subject,
+                peer_id=peer_id,
+                target=f"{peer_id}/{name}",
+                agent_ref=agent_ref,
+            ),
+            headers=headers,
+        )
+    elif auth_token:
+        import httpx
+
+        client = httpx.AsyncClient(headers=headers)
     return _remote_a2a_agent()(
         name=name,
         agent_card=agent_card,

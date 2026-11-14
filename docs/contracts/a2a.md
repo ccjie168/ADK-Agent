@@ -22,6 +22,19 @@ A2A 服务的路径由 `rpc_path` 决定：agent card 与 JSON-RPC 都在该前�
 
 审计身份随 peer：`agent.run` 的 `tenant` 与 `principal` 来自 peer，不再是 `local/a2a_user`。legacy 模式保持原样。
 
+## 出站调用审计
+
+消费方 `remote_agent(..., audit=sink, peer_id="...")` 在每次 HTTP 请求上写一条 `a2a.call`：
+
+- `egress="third_party"`，`target="<peer_id>/<agent name>"`，`tenant` 与 `principal` 取构造参数（默认 `local` 与 `a2a_consumer`，kind 为 `service`）。
+- `status="ok"` 当响应码小于 500；`>= 500` 或传输异常记 `"error"`。传输异常在记完之后原样抛出。
+- `args_hash` 是 `"<method> <path>"` 的哈希。不记录请求体、响应体、完整 URL 或凭据。
+- `trace_id` 优先取当前 invocation 的 trace，取不到则新建。`latency_ms` 是实际请求耗时。
+- 审计写入失败只记日志，不改变调用结果。
+- 这是本地边界。远端内部的审计事件不在这里，只能按 trace id 关联；本契约不承诺跨组织端到端可验证。
+
+不给 `audit` 时 `remote_agent` 行为不变；给了 `audit` 却没给 `peer_id` 抛 `ValueError`。
+
 ### 记录形状
 
 ```text
