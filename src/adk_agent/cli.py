@@ -961,6 +961,11 @@ def main(argv: list[str] | None = None) -> None:
     p_cl_disable.add_argument("--id", required=True)
     _add_registry_client_args(p_cl_disable)
 
+    p_cl_check = connectors_sub.add_parser("check", help="probe a connector's health")
+    p_cl_check.add_argument("--connectors-dir", default=None)
+    p_cl_check.add_argument("--id", required=True)
+    _add_registry_client_args(p_cl_check)
+
     p_lifecycle = sub.add_parser("lifecycle", help="change a published version's lifecycle state")
     lifecycle_sub = p_lifecycle.add_subparsers(dest="lifecycle_cmd", required=True)
     p_lifecycle_set = lifecycle_sub.add_parser("set", help="set the lifecycle status")
@@ -1615,6 +1620,13 @@ def main(argv: list[str] | None = None) -> None:
             try:
                 if args.connectors_cmd == "list":
                     return await store.list(args.tenant)
+                if args.connectors_cmd == "check":
+                    from .registry import check_connector
+
+                    spec = await store.get(args.id)
+                    if spec is None:
+                        raise ConnectorNotFound(f"connector not found: {args.id}")
+                    return await check_connector(spec)
                 if args.connectors_cmd == "disable":
                     return await store.disable(args.id, by="cli")
                 spec = ConnectorSpec(

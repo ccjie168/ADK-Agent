@@ -1,0 +1,72 @@
+SLICE-089 connector health check
+================================
+
+red, pre-slice commit 9b507b7
+-----------------------------
+$ git worktree add <tmp>/adk-089-red 9b507b7
+$ PYTHONPATH=<tmp>/adk-089-red/src ./.venv/Scripts/python.exe <tmp>/adk-089-red-probe.py
+source: <tmp>\adk-089-red\src\adk_agent\__init__.py
+case1: ImportError cannot import name 'check_connector' from 'adk_agent.registry'
+case2: POST /api/connectors/crm/check -> 404 {'detail': 'Not Found'}
+case3: SystemExit 2 (argument connectors_cmd: invalid choice: 'check')
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/registry/test_connector_health.py \
+    tests/test_console_connectors.py tests/test_cli_connectors.py -q
+25 passed in 2.44s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1021 passed, 29 skipped in 50.21s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, loopback server and real httpx
+------------------------------------
+server on 127.0.0.1:8890:
+  /ok -> 200, /auth -> 401, /missing -> 404, /redirect -> 302 Location /ok,
+  /boom -> 500
+connectors in a file store, base_url http://127.0.0.1:8890, tenant acme089
+
+$ adk-agent connectors check --connectors-dir <dir> --id ok089
+{"connector_id":"ok089","status":"healthy","status_code":200,"latency_ms":57,"reason":null}
+$ adk-agent connectors check --connectors-dir <dir> --id auth089
+{"connector_id":"auth089","status":"unauthorized","status_code":401,"latency_ms":55,"reason":null}
+$ adk-agent connectors check --connectors-dir <dir> --id missing089
+{"connector_id":"missing089","status":"not_found","status_code":404,"latency_ms":66,"reason":null}
+$ adk-agent connectors check --connectors-dir <dir> --id redirect089
+{"connector_id":"redirect089","status":"redirect","status_code":302,"latency_ms":71,"reason":null}
+$ adk-agent connectors check --connectors-dir <dir> --id boom089
+{"connector_id":"boom089","status":"server_error","status_code":500,"latency_ms":66,"reason":null}
+$ adk-agent connectors check --connectors-dir <dir> --id down089
+{"connector_id":"down089","status":"unreachable","status_code":null,"latency_ms":2092,"reason":"connect_error"}
+every command exited 0
+
+server saw:
+  /ok auth=None
+  /auth auth=None
+  /missing auth=None
+  /redirect auth=None
+  /boom auth=None
+no request carried an Authorization header, and /redirect was requested once,
+so the 302 was not followed
+
+console on 127.0.0.1:8808 with the same --connectors-dir:
+POST /api/connectors/ok089/check -> 200 status healthy status_code 200
+POST /api/connectors/redirect089/check -> 200 status redirect status_code 302
+POST /api/connectors/down089/check -> 200 status unreachable reason connect_error
+
+notes
+-----
+- `down089` points at a closed loopback port; Windows reports the refusal after
+  about two seconds, which is why its latency is near the 5 second cap path.
+- The console and CLI probes run from their own process. With `--registry-url`
+  the spec is fetched over HTTP but the probe still leaves the operator's host.
+- The check sends no credentials, resolves no `auth_ref`, reads no response
+  body, and caps the timeout at 5 seconds.
+- `test_redirect_not_followed_by_a_following_client` pins `follow_redirects=False`
+  on the request itself, so an injected client that follows redirects cannot
+  change the verdict.

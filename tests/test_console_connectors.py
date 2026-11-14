@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime, timezone
+
 from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 
 from adk_agent.audit import ListAuditSink
 from adk_agent.console import build_console_app
-from adk_agent.registry import FileConnectorStore
+from adk_agent.core import ConnectorSpec
+from adk_agent.registry import ConnectorHealth, FileConnectorStore
 
 AUTH = {"Authorization": "Bearer secret"}
 
@@ -97,3 +101,56 @@ def test_invalid_connector(tmp_path):
 
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_connector"}
+
+
+HEALTH = ConnectorHealth(
+    connector_id="crm",
+    status="healthy",
+    status_code=200,
+    latency_ms=12,
+    checked_at=datetime(2026, 11, 14, 9, 30, tzinfo=timezone.utc),
+)
+
+
+def _seed(tmp_path, **overrides):
+    spec = ConnectorSpec.model_validate(_body(**overrides))
+    asyncio.run(FileConnectorStore(tmp_path / "connectors").add(spec))
+
+
+def test_check_admin_only(tmp_path, monkeypatch):
+    _seed(tmp_path)
+    monkeypatch.setattr(
+        "adk_agent.console.check_connector",
+        lambda spec: (_ for _ in ()).throw(AssertionError("probe ran for a non-admin")),
+    )
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = client.post("/api/connectors/crm/check", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_check_missing_and_tenant(tmp_path):
+    _seed(tmp_path, connector_id="foreign", tenant="acme")
+    with TestClient(_app(tmp_path)) as client:
+        missing = client.post("/api/connectors/missing/check", headers=AUTH)
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        foreign = client.post("/api/connectors/foreign/check", headers=AUTH)
+
+    assert missing.status_code == 404
+    assert missing.json() == {"error": "connector_not_found"}
+    assert foreign.status_code == 403
+    assert foreign.json() == {"error": "tenant_forbidden"}
+
+
+def test_check_healthy(tmp_path, monkeypatch):
+    async def fake_check(spec, *, client=None, max_timeout=5.0):
+        return HEALTH
+
+    monkeypatch.setattr("adk_agent.console.check_connector", fake_check)
+    with TestClient(_app(tmp_path)) as client:
+        assert client.post("/api/connectors", json=_body(), headers=AUTH).status_code == 201
+        response = client.post("/api/connectors/crm/check", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json() == HEALTH.model_dump(mode="json")

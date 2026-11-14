@@ -69,6 +69,7 @@ from .registry import (
     PublishUnavailable,
     RegistryIntegrityError,
     TrustStore,
+    check_connector,
 )
 from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
@@ -237,7 +238,9 @@ _INDEX_HTML = """<!doctype html>
   <div class="row">
     <button id="connector-register">Register</button>
     <button id="connector-disable">Disable selected</button>
+    <button id="connector-check">Check selected</button>
   </div>
+  <div id="connector-health" class="panel-msg"></div>
 </section>
 
 <section id="runs" class="panel">
@@ -657,6 +660,24 @@ async function disableConnector() {
   $("connectors-msg").textContent = "disabled " + result.data.connector_id;
   selectedConnector = result.data;
   await loadConnectors();
+}
+
+async function checkConnector() {
+  $("connector-health").textContent = "";
+  if (!selectedConnector) {
+    $("connector-health").textContent = "select a connector first";
+    return;
+  }
+  const result = await postJson(
+    "/api/connectors/" + encodeURIComponent(selectedConnector.connector_id) + "/check", {});
+  if (!result.ok) {
+    $("connector-health").textContent = "check failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  const health = result.data;
+  $("connector-health").textContent =
+    health.status + " status=" + health.status_code + " latency=" + health.latency_ms + "ms";
 }
 
 async function unloadAgent() {
@@ -1093,6 +1114,7 @@ $("refresh-tools").addEventListener("click", loadTools);
 $("refresh-connectors").addEventListener("click", loadConnectors);
 $("connector-register").addEventListener("click", registerConnector);
 $("connector-disable").addEventListener("click", disableConnector);
+$("connector-check").addEventListener("click", checkConnector);
 $("refresh-sessions").addEventListener("click", loadSessions);
 $("refresh-approvals").addEventListener("click", loadApprovals);
 $("refresh-grants").addEventListener("click", loadGrants);
@@ -1896,6 +1918,25 @@ def build_console_app(
                 )
             )
         return JSONResponse(disabled.model_dump(mode="json"))
+
+    @app.post("/api/connectors/{connector_id}/check")
+    async def check_connector_health(request: Request, connector_id: str) -> Any:
+        if connectors is None:
+            return JSONResponse({"error": "connectors_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            spec = await connectors.get(connector_id)
+        except ConnectorStoreError:
+            logger.exception("connector read failed: id=%s", connector_id)
+            return JSONResponse({"error": "connector_store_unavailable"}, status_code=503)
+        if spec is None:
+            return JSONResponse({"error": "connector_not_found"}, status_code=404)
+        if spec.tenant is not None and spec.tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        health = await check_connector(spec)
+        return JSONResponse(health.model_dump(mode="json"))
 
     @app.get("/api/tool-grants")
     async def list_tool_grants(

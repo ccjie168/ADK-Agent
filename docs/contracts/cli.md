@@ -155,6 +155,7 @@
 - `connectors list --tenant TENANT` 输出 JSON 数组，含全局与租户连接器。
 - `connectors register` 接受 `--id`、`--kind`（http/openapi/mcp）、`--base-url`、`--auth-ref`、`--methods`（逗号分隔）、`--path-prefixes`（逗号分隔）、`--data-classes`（逗号分隔）、`--timeout-seconds`、`--max-response-bytes`、可选 `--tenant`。输出已存记录的 JSON；同 id 不同定义退出 1。
 - `connectors disable --id ID` 输出停用后的 JSON。未知 id 退出 1。
+- `connectors check --id ID` 输出 `ConnectorHealth` JSON，从 CLI 进程探测第一个路径前缀，不带凭据、不跟随重定向、超时不超过 5 秒。未知 id 退出 1；探测失败也输出结果并退出 0，因为结果本身就是检查结论。
 - 成功写 `connector.register` 或 `connector.disable` 审计；控制面模式下写端要求 admin。
 
 ## `adk-agent approvals prune --dir DIR --older-than SECONDS [--delete]`

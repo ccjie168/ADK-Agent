@@ -229,6 +229,28 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 成功 200，重复停用幂等，写 `connector.disable` 审计。
 - 未配置存储 404 `connectors_not_configured`；存储不可达 503 `connector_store_unavailable`。
 
+## `POST /api/connectors/{connector_id}/check` -> `ConnectorHealth`
+
+对一个连接器发出受约束的探测请求。
+
+```json
+{
+  "connector_id": "crm",
+  "status": "healthy",
+  "status_code": 200,
+  "latency_ms": 42,
+  "checked_at": "2026-11-14T09:30:00Z",
+  "reason": null
+}
+```
+
+- 只有 `admin` 能触发，非 admin 403 `forbidden`。
+- 不存在 404 `connector_not_found`；属于其他租户且调用方不是 admin 403 `tenant_forbidden`。
+- 未配置存储 404 `connectors_not_configured`；存储不可达 503 `connector_store_unavailable`。
+- 探测从控制台进程发出，`GET` 连接器的第一个路径前缀，不带凭据，不跟随重定向，超时取连接器配置与 5 秒的较小值，不读取响应体。
+- `status` 取 `healthy`、`unauthorized`、`not_found`、`redirect`、`server_error`、`unexpected_status`、`unreachable`。`reason` 只在 `unreachable` 时取 `timeout` 或 `connect_error`。
+- 不写审计，不改连接器记录。
+
 ## `GET /api/tool-grants?tenant=<name>&status=<status>` -> `[ToolGrantRequest]`
 
 列出工具临时授权请求，按 `requested_at` 倒序。`status` 取 `pending`、`approved`、`denied`、`expired`、`cancelled`，其他值 400 `invalid_status`。

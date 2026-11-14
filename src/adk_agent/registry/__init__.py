@@ -22,6 +22,7 @@ from .client import (
     RegistryRejected,
     RegistryServiceUnavailable,
 )
+from .connector_health import ConnectorHealth, check_connector
 from .connectors import FileConnectorStore
 from .connectors_client import HttpConnectorStore
 from .connectors_postgres import PostgresConnectorStore
@@ -47,6 +48,7 @@ __all__ = [
     "EvalReportConflict",
     "ConnectorConflict",
     "ConnectorForbidden",
+    "ConnectorHealth",
     "ConnectorNotFound",
     "FileAgentLifecycleStore",
     "FileConnectorStore",
@@ -82,6 +84,7 @@ __all__ = [
     "RegistryStoreUnavailable",
     "TrustStore",
     "artifact_digest",
+    "check_connector",
     "load_agent",
     "load_manifest",
     "load_private_key",
