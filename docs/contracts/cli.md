@@ -359,23 +359,24 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 
 M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名，M4 会替换。
 
-## 会话存储的租户 RLS（ADR-0019）
+## 会话存储的租户 RLS（ADR-0019、ADR-0020）
 
 `console`、`serve`、`serve-many` 接受 `--session-rls`。它只在 `SESSION_URL` 是 `postgresql://` 或 `postgresql+asyncpg://` 且 `--session-tenant-scope` 打开时可用，其他组合退出 1。
 
 - 打开后，`sessions`、`events`、`user_states` 三张表启用并强制 RLS，策略是 `split_part(user_id, ':', 1) = current_setting('app.tenant_id', true)`，`USING` 与 `WITH CHECK` 都要。
-- 租户取自已认证 principal。运行外的会话调用由控制台与 MCP 的调用点设置请求上下文；运行路径回退到 `current_invocation().principal.tenant`。`user_id` 只用于行匹配，不决定租户。
-- 每个事务在 `after_begin` 时执行 `set_config('app.tenant_id', <tenant>, true)`。没有租户时读到 0 行。
-- 启动时检查三张表的 `relrowsecurity`、`relforcerowsecurity` 与策略存在；缺失时退出 1，提示先运行 `adk-agent sessions enable-rls`。
-- `app_states` 不在 RLS 范围。租户敏感的应用级状态不能放在那里。
-- 打开后没有冒号前缀的 `user_id` 行不可见，不自动迁移。
+- `app_states` 同样启用并强制 RLS，策略用 `split_part(app_name, ':', 1) = current_setting('app.tenant_id', true)`。
+- 开启后，会话服务看到的 `app_name` 是 `<tenant>:<agent>`，由 wrapper 从已认证 principal 改写。控制台、MCP、审计与 manifest 里的 agent 名不变。
+- 租户取自已认证 principal。运行外的会话调用由控制台与 MCP 的调用点设置请求上下文；运行路径回退到 `current_invocation().principal.tenant`。`user_id` 与 `app_name` 只用于行匹配，不决定租户。
+- 每个事务设置 `set_config('app.tenant_id', <tenant>, true)`。没有租户时读到 0 行。
+- 启动时检查四张表的 `relrowsecurity`、`relforcerowsecurity` 与策略存在；缺失时退出 1，提示先运行 `adk-agent sessions enable-rls`。
+- 打开后没有冒号前缀的 `user_id` 行与没有租户前缀的 `app_name` 行都不可见，不自动迁移。已经按旧 `app_name` 存的会话也会读不到。
 
 ## `adk-agent sessions enable-rls --database-url URL`
 
 为 ADK 会话表安装 RLS 策略。
 
 - URL 必须是 Postgres；不给时读 `SESSION_URL`。两者都没有退出 1，SQLite 与内存存储退出 1。
-- 执行角色必须是 `sessions`、`events`、`user_states` 的属主，不能是 superuser，不能有 `BYPASSRLS`；否则退出 1。
+- 执行角色必须是 `sessions`、`events`、`user_states`、`app_states` 的属主，不能是 superuser，不能有 `BYPASSRLS`；否则退出 1。
 - 表不存在时退出 1，提示先创建一次会话。
 - 幂等：重复运行先 `DROP POLICY IF EXISTS` 再重建。
 - 成功输出 `session rls enabled`，退出 0。

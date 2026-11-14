@@ -1,0 +1,54 @@
+SLICE-105 app-state tenant RLS
+==============================
+
+red, before the implementation
+------------------------------
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe -m pytest tests/runtime/test_session_rls.py -q
+FAILED test_setup_creates_policies
+FAILED test_app_name_is_scoped
+FAILED test_cross_tenant_app_state_is_invisible
+FAILED test_legacy_app_state_is_invisible
+4 failed, 8 passed in 5.97s
+
+The first run of the write-rejection test passed for the wrong reason: the
+direct insert omitted the NOT NULL update_time column. The test now supplies
+it, so the post-implementation pass comes from the WITH CHECK policy.
+
+green
+-----
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe -m pytest tests/runtime/test_session_rls.py -q
+12 passed in 4.10s
+
+covered:
+- four policies; app_states uses the app_name prefix
+- create_session stores app_name as acme:scoped
+- an app_state row written as acme is invisible to other
+- a write carrying another tenant's prefix is rejected by WITH CHECK
+- a legacy row with a plain app_name is invisible after enable
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1168 passed, 69 skipped in 48.90s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe scripts/check.py --full
+1236 passed, 1 skipped in 58.51s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+notes
+-----
+- The wrapper rewrites app_name for create_session, get_session,
+  delete_session, list_sessions and get_user_state. append_event uses the
+  Session object, which already carries the scoped app_name from the create or
+  get call.
+- Agent names in the console, MCP, audit targets and manifests are unchanged.
+- app_states.update_time has no server default in the ADK schema; direct SQL
+  inserts in the tests set it explicitly.

@@ -51,6 +51,66 @@ def session_tenant(tenant: str) -> Iterator[None]:
         _TENANT.reset(token)
 
 
+def scoped_app_name(app_name: str) -> str:
+    """Prefix ``app_name`` with the authenticated tenant when one is in context."""
+    tenant = current_session_tenant()
+    if not tenant:
+        return app_name
+    prefix = f"{tenant}:"
+    return app_name if app_name.startswith(prefix) else prefix + app_name
+
+
+class AppNameScopedSessionService:
+    """Session service proxy that scopes ``app_name`` to the current tenant."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    async def create_session(self, *, app_name, user_id, state=None, session_id=None):
+        return await self._inner.create_session(
+            app_name=scoped_app_name(app_name),
+            user_id=user_id,
+            state=state,
+            session_id=session_id,
+        )
+
+    async def get_session(self, *, app_name, user_id, session_id, config=None):
+        return await self._inner.get_session(
+            app_name=scoped_app_name(app_name),
+            user_id=user_id,
+            session_id=session_id,
+            config=config,
+        )
+
+    async def delete_session(self, *, app_name, user_id, session_id):
+        return await self._inner.delete_session(
+            app_name=scoped_app_name(app_name),
+            user_id=user_id,
+            session_id=session_id,
+        )
+
+    async def list_sessions(self, *, app_name, user_id=None):
+        return await self._inner.list_sessions(
+            app_name=scoped_app_name(app_name),
+            user_id=user_id,
+        )
+
+    async def append_event(self, session, event):
+        return await self._inner.append_event(session, event)
+
+    async def get_user_state(self, *, app_name, user_id):
+        return await self._inner.get_user_state(
+            app_name=scoped_app_name(app_name),
+            user_id=user_id,
+        )
+
+    async def flush(self):
+        return await self._inner.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
 def build_session_service(
     *, url: str | None = None, sqlite_path: str | None = None, rls: bool = False
 ) -> Any:
@@ -74,6 +134,7 @@ def build_session_service(
                 from .session_rls import install_session_rls
 
                 install_session_rls(service.db_engine)
+                return AppNameScopedSessionService(service)
             return service
         raise ValueError(
             "SESSION_URL must be memory:// or a postgresql+asyncpg:// DSN; "
@@ -106,10 +167,12 @@ def scoped_user_id(principal: Principal) -> str:
 
 
 __all__ = [
+    "AppNameScopedSessionService",
     "SessionStoreUnavailable",
     "build_session_service",
     "configured_session_service",
     "current_session_tenant",
+    "scoped_app_name",
     "scoped_user_id",
     "session_tenant",
 ]

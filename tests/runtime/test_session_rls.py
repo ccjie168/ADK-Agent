@@ -23,7 +23,7 @@ APP_ROLE = "adk_session_rls"
 OTHER_ROLE = "adk_session_rls_other"
 SCHEMA = "test_session_rls"
 PASSWORD = "x"
-TABLES = ("sessions", "events", "user_states")
+TABLES = ("sessions", "events", "user_states", "app_states")
 
 
 def test_rls_requires_postgres(tmp_path):
@@ -240,6 +240,141 @@ def test_enable_rls_is_idempotent():
         return True
 
     assert asyncio.run(scenario()) is True
+
+
+@_live
+def test_app_name_is_scoped():
+    async def scenario() -> str | None:
+        import asyncpg
+
+        await _setup()
+        service = build_session_service(url=_app_dsn(), rls=True)
+        try:
+            with session_tenant("acme"):
+                created = await service.create_session(app_name="scoped", user_id="acme:alice")
+        finally:
+            await service.db_engine.dispose()
+        assert DSN is not None
+        conn = await asyncpg.connect(DSN)
+        try:
+            return await conn.fetchval(
+                f'SELECT app_name FROM "{SCHEMA}".sessions WHERE id = $1', created.id
+            )
+        finally:
+            await conn.close()
+
+    assert asyncio.run(scenario()) == "acme:scoped"
+
+
+async def _insert_app_state(app_name: str, tenant: str | None = "acme") -> None:
+    from sqlalchemy import text
+
+    from adk_agent.runtime.session_rls import engine_for_url
+
+    engine = engine_for_url(_app_dsn())
+    try:
+        async with engine.begin() as conn:
+            if tenant is not None:
+                await conn.execute(
+                    text("SELECT set_config('app.tenant_id', :tenant, true)"),
+                    {"tenant": tenant},
+                )
+            await conn.execute(
+                text(
+                    "INSERT INTO app_states (app_name, state, update_time) "
+                    "VALUES (:name, CAST('{}' AS json), now()) "
+                    "ON CONFLICT (app_name) DO NOTHING"
+                ),
+                {"name": app_name},
+            )
+    finally:
+        await engine.dispose()
+
+
+async def _app_state_count(tenant: str, app_name: str) -> int:
+    from sqlalchemy import text
+
+    from adk_agent.runtime.session_rls import engine_for_url
+
+    engine = engine_for_url(_app_dsn())
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("SELECT set_config('app.tenant_id', :tenant, true)"),
+                {"tenant": tenant},
+            )
+            count = await conn.scalar(
+                text("SELECT count(*) FROM app_states WHERE app_name = :name"),
+                {"name": app_name},
+            )
+        return int(count or 0)
+    finally:
+        await engine.dispose()
+
+
+@_live
+def test_cross_tenant_app_state_is_invisible():
+    async def scenario() -> tuple[int, int]:
+        await _setup()
+        await _insert_app_state("acme:agent")
+        return (
+            await _app_state_count("acme", "acme:agent"),
+            await _app_state_count("other", "acme:agent"),
+        )
+
+    acme, other = asyncio.run(scenario())
+    assert acme == 1
+    assert other == 0
+
+
+@_live
+def test_app_state_write_is_rejected():
+    async def scenario() -> bool:
+        from sqlalchemy import text
+        from sqlalchemy.exc import DBAPIError
+
+        from adk_agent.runtime.session_rls import engine_for_url
+
+        await _setup()
+        engine = engine_for_url(_app_dsn())
+        try:
+            async with engine.connect() as conn:
+                trans = await conn.begin()
+                await conn.execute(text("SELECT set_config('app.tenant_id', 'other', true)"))
+                try:
+                    await conn.execute(
+                        text(
+                            "INSERT INTO app_states (app_name, state, update_time) "
+                            "VALUES ('acme:agent', CAST('{}' AS json), now())"
+                        )
+                    )
+                except DBAPIError:
+                    rejected = True
+                else:
+                    rejected = False
+                await trans.rollback()
+                return rejected
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) is True
+
+
+@_live
+def test_legacy_app_state_is_invisible():
+    async def scenario() -> tuple[int, int]:
+        await _setup()
+        await _set_enabled(False)
+        await _insert_app_state("legacy", tenant=None)
+        await _set_enabled(True)
+        return (
+            await _app_state_count("acme", "legacy"),
+            await _app_state_count("other", "legacy"),
+        )
+
+    acme, other = asyncio.run(scenario())
+    assert acme == 0
+    assert other == 0
 
 
 @_live

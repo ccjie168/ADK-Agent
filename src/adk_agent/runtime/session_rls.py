@@ -9,9 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from .sessions import current_session_tenant
 
-SESSION_TABLES = ("sessions", "events", "user_states")
+SESSION_TABLES = ("sessions", "events", "user_states", "app_states")
 
-_TENANT_MATCH = "split_part(user_id, ':', 1) = current_setting('app.tenant_id', true)"
+
+def _tenant_match(table: str) -> str:
+    column = "app_name" if table == "app_states" else "user_id"
+    return f"split_part({column}, ':', 1) = current_setting('app.tenant_id', true)"
 
 
 class SessionRlsUnavailable(RuntimeError):
@@ -57,6 +60,7 @@ async def setup_session_rls(engine: AsyncEngine) -> None:
                 + "; create a session before enabling RLS"
             )
         for table in SESSION_TABLES:
+            match = _tenant_match(table)
             # Table names come from the fixed tuple above, never from input.
             await conn.execute(
                 text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")  # nosec B608
@@ -70,7 +74,7 @@ async def setup_session_rls(engine: AsyncEngine) -> None:
             await conn.execute(
                 text(
                     f"CREATE POLICY {table}_tenant ON {table} "  # nosec B608
-                    f"USING ({_TENANT_MATCH}) WITH CHECK ({_TENANT_MATCH})"
+                    f"USING ({match}) WITH CHECK ({match})"
                 )
             )
 
