@@ -72,17 +72,20 @@ def build_framework(cfg: FrameworkConfig) -> dict[str, BaseAgent]:
     return {name: build_agent(spec) for name, spec in cfg.agents.items()}
 
 
-def build_runner(agent: BaseAgent, session_db: str | None = None) -> Runner | None:
+def build_runner(
+    agent: BaseAgent, session_db: str | None = None, *, session_rls: bool = False
+) -> Runner | None:
     """Return a Runner with the configured session store, or ``None``.
 
     ``None`` means "let ADK use its in-memory default". ``SESSION_URL`` selects
     a shared store (Postgres) for horizontally scaled workers; ``session_db``
     (the CLI reads ``SESSION_DB``) keeps sessions in SQLite for single-node
-    demos. See ADR-0005.
+    demos. ``session_rls`` installs the tenant policy hook on the Postgres
+    store. See ADR-0005 and ADR-0019.
     """
     from .runtime.sessions import configured_session_service
 
-    service = configured_session_service(session_db)
+    service = configured_session_service(session_db, rls=session_rls)
     if service is None:
         return None
 

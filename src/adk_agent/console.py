@@ -87,7 +87,7 @@ from .registry import (
 )
 from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
-from .runtime.sessions import scoped_user_id
+from .runtime.sessions import scoped_user_id, session_tenant
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
 from .secretstore import PrefixedEnvSecretProvider, SecretNotFound
 from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_declared_guards
@@ -1378,10 +1378,10 @@ for (const tab of TABS) {
 """
 
 
-def _session_service(session_db: str | None) -> Any:
+def _session_service(session_db: str | None, *, rls: bool = False) -> Any:
     from .runtime.sessions import configured_session_service
 
-    service = configured_session_service(session_db)
+    service = configured_session_service(session_db, rls=rls)
     if service is not None:
         return service
 
@@ -1646,6 +1646,7 @@ def build_console_app(
     sse_queue_size: int = 512,
     rate_limit: RateLimit | None = None,
     session_tenant_scope: bool = False,
+    session_rls: bool = False,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -1696,7 +1697,11 @@ def build_console_app(
 
     from google.adk.runners import Runner
 
-    service = session_service if session_service is not None else _session_service(session_db)
+    service = (
+        session_service
+        if session_service is not None
+        else _session_service(session_db, rls=session_rls)
+    )
     audit = audit_sink if audit_sink is not None else ListAuditSink()
 
     async def _emit_peer(
@@ -2990,9 +2995,9 @@ def build_console_app(
     async def list_sessions(request: Request, agent: str | None = None) -> Any:
         if agent not in agents:
             return JSONResponse({"error": "unknown_agent"}, status_code=400)
-        listed = await service.list_sessions(
-            app_name=agent, user_id=_session_user(_principal_for(request))
-        )
+        caller = _principal_for(request)
+        with session_tenant(caller.tenant):
+            listed = await service.list_sessions(app_name=agent, user_id=_session_user(caller))
         sessions = sorted(
             listed.sessions, key=lambda session: session.last_update_time, reverse=True
         )
@@ -3088,9 +3093,10 @@ def build_console_app(
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
         caller = _principal_for(request)
-        session_id = await _session_id_for(
-            service, name, body.get("session_id"), _session_user(caller)
-        )
+        with session_tenant(caller.tenant):
+            session_id = await _session_id_for(
+                service, name, body.get("session_id"), _session_user(caller)
+            )
 
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
@@ -3103,13 +3109,14 @@ def build_console_app(
             return JSONResponse({"error": "policy_denied"}, status_code=403)
         quota_policy = quota_config.tenants.get(caller.tenant) if quota_config else None
         try:
-            result = await runtime.run(
-                invocation,
-                user_id=_session_user(caller),
-                session_id=session_id,
-                quota=quota,
-                quota_policy=quota_policy,
-            )
+            with session_tenant(caller.tenant):
+                result = await runtime.run(
+                    invocation,
+                    user_id=_session_user(caller),
+                    session_id=session_id,
+                    quota=quota,
+                    quota_policy=quota_policy,
+                )
         except QuotaExceeded:
             return JSONResponse({"error": "quota_exceeded"}, status_code=429)
         except QuotaStoreUnavailable:
@@ -3153,9 +3160,10 @@ def build_console_app(
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
         caller = _principal_for(request)
-        session_id = await _session_id_for(
-            service, name, body.get("session_id"), _session_user(caller)
-        )
+        with session_tenant(caller.tenant):
+            session_id = await _session_id_for(
+                service, name, body.get("session_id"), _session_user(caller)
+            )
         invocation = Invocation(
             run_id=uuid.uuid4().hex,
             trace_id=_trace_id(request),
@@ -3177,14 +3185,15 @@ def build_console_app(
 
             async def work() -> None:
                 try:
-                    result = await runtime.run(
-                        invocation,
-                        user_id=_session_user(caller),
-                        session_id=session_id,
-                        on_progress=on_progress,
-                        quota=quota,
-                        quota_policy=quota_policy,
-                    )
+                    with session_tenant(caller.tenant):
+                        result = await runtime.run(
+                            invocation,
+                            user_id=_session_user(caller),
+                            session_id=session_id,
+                            on_progress=on_progress,
+                            quota=quota,
+                            quota_policy=quota_policy,
+                        )
                 except QuotaExceeded:
                     await buffer.put_terminal("error", {"error": "quota_exceeded"})
                 except QuotaStoreUnavailable:
@@ -3293,6 +3302,7 @@ def run_console(
     sse_queue_size: int = 512,
     rate_limit: RateLimit | None = None,
     session_tenant_scope: bool = False,
+    session_rls: bool = False,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -3328,6 +3338,7 @@ def run_console(
         sse_queue_size=sse_queue_size,
         rate_limit=rate_limit,
         session_tenant_scope=session_tenant_scope,
+        session_rls=session_rls,
     )
 
     import uvicorn

@@ -447,6 +447,51 @@ def _rate_limit(args: argparse.Namespace) -> RateLimit | None:
     return RateLimit(limit=limit, window_seconds=window_seconds)
 
 
+def _session_rls(args: argparse.Namespace) -> bool:
+    if not getattr(args, "session_rls", False):
+        return False
+    if not getattr(args, "session_tenant_scope", False):
+        print("--session-rls requires --session-tenant-scope", file=sys.stderr)
+        raise SystemExit(1)
+    url = os.environ.get("SESSION_URL")
+    if not url or not url.startswith(("postgresql://", "postgresql+asyncpg://")):
+        print("--session-rls requires a Postgres SESSION_URL", file=sys.stderr)
+        raise SystemExit(1)
+    _verify_session_rls(url)
+    return True
+
+
+def _verify_session_rls(url: str) -> None:
+    try:
+        from sqlalchemy.exc import DBAPIError
+
+        from .runtime.session_rls import (
+            SessionRlsUnavailable,
+            engine_for_url,
+            verify_session_rls,
+        )
+    except ImportError:
+        print("session rls requires sqlalchemy and asyncpg", file=sys.stderr)
+        raise SystemExit(1) from None
+
+    engine = engine_for_url(url)
+
+    async def _check() -> None:
+        try:
+            await verify_session_rls(engine)
+        finally:
+            await engine.dispose()
+
+    try:
+        asyncio.run(_check())
+    except SessionRlsUnavailable as exc:
+        print(f"session rls unavailable: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    except DBAPIError as exc:
+        print(f"session rls check failed: {type(exc).__name__}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def _identity_provider(args: argparse.Namespace) -> IdentityProvider | None:
     if not getattr(args, "oidc_config", None):
         return None
@@ -767,6 +812,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="scope OIDC session keys to <tenant>:<subject> (default: off)",
     )
+    p_serve.add_argument(
+        "--session-rls",
+        action="store_true",
+        help="enforce tenant RLS on the Postgres session tables (needs --session-tenant-scope)",
+    )
 
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
     p_many.add_argument(
@@ -823,6 +873,11 @@ def main(argv: list[str] | None = None) -> None:
         "--session-tenant-scope",
         action="store_true",
         help="scope OIDC session keys to <tenant>:<subject> (default: off)",
+    )
+    p_many.add_argument(
+        "--session-rls",
+        action="store_true",
+        help="enforce tenant RLS on the Postgres session tables (needs --session-tenant-scope)",
     )
 
     p_a2a = sub.add_parser("serve-a2a", help="serve an ADK agent over A2A (needs a2a-sdk)")
@@ -1089,6 +1144,11 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="scope session keys to <tenant>:<subject> (default: off)",
     )
+    p_console.add_argument(
+        "--session-rls",
+        action="store_true",
+        help="enforce tenant RLS on the Postgres session tables (needs --session-tenant-scope)",
+    )
     _add_audit_args(p_console)
     _add_http_args(p_console)
     _add_rate_limit_args(p_console)
@@ -1118,6 +1178,17 @@ def main(argv: list[str] | None = None) -> None:
         "--delete",
         action="store_true",
         help="delete records instead of moving them to <dir>/archive",
+    )
+
+    p_sessions = sub.add_parser("sessions", help="manage the shared session store")
+    sessions_sub = p_sessions.add_subparsers(dest="sessions_cmd", required=True)
+    p_enable_rls = sessions_sub.add_parser(
+        "enable-rls", help="install row-level security on the ADK session tables"
+    )
+    p_enable_rls.add_argument(
+        "--database-url",
+        default=None,
+        help="Postgres session URL (defaults to $SESSION_URL)",
     )
 
     p_connectors = sub.add_parser("connectors", help="register and list external API connectors")
@@ -1331,6 +1402,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.cmd == "serve":
         rate_limit = _rate_limit(args)
+        session_rls = _session_rls(args)
         from .mcp.server import serve_agent
 
         if sum(bool(value) for value in (args.config, args.agent, args.agent_ref)) > 1:
@@ -1393,7 +1465,7 @@ def main(argv: list[str] | None = None) -> None:
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
-            runner=build_runner(agent, args.session_db),
+            runner=build_runner(agent, args.session_db, session_rls=session_rls),
             audit=audit,
             quota=quota,
             quota_config=quota_config,
@@ -1404,6 +1476,7 @@ def main(argv: list[str] | None = None) -> None:
         )
     elif args.cmd == "serve-many":
         rate_limit = _rate_limit(args)
+        session_rls = _session_rls(args)
         from .factory import build_runner
         from .mcp.server import serve_many
 
@@ -1420,7 +1493,13 @@ def main(argv: list[str] | None = None) -> None:
             print("oidc config requires streamable-http", file=sys.stderr)
             raise SystemExit(1)
         runner_factory = (
-            partial(build_runner, session_db=args.session_db) if args.session_db else None
+            partial(
+                build_runner,
+                session_db=args.session_db,
+                session_rls=session_rls,
+            )
+            if args.session_db or os.environ.get("SESSION_URL")
+            else None
         )
         audit = _audit_sink(args)
         from .tools import install_declared_guards
@@ -1734,6 +1813,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"ok {count} records")
     elif args.cmd == "console":
         rate_limit = _rate_limit(args)
+        session_rls = _session_rls(args)
         from .audit import PostgresAuditQuery
         from .console import run_console
         from .registry import (
@@ -1841,6 +1921,7 @@ def main(argv: list[str] | None = None) -> None:
             sse_queue_size=args.sse_queue_size,
             rate_limit=rate_limit,
             session_tenant_scope=args.session_tenant_scope,
+            session_rls=session_rls,
         )
         if isinstance(audit_query, PostgresAuditQuery):
             # The pool may have opened in uvicorn's loop, which is now closed;
@@ -1894,6 +1975,43 @@ def main(argv: list[str] | None = None) -> None:
             print(f"deleted {result.deleted} requests")
         else:
             print(f"archived {result.archived} requests")
+    elif args.cmd == "sessions":
+        url = args.database_url or os.environ.get("SESSION_URL")
+        if not url:
+            print("--database-url or SESSION_URL is required", file=sys.stderr)
+            raise SystemExit(1)
+        if not url.startswith(("postgresql://", "postgresql+asyncpg://")):
+            print("sessions enable-rls requires a Postgres URL", file=sys.stderr)
+            raise SystemExit(1)
+        try:
+            from sqlalchemy.exc import DBAPIError
+
+            from .runtime.session_rls import (
+                SessionRlsUnavailable,
+                engine_for_url,
+                setup_session_rls,
+            )
+        except ImportError:
+            print("sessions enable-rls requires sqlalchemy and asyncpg", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        engine = engine_for_url(url)
+
+        async def _enable() -> None:
+            try:
+                await setup_session_rls(engine)
+            finally:
+                await engine.dispose()
+
+        try:
+            asyncio.run(_enable())
+        except SessionRlsUnavailable as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from None
+        except DBAPIError as exc:
+            print(f"session rls setup failed: {type(exc).__name__}", file=sys.stderr)
+            raise SystemExit(1) from None
+        print("session rls enabled")
     elif args.cmd == "backup":
         from .backup import BackupError, create_backup
 

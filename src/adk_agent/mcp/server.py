@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from google.adk.dependencies._mcp import Context, ServerSession
 
 from ..core import Principal
-from ..runtime.sessions import scoped_user_id
+from ..runtime.sessions import scoped_user_id, session_tenant
 from ..tracing import trace_id_from_traceparent
 from .runtime import wrap_runner
 
@@ -62,45 +62,52 @@ class _PrincipalSessionService:
     async def create_session(self, *, app_name, user_id, state=None, session_id=None):
         merged = dict(state or {})
         merged["principal"] = self._principal.model_dump(mode="json")
-        return await self._inner.create_session(
-            app_name=app_name,
-            user_id=self._user_id(),
-            state=merged,
-            session_id=session_id,
-        )
+        with session_tenant(self._principal.tenant):
+            return await self._inner.create_session(
+                app_name=app_name,
+                user_id=self._user_id(),
+                state=merged,
+                session_id=session_id,
+            )
 
     async def get_session(self, *, app_name, user_id, session_id, config=None):
-        return await self._inner.get_session(
-            app_name=app_name,
-            user_id=self._user_id(),
-            session_id=session_id,
-            config=config,
-        )
+        with session_tenant(self._principal.tenant):
+            return await self._inner.get_session(
+                app_name=app_name,
+                user_id=self._user_id(),
+                session_id=session_id,
+                config=config,
+            )
 
     async def delete_session(self, *, app_name, user_id, session_id):
-        return await self._inner.delete_session(
-            app_name=app_name,
-            user_id=self._user_id(),
-            session_id=session_id,
-        )
+        with session_tenant(self._principal.tenant):
+            return await self._inner.delete_session(
+                app_name=app_name,
+                user_id=self._user_id(),
+                session_id=session_id,
+            )
 
     async def list_sessions(self, *, app_name, user_id=None):
-        return await self._inner.list_sessions(
-            app_name=app_name,
-            user_id=self._user_id(),
-        )
+        with session_tenant(self._principal.tenant):
+            return await self._inner.list_sessions(
+                app_name=app_name,
+                user_id=self._user_id(),
+            )
 
     async def append_event(self, session, event):
-        return await self._inner.append_event(session, event)
+        with session_tenant(self._principal.tenant):
+            return await self._inner.append_event(session, event)
 
     async def get_user_state(self, *, app_name, user_id):
-        return await self._inner.get_user_state(
-            app_name=app_name,
-            user_id=self._user_id(),
-        )
+        with session_tenant(self._principal.tenant):
+            return await self._inner.get_user_state(
+                app_name=app_name,
+                user_id=self._user_id(),
+            )
 
     async def flush(self):
-        return await self._inner.flush()
+        with session_tenant(self._principal.tenant):
+            return await self._inner.flush()
 
     def __getattr__(self, name):
         return getattr(self._inner, name)

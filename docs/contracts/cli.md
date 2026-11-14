@@ -294,7 +294,7 @@
 
 ## `adk-agent serve` / `serve-many` 的审计、配额与指标
 
-两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE`、`--metrics`、`--rate-limit N --rate-limit-window SECONDS` 和 `--session-tenant-scope`。
+两个命令都接受 `--audit-file PATH | --audit-url URL`、`--audit-token-env VAR`、`--quota-config FILE`、`--metrics`、`--rate-limit N --rate-limit-window SECONDS`、`--session-tenant-scope` 和 `--session-rls`。
 
 - 每次 MCP 工具调用在 agent 运行前后写一条 `agent.run` 审计。`target` 是 `<agent>@dev`，`args_hash` 是请求文本的哈希，成功时写 `result_hash`。
 - 运行失败写 `status=error`，`error_code` 是异常类名。配额用尽写 `status=denied`、`error_code=quota_exceeded`，并且不运行 agent。
@@ -307,6 +307,7 @@
 - `--rate-limit N --rate-limit-window SECONDS` 只对 `streamable-http` 生效，语义见「入口限流」。
   配 `stdio` 同时给 `--rate-limit` 退出 1。
 - `--session-tenant-scope` 只对 OIDC 模式的 `streamable-http` 生效。打开后 OIDC 会话键从 `<subject>` 变成 `<tenant>:<subject>`，同一 subject 跨租户的会话和会话缓存互不可见。默认关闭；开启后旧会话按旧键存在，不会出现。
+- `--session-rls` 需要 `--session-tenant-scope` 和 Postgres 的 `SESSION_URL`，语义见「会话存储的租户 RLS」。
 - 审计的 `trace_id` 取 `traceparent` 的 trace-id，规则见 `tracing.md`。没有时每次调用新生成。
 - `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
 
@@ -332,7 +333,7 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - peer 模式与 `--auth-token-env`、`--allow-unauthenticated` 互斥，同时给出退出 2。
 - peer 模式下 principal、审计身份、动作映射与拒绝规则见 `a2a.md`；legacy 模式保持本节原有行为。
 
-## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR | --approval-db URL] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR | --approval-db URL] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS] [--session-tenant-scope] [--session-rls]`
 
 启动私有控制台。
 
@@ -347,6 +348,7 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - `--sse-queue-size` 是每条 SSE 流最多缓冲的 `progress` 事件数，默认 512。必须大于 0，否则退出 1。慢客户端超过缓冲时丢弃最早的 `progress`，丢弃数在终结事件里报，见 `console.md`。
 - `--audit-file PATH` 把审计事件追加到 JSONL；`--audit-url URL` 改建到审计服务，读面板（审计、运行、trace）也从该服务查询。两者互斥，同时给退出 2。审计 token 从 `--audit-token-env` 指定（默认 `ADK_AUDIT_AUTH_TOKEN`），非回环地址没有 token 时拒绝启动。都不给时审计只留在进程内，多副本之间不共享。
 - `--session-tenant-scope` 打开后，控制台的会话键从 `<subject>` 变成 `<tenant>:<subject>`，同一 subject 在不同租户下的会话互不可见。默认关闭。开启后已有会话按旧键存在，不会出现在列表里，等价于让所有用户重新开始会话。
+- `--session-rls` 需要 `--session-tenant-scope` 和 Postgres 的 `SESSION_URL`，语义见「会话存储的租户 RLS」。
 - `--rate-limit` 和 `--rate-limit-window` 启用入口限流，语义见下面的「入口限流」一节。不给 `--rate-limit` 时不限流。
 - 配置文件缺失或非法退出 1。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
@@ -356,6 +358,27 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - 没给 `--policy` 时控制台不做 RBAC，`/api/policy` 返回 404。
 
 M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名，M4 会替换。
+
+## 会话存储的租户 RLS（ADR-0019）
+
+`console`、`serve`、`serve-many` 接受 `--session-rls`。它只在 `SESSION_URL` 是 `postgresql://` 或 `postgresql+asyncpg://` 且 `--session-tenant-scope` 打开时可用，其他组合退出 1。
+
+- 打开后，`sessions`、`events`、`user_states` 三张表启用并强制 RLS，策略是 `split_part(user_id, ':', 1) = current_setting('app.tenant_id', true)`，`USING` 与 `WITH CHECK` 都要。
+- 租户取自已认证 principal。运行外的会话调用由控制台与 MCP 的调用点设置请求上下文；运行路径回退到 `current_invocation().principal.tenant`。`user_id` 只用于行匹配，不决定租户。
+- 每个事务在 `after_begin` 时执行 `set_config('app.tenant_id', <tenant>, true)`。没有租户时读到 0 行。
+- 启动时检查三张表的 `relrowsecurity`、`relforcerowsecurity` 与策略存在；缺失时退出 1，提示先运行 `adk-agent sessions enable-rls`。
+- `app_states` 不在 RLS 范围。租户敏感的应用级状态不能放在那里。
+- 打开后没有冒号前缀的 `user_id` 行不可见，不自动迁移。
+
+## `adk-agent sessions enable-rls --database-url URL`
+
+为 ADK 会话表安装 RLS 策略。
+
+- URL 必须是 Postgres；不给时读 `SESSION_URL`。两者都没有退出 1，SQLite 与内存存储退出 1。
+- 执行角色必须是 `sessions`、`events`、`user_states` 的属主，不能是 superuser，不能有 `BYPASSRLS`；否则退出 1。
+- 表不存在时退出 1，提示先创建一次会话。
+- 幂等：重复运行先 `DROP POLICY IF EXISTS` 再重建。
+- 成功输出 `session rls enabled`，退出 0。
 
 ## 入口限流
 

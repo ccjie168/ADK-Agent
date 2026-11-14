@@ -1,0 +1,71 @@
+SLICE-103 session tenant RLS
+============================
+
+red, before the implementation
+------------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/runtime/test_session_rls.py -q
+no tests ran in 0.00s
+
+$ ./.venv/Scripts/python.exe -m adk_agent serve --agent examples/minimal/agent.py \
+    --session-rls --transport stdio
+adk-agent: error: unrecognized arguments: --session-rls
+
+$ ./.venv/Scripts/python.exe -m adk_agent sessions enable-rls --database-url x
+adk-agent: error: argument cmd: invalid choice: 'sessions'
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_cli_session_rls.py \
+    tests/runtime/test_session_rls.py tests/runtime/test_sessions.py -q
+14 passed, 8 skipped in 2.04s
+
+postgres
+--------
+test container: docker.m.daocloud.io/library/postgres:17-alpine
+  POSTGRES_USER=adk POSTGRES_PASSWORD=adk POSTGRES_DB=adk port 55432
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe -m pytest tests/runtime/test_session_rls.py -q
+8 passed in 3.36s
+
+covered:
+- setup creates policies on sessions, events and user_states
+- verify fails before enable and passes after
+- cross-tenant read returns None; same-tenant read returns the row
+- a missing tenant context reads nothing
+- an unscoped legacy user_id is invisible after enable
+- enable is idempotent
+- a non-owner role cannot install the policies (DBAPIError)
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1168 passed, 65 skipped in 47.51s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe scripts/check.py --full
+1232 passed, 1 skipped in 57.18s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+notes
+-----
+- The tenant is read from the authenticated principal (request contextvar,
+  falling back to current_invocation().principal.tenant), never from the
+  user_id argument. A mismatched user_id yields zero rows.
+- SQLAlchemy 2.1 has no ConnectionEvents.after_begin; the hook is the
+  sync_engine begin event. A standalone SQLite run confirmed begin can execute
+  SQL, and the Postgres tests confirm the setting reaches the transaction.
+- serve-many previously built a runner factory only when --session-db was set,
+  so a bare SESSION_URL was ignored there. The condition now includes
+  SESSION_URL; this slice needs it because --session-rls requires SESSION_URL.
+- tests/runtime/test_quota_rls.py imported asyncpg unconditionally. The dev
+  environment does not declare the driver, so the module now skips when it is
+  absent instead of failing collection. No assertion changed.
+- app_states is not covered; tenant-sensitive application state must not be
+  stored there.
+- The database role must own the three tables, must not be superuser, and must
+  not have BYPASSRLS. The live tests create a role with those properties.

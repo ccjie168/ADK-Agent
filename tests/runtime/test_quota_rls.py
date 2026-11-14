@@ -7,17 +7,22 @@ user; the local dev database uses a superuser.
 from __future__ import annotations
 
 import asyncio
+import importlib
+import importlib.util
 import os
 import urllib.parse
 
-import asyncpg
 import pytest
 
 from adk_agent.core import QuotaExceeded, QuotaPolicy
 from adk_agent.runtime.quota_postgres import PostgresQuotaManager
 
 DSN = os.environ.get("TEST_POSTGRES_URL")
-pytestmark = pytest.mark.skipif(not DSN, reason="TEST_POSTGRES_URL is not set")
+_HAS_DRIVER = importlib.util.find_spec("asyncpg") is not None
+asyncpg = importlib.import_module("asyncpg") if _HAS_DRIVER else None
+pytestmark = pytest.mark.skipif(
+    not (DSN and _HAS_DRIVER), reason="TEST_POSTGRES_URL and asyncpg are required"
+)
 
 APP_ROLE = "adk_quota_rls"
 APP_PASSWORD = "x"
