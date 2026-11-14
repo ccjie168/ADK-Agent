@@ -90,29 +90,30 @@
 - 回滚用上一个 digest 重新 apply，不重建镜像。数据库 schema 只做加法，旧镜像可以在新表结构上运行；破坏性变更必须单独评审。
 - `gemini` 不在默认镜像里。需要时另建带该 extra 的镜像和锁，不要在生产镜像里临时 `pip install`。
 
-## 会话存储的租户隔离（ADR-0019）
+## 会话存储的租户隔离（ADR-0019、ADR-0020）
 
-`--session-rls` 把会话表的租户隔离交给 Postgres RLS。默认关闭，只在 `SESSION_URL` 是 Postgres 且 `--session-tenant-scope` 打开时可用。
+`--session-rls` 把会话表的租户隔离交给 Postgres RLS。默认关闭，只在 `SESSION_URL` 是 Postgres 且 `--session-tenant-scope` 打开时可用。范围是 `sessions`、`events`、`user_states`、`app_states` 四张表。
 
 启用顺序：
 
 1. 确认 `SESSION_URL` 指向共享 Postgres。应用角色要能建表。
-2. 启动一次 console 或 serve，创建一个会话，让 ADK 建出 `sessions`、`events`、`user_states`。没有表时 `enable-rls` 退出 1 并提示。
-3. 用这三张表的属主角色运行 `adk-agent sessions enable-rls --database-url "$SESSION_URL"`，预期输出 `session rls enabled`。命令幂等，可以重跑。
-4. 重启服务并加 `--session-tenant-scope --session-rls`。启动检查会看三张表的 `relrowsecurity`、`relforcerowsecurity` 和策略；缺失时退出 1。
+2. 启动一次 console 或 serve，创建一个会话，让 ADK 建出 `sessions`、`events`、`user_states`、`app_states`。没有表时 `enable-rls` 退出 1 并提示。
+3. 用这四张表的属主角色运行 `adk-agent sessions enable-rls --database-url "$SESSION_URL"`，预期输出 `session rls enabled`。命令幂等，可以重跑。
+4. 重启服务并加 `--session-tenant-scope --session-rls`。启动检查会看四张表的 `relrowsecurity`、`relforcerowsecurity` 和策略；缺失时退出 1。
 5. 用两个不同租户的 token 各开一次会话，确认 `/api/sessions` 互不可见。
+6. 决定旧数据。开启后 `user_id` 与 `app_name` 都带租户前缀，旧的 plain `app_name` 会话与 `app_states` 都读不到。生产环境要先迁移或明确接受丢弃。
 
 角色要求：
 
-- 应用角色必须是三张表的属主，不能是 superuser，不能有 `BYPASSRLS`。superuser 永远绕过 RLS，用它验证会得到假阳性。
+- 应用角色必须是四张表的属主，不能是 superuser，不能有 `BYPASSRLS`。superuser 永远绕过 RLS，用它验证会得到假阳性。
 - 策略安装与运行时用同一角色。换角色后先 `ALTER TABLE ... OWNER TO ...`，再重跑 `enable-rls`。
 
 行为：
 
-- 租户取自已认证 principal，不取 `user_id`。传别的租户的 `user_id` 读到 0 行。
+- 租户取自已认证 principal，不取 `user_id` 或 `app_name`。传别的租户的 `user_id` 读到 0 行。
 - 运行外的会话调用由控制台与 MCP 设置请求上下文；运行路径用 invocation principal。
-- `app_states` 不在范围内。租户敏感的应用级状态不要放那里，放会话或用户状态。
-- 没有冒号前缀的 legacy `user_id` 在开启后不可见，不自动迁移。
+- 开启后会话服务看到的 `app_name` 是 `<tenant>:<agent>`。`app_states` 按这个前缀隔离，控制台、MCP、审计与 manifest 里的 agent 名不变。
+- 没有冒号前缀的 legacy `user_id` 与没有租户前缀的 `app_name` 在开启后不可见，不自动迁移。
 
 回滚：
 
@@ -123,7 +124,8 @@
 排障：
 
 - 启动报 `session table ... does not enforce RLS`：策略没装或表被重建。重跑 `sessions enable-rls`。
-- 会话列表为空：检查 token 的 tenant 与 `user_id` 前缀是否一致，以及 `--session-tenant-scope` 是否打开。
+- 会话列表为空：检查 token 的 tenant、`user_id` 前缀与 `app_name` 前缀是否一致，以及 `--session-tenant-scope` 是否打开。
+- 应用级状态读不到：确认写入方的 `app_name` 带当前租户前缀，且写入方与读取方用同一租户 token。
 - 安装策略报权限错误：当前角色不是表属主，或表是由别的角色建的。换属主角色再跑。
 
 ## 扩缩容

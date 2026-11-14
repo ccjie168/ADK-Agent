@@ -1,0 +1,45 @@
+SLICE-106 app-state RLS operations
+==================================
+
+red, before the runbook update
+------------------------------
+$ rg -c "ADR-0020" docs/guides/operations.md
+0
+$ rg -n "app_states 不在范围内" docs/guides/operations.md
+114:- `app_states` 不在范围内。租户敏感的应用级状态不要放那里。
+the line is gone after the update.
+
+cross-process
+-------------
+schema xproc2, role adk_session_rls (non-superuser, no BYPASSRLS)
+process A created a session as acme with app_name "agent" and an app_state
+row acme:agent.
+
+$ adk-agent sessions enable-rls --database-url postgresql://adk_session_rls:x@127.0.0.1:55432/adk
+session rls enabled
+
+process B (separate process, rls on):
+  session other=none acme=row
+  app_state other=0 acme=1
+
+cleanup:
+  ALTER ROLE adk_session_rls RESET search_path
+  DROP SCHEMA xproc2 CASCADE
+  docker stop adk-pg-slice103
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1168 passed, 69 skipped in 47.89s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+notes
+-----
+- The runbook now covers four tables, the app_name prefix and the migration
+  impact. It records that superuser bypasses RLS and that plain app_name rows
+  stay invisible.
+- The cross-process reading process used a different connection and
+  transaction from the writer.
+- The test database and schema were removed after the check.
