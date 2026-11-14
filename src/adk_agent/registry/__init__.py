@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from ..core import (
+    ConnectorConflict,
+    ConnectorNotFound,
     GrantRequestConflict,
     GrantRequestError,
     GrantRequestExpired,
@@ -19,6 +21,8 @@ from .client import (
     RegistryRejected,
     RegistryServiceUnavailable,
 )
+from .connectors import FileConnectorStore
+from .connectors_postgres import PostgresConnectorStore
 from .file import FileAgentRegistry, RegistryConflict, RegistryError, RegistryIntegrityError
 from .lifecycle import FileAgentLifecycleStore
 from .lifecycle_postgres import PostgresAgentLifecycleStore
@@ -39,7 +43,10 @@ __all__ = [
     "ArtifactStoreError",
     "ArtifactTrustError",
     "EvalReportConflict",
+    "ConnectorConflict",
+    "ConnectorNotFound",
     "FileAgentLifecycleStore",
+    "FileConnectorStore",
     "FileArtifactStore",
     "FileToolGrantStore",
     "GrantRequestConflict",
@@ -52,6 +59,7 @@ __all__ = [
     "PackagingError",
     "PostgresAgentLifecycleStore",
     "PostgresAgentRegistry",
+    "PostgresConnectorStore",
     "PostgresEvalReportStore",
     "PostgresToolGrantStore",
     "PublishUnavailable",

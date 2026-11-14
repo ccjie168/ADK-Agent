@@ -1,0 +1,49 @@
+SLICE-085 connector types and stores
+====================================
+
+red, before implementation
+--------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/core/test_connectors.py \
+    tests/registry/test_connector_store.py -q
+ImportError: cannot import name 'ConnectorSpec' from 'adk_agent.core'
+2 errors in 2.68s
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/core/test_connectors.py \
+    tests/registry/test_connector_store.py -q
+9 passed, 1 skipped in 2.72s
+
+$ TEST_POSTGRES_URL='postgresql://adk:adk@127.0.0.1:55432/adk' ... test_connector_store.py
+4 passed in 1.91s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+965 passed, 29 skipped in 47.16s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+notes
+-----
+- `ConnectorSpec` rejects embedded URL credentials, non-loopback http, path
+  prefixes with `..`, empty methods, and timeouts outside 1..60s or responses
+  over 8 MiB.
+- Only `secret://` references are accepted for auth_ref.
+- File add uses os.link; Postgres uses INSERT ON CONFLICT DO NOTHING plus a
+  definition compare that ignores `enabled`, so a disabled connector stays
+  disabled and re-registering the same definition is idempotent.
+- Bandit B105 flagged the constant name `_SECRET_REF` with a regex value; it is
+  now `_AUTH_REFERENCE`.

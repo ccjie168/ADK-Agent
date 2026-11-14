@@ -175,6 +175,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-082 工具授权使用统计：`AuditEvent.policy_version`、用量聚合接口、到期徽标。已完成。
 - SLICE-083 市场页卸载与置换：`POST /api/registry/unload`、按需加载租户记录、Unload 按钮与 name_conflict 自动置换。已完成。
 - SLICE-084 跨副本限流（ADR-0012）：`RedisFixedWindowLimiter`、`RATE_LIMIT_URL`、七个接线点与故障回退指标。已完成。
+- SLICE-085 连接器类型与存储（ADR-0013）：`ConnectorSpec` 校验、文件/Postgres 注册表、停用语义。已完成。
 
 ## 完成定义
 

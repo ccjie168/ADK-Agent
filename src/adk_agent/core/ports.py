@@ -176,3 +176,13 @@ __all__ = [
     "ToolGateway",
     "ToolGrantStore",
 ]
+
+
+class ConnectorStore(Protocol):
+    async def add(self, spec: Any) -> Any: ...
+
+    async def get(self, connector_id: str) -> Any: ...
+
+    async def list(self, tenant: str) -> builtins.list[Any]: ...
+
+    async def disable(self, connector_id: str, *, by: str) -> Any: ...

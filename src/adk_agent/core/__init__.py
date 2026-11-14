@@ -6,6 +6,15 @@ from .approval import ApprovalDecision, ApprovalRequest
 from .artifact import MAX_ARTIFACT_BYTES, MEDIA_TYPE, AgentArtifact
 from .audit import AuditEvent, AuditRecord
 from .canary import CanaryPolicy
+from .connectors import (
+    ConnectorConflict,
+    ConnectorKind,
+    ConnectorNotFound,
+    ConnectorSpec,
+    ConnectorStoreError,
+    ConnectorStoreUnavailable,
+    HttpMethod,
+)
 from .eval import EvalCase, EvalCaseResult, EvalReport, EvalSuiteSpec
 from .gateway import ModelGatewayRequest
 from .identity import Principal
@@ -44,6 +53,7 @@ from .ports import (
     ArtifactLoader,
     ArtifactStore,
     AuditSink,
+    ConnectorStore,
     EvalReportStore,
     IdentityProvider,
     ModelGateway,
@@ -73,6 +83,14 @@ from .tool_grants import (
 )
 
 __all__ = [
+    "ConnectorConflict",
+    "ConnectorKind",
+    "ConnectorNotFound",
+    "ConnectorSpec",
+    "ConnectorStore",
+    "ConnectorStoreError",
+    "ConnectorStoreUnavailable",
+    "HttpMethod",
     "AccessPolicy",
     "AgentArtifact",
     "AgentLifecycle",
