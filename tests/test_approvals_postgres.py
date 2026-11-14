@@ -419,6 +419,39 @@ def test_request_polls_to_decision():
 
 @_live
 @_needs_driver
+def test_request_sees_decision_from_another_inbox():
+    request_id = _rid()
+    inbox_a = PostgresApprovalInbox(_LIVE_URL, poll_seconds=0.01)
+    inbox_b = PostgresApprovalInbox(_LIVE_URL, poll_seconds=0.01)
+    future = datetime.now(UTC) + timedelta(hours=1)
+
+    async def scenario():
+        try:
+            task = asyncio.create_task(inbox_a.request(_request(request_id, expires_at=future)))
+            for _ in range(200):
+                if await inbox_b.pending():
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                raise AssertionError("request never became pending")
+            decision = await inbox_b.decide(request_id, approved=True, approver="bob")
+            result = await asyncio.wait_for(task, timeout=2)
+            return decision, result
+        finally:
+            await inbox_a.aclose()
+            await inbox_b.aclose()
+
+    try:
+        decision, result = asyncio.run(scenario())
+    finally:
+        _delete(request_id)
+
+    assert decision.approved is True
+    assert result == decision
+
+
+@_live
+@_needs_driver
 def test_unknown_request_not_found():
     missing = _rid()
     inbox = PostgresApprovalInbox(_LIVE_URL, poll_seconds=0.01)

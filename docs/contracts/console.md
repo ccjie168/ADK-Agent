@@ -45,9 +45,11 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 返回待决的人工审批请求，按 `requested_at` 正序。结构见 `approval_request.schema.json`。
 
 - 已过期的请求不返回。`expires_at` 是请求自带的截止时间，可能为 `null`。
-- 未配置审批目录时返回 404 `approvals_not_configured`。
+- 未配置审批目录或审批数据库时返回 404 `approvals_not_configured`。
 - 非 `admin` 身份只看到自己租户的请求。
 - 请求里的 `input` 是待审内容，只在这里返回给有权限的调用方。
+- 收件箱后端在启动时确定。`--approval-db` 或 `$APPROVAL_DATABASE_URL` 使用 Postgres；`--approval-dir` 或 `$ADK_APPROVAL_DIR` 使用目录。显式 flag 优先于环境变量，两个显式 flag 同时给出时控制台退出 1；只有环境变量时 `APPROVAL_DATABASE_URL` 优先。
+- 数据库不可达时返回 503 `approval_unavailable`，不返回空列表。
 
 ## `POST /api/approvals/{request_id}`
 
@@ -62,7 +64,8 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 非 `admin` 身份决定其他租户的请求返回 403 `tenant_forbidden`。
 - 配置了 `--policy` 时按 `approval.decide:<agent_id>` 判定，拒绝返回 403 `policy_denied`。
 - 每次成功决定写一条 `approval.decide` 审计，`target` 是请求 id，`approver` 是审批人，`status` 是 `ok` 或 `denied`。审计不含待审 `input`。
-- 未配置审批目录时返回 404 `approvals_not_configured`。
+- 未配置审批目录或审批数据库时返回 404 `approvals_not_configured`。
+- 数据库不可达时返回 503 `approval_unavailable`。
 
 ## `GET /api/plans?limit=50` -> `[PlanSummary]`
 

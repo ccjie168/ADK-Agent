@@ -1,0 +1,99 @@
+SLICE-099 approval database wiring
+==================================
+
+red, pre-slice commit 98cfe8c
+-----------------------------
+$ PYTHONPATH=<tmp>/adk-099-red/src ./.venv/Scripts/python.exe -m adk_agent.cli \
+    console --approval-db postgresql://x/y
+adk-agent: error: unrecognized arguments: --approval-db postgresql://x/y
+exit=2
+
+$ PYTHONPATH=<tmp>/adk-099-red/src ./.venv/Scripts/python.exe -m adk_agent.cli \
+    approvals prune --db postgresql://x/y --older-than 60
+adk-agent: error: unrecognized arguments: --db postgresql://x/y
+exit=2
+
+$ PYTHONPATH=<tmp>/adk-099-red/src ./.venv/Scripts/python.exe <tmp>/probe.py
+async RAISED TypeError 'coroutine' object is not iterable
+unavailable status 500 Internal Server Error
+RuntimeWarning: coroutine 'AsyncInbox.pending' was never awaited
+
+green, same four probes
+-----------------------
+$ ./.venv/Scripts/python.exe -m adk_agent.cli console --approval-db postgresql://x/y
+provide --agents or --agent-ref
+exit=1
+
+$ ./.venv/Scripts/python.exe -m adk_agent.cli approvals prune \
+    --db postgresql://adk:adk@127.0.0.1:59999/adk --older-than 60
+prune failed: ApprovalInboxUnavailable
+exit=1
+
+$ PYTHONPATH=src ./.venv/Scripts/python.exe <tmp>/probe.py
+async status 200 [{"request_id":"req-1",...
+unavailable status 503 {"error":"approval_unavailable"}
+
+tests
+-----
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe -m pytest tests/test_approvals_postgres.py \
+      tests/test_cli_approval_db.py tests/test_console_approvals_postgres.py \
+      tests/test_console_approvals.py tests/test_cli_approvals_prune.py -q
+37 passed in 3.81s
+
+Without TEST_POSTGRES_URL: 24 passed, 13 skipped.
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1147 passed, 58 skipped in 53.99s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, two processes and one Postgres
+------------------------------------
+postgres: postgresql://adk:adk@127.0.0.1:55432/adk
+
+$ ./.venv/Scripts/python.exe <tmp>/adk-099-live/drive.py
+console --approval-db healthy
+console sees pending r220cb7cf845d
+console decision 200 {'request_id': 'r220cb7cf845d', 'approved': True,
+  'approver': 'console_user', 'reason': 'live ok',
+  'decided_at': '2026-11-14T13:02:07.514473Z'}
+waiter waiting
+waiter decision {"request_id":"r220cb7cf845d","approved":true,
+  "approver":"console_user","reason":"live ok",
+  "decided_at":"2026-11-14T13:02:07.514473Z"}
+stored approved console_user
+unavailable console 503 {'error': 'approval_unavailable'}
+cleanup done
+
+After the run: ports 8832 and 8833 closed, tenant acme099 rows 0, live table
+rows 0.
+
+notes
+-----
+- The waiter process submitted through `PostgresApprovalInbox.request()` and
+  blocked on polling. The console process listed the request over HTTP and
+  recorded the decision. The waiter returned the same decision object. This is
+  the cross-process path ADR-0017 targets.
+- A second console pointed at a closed port returned 503
+  `approval_unavailable` instead of an empty list or a 500.
+- Review fix: DB prune originally opened the pool under one `asyncio.run` and
+  closed it under a second. The pool is loop-affine, so the close could not
+  succeed. Prune now runs and closes inside one coroutine.
+- Review fix: the console `approvals` parameter uses
+  `FileApprovalInbox | PostgresApprovalInbox | None` instead of `Any`, so the
+  sync/async contract is visible to type checking. Handlers still await when
+  `inspect.isawaitable` says so, because the union of the two return types is
+  not statically narrowed to the async branch.
+- Backend precedence is in one helper, `cli._approval_backend`: explicit flag
+  beats environment, env-only conflict resolves to `APPROVAL_DATABASE_URL`,
+  both explicit flags exit 1. The same helper serves console and prune with
+  different flag names.
+- The console closes a DB inbox pool after uvicorn returns, best effort, for the
+  same loop-affinity reason as the audit query.
+- Existing file-mode console and prune tests still pass; no existing assertion
+  was changed. The old `test_cli_requires_dir` matches the substring
+  "approval dir" in the new combined error message.

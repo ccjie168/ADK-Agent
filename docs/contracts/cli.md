@@ -193,16 +193,18 @@
 - `remote-agents disable --id ID` 输出停用后的记录，幂等；未知 id 退出 1。
 - 凭据经 `ADK_SECRET_*` 环境变量解析，命令不打印凭据。
 
-## `adk-agent approvals prune --dir DIR --older-than SECONDS [--delete]`
+## `adk-agent approvals prune (--dir DIR | --db URL) --older-than SECONDS [--delete]`
 
 归档或删除已经终结、且超过保留期的审批记录。
 
-- `--dir` 默认 `$ADK_APPROVAL_DIR`，两者都没有时退出 1。
+- `--dir` 默认 `$ADK_APPROVAL_DIR`；`--db` 默认 `$APPROVAL_DATABASE_URL`。
+- 显式 `--db` 优先于 `ADK_APPROVAL_DIR`，显式 `--dir` 优先于 `APPROVAL_DATABASE_URL`。两个显式 flag 同时给出退出 1；只有环境变量时 `APPROVAL_DATABASE_URL` 优先；两个后端都没有时退出 1。
 - `--older-than` 必须是大于 0 的秒数，否则退出 1。
-- 终结时间取决定的 `decided_at`；没有决定但已过期的请求取 `expires_at`。没有决定且未过期的请求永远保留。
-- 默认把 `<id>.request.json` 和 `<id>.decision.json` 移到 `<dir>/archive/`。归档目录里已有同名文件时跳过该条，源文件保留。
+- 终结时间取决定的 `decided_at`；没有决定但已过期的请求取 `expires_at`。没有决定且未过期的请求永远保留。数据库模式用数据库的 `now()` 计算保留期。
+- 默认把文件移到 `<dir>/archive/`，或把数据库行搬到 `adk_approvals_archive`。归档里已有同名记录时跳过该条，源记录保留。
 - `--delete` 改为删除，不归档。
 - 成功输出 `archived N requests` 或 `deleted N requests`，退出 0。
+- 数据库不可达或 schema 初始化失败时退出 1，只打印固定错误种类。
 - 这个命令不写审计事件。
 
 ## `adk-agent verify-audit FILE | --audit-db URL`
@@ -330,7 +332,7 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - peer 模式与 `--auth-token-env`、`--allow-unauthenticated` 互斥，同时给出退出 2。
 - peer 模式下 principal、审计身份、动作映射与拒绝规则见 `a2a.md`；legacy 模式保持本节原有行为。
 
-## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR | --approval-db URL] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS]`
 
 启动私有控制台。
 
@@ -340,8 +342,8 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - `--oidc-config` 和 `--allow-unauthenticated` 互斥，同时给退出 1。OIDC 模式允许绑定非回环地址，因为每个请求都验证 token。
 - `--quota-config` 指向一个 `QuotaConfig` JSON，见 `quota_config.schema.json`。只有列出的租户受配额限制，没列出的不限额。
 - `QUOTA_URL` 选择共享配额后端，接受 `postgresql://` 或 `postgresql+asyncpg://`。不设置时用进程内计数，只约束单进程。缺少 `asyncpg` 时退出 1 并给出安装提示。
-- `--approval-dir` 指向审批收件箱目录，默认 `$ADK_APPROVAL_DIR`。不设置时审批接口返回 404，收件箱禁用。目录在第一次写入时创建。
-- `--approval-ttl` 是控制台侧的兜底过期秒数，只作用于没有 `expires_at` 的请求。请求自带 `expires_at` 时以请求为准。不设置时这类请求一直待决。
+- `--approval-dir` 指向审批收件箱目录，默认 `$ADK_APPROVAL_DIR`。`--approval-db` 指向 Postgres 审批库，默认 `$APPROVAL_DATABASE_URL`。两者二选一：显式 flag 优先于环境变量，两个显式 flag 同时给出退出 1。都不设置时审批接口返回 404，收件箱禁用。目录在第一次写入时创建。
+- `--approval-ttl` 是控制台侧的兜底过期秒数，只作用于没有 `expires_at` 的请求。请求自带 `expires_at` 时以请求为准。不设置时这类请求一直待决。数据库模式把派生出的截止时间写入行。
 - `--sse-queue-size` 是每条 SSE 流最多缓冲的 `progress` 事件数，默认 512。必须大于 0，否则退出 1。慢客户端超过缓冲时丢弃最早的 `progress`，丢弃数在终结事件里报，见 `console.md`。
 - `--audit-file PATH` 把审计事件追加到 JSONL；`--audit-url URL` 改建到审计服务，读面板（审计、运行、trace）也从该服务查询。两者互斥，同时给退出 2。审计 token 从 `--audit-token-env` 指定（默认 `ADK_AUDIT_AUTH_TOKEN`），非回环地址没有 token 时拒绝启动。都不给时审计只留在进程内，多副本之间不共享。
 - `--session-tenant-scope` 打开后，控制台的会话键从 `<subject>` 变成 `<tenant>:<subject>`，同一 subject 在不同租户下的会话互不可见。默认关闭。开启后已有会话按旧键存在，不会出现在列表里，等价于让所有用户重新开始会话。

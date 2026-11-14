@@ -189,6 +189,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-096 审计 Postgres 写读验链（ADR-0016）：每租户哈希链、租户级 advisory lock、共享查询与 `verify-audit --audit-db`。已完成。
 - SLICE-097 审计数据库接线（ADR-0016）：`--audit-file | --audit-url | --audit-db` 三选一、`AUDIT_DATABASE_URL`、`serve-audit` 双后端、文件模式回归，ADR-0016 闭环。已完成。
 - SLICE-098 审批的 Postgres 收件箱（ADR-0017）：`PostgresApprovalInbox`、单行状态机、条件 `UPDATE` 的原子决策、过期判定、归档与删除、并发决策测试。已完成。
+- SLICE-099 审批数据库接线（ADR-0017）：控制台 `--approval-db`、`approvals prune --db`、同步/异步收件箱、503 映射、跨进程 `request()` 验证，ADR-0017 闭环。已完成。
 
 ## 完成定义
 

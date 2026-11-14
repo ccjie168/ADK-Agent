@@ -543,6 +543,29 @@ def _audit_query(args: argparse.Namespace) -> AuditQuery | None:
     return None
 
 
+def _approval_backend(
+    explicit_dir: str | None,
+    explicit_db: str | None,
+    *,
+    dir_flag: str = "--approval-dir",
+    db_flag: str = "--approval-db",
+) -> tuple[str, str] | None:
+    if explicit_dir and explicit_db:
+        print(f"{dir_flag} and {db_flag} are mutually exclusive", file=sys.stderr)
+        raise SystemExit(1)
+    if explicit_db:
+        return ("db", explicit_db)
+    if explicit_dir:
+        return ("dir", explicit_dir)
+    env_db = os.environ.get("APPROVAL_DATABASE_URL")
+    if env_db:
+        return ("db", env_db)
+    env_dir = os.environ.get("ADK_APPROVAL_DIR")
+    if env_dir:
+        return ("dir", env_dir)
+    return None
+
+
 def _publish_artifact(args: argparse.Namespace, manifest: Any) -> tuple[Any, bytes | None]:
     from .core import AgentArtifact
     from .registry import (
@@ -1035,8 +1058,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_console.add_argument(
         "--approval-dir",
-        default=os.environ.get("ADK_APPROVAL_DIR"),
+        default=None,
         help="approval inbox directory (defaults to $ADK_APPROVAL_DIR)",
+    )
+    p_console.add_argument(
+        "--approval-db",
+        default=None,
+        help="Postgres URL for the approval inbox (defaults to $APPROVAL_DATABASE_URL)",
     )
     p_console.add_argument(
         "--approval-ttl",
@@ -1072,8 +1100,13 @@ def main(argv: list[str] | None = None) -> None:
     p_prune = approvals_sub.add_parser("prune", help="archive or delete terminal approval records")
     p_prune.add_argument(
         "--dir",
-        default=os.environ.get("ADK_APPROVAL_DIR"),
+        default=None,
         help="approval inbox directory (defaults to $ADK_APPROVAL_DIR)",
+    )
+    p_prune.add_argument(
+        "--db",
+        default=None,
+        help="Postgres URL for approvals (defaults to $APPROVAL_DATABASE_URL)",
     )
     p_prune.add_argument(
         "--older-than",
@@ -1721,11 +1754,21 @@ def main(argv: list[str] | None = None) -> None:
 
         oidc = _identity_provider(args)
         quota, quota_config = _quota_settings(args)
-        approvals = None
-        if args.approval_dir:
-            from .approvals import FileApprovalInbox
+        approval_backend = _approval_backend(args.approval_dir, args.approval_db)
+        approvals: Any = None
+        if approval_backend is not None:
+            if approval_backend[0] == "db":
+                from .approvals_postgres import PostgresApprovalInbox
 
-            approvals = FileApprovalInbox(Path(args.approval_dir), ttl_seconds=args.approval_ttl)
+                approvals = PostgresApprovalInbox(
+                    approval_backend[1], ttl_seconds=args.approval_ttl
+                )
+            else:
+                from .approvals import FileApprovalInbox
+
+                approvals = FileApprovalInbox(
+                    Path(approval_backend[1]), ttl_seconds=args.approval_ttl
+                )
 
         if args.agents and args.agent_ref:
             print("--agents and --agent-ref are mutually exclusive", file=sys.stderr)
@@ -1804,23 +1847,49 @@ def main(argv: list[str] | None = None) -> None:
             # a cross-loop close is best-effort and must not fail shutdown.
             with contextlib.suppress(Exception):
                 asyncio.run(audit_query.aclose())
-    elif args.cmd == "approvals":
-        from .approvals import FileApprovalInbox
+        from .approvals_postgres import PostgresApprovalInbox
 
-        if not args.dir:
+        if isinstance(approvals, PostgresApprovalInbox):
+            # Same cross-loop caveat as the audit query above.
+            with contextlib.suppress(Exception):
+                asyncio.run(approvals.aclose())
+    elif args.cmd == "approvals":
+        backend = _approval_backend(args.dir, args.db, dir_flag="--dir", db_flag="--db")
+        if backend is None:
             print(
-                "approval dir is required: provide --dir or set ADK_APPROVAL_DIR",
+                "approval dir is required: provide --dir or --db, "
+                "or set ADK_APPROVAL_DIR or APPROVAL_DATABASE_URL",
                 file=sys.stderr,
             )
             raise SystemExit(1)
         if args.older_than <= 0:
             print("--older-than must be greater than 0", file=sys.stderr)
             raise SystemExit(1)
-        try:
-            result = FileApprovalInbox(args.dir).prune(args.older_than, archive=not args.delete)
-        except OSError as exc:
-            print(f"prune failed: {type(exc).__name__}", file=sys.stderr)
-            raise SystemExit(1) from None
+        kind, value = backend
+        if kind == "db":
+            from .approvals import ApprovalInboxError
+            from .approvals_postgres import PostgresApprovalInbox
+
+            async def _prune_db() -> Any:
+                inbox = PostgresApprovalInbox(value)
+                try:
+                    return await inbox.prune(args.older_than, archive=not args.delete)
+                finally:
+                    await inbox.aclose()
+
+            try:
+                result = asyncio.run(_prune_db())
+            except (ApprovalInboxError, ValueError) as exc:
+                print(f"prune failed: {type(exc).__name__}", file=sys.stderr)
+                raise SystemExit(1) from None
+        else:
+            from .approvals import FileApprovalInbox
+
+            try:
+                result = FileApprovalInbox(value).prune(args.older_than, archive=not args.delete)
+            except OSError as exc:
+                print(f"prune failed: {type(exc).__name__}", file=sys.stderr)
+                raise SystemExit(1) from None
         if args.delete:
             print(f"deleted {result.deleted} requests")
         else:

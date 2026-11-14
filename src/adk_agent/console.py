@@ -8,6 +8,7 @@ it in ``sessionStorage`` for the current tab only.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import re
@@ -21,7 +22,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 from google.adk.models import BaseLlm
 from pydantic import ValidationError
 
-from .approvals import ApprovalConflict, ApprovalExpired, ApprovalNotFound, FileApprovalInbox
+from .approvals import ApprovalConflict, ApprovalExpired, ApprovalNotFound
+from .approvals_postgres import ApprovalInboxUnavailable
 from .audit import AuditQuery, AuditQueryUnavailable, ListAuditSink, query_events
 from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
@@ -93,6 +95,9 @@ from .tracing import resolve_trace_id
 
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
+
+    from .approvals import FileApprovalInbox
+    from .approvals_postgres import PostgresApprovalInbox
 
 logger = logging.getLogger(__name__)
 
@@ -1636,7 +1641,7 @@ def build_console_app(
     oidc: IdentityProvider | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
-    approvals: FileApprovalInbox | None = None,
+    approvals: FileApprovalInbox | PostgresApprovalInbox | None = None,
     metrics: MetricsRegistry | None = None,
     sse_queue_size: int = 512,
     rate_limit: RateLimit | None = None,
@@ -2874,7 +2879,12 @@ def build_console_app(
         if approvals is None:
             return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
         caller = _principal_for(request)
-        pending = approvals.pending()
+        try:
+            pending = approvals.pending()
+            if inspect.isawaitable(pending):
+                pending = await pending
+        except ApprovalInboxUnavailable:
+            return JSONResponse({"error": "approval_unavailable"}, status_code=503)
         if "admin" not in caller.roles:
             pending = [item for item in pending if item.principal.tenant == caller.tenant]
         return [item.model_dump(mode="json") for item in pending]
@@ -2896,7 +2906,12 @@ def build_console_app(
             return JSONResponse({"error": "invalid decision"}, status_code=400)
 
         caller = _principal_for(request)
-        record = approvals.get(request_id)
+        try:
+            record = approvals.get(request_id)
+            if inspect.isawaitable(record):
+                record = await record
+        except ApprovalInboxUnavailable:
+            return JSONResponse({"error": "approval_unavailable"}, status_code=503)
         if record is None:
             return JSONResponse({"error": "approval_not_found"}, status_code=404)
         stored = record.request
@@ -2938,12 +2953,16 @@ def build_console_app(
                 approver=caller.subject,
                 reason=reason,
             )
+            if inspect.isawaitable(decision):
+                decision = await decision
         except ApprovalConflict:
             return JSONResponse({"error": "approval_already_decided"}, status_code=409)
         except ApprovalExpired:
             return JSONResponse({"error": "approval_expired"}, status_code=410)
         except ApprovalNotFound:
             return JSONResponse({"error": "approval_not_found"}, status_code=404)
+        except ApprovalInboxUnavailable:
+            return JSONResponse({"error": "approval_unavailable"}, status_code=503)
 
         await audit.emit(
             AuditEvent(
@@ -3269,7 +3288,7 @@ def run_console(
     oidc: IdentityProvider | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
-    approvals: FileApprovalInbox | None = None,
+    approvals: FileApprovalInbox | PostgresApprovalInbox | None = None,
     metrics: MetricsRegistry | None = None,
     sse_queue_size: int = 512,
     rate_limit: RateLimit | None = None,
