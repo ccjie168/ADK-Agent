@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from ..core import ConnectorSpec
 
 _SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
 
@@ -50,4 +53,26 @@ def load_tool_catalog(path: str | Path) -> ToolCatalog:
     return catalog
 
 
-__all__ = ["ToolCatalog", "ToolCatalogError", "ToolEntry", "ToolSource", "load_tool_catalog"]
+def connector_tool_entries(specs: Iterable[ConnectorSpec]) -> list[ToolEntry]:
+    return [
+        ToolEntry(
+            tool_id=spec.connector_id,
+            description=f"{spec.kind} connector to {spec.base_url}",
+            source="connector",
+            data_classes=list(spec.data_classes),
+            requires_approval=False,
+            tenant=spec.tenant,
+        )
+        for spec in specs
+        if spec.enabled
+    ]
+
+
+__all__ = [
+    "ToolCatalog",
+    "ToolCatalogError",
+    "ToolEntry",
+    "ToolSource",
+    "connector_tool_entries",
+    "load_tool_catalog",
+]

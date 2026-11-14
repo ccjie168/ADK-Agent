@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from .catalog import ToolCatalog, ToolCatalogError, ToolEntry, load_tool_catalog
+from .catalog import (
+    ToolCatalog,
+    ToolCatalogError,
+    ToolEntry,
+    connector_tool_entries,
+    load_tool_catalog,
+)
 from .connectors import ConnectorDenied, ConnectorResponse, build_connector_tools
 from .enforcement import declared_tool_ids, install_declared_guards
 from .gateway import FunctionToolGateway, ToolDenied
@@ -17,6 +23,7 @@ __all__ = [
     "ConnectorDenied",
     "ConnectorResponse",
     "build_connector_tools",
+    "connector_tool_entries",
     "FunctionRegistry",
     "FunctionToolGateway",
     "GrantPolicyEngine",

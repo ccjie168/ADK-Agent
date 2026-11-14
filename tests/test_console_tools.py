@@ -10,8 +10,8 @@ from google.adk.agents import LlmAgent
 
 from adk_agent import cli
 from adk_agent.console import build_console_app
-from adk_agent.core import AgentManifest
-from adk_agent.registry import FileAgentRegistry, published_from
+from adk_agent.core import AgentManifest, ConnectorSpec, ConnectorStoreError
+from adk_agent.registry import FileAgentRegistry, FileConnectorStore, published_from
 from adk_agent.tools import ToolCatalog, ToolEntry, load_tool_catalog
 
 AUTH = {"Authorization": "Bearer secret"}
@@ -51,7 +51,7 @@ def _manifest(tenant: str = "acme", tool_ids=("crm.read",)) -> AgentManifest:
     )
 
 
-def _app(tmp_path, *, catalog=True, registry=None, roles=None):
+def _app(tmp_path, *, catalog=True, registry=None, roles=None, connectors=None):
     probe = LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")
     return build_console_app(
         {"probe": probe},
@@ -59,6 +59,7 @@ def _app(tmp_path, *, catalog=True, registry=None, roles=None):
         roles=roles,
         registry=registry if registry is not None else FileAgentRegistry(tmp_path / "registry"),
         tool_catalog=_catalog() if catalog is True else catalog,
+        connectors=connectors,
     )
 
 
@@ -109,6 +110,87 @@ def test_grants_empty_without_registry(tmp_path):
 
     assert response.status_code == 200
     assert all(entry["granted_agents"] == [] for entry in response.json())
+
+
+def _connector(connector_id: str, *, tenant=None, enabled=True) -> ConnectorSpec:
+    return ConnectorSpec(
+        connector_id=connector_id,
+        tenant=tenant,
+        kind="http",
+        base_url="https://example.com",
+        methods=["GET"],
+        data_classes=["internal"],
+        enabled=enabled,
+    )
+
+
+def _connector_store(tmp_path, *specs) -> FileConnectorStore:
+    store = FileConnectorStore(tmp_path / "connectors")
+    for spec in specs:
+        asyncio.run(store.add(spec))
+    return store
+
+
+class _BrokenConnectorStore:
+    async def list(self, tenant: str):
+        raise ConnectorStoreError("down")
+
+
+def test_connector_tools_merged(tmp_path):
+    store = _connector_store(
+        tmp_path,
+        _connector("crm.http"),
+        _connector("acme.erp", tenant="acme"),
+        _connector("other.feed", tenant="other"),
+    )
+    with TestClient(_app(tmp_path, catalog=None, connectors=store)) as client:
+        response = _tools(client)
+
+    assert response.status_code == 200
+    assert [(entry["tool_id"], entry["tenant"], entry["source"]) for entry in response.json()] == [
+        ("acme.erp", "acme", "connector"),
+        ("crm.http", None, "connector"),
+    ]
+
+
+def test_static_entry_wins_over_connector(tmp_path):
+    store = _connector_store(tmp_path, _connector("crm.read"), _connector("crm.other"))
+    with TestClient(_app(tmp_path, connectors=store)) as client:
+        entries = _tools(client).json()
+
+    assert [entry["tool_id"] for entry in entries] == ["crm.export", "crm.other", "crm.read"]
+    [entry] = [item for item in entries if item["tool_id"] == "crm.read"]
+    assert entry["source"] == "function"
+    assert entry["description"] == "crm.read description"
+
+
+def test_connectors_without_catalog(tmp_path):
+    store = _connector_store(tmp_path, _connector("crm.http"))
+    with TestClient(_app(tmp_path, catalog=None, connectors=store)) as client:
+        response = _tools(client)
+
+    assert response.status_code == 200
+    assert [entry["tool_id"] for entry in response.json()] == ["crm.http"]
+    assert response.json()[0]["description"] == "http connector to https://example.com"
+
+
+def test_connector_store_unavailable(tmp_path):
+    with TestClient(_app(tmp_path, catalog=None, connectors=_BrokenConnectorStore())) as client:
+        response = _tools(client)
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "connector_store_unavailable"}
+
+
+def test_connector_grants_from_registry(tmp_path):
+    store = _connector_store(tmp_path, _connector("crm.http"))
+    registry = FileAgentRegistry(tmp_path / "registry")
+    asyncio.run(registry.publish(published_from(_manifest(tool_ids=("crm.http",)))))
+    with TestClient(_app(tmp_path, catalog=None, registry=registry, connectors=store)) as client:
+        [entry] = _tools(client).json()
+
+    assert entry["tool_id"] == "crm.http"
+    assert entry["granted_agents"] == [{"id": "bot", "version": "1.0.0"}]
 
 
 def _agents_file(tmp_path) -> str:

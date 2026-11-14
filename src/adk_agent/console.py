@@ -74,7 +74,7 @@ from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .runtime.sessions import scoped_user_id
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
-from .tools import ToolCatalog, install_declared_guards
+from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_declared_guards
 from .tracing import resolve_trace_id
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -1715,7 +1715,7 @@ def build_console_app(
 
     @app.get("/api/tools")
     async def list_tools(request: Request, tenant: str | None = None) -> Any:
-        if tool_catalog is None:
+        if tool_catalog is None and connectors is None:
             return JSONResponse({"error": "tool_catalog_not_configured"}, status_code=404)
         caller = _principal_for(request)
         target = tenant or caller.tenant
@@ -1735,24 +1735,40 @@ def build_console_app(
                     grants.setdefault(grant.tool_id, set()).add(
                         (record.manifest.id, record.manifest.version)
                     )
-        entries: list[dict[str, Any]] = []
-        for tool in tool_catalog.tools:
-            if tool.tenant is not None and tool.tenant != target:
-                continue
+
+        def _view(tool: ToolEntry) -> dict[str, Any]:
             granted = sorted(grants.get(tool.tool_id, set()))
-            entries.append(
-                {
-                    "tool_id": tool.tool_id,
-                    "description": tool.description,
-                    "source": tool.source,
-                    "data_classes": list(tool.data_classes),
-                    "requires_approval": tool.requires_approval,
-                    "tenant": tool.tenant,
-                    "granted_agents": [
-                        {"id": agent_id, "version": version} for agent_id, version in granted
-                    ],
-                }
-            )
+            return {
+                "tool_id": tool.tool_id,
+                "description": tool.description,
+                "source": tool.source,
+                "data_classes": list(tool.data_classes),
+                "requires_approval": tool.requires_approval,
+                "tenant": tool.tenant,
+                "granted_agents": [
+                    {"id": agent_id, "version": version} for agent_id, version in granted
+                ],
+            }
+
+        entries: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        if tool_catalog is not None:
+            for tool in tool_catalog.tools:
+                if tool.tenant is not None and tool.tenant != target:
+                    continue
+                seen.add(tool.tool_id)
+                entries.append(_view(tool))
+        if connectors is not None:
+            try:
+                specs = await connectors.list(target)
+            except ConnectorStoreError:
+                logger.exception("tool catalog connector read failed: tenant=%s", target)
+                return JSONResponse({"error": "connector_store_unavailable"}, status_code=503)
+            for tool in connector_tool_entries(specs):
+                if tool.tool_id in seen:
+                    continue
+                seen.add(tool.tool_id)
+                entries.append(_view(tool))
         entries.sort(key=lambda entry: entry["tool_id"])
         return entries
 

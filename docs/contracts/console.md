@@ -182,9 +182,12 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 }
 ```
 
-- 目录由 `console --tool-catalog FILE` 提供，文件格式见 `cli.md`。未配置返回 404 `tool_catalog_not_configured`。
+- 目录由 `console --tool-catalog FILE` 和已配置的连接器存储共同提供。两者都未配置返回 404 `tool_catalog_not_configured`。
 - `tenant` 为 `null` 的条目对所有租户可见；其他条目只在同名租户出现。
 - `tenant` 缺失时用当前 principal 的租户。非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
+- 连接器条目只来自已启用的连接器，与工具网关暴露的范围一致。`source` 为 `connector`，`tool_id` 等于 `connector_id`，`description` 为 `<kind> connector to <base_url>`，`data_classes` 取连接器定义，`requires_approval` 为 `false`，`tenant` 取连接器租户（全局连接器为 `null`）。
+- 同一 `tool_id` 同时出现在静态目录和连接器存储时，静态条目优先，连接器条目被跳过。
+- 连接器存储不可达返回 503 `connector_store_unavailable`。
 - `granted_agents` 来自该租户注册表记录中 `manifest.tool_grants` 的同名工具，按 `(id, version)` 排序。没有注册表时为空列表；注册表损坏返回 500 `registry_corrupt`。
 - 结果按 `tool_id` 排序。
 

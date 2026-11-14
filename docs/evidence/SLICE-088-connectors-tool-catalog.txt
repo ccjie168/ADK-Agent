@@ -1,0 +1,58 @@
+SLICE-088 connectors in the read-only tool catalog
+==================================================
+
+red, pre-slice commit b9d5a20
+-----------------------------
+$ git worktree add <tmp>/adk-088-red b9d5a20
+$ PYTHONPATH=<tmp>/adk-088-red/src ./.venv/Scripts/python.exe <tmp>/adk-088-red-probe.py
+source: <tmp>\adk-088-red\src\adk_agent\__init__.py
+case1: ImportError cannot import name 'connector_tool_entries' from 'adk_agent.tools'
+case2: GET /api/tools -> 404 {'error': 'tool_catalog_not_configured'}
+case3: GET /api/tools -> 200 [('crm.read', 'function', 'static entry')]
+
+case2 runs a console built with a connector store and no static catalog. case3
+adds a static entry with the same id as a registered connector; the connector
+never appears because the pre-slice handler does not read connector records.
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_tool_catalog.py tests/test_console_tools.py -q
+20 passed in 2.42s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1004 passed, 29 skipped in 49.73s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, real Postgres control plane and loopback consoles
+-------------------------------------------------------
+postgres: container adk-postgres-070, postgresql://adk:adk@127.0.0.1:55432/adk
+registry: serve-registry on 127.0.0.1:8807, static token
+consoles: 127.0.0.1:8808 without --tool-catalog, 127.0.0.1:8809 with one
+
+$ adk-agent connectors register ... --id crm088 --tenant acme088   exit 0
+$ adk-agent connectors register ... --id erp088 --tenant acme088   exit 0
+
+console 8808, connectors only:
+GET /api/tools?tenant=acme088 -> 200
+  crm088 connector acme088 "http connector to https://crm.example.com" []
+  erp088 connector acme088 "http connector to https://crm.example.com" []
+
+console 8809, static catalog also names crm088:
+GET /api/tools?tenant=acme088 -> 200
+  crm088 function "curated static entry"
+  erp088 connector "http connector to https://crm.example.com"
+
+notes
+-----
+- Connector entries carry the connector tenant, the derived description and the
+  existing `granted_agents` join, which is empty here because no version grants
+  these ids in the live check. `test_connector_grants_from_registry` covers the
+  non-empty case.
+- The static entry keeps its curated description while the second connector
+  still appears, so static priority does not hide other connectors.
+- The red probe ran against a detached worktree; PYTHONPATH puts that tree's
+  `src` ahead of the editable venv install.

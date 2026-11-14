@@ -6,7 +6,13 @@ import json
 
 import pytest
 
-from adk_agent.tools import ToolCatalog, ToolCatalogError, load_tool_catalog
+from adk_agent.core import ConnectorSpec
+from adk_agent.tools import (
+    ToolCatalog,
+    ToolCatalogError,
+    connector_tool_entries,
+    load_tool_catalog,
+)
 
 
 def _write(tmp_path, payload):
@@ -67,3 +73,35 @@ def test_unsafe_tool_id(tmp_path):
 
     with pytest.raises(ToolCatalogError):
         load_tool_catalog(path)
+
+
+def _connector(**overrides):
+    spec = {
+        "connector_id": "crm.http",
+        "kind": "http",
+        "base_url": "https://crm.example.com",
+        "methods": ["GET"],
+        "data_classes": ["internal"],
+    }
+    spec.update(overrides)
+    return ConnectorSpec.model_validate(spec)
+
+
+def test_connector_entry():
+    [entry] = connector_tool_entries([_connector()])
+
+    assert entry.tool_id == "crm.http"
+    assert entry.description == "http connector to https://crm.example.com"
+    assert entry.source == "connector"
+    assert entry.data_classes == ["internal"]
+    assert entry.requires_approval is False
+    assert entry.tenant is None
+
+
+def test_connector_entry_skips_disabled():
+    specs = [
+        _connector(connector_id="crm.on"),
+        _connector(connector_id="crm.off", enabled=False),
+    ]
+
+    assert [entry.tool_id for entry in connector_tool_entries(specs)] == ["crm.on"]
