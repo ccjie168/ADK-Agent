@@ -53,11 +53,11 @@ class AuditedRunner:
         inner: Any,
         *,
         agent_name: str,
-        principal: Principal,
+        principal: Principal | Callable[[], Principal],
         input_text: str | None = None,
         audit: AuditSink | None,
         quota: QuotaManager | None,
-        quota_policy: QuotaPolicy | None,
+        quota_policy: QuotaPolicy | Callable[[Principal], QuotaPolicy | None] | None,
         trace_id: TraceId = None,
         metrics: MetricsRegistry | None = None,
         source: str = "agent",
@@ -91,6 +91,10 @@ class AuditedRunner:
         started = time.perf_counter()
         run_id = uuid.uuid4().hex
         trace_id = self._resolved_trace_id()
+        principal = self._principal() if callable(self._principal) else self._principal
+        quota_policy = (
+            self._quota_policy(principal) if callable(self._quota_policy) else self._quota_policy
+        )
         input_text = (
             self._input_text
             if self._input_text is not None
@@ -100,7 +104,7 @@ class AuditedRunner:
         invocation = Invocation(
             run_id=run_id,
             trace_id=trace_id,
-            principal=self._principal,
+            principal=principal,
             agent_ref=self._agent_ref or dev_agent_ref(self._agent_name),
             input=input_text,
         )
@@ -108,13 +112,14 @@ class AuditedRunner:
         stack = AsyncExitStack()
         token = set_invocation(invocation)
         try:
-            if self._quota is not None and self._quota_policy is not None:
+            if self._quota is not None and quota_policy is not None:
                 try:
                     await stack.enter_async_context(
-                        self._quota.reserve(self._principal.tenant, self._quota_policy)
+                        self._quota.reserve(principal.tenant, quota_policy)
                     )
                 except QuotaExceeded as exc:
                     await self._emit(
+                        principal=principal,
                         run_id=run_id,
                         trace_id=trace_id,
                         status="denied",
@@ -123,7 +128,7 @@ class AuditedRunner:
                         args_text=input_text,
                         started=started,
                     )
-                    self._record("denied", started, exc.limit)
+                    self._record("denied", started, principal, exc.limit)
                     raise
 
             reply_parts: list[str] = []
@@ -136,6 +141,7 @@ class AuditedRunner:
                     yield event
             except Exception as exc:
                 await self._emit(
+                    principal=principal,
                     run_id=run_id,
                     trace_id=trace_id,
                     status="error",
@@ -144,11 +150,12 @@ class AuditedRunner:
                     args_text=input_text,
                     started=started,
                 )
-                self._record("error", started)
+                self._record("error", started, principal)
                 raise
 
             text = "".join(reply_parts).strip()
             await self._emit(
+                principal=principal,
                 run_id=run_id,
                 trace_id=trace_id,
                 status="ok",
@@ -157,15 +164,21 @@ class AuditedRunner:
                 args_text=input_text,
                 started=started,
             )
-            self._record("ok", started)
+            self._record("ok", started, principal)
         finally:
             reset_invocation(token)
             await stack.aclose()
 
-    def _record(self, status: str, started: float, limit: str | None = None) -> None:
+    def _record(
+        self,
+        status: str,
+        started: float,
+        principal: Principal,
+        limit: str | None = None,
+    ) -> None:
         if self._metrics is None:
             return
-        tenant = self._principal.tenant
+        tenant = principal.tenant
         self._metrics.inc(
             "adk_agent_runs_total",
             {
@@ -193,6 +206,7 @@ class AuditedRunner:
     async def _emit(
         self,
         *,
+        principal: Principal,
         run_id: str,
         trace_id: str,
         status: Literal["ok", "error", "denied"],
@@ -207,8 +221,8 @@ class AuditedRunner:
             event_id=uuid.uuid4().hex,
             run_id=run_id,
             trace_id=trace_id,
-            tenant=self._principal.tenant,
-            principal=self._principal,
+            tenant=principal.tenant,
+            principal=principal,
             agent_ref=dev_agent_ref(self._agent_name),
             action="agent.run",
             target=f"{self._agent_name}@dev",

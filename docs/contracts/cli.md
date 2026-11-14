@@ -283,6 +283,14 @@
 - 配置了审计或配额且没有传入 runner 时，服务自行构建默认 runner 并包一层。`--audit-file` 和 `--audit-url` 互斥，同时给退出 2。
 - `--rate-limit N --rate-limit-window SECONDS` 按客户端地址计数，对所有路径生效。A2A 没有 `/healthz` 和 `/metrics`，没有豁免路径。
 
+peer 模式（ADR-0014，见 `a2a.md`）：
+
+- `--peer-dir DIR` 或 `--peer-db URL` 提供 peer 与授权存储，二选一。
+- 身份用 `--oidc-config FILE` 或 `--peer-token-file FILE`，二选一，且都必须配合 peer 存储。
+- 必须同时提供 `--manifest FILE`，manifest 的 `exposure` 必须是 `a2a`。
+- peer 模式与 `--auth-token-env`、`--allow-unauthenticated` 互斥，同时给出退出 2。
+- peer 模式下 principal、审计身份、动作映射与拒绝规则见 `a2a.md`；legacy 模式保持本节原有行为。
+
 ## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS]`
 
 启动私有控制台。

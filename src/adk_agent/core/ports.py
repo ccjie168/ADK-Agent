@@ -17,6 +17,7 @@ from .invocation import Invocation
 from .lifecycle import AgentLifecycle, LifecycleStatus
 from .manifest import AgentRef, ModelPolicy, PublishedAgent
 from .model import ModelRequest, ModelResponse
+from .peers import PeerGrant, PeerIdentity
 from .policy import PolicyDecision
 from .quota import QuotaPolicy
 from .tool import ToolRequest, ToolResponse
@@ -137,6 +138,24 @@ class ArtifactLoader(Protocol):
     async def load(self, artifact: AgentArtifact, store: ArtifactStore) -> Any: ...
 
 
+class PeerStore(Protocol):
+    async def get(self, peer_id: str) -> PeerIdentity | None: ...
+
+    async def get_by_subject(self, subject: str) -> PeerIdentity | None: ...
+
+    async def list(self) -> builtins.list[PeerIdentity]: ...
+
+    async def put(self, identity: PeerIdentity) -> PeerIdentity: ...
+
+
+class PeerGrantStore(Protocol):
+    async def get(self, peer_id: str, agent_id: str) -> PeerGrant | None: ...
+
+    async def list(self) -> builtins.list[PeerGrant]: ...
+
+    async def put(self, grant: PeerGrant) -> PeerGrant: ...
+
+
 class TemplateSource(Protocol):
     async def render(self, template_id: str, params: Mapping[str, str]) -> Mapping[str, str]: ...
 
@@ -169,6 +188,8 @@ __all__ = [
     "IdentityProvider",
     "ModelGateway",
     "ModelProvider",
+    "PeerGrantStore",
+    "PeerStore",
     "PolicyEngine",
     "QuotaManager",
     "SecretProvider",

@@ -558,6 +558,77 @@ def _quota_settings(
     return manager, config
 
 
+def _peer_exit(message: str) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _peer_a2a(args: argparse.Namespace) -> dict[str, Any] | None:
+    """Return serve_a2a kwargs for peer mode, or None for legacy shared-token mode."""
+    peer_flags = [
+        getattr(args, "manifest", None),
+        getattr(args, "peer_dir", None),
+        getattr(args, "peer_db", None),
+        getattr(args, "peer_token_file", None),
+        getattr(args, "oidc_config", None),
+    ]
+    if not any(peer_flags):
+        return None
+    if not getattr(args, "manifest", None):
+        _peer_exit("peer mode requires --manifest")
+    if bool(getattr(args, "peer_dir", None)) == bool(getattr(args, "peer_db", None)):
+        _peer_exit("set exactly one of --peer-dir or --peer-db")
+    if bool(getattr(args, "oidc_config", None)) == bool(getattr(args, "peer_token_file", None)):
+        _peer_exit("set exactly one of --oidc-config or --peer-token-file")
+    if _auth_token(args) or getattr(args, "allow_unauthenticated", False):
+        _peer_exit("peer mode cannot combine with --auth-token-env or --allow-unauthenticated")
+
+    from .identity.peer_tokens import load_peer_tokens
+    from .registry import (
+        FilePeerGrantStore,
+        FilePeerStore,
+        PostgresPeerGrantStore,
+        PostgresPeerStore,
+    )
+    from .registry.manifest import load_manifest
+
+    try:
+        manifest = load_manifest(args.manifest)
+    except Exception as exc:  # noqa: BLE001
+        print(f"invalid manifest: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    if manifest.exposure != "a2a":
+        _peer_exit('peer mode requires a manifest with exposure "a2a"')
+
+    peers: Any
+    peer_grants: Any
+    if args.peer_dir:
+        peers = FilePeerStore(args.peer_dir)
+        peer_grants = FilePeerGrantStore(args.peer_dir)
+    else:
+        peers = PostgresPeerStore(args.peer_db)
+        peer_grants = PostgresPeerGrantStore(args.peer_db)
+
+    if args.oidc_config:
+        oidc = _identity_provider(args)
+        peer_tokens = None
+    else:
+        oidc = None
+        try:
+            peer_tokens = load_peer_tokens(args.peer_token_file)
+        except (ValueError, OSError) as exc:
+            print(f"invalid peer token file: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+    return {
+        "oidc": oidc,
+        "peers": peers,
+        "peer_grants": peer_grants,
+        "peer_tokens": peer_tokens,
+        "manifest": manifest,
+    }
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="adk-agent")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -683,6 +754,19 @@ def main(argv: list[str] | None = None) -> None:
     _add_http_args(p_a2a)
     _add_audit_quota_args(p_a2a)
     _add_rate_limit_args(p_a2a)
+    p_a2a.add_argument("--manifest", default=None, help="AgentManifest JSON (peer mode)")
+    p_a2a.add_argument(
+        "--peer-dir", default=None, help="peer and grant file store root (peer mode)"
+    )
+    p_a2a.add_argument(
+        "--peer-db", default=None, help="Postgres URL for peers and grants (peer mode)"
+    )
+    p_a2a.add_argument("--peer-token-file", default=None, help="peer token hash file (peer mode)")
+    p_a2a.add_argument(
+        "--oidc-config",
+        default=None,
+        help="JSON OidcConfig file (peer mode identity)",
+    )
 
     p_gateway = sub.add_parser(
         "serve-model-gateway", help="serve the model gateway as a standalone service"
@@ -1222,19 +1306,21 @@ def main(argv: list[str] | None = None) -> None:
 
         install_declared_guards(agent, audit)
         quota, quota_config = _quota_settings(args)
+        peer = _peer_a2a(args)
         try:
             serve_a2a(
                 agent=agent,
                 host=args.host,
                 port=args.port,
                 rpc_path=args.rpc_path,
-                auth_token=_auth_token(args),
-                allow_unauthenticated=args.allow_unauthenticated,
+                auth_token=None if peer else _auth_token(args),
+                allow_unauthenticated=False if peer else args.allow_unauthenticated,
                 audit=audit,
                 quota=quota,
                 quota_config=quota_config,
                 rate_limit=rate_limit,
                 require_context=True,
+                **(peer or {}),
             )
         except A2aUnavailable as exc:
             print(str(exc), file=sys.stderr)

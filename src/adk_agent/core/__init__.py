@@ -46,6 +46,13 @@ from .orchestration import (
     plan_digest,
     plan_ref,
 )
+from .peers import (
+    PeerAction,
+    PeerGrant,
+    PeerIdentity,
+    PeerStoreError,
+    PeerStoreUnavailable,
+)
 from .policy import DataClass, PolicyDecision, ToolGrant
 from .ports import (
     AgentLifecycleStore,
@@ -59,6 +66,8 @@ from .ports import (
     IdentityProvider,
     ModelGateway,
     ModelProvider,
+    PeerGrantStore,
+    PeerStore,
     PolicyEngine,
     QuotaManager,
     SecretProvider,
@@ -138,6 +147,13 @@ __all__ = [
     "ModelRequest",
     "ModelResponse",
     "OrchestrationPlan",
+    "PeerAction",
+    "PeerGrant",
+    "PeerGrantStore",
+    "PeerIdentity",
+    "PeerStore",
+    "PeerStoreError",
+    "PeerStoreUnavailable",
     "PlanResult",
     "PlanStep",
     "PolicyDecision",

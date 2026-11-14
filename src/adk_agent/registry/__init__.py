@@ -32,6 +32,10 @@ from .lifecycle_postgres import PostgresAgentLifecycleStore
 from .loader import ArtifactLoadError, InProcessArtifactLoader, load_agent
 from .manifest import load_manifest, published_from
 from .packaging import PackagingError, pack_agent, read_artifact_zip
+from .peer_grants import FilePeerGrantStore
+from .peer_grants_postgres import PostgresPeerGrantStore
+from .peers import FilePeerStore
+from .peers_postgres import PostgresPeerStore
 from .postgres import PostgresAgentRegistry, RegistryStoreUnavailable
 from .refs import RefError, load_registry_agents, parse_agent_ref
 from .reports import EvalReportConflict, FileEvalReportStore
@@ -53,6 +57,8 @@ __all__ = [
     "FileAgentLifecycleStore",
     "FileConnectorStore",
     "FileArtifactStore",
+    "FilePeerGrantStore",
+    "FilePeerStore",
     "FileToolGrantStore",
     "GrantRequestConflict",
     "GrantRequestError",
@@ -66,6 +72,8 @@ __all__ = [
     "PostgresAgentRegistry",
     "PostgresConnectorStore",
     "PostgresEvalReportStore",
+    "PostgresPeerGrantStore",
+    "PostgresPeerStore",
     "PostgresToolGrantStore",
     "PublishUnavailable",
     "FileAgentRegistry",

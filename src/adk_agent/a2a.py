@@ -15,7 +15,13 @@ from typing import TYPE_CHECKING, Any
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from .auth import BearerAuthMiddleware, resolve_http_auth
+from .a2a_peer import (
+    PeerAuthzMiddleware,
+    PeerIdentityMiddleware,
+    PeerTokenMiddleware,
+    current_peer_principal,
+)
+from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from .core import Principal
 from .mcp.http import resolve_port
 from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
@@ -25,7 +31,7 @@ from .tracing import resolve_trace_id
 if TYPE_CHECKING:  # pragma: no cover
     from google.adk.agents import BaseAgent
 
-    from .core import AuditSink, QuotaConfig, QuotaManager
+    from .core import AgentManifest, AuditSink, IdentityProvider, QuotaConfig, QuotaManager
 
 _INSTALL_HINT = (
     "A2A support needs the optional dependency; install it with "
@@ -35,6 +41,21 @@ _INSTALL_HINT = (
 
 _A2A_USER_ID = "a2a_user"
 _A2A_TENANT = "local"
+
+_EXPOSURE_ERROR = 'peer mode requires a manifest with exposure "a2a"'
+_IDENTITY_ERROR = "peer mode requires exactly one of oidc or peer_tokens"
+_STORES_ERROR = "peer mode requires both peers and peer_grants stores"
+
+
+def _peer_quota_policy(quota_config: QuotaConfig | None) -> Any:
+    if quota_config is None:
+        return None
+
+    def policy_for(principal: Principal) -> Any:
+        return quota_config.tenants.get(principal.tenant)
+
+    return policy_for
+
 
 _current_trace_id: ContextVar[str | None] = ContextVar("a2a_trace_id", default=None)
 
@@ -93,22 +114,46 @@ def build_a2a_app(
     quota_config: QuotaConfig | None = None,
     rate_limit: RateLimit | None = None,
     require_context: bool = False,
+    oidc: IdentityProvider | None = None,
+    peers: Any = None,
+    peer_grants: Any = None,
+    peer_tokens: dict[str, str] | None = None,
+    manifest: AgentManifest | None = None,
 ) -> Any:
-    """Build the A2A Starlette app. A token protects every path, card included."""
+    """Build the A2A Starlette app. Legacy token mode or per-peer identity."""
+    peer_mode = any(
+        value is not None for value in (oidc, peers, peer_grants, peer_tokens, manifest)
+    )
+    if peer_mode:
+        if manifest is None or manifest.exposure != "a2a":
+            raise ValueError(_EXPOSURE_ERROR)
+        if (oidc is None) == (peer_tokens is None):
+            raise ValueError(_IDENTITY_ERROR)
+        if peers is None or peer_grants is None:
+            raise ValueError(_STORES_ERROR)
+
     audited = audit is not None or quota is not None or require_context
     if audited:
         if runner is None:
             from google.adk.tools.mcp_tool._agent_to_mcp import _build_runner
 
             runner = _build_runner(agent)
+        principal: Any
+        quota_policy: Any
+        if peer_mode:
+            principal = current_peer_principal
+            quota_policy = _peer_quota_policy(quota_config)
+        else:
+            principal = Principal(tenant=_A2A_TENANT, subject=_A2A_USER_ID, kind="service")
+            quota_policy = quota_config.tenants.get(_A2A_TENANT) if quota_config else None
         runner = wrap_runner(
             runner,
             agent_name=agent.name,
-            principal=Principal(tenant=_A2A_TENANT, subject=_A2A_USER_ID, kind="service"),
+            principal=principal,
             input_text=None,
             audit=audit,
             quota=quota,
-            quota_policy=quota_config.tenants.get(_A2A_TENANT) if quota_config else None,
+            quota_policy=quota_policy,
             trace_id=lambda: _current_trace_id.get(),
             source="a2a",
             require_context=require_context,
@@ -127,7 +172,20 @@ def build_a2a_app(
             surface="a2a",
             exempt=frozenset(),
         )
-    if auth_token:
+    if peer_mode:
+        app.add_middleware(
+            PeerAuthzMiddleware,
+            agent_id=manifest.id if manifest is not None else agent.name,
+            grants=peer_grants,
+            audit=audit,
+            trace_id=lambda: _current_trace_id.get(),
+        )
+        if oidc is not None:
+            app.add_middleware(PeerIdentityMiddleware, peers=peers)
+            app.add_middleware(OidcAuthMiddleware, provider=oidc, open_paths=frozenset())
+        else:
+            app.add_middleware(PeerTokenMiddleware, peers=peers, tokens=peer_tokens)
+    elif auth_token:
         app.add_middleware(BearerAuthMiddleware, token=auth_token, open_paths=frozenset())
     if audited:
         app.add_middleware(_TraceContextMiddleware)
@@ -148,9 +206,17 @@ def serve_a2a(
     quota_config: QuotaConfig | None = None,
     rate_limit: RateLimit | None = None,
     require_context: bool = False,
+    oidc: IdentityProvider | None = None,
+    peers: Any = None,
+    peer_grants: Any = None,
+    peer_tokens: dict[str, str] | None = None,
+    manifest: AgentManifest | None = None,
 ) -> None:
-    """Serve an agent over A2A (blocking). Network binds require a token."""
-    token = resolve_http_auth(host, auth_token, allow_unauthenticated)
+    """Serve an agent over A2A (blocking). Peer mode replaces the shared token."""
+    peer_mode = any(
+        value is not None for value in (oidc, peers, peer_grants, peer_tokens, manifest)
+    )
+    token = None if peer_mode else resolve_http_auth(host, auth_token, allow_unauthenticated)
     resolved_port = resolve_port(port)
     app = build_a2a_app(
         agent,
@@ -164,6 +230,11 @@ def serve_a2a(
         quota_config=quota_config,
         rate_limit=rate_limit,
         require_context=require_context,
+        oidc=oidc,
+        peers=peers,
+        peer_grants=peer_grants,
+        peer_tokens=peer_tokens,
+        manifest=manifest,
     )
 
     import uvicorn

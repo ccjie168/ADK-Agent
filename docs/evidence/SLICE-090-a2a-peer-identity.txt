@@ -1,0 +1,73 @@
+SLICE-090 A2A peer identity, authorization and audit
+====================================================
+
+red, pre-slice commit 19f8ba7
+-----------------------------
+$ git worktree add <tmp>/adk-090-red 19f8ba7
+$ PYTHONPATH=<tmp>/adk-090-red/src ./.venv/Scripts/python.exe <tmp>/adk-090-red-probe.py
+source: <tmp>\adk-090-red\src\adk_agent\__init__.py
+case1: ImportError cannot import name 'PeerIdentity' from 'adk_agent.core'
+case2: ModuleNotFoundError No module named 'adk_agent.a2a_peer'
+case3: SystemExit 2 (unrecognized arguments: --peer-dir d)
+
+$ PYTHONPATH=<tmp>/adk-090-red/src ./.venv/Scripts/python.exe -m pytest -o pythonpath= \
+    tests/core/test_peers.py tests/registry/test_peer_stores.py tests/test_a2a_peer.py -q
+ERROR tests/core/test_peers.py
+ERROR tests/registry/test_peer_stores.py
+ERROR tests/test_a2a_peer.py
+3 errors during collection (ModuleNotFoundError: adk_agent.a2a_peer)
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/core/test_peers.py \
+    tests/registry/test_peer_stores.py tests/test_a2a_peer.py tests/test_a2a.py \
+    tests/test_a2a_runtime.py tests/test_cli_a2a_runtime.py -q
+52 passed, 2 skipped in 3.23s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1058 passed, 31 skipped in 51.42s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, two peers and legacy on real A2A servers
+----------------------------------------------
+peer store: file, tenant acme, manifest id bot with exposure a2a
+grants: peer-read -> read, peer-write -> invoke
+
+GET  /.well-known/agent-card.json  as peer-read   -> 200
+POST message/send                  as peer-read   -> 403
+  {"jsonrpc":"2.0","id":7,"error":{"code":-32001,"message":"forbidden"}}
+GET  /.well-known/agent-card.json  as peer-write  -> 404
+POST tasks/get                     as peer-write  -> 403 -32001 (no read grant)
+POST message/send                  as peer-write  -> 200, task accepted
+POST message/send with a bad token                -> 401
+POST message/send with no token                   -> 401
+
+legacy server with the shared token:
+GET card with token -> 200
+GET card without    -> 401
+
+audit file:
+  peer.call denied acme peer-read  bot
+  peer.call denied acme peer-write bot
+  peer.call denied acme peer-write bot
+  agent.run error  acme peer-write bot@dev
+
+notes
+-----
+- The allowed `message/send` reached the agent, which then failed at the model
+  because the live check has no provider credentials. The audit line proves the
+  run was recorded under tenant `acme` and subject `peer-write`, not
+  `local/a2a_user`, which is the identity switch this slice delivers.
+- `tasks/get` with only `invoke` is denied, so the two actions are independent.
+- The card returns 404 rather than 403 when the peer has no `read` grant. The
+  contract was narrowed to match: A2A has one GET entry, so every GET denial is
+  a hidden card.
+- Denial audit events carry a fresh run id and the request trace id when the
+  trace middleware set one; the earlier draft used a shared constant and was
+  corrected during review.
+- The authorization middleware keys grants by the manifest id, not the ADK agent
+  name, so a registry identity and a local agent name may differ safely.

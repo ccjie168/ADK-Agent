@@ -180,6 +180,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-087 连接器控制面与控制台（ADR-0013）：`serve-registry` 四个端点、`HttpConnectorStore`、Connectors 面板、`connectors` 命令，ADR-0013 闭环。已完成。
 - SLICE-088 连接器并入工具目录（ADR-0013）：`connector_tool_entries`、`/api/tools` 合并已启用连接器、静态条目优先。已完成。
 - SLICE-089 连接器健康检查（ADR-0013）：受约束探测、七种结论、控制台 Check 与 `connectors check`。已完成。
+- SLICE-090 A2A peer 身份与授权（ADR-0014）：peer 注册表与授权存储、两种身份模式、动作级强制、审计身份切换。已完成。
 
 ## 完成定义
 

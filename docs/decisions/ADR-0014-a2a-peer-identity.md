@@ -31,9 +31,9 @@ ADR-0003 把 A2A 提供方接到 bearer 中间件上，但只用一个共享 tok
 
 ## 切片
 
-- SLICE-090 peer 身份、注册表与强制：`PeerIdentity`、两种身份模式、`PeerGrant` 存储、`PeerAuthzMiddleware`、审计身份切换。
+- SLICE-090 peer 身份、注册表与强制：`PeerIdentity`、两种身份模式、`PeerGrant` 存储、`PeerAuthzMiddleware`、审计身份切换，含 `docs/contracts/a2a.md` 初版。
 - SLICE-091 管理面：控制台 Peer 面板与三个接口、`adk-agent peers` 命令、把 `peer.call` 拒绝与放行接进现有审计视图。
-- SLICE-092 证据与迁移：`docs/contracts/a2a.md`、两种模式互斥的负向验证、legacy 单 token 到 peer 的迁移说明。
+- SLICE-092 证据与迁移：契约补全、两种模式互斥的负向验证、legacy 单 token 到 peer 的迁移说明。
 
 ## 备选与否决
 
