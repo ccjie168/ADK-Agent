@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import importlib.util
 import json
 import os
@@ -333,6 +334,9 @@ def _add_audit_args(parser: argparse.ArgumentParser) -> None:
     audit.add_argument(
         "--audit-url", default=None, help="send audit events to this audit service URL"
     )
+    audit.add_argument(
+        "--audit-db", default=None, help="write audit events directly to this Postgres URL"
+    )
     parser.add_argument(
         "--audit-token-env",
         default="ADK_AUDIT_AUTH_TOKEN",
@@ -480,30 +484,49 @@ def _audit_signing() -> tuple[str | None, SigningKeyring | None]:
     return None, keyring
 
 
+def _audit_backend(args: argparse.Namespace) -> tuple[str | None, str | None, str | None]:
+    audit_file = getattr(args, "audit_file", None)
+    audit_url = getattr(args, "audit_url", None)
+    audit_db = getattr(args, "audit_db", None)
+    if audit_file or audit_url:
+        return audit_file, audit_url, None
+    if audit_db:
+        return None, None, audit_db
+    env_db = os.environ.get("AUDIT_DATABASE_URL") or None
+    if env_db:
+        return None, None, env_db
+    return None, None, None
+
+
 def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
-    from .audit import HttpAuditSink, JsonlAuditSink
+    from .audit import HttpAuditSink, JsonlAuditSink, PostgresAuditSink
     from .auth import LOOPBACK_HOSTS
 
-    if args.audit_url:
-        host = urlsplit(args.audit_url).hostname
+    audit_file, audit_url, audit_db = _audit_backend(args)
+    if audit_url:
+        host = urlsplit(audit_url).hostname
         token = os.environ.get(args.audit_token_env) if args.audit_token_env else None
         if host not in LOOPBACK_HOSTS and token is None:
             raise SystemExit(
                 f"refusing a non-loopback audit URL without a token: set "
                 f"{args.audit_token_env} or use a loopback --audit-url"
             )
-        return HttpAuditSink(args.audit_url, auth_token=token)
-    if args.audit_file:
-        return JsonlAuditSink(args.audit_file)
+        return HttpAuditSink(audit_url, auth_token=token)
+    if audit_file:
+        return JsonlAuditSink(audit_file)
+    if audit_db:
+        signing_key, keyring = _audit_signing()
+        return PostgresAuditSink(audit_db, signing_key=signing_key, keyring=keyring)
     return None
 
 
 def _audit_query(args: argparse.Namespace) -> AuditQuery | None:
-    from .audit import FileAuditQuery, HttpAuditQuery
+    from .audit import FileAuditQuery, HttpAuditQuery, PostgresAuditQuery
     from .auth import LOOPBACK_HOSTS
 
-    if args.audit_url:
-        host = urlsplit(args.audit_url).hostname
+    audit_file, audit_url, audit_db = _audit_backend(args)
+    if audit_url:
+        host = urlsplit(audit_url).hostname
         token = os.environ.get(args.audit_token_env) if args.audit_token_env else None
         if host not in LOOPBACK_HOSTS and token is None:
             print(
@@ -512,9 +535,11 @@ def _audit_query(args: argparse.Namespace) -> AuditQuery | None:
                 file=sys.stderr,
             )
             raise SystemExit(1)
-        return HttpAuditQuery(args.audit_url, auth_token=token)
-    if args.audit_file:
-        return FileAuditQuery(args.audit_file)
+        return HttpAuditQuery(audit_url, auth_token=token)
+    if audit_file:
+        return FileAuditQuery(audit_file)
+    if audit_db:
+        return PostgresAuditQuery(audit_db)
     return None
 
 
@@ -831,6 +856,9 @@ def main(argv: list[str] | None = None) -> None:
     gateway_audit.add_argument(
         "--audit-url", default=None, help="send audit events to this audit service URL"
     )
+    gateway_audit.add_argument(
+        "--audit-db", default=None, help="write audit events directly to this Postgres URL"
+    )
     p_gateway.add_argument(
         "--audit-token-env",
         default="ADK_AUDIT_AUTH_TOKEN",
@@ -872,6 +900,9 @@ def main(argv: list[str] | None = None) -> None:
     tools_audit.add_argument(
         "--audit-url", default=None, help="send audit events to this audit service URL"
     )
+    tools_audit.add_argument(
+        "--audit-db", default=None, help="write audit events directly to this Postgres URL"
+    )
     p_tools.add_argument(
         "--audit-token-env",
         default="ADK_AUDIT_AUTH_TOKEN",
@@ -891,7 +922,10 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     p_audit = sub.add_parser("serve-audit", help="serve the audit pipeline as a standalone service")
-    p_audit.add_argument("--out", required=True, help="append chained audit records here (JSONL)")
+    p_audit.add_argument("--out", default=None, help="append chained audit records here (JSONL)")
+    p_audit.add_argument(
+        "--audit-db", default=None, help="write chained audit records to this Postgres URL"
+    )
     p_audit.add_argument(
         "--audit-max-records",
         type=int,
@@ -1517,28 +1551,54 @@ def main(argv: list[str] | None = None) -> None:
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "serve-audit":
         rate_limit = _rate_limit(args)
-        from .audit import AuditPipeline
+        from .audit import AuditPipeline, PostgresAuditSink, query_audit_records
         from .audit.service import build_audit_pipeline_app
         from .mcp.http import resolve_port
 
+        if args.out and args.audit_db:
+            print("serve-audit requires exactly one of --out or --audit-db", file=sys.stderr)
+            raise SystemExit(2)
+        db_url = args.audit_db or (
+            None if args.out else (os.environ.get("AUDIT_DATABASE_URL") or None)
+        )
+        if not args.out and not db_url:
+            print(
+                "serve-audit requires --out or --audit-db (or set AUDIT_DATABASE_URL)",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
         if args.audit_max_records is not None and args.audit_max_records <= 0:
             print("--audit-max-records must be greater than 0", file=sys.stderr)
             raise SystemExit(1)
+        if db_url and args.audit_max_records is not None:
+            print("--audit-max-records only applies to --out (file mode)", file=sys.stderr)
+            raise SystemExit(2)
         signing_key, keyring = _audit_signing()
         oidc = _identity_provider(args)
-        app = build_audit_pipeline_app(
-            AuditPipeline(
-                args.out,
-                max_records=args.audit_max_records,
-                signing_key=signing_key,
-                keyring=keyring,
-            ),
-            host=args.host,
-            auth_token=_auth_token(args),
-            allow_unauthenticated=args.allow_unauthenticated,
-            oidc=oidc,
-            rate_limit=rate_limit,
-        )
+        if db_url:
+            app = build_audit_pipeline_app(
+                PostgresAuditSink(db_url, signing_key=signing_key, keyring=keyring),
+                host=args.host,
+                auth_token=_auth_token(args),
+                allow_unauthenticated=args.allow_unauthenticated,
+                oidc=oidc,
+                rate_limit=rate_limit,
+                query=lambda **kwargs: query_audit_records(db_url, **kwargs),
+            )
+        else:
+            app = build_audit_pipeline_app(
+                AuditPipeline(
+                    args.out,
+                    max_records=args.audit_max_records,
+                    signing_key=signing_key,
+                    keyring=keyring,
+                ),
+                host=args.host,
+                auth_token=_auth_token(args),
+                allow_unauthenticated=args.allow_unauthenticated,
+                oidc=oidc,
+                rate_limit=rate_limit,
+            )
 
         import uvicorn
 
@@ -1641,6 +1701,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"ok {count} records")
     elif args.cmd == "console":
         rate_limit = _rate_limit(args)
+        from .audit import PostgresAuditQuery
         from .console import run_console
         from .registry import (
             FileAgentLifecycleStore,
@@ -1738,6 +1799,11 @@ def main(argv: list[str] | None = None) -> None:
             rate_limit=rate_limit,
             session_tenant_scope=args.session_tenant_scope,
         )
+        if isinstance(audit_query, PostgresAuditQuery):
+            # The pool may have opened in uvicorn's loop, which is now closed;
+            # a cross-loop close is best-effort and must not fail shutdown.
+            with contextlib.suppress(Exception):
+                asyncio.run(audit_query.aclose())
     elif args.cmd == "approvals":
         from .approvals import FileApprovalInbox
 

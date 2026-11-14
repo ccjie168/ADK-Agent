@@ -1,0 +1,58 @@
+SLICE-097 audit database wiring
+===============================
+
+red, pre-slice commit f125024
+-----------------------------
+$ git worktree add <tmp>/adk-097-red f125024
+$ PYTHONPATH=<tmp>/adk-097-red/src ./.venv/Scripts/python.exe <tmp>/adk-097-red-probe.py
+source: <tmp>\adk-097-red\src\adk_agent\__init__.py
+case1: SystemExit 2 (console does not know --audit-db)
+case2: SystemExit 2 (serve-audit requires --out)
+case3: TypeError build_audit_pipeline_app() got an unexpected keyword argument 'query'
+
+green
+-----
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe -m pytest tests/audit tests/test_cli_audit_db.py -q
+83 passed in 4.98s
+
+Without TEST_POSTGRES_URL: 71 passed, 12 skipped.
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1139 passed, 45 skipped in 54.31s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, three services against one Postgres and one file
+------------------------------------------------------
+postgres: adk-postgres-070, postgresql://adk:adk@127.0.0.1:55432/adk
+signing: ADK_AUDIT_SIGNING_KEY set for every process
+
+serve-audit --audit-db on 127.0.0.1:8808:
+POST /v1/events -> 202 {"hash":"8666e673...b2860"}
+GET  /v1/events?tenant=acme097 -> 200 count 1 ["svc-run"]
+
+console --audit-db on 127.0.0.1:8809:
+GET /api/audit -> 200 [("agent.run", "svc-run")]
+
+serve-audit --out on 127.0.0.1:8810:
+POST /v1/events -> 202 hash 5fd413d782ac
+file line -> file-run
+
+notes
+-----
+- Both DB services wrote into the same tenant chain; the console read the row
+  the audit service wrote, so write and read paths share one table.
+- File mode still produces chained JSONL records and returns the record hash.
+- Explicit `--audit-file`/`--audit-url` win over `AUDIT_DATABASE_URL`, matching
+  the contract. Review fix: `serve-audit --out` also ignores the env var now;
+  before the fix an exported `AUDIT_DATABASE_URL` made `--out` exits 2.
+- DB-mode writers sign with the environment keyring. Every writer must share
+  the same keyring or `verify-audit --audit-db` fails closed; the contract says
+  so.
+- The console closes its Postgres audit query on shutdown best-effort. The pool
+  is loop-affine and was opened on uvicorn's loop, so a close from a fresh loop
+  is suppressed rather than treated as an error.

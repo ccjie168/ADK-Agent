@@ -6,7 +6,7 @@ import hmac
 from datetime import datetime
 from typing import Any
 
-from ..core import AuditEvent
+from ..core import AuditEvent, AuditRecord
 from ..pg import LazyPool, normalize_dsn
 from .keyring import SigningKeyring
 from .pipeline import (
@@ -153,7 +153,7 @@ class PostgresAuditSink:
         self.keyring = keyring
         self._pool = _lazy_pool(url)
 
-    async def emit(self, event: AuditEvent) -> None:
+    async def append(self, event: AuditEvent) -> AuditRecord:
         try:
             pool = await self._pool.get()
             async with pool.acquire() as conn, conn.transaction():
@@ -189,6 +189,12 @@ class PostgresAuditSink:
             raise
         except Exception as exc:  # noqa: BLE001
             raise AuditStoreUnavailable(f"audit write failed ({type(exc).__name__})") from exc
+        return AuditRecord(
+            event=event, prev_hash=prev_hash, hash=digest, signature=signature, kid=kid
+        )
+
+    async def emit(self, event: AuditEvent) -> None:
+        await self.append(event)
 
     async def aclose(self) -> None:
         await self._pool.close()

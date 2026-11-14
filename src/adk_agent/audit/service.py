@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
 
@@ -33,6 +34,7 @@ def _parse_time(value: str) -> datetime:
 def build_audit_pipeline_app(
     pipeline: Any,
     *,
+    query: Callable[..., Awaitable[list[AuditEvent]]] | None = None,
     host: str = "127.0.0.1",
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
@@ -71,7 +73,7 @@ def build_audit_pipeline_app(
         return JSONResponse({"hash": record.hash}, status_code=202)
 
     @app.get("/v1/events")
-    async def query(
+    async def read_events(
         request: Request,
         tenant: str | None = None,
         trace_id: str | None = None,
@@ -107,18 +109,31 @@ def build_audit_pipeline_app(
                 return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
 
         try:
-            events = query_events(
-                pipeline.path,
-                tenant=tenant,
-                trace_id=trace_id,
-                run_id=run_id,
-                action=action,
-                status=status,
-                since=since_time,
-                until=until_time,
-                limit=parsed_limit,
-                order=order,
-            )
+            if query is not None:
+                events = await query(
+                    tenant=tenant,
+                    trace_id=trace_id,
+                    run_id=run_id,
+                    action=action,
+                    status=status,
+                    since=since_time,
+                    until=until_time,
+                    limit=parsed_limit,
+                    order=order,
+                )
+            else:
+                events = query_events(
+                    pipeline.path,
+                    tenant=tenant,
+                    trace_id=trace_id,
+                    run_id=run_id,
+                    action=action,
+                    status=status,
+                    since=since_time,
+                    until=until_time,
+                    limit=parsed_limit,
+                    order=order,
+                )
         except Exception:  # noqa: BLE001
             logger.exception("audit query read failure")
             return JSONResponse({"error": "audit_read_failed"}, status_code=502)

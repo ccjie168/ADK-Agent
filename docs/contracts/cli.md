@@ -1,5 +1,15 @@
 # CLI 契约
 
+## 审计后端选择
+
+接受 `--audit-file`/`--audit-url` 的命令同时接受 `--audit-db URL`，三者互斥。
+
+- `--audit-file PATH` 追加 JSONL；`--audit-url URL` 发给审计服务；`--audit-db URL` 直接写 `adk_audit_records`。
+- 三者都未显式给出时读 `AUDIT_DATABASE_URL`；给了 file 或 url 时忽略该环境变量。显式参数与环境变量冲突也退出 2。
+- DB 模式使用 `PostgresAuditSink`/`PostgresAuditQuery`，链语义与文件模式相同，每个租户一条链。
+- 签名沿用 `ADK_AUDIT_KEYRING`/`ADK_AUDIT_SIGNING_KEY`。使用签名时，所有写者必须共享同一个密钥环，否则后续 `verify-audit --audit-db` 会按断链或签名失败拒绝。
+- 错误消息不回显 DSN 或密钥。
+
 ## `adk-agent validate <path>`
 
 解析并校验 `AgentManifest` JSON。
@@ -65,14 +75,16 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥，同时给退出 1。
 - OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
-## `adk-agent serve-audit --out FILE [--audit-max-records N] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent serve-audit (--out FILE | --audit-db URL) [--audit-max-records N] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把审计管线作为独立服务运行。
 
+- `--out` 与 `--audit-db` 二选一；两者都不给时读 `AUDIT_DATABASE_URL`，仍没有则退出 2。
 - 只有 `/healthz` 开放。`POST /v1/events` 需要 bearer token，非回环地址没 token 拒绝启动。
-- 成功返回 202 `{"hash":"..."}`。写入失败返回 502 `{"error":"audit_write_failed"}`。
+- 成功返回 202 `{"hash":"..."}`。写入失败返回 502 `{"error":"audit_write_failed"}`。DB 模式返回的哈希与写入 `adk_audit_records` 的 `hash` 相同。
 - `FILE` 每行一条 `AuditRecord`，同租户串成哈希链，每租户首条 `prev_hash` 为空串。
-- `--audit-max-records` 大于 0 时按段轮转。当前段写满 N 条后改名为 `FILE.000001`、`FILE.000002`，新记录继续写 `FILE`。哈希链跨段连续。
+- DB 模式写入 `adk_audit_records`，每租户按 `sequence` 串链；`GET /v1/events` 从同一后端读取。
+- `--audit-max-records` 只适用于文件模式，与 `--audit-db` 同时给出退出 2。大于 0 时按段轮转。当前段写满 N 条后改名为 `FILE.000001`、`FILE.000002`，新记录继续写 `FILE`。哈希链跨段连续。
 - 设置了 `ADK_AUDIT_KEYRING` 时使用密钥环：值是 JSON `{"active": "<kid>", "keys": {"<kid>": "<key>", ...}, "legacy": "<kid>"}`。新记录用 `active` 对应的密钥对 `hash` 做 HMAC-SHA256，并把 `active` 写入 `kid`。`legacy` 可选，指定没有 `kid` 的旧记录用哪把密钥验签。`active` 必须在 `keys` 里，`legacy` 给了也必须在 `keys` 里，密钥不能为空，`kid` 必须匹配 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`。
 - 没有密钥环但设置了 `ADK_AUDIT_SIGNING_KEY` 时，沿用单密钥模式：签名写入 `signature`，`kid` 为 `null`。
 - 两个变量同时设置时退出 1。密钥只从环境变量读，不出现在命令行和仓库里。

@@ -187,6 +187,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-094 市场页合并远端条目（ADR-0015）：`/api/registry` 双来源、来源与信任徽标、刷新入口、远端行禁止开聊。已完成。
 - SLICE-095 A2A 出站审计（ADR-0015）：`AuditTransport`、`a2a.call` 与 `egress=third_party`、跨组织审计边界，ADR-0015 闭环。已完成。
 - SLICE-096 审计 Postgres 写读验链（ADR-0016）：每租户哈希链、租户级 advisory lock、共享查询与 `verify-audit --audit-db`。已完成。
+- SLICE-097 审计数据库接线（ADR-0016）：`--audit-file | --audit-url | --audit-db` 三选一、`AUDIT_DATABASE_URL`、`serve-audit` 双后端、文件模式回归，ADR-0016 闭环。已完成。
 
 ## 完成定义
 
