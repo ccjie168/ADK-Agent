@@ -79,6 +79,17 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，事件的 `tenant` 和 `principal.subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
+## 连接器工具（`serve-tool-gateway`）
+
+`serve-tool-gateway` 可以把已注册的连接器暴露为工具。
+
+- `--connectors-dir DIR` 或 `$CONNECTOR_URL` 选择连接器存储，二选一；都不给时只加载 `--tools`。
+- `--connector-tenant TENANT` 决定加载哪些连接器（全局 + 该租户），默认 `local`。
+- 每个启用的连接器生成一个工具，工具 id 是 `connector_id`，参数是 `path`、`method`、`query`、`json_body`。
+- 出站只允许 `methods` 与 `path_prefixes` 覆盖的请求，host/scheme 固定，禁止重定向；超时与响应大小按连接器配置。
+- 凭据用 `secret://a/b` 引用，映射到环境变量 `ADK_SECRET_A_B`；缺失时调用拒绝，错误码 `secret_unavailable`。
+- 连接器工具的 `tool.call` 审计带 `egress=third_party`；越界错误码是 `egress_denied`、`method_denied`、`path_denied`、`response_too_large` 或 `connector_unavailable`。
+
 ## `GET /v1/events`（审计服务的只读查询）
 
 审计服务在 `POST /v1/events` 之外提供只读查询，供控制台和其他治理视图使用。
@@ -157,7 +168,7 @@
 - 设置了 `ADK_AUDIT_KEYRING` 时按记录的 `kid` 选密钥验签：未知 `kid` 退出 1；没有 `kid` 的记录用 `legacy` 指定的密钥，没给 `legacy` 时退出 1。`ADK_AUDIT_SIGNING_KEY` 单密钥模式要求每条记录都没有 `kid` 且签名匹配。两个变量同时设置时退出 1。都设置时以外的缺失签名也退出 1。没设置任何密钥时只验哈希链。
 - 轮换步骤：把新密钥加进 `keys`，把 `active` 指向它，保留旧密钥；如果旧历史没有 `kid`，把 `legacy` 指向旧密钥。全部旧记录验完之前不要删掉旧密钥。
 
-## `adk-agent serve-tool-gateway --tools FILE [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent serve-tool-gateway [--tools FILE] [--connectors-dir DIR | $CONNECTOR_URL] [--connector-tenant TENANT] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把工具网关作为独立服务运行。
 

@@ -137,7 +137,7 @@ class FunctionToolGateway:
             result_hash=safe_hash_json(output) if output is not None else None,
             data_classes=list(spec.data_classes) if spec is not None else [],
             latency_ms=int((time.perf_counter() - started) * 1000),
-            egress="none",
+            egress=spec.egress if spec is not None else "none",
             status=status,
             error_code=error_code,
             timestamp=datetime.now(timezone.utc),

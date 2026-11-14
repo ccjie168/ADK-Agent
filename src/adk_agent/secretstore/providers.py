@@ -41,6 +41,27 @@ class EnvSecretProvider:
         return _checked(reference, value)
 
 
+class PrefixedEnvSecretProvider:
+    """Map ``secret://a/b`` to ``<prefix>A_B`` in the environment."""
+
+    def __init__(self, prefix: str = "ADK_SECRET_") -> None:
+        self._prefix = prefix
+
+    def _env_name(self, reference: str) -> str:
+        if not reference.startswith("secret://"):
+            raise SecretNotFound(f"invalid secret reference {reference!r}")
+        suffix = reference[len("secret://") :]
+        name = "".join(character.upper() if character.isalnum() else "_" for character in suffix)
+        return _env_name(self._prefix + name)
+
+    async def resolve(self, reference: str) -> str:
+        name = self._env_name(reference)
+        value = os.environ.get(name)
+        if value is None:
+            raise SecretNotFound(f"secret {reference!r} is not set")
+        return _checked(reference, value)
+
+
 class MappingSecretProvider:
     """Read secrets from an in-memory mapping, for tests and injected config."""
 

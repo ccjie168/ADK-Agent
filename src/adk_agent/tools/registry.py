@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from ..core import DataClass
 
@@ -15,6 +15,7 @@ class ToolSpec:
     handler: Callable[..., Any]
     data_classes: tuple[DataClass, ...] = ()
     requires_approval: bool = False
+    egress: Literal["none", "third_party"] = "none"
 
 
 class FunctionRegistry:

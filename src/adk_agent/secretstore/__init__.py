@@ -5,6 +5,7 @@ from __future__ import annotations
 from .providers import (
     EnvSecretProvider,
     MappingSecretProvider,
+    PrefixedEnvSecretProvider,
     SecretNotFound,
     secret_header_provider,
 )
@@ -12,6 +13,7 @@ from .providers import (
 __all__ = [
     "EnvSecretProvider",
     "MappingSecretProvider",
+    "PrefixedEnvSecretProvider",
     "SecretNotFound",
     "secret_header_provider",
 ]

@@ -1,0 +1,66 @@
+SLICE-086 connector execution adapter
+=====================================
+
+red, before implementation
+--------------------------
+$ cd /tmp && PYTHONPATH=<HEAD src> ./.venv/Scripts/python.exe -c '...'
+ToolSpec fields: ['tool_id', 'handler', 'data_classes', 'requires_approval']
+ToolSpec(egress=): TypeError
+build_connector_tools: ImportError
+ConnectorDenied: ImportError
+PrefixedEnvSecretProvider: ImportError
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/tools/test_connector_tools.py -q
+12 passed in 1.12s
+
+$ ./.venv/Scripts/python.exe -m pytest tests/tools/test_connector_tools.py \
+    tests/test_audit_sink_wiring.py -q
+20 passed in 2.41s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+977 passed, 29 skipped in 46.82s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+977 passed, 29 skipped in 49.69s
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+live, loopback HTTP server and real httpx
+-----------------------------------------
+$ ./.venv/Scripts/python.exe /tmp/slice086_live.py
+allowed: {'status': 200, 'body': {'ok': 1, 'path': '/v1/records?q=x'}}
+method: DENIED method_denied
+path: DENIED path_denied
+escape: DENIED path_denied
+redirect: DENIED egress_denied
+oversize: DENIED response_too_large
+auth seen: [('GET', '/v1/records?q=x', 'Bearer live-token'), ('GET', '/v1/redirect', 'Bearer live-token'), ('GET', '/v1/big', None)]
+audit: crm ok third_party None
+
+notes
+-----
+- The allowed request reached the loopback server with `Authorization: Bearer
+  live-token`, resolved from `ADK_SECRET_CRM_TOKEN` through
+  `PrefixedEnvSecretProvider`.
+- The redirect response was returned by the server and refused by the adapter;
+  httpx does not follow it (`follow_redirects=False`).
+- The oversized response was streamed and denied at the byte cap; the server
+  saw the connection but not an unbounded read.
+- The gateway audit event records `target=crm`, `status=ok`,
+  `egress=third_party`.
+- `prefixed env` maps every non-alphanumeric character to `_` and uppercases
+  the rest, so `secret://crm/token` becomes `ADK_SECRET_CRM_TOKEN`.

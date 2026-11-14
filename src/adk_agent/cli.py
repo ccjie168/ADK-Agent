@@ -718,8 +718,18 @@ def main(argv: list[str] | None = None) -> None:
     )
     p_tools.add_argument(
         "--tools",
-        required=True,
+        default=None,
         help="path to a Python file defining a `tools` mapping (tool_id -> callable or ToolSpec)",
+    )
+    p_tools.add_argument(
+        "--connectors-dir",
+        default=None,
+        help="directory of registered connectors to expose as tools",
+    )
+    p_tools.add_argument(
+        "--connector-tenant",
+        default="local",
+        help="tenant whose connectors are loaded (default: local)",
     )
     tools_audit = p_tools.add_mutually_exclusive_group()
     tools_audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
@@ -1226,14 +1236,44 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "serve-tool-gateway":
         rate_limit = _rate_limit(args)
         from .mcp.http import resolve_port
-        from .tools import FunctionToolGateway
+        from .registry import FileConnectorStore
+        from .registry.connectors_postgres import PostgresConnectorStore
+        from .secretstore import PrefixedEnvSecretProvider
+        from .tools import FunctionRegistry, FunctionToolGateway
+        from .tools.connectors import build_connector_tools
         from .tools.service import build_tool_gateway_app
 
-        registry = _load_tools(args.tools)
+        connector_url = os.environ.get("CONNECTOR_URL")
+        connector_source = bool(args.connectors_dir) + bool(connector_url)
+        if args.connectors_dir and connector_url:
+            print("set exactly one of --connectors-dir or CONNECTOR_URL", file=sys.stderr)
+            raise SystemExit(1)
+        if not args.tools and connector_source == 0:
+            print("provide --tools, --connectors-dir or CONNECTOR_URL", file=sys.stderr)
+            raise SystemExit(1)
+
+        if connector_source:
+            specs = _load_tools(args.tools).specs() if args.tools else []
+            connector_store = (
+                PostgresConnectorStore(connector_url)
+                if connector_url
+                else FileConnectorStore(args.connectors_dir)
+            )
+            connector_specs = asyncio.run(connector_store.list(args.connector_tenant))
+            specs.extend(
+                build_connector_tools(connector_specs, secrets=PrefixedEnvSecretProvider())
+            )
+            try:
+                tool_registry = FunctionRegistry(specs)
+            except ValueError as exc:
+                print(f"invalid tool set: {exc}", file=sys.stderr)
+                raise SystemExit(1) from None
+        else:
+            tool_registry = _load_tools(args.tools)
         sink = _audit_sink(args)
         oidc = _identity_provider(args)
         app = build_tool_gateway_app(
-            FunctionToolGateway(registry, audit=sink),
+            FunctionToolGateway(tool_registry, audit=sink),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
@@ -1523,10 +1563,10 @@ def main(argv: list[str] | None = None) -> None:
 
                 state = asyncio.run(set_remote())
             else:
-                registry = FileAgentRegistry(args.registry)
+                file_registry = FileAgentRegistry(args.registry)
 
                 async def check_version():
-                    records = await registry.list(args.tenant)
+                    records = await file_registry.list(args.tenant)
                     if not any(
                         record.manifest.id == args.id and record.manifest.version == args.version
                         for record in records

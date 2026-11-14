@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .catalog import ToolCatalog, ToolCatalogError, ToolEntry, load_tool_catalog
+from .connectors import ConnectorDenied, ConnectorResponse, build_connector_tools
 from .enforcement import declared_tool_ids, install_declared_guards
 from .gateway import FunctionToolGateway, ToolDenied
 from .guard import ToolGuard, install_tool_guard
@@ -13,6 +14,9 @@ from .service import build_tool_gateway_app
 from .sources import load_openapi_spec, openapi_toolset_from_config, toolset_tool_ids
 
 __all__ = [
+    "ConnectorDenied",
+    "ConnectorResponse",
+    "build_connector_tools",
     "FunctionRegistry",
     "FunctionToolGateway",
     "GrantPolicyEngine",
