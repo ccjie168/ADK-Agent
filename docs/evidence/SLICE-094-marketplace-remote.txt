@@ -1,0 +1,51 @@
+SLICE-094 remote entries in the marketplace
+===========================================
+
+red, pre-slice commit 12042f8
+-----------------------------
+$ git worktree add <tmp>/adk-094-red 12042f8
+$ PYTHONPATH=<tmp>/adk-094-red/src ./.venv/Scripts/python.exe <tmp>/adk-094-red-probe.py
+source: <tmp>\adk-094-red\src\adk_agent\__init__.py
+case1: remote-only GET /api/registry -> 404 {'error': 'registry_not_configured'}
+case2: local entry has source -> [('support-bot', False)]
+case3: ids -> ['support-bot'] (the seeded crm-bot record is absent)
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_console_registry.py \
+    tests/test_console_remote_agents.py -q
+30 passed in 3.77s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1119 passed, 33 skipped in 53.81s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, one local version and one remote record
+---------------------------------------------
+console on 127.0.0.1:8808 with --registry <dir> and --peer-dir <dir>, tenant acme
+local: support-bot 1.0.0 published into the file registry
+remote: crm-bot, peer crm, status pinned
+
+GET /api/registry?tenant=acme -> 200
+  crm-bot remote crm pinned sha256:aaaaaaaaa...
+  support-bot local 1.0.0
+
+notes
+-----
+- Local entries keep every prior field and gain `source: "local"`; remote entries
+  carry the `trust` block and none of the version, artifact or lifecycle fields.
+- The combined sort is `(id, local-before-remote, version)`, so `crm-bot` sorts
+  before `support-bot` here only because of the id.
+- Review hardening added an explicit `unsafe_tenant` check before either source
+  is read. Without it a remote-only console returned 200 with an empty list for
+  `?tenant=../escape` while the contract promised 400.
+- The `except Exception  # noqa: BLE001` around the lifecycle read is pre-existing
+  and out of scope for this slice; comment review flagged it open rather than
+  widening the change.
+- The Registry panel shows a source badge, a trust badge (plus a disabled marker)
+  and a Refresh selected control that calls `/api/remote-agents/{id}/refresh`.
+  Open chat refuses remote rows before the load request is made.

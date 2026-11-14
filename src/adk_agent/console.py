@@ -191,10 +191,11 @@ _INDEX_HTML = """<!doctype html>
   <div class="row">
     <select id="tenant"></select>
     <button id="refresh-registry">Refresh</button>
+    <button id="refresh-remote" disabled>Refresh selected</button>
   </div>
   <div id="registry-msg" class="panel-msg"></div>
   <table>
-    <thead><tr><th>id</th><th>version</th><th>published</th><th>eval</th><th>artifact</th><th>lifecycle</th></tr></thead>
+    <thead><tr><th>id</th><th>source</th><th>version</th><th>published</th><th>eval</th><th>artifact</th><th>lifecycle</th><th>trust</th></tr></thead>
     <tbody id="registry-body"></tbody>
   </table>
   <h3>Manifest</h3>
@@ -461,6 +462,29 @@ function lifecycleCell(info) {
   return td;
 }
 
+function trustCell(entry, local) {
+  const td = document.createElement("td");
+  if (local) { td.textContent = "-"; return td; }
+  const trust = entry.trust || {};
+  const badge = document.createElement("span");
+  badge.className = trust.status === "pinned" ? "badge"
+    : trust.status === "changed" ? "badge bad" : "badge muted";
+  badge.textContent = trust.status || "unknown";
+  td.appendChild(badge);
+  if (!entry.enabled) {
+    td.appendChild(document.createTextNode(" "));
+    const disabled = document.createElement("span");
+    disabled.className = "badge muted";
+    disabled.textContent = "disabled";
+    td.appendChild(disabled);
+  }
+  return td;
+}
+
+function updateRefreshRemote() {
+  $("refresh-remote").disabled = !selectedRegistry || selectedRegistry.source !== "remote";
+}
+
 function append(who, text) {
   const line = document.createElement("div");
   line.className = who;
@@ -522,14 +546,23 @@ async function loadRegistry() {
     return;
   }
   for (const entry of result.data || []) {
+    const local = entry.source !== "remote";
     const row = document.createElement("tr");
     row.appendChild(cell(entry.id));
-    row.appendChild(cell(entry.version));
+    const sourceCell = document.createElement("td");
+    const sourceBadge = document.createElement("span");
+    sourceBadge.className = "badge muted";
+    sourceBadge.textContent = local ? "local" : "remote";
+    sourceCell.appendChild(sourceBadge);
+    row.appendChild(sourceCell);
+    row.appendChild(cell(local ? entry.version : null));
     const published = document.createElement("td");
-    published.textContent = String(entry.published_at || "").replace("T", " ").slice(0, 19);
+    published.textContent = local
+      ? String(entry.published_at || "").replace("T", " ").slice(0, 19)
+      : "-";
     row.appendChild(published);
     const evalCell = document.createElement("td");
-    if (entry.has_eval_report) {
+    if (local && entry.has_eval_report) {
       const badge = document.createElement("span");
       badge.className = "badge";
       badge.textContent = "eval";
@@ -538,21 +571,31 @@ async function loadRegistry() {
       evalCell.textContent = "-";
     }
     row.appendChild(evalCell);
-    row.appendChild(artifactCell(entry.artifact));
-    row.appendChild(lifecycleCell(entry.lifecycle));
+    row.appendChild(local ? artifactCell(entry.artifact) : cell(null));
+    row.appendChild(local ? lifecycleCell(entry.lifecycle) : cell(null));
+    row.appendChild(trustCell(entry, local));
     row.addEventListener("click", () => selectRegistryEntry(tenant, entry));
     body.appendChild(row);
   }
+  updateRefreshRemote();
 }
 
 async function selectRegistryEntry(tenant, entry) {
   selectedRegistry = entry;
+  updateRefreshRemote();
+  $("artifact-msg").textContent = "";
+  if (entry.source === "remote") {
+    $("manifest").textContent = "remote catalog entry " + entry.peer_id + ": " + entry.id;
+    $("eval-report").textContent = "no eval report";
+    $("artifact-info").textContent = "no artifact";
+    $("lifecycle-info").textContent = "not applicable";
+    return;
+  }
   $("artifact-info").textContent = entry.artifact
     ? JSON.stringify(entry.artifact, null, 2)
     : "no artifact";
   $("lifecycle-info").textContent = JSON.stringify(
     entry.lifecycle || { status: "published" }, null, 2);
-  $("artifact-msg").textContent = "";
   $("manifest").textContent = JSON.stringify(entry.manifest, null, 2);
   $("eval-report").textContent = "";
   if (!entry.has_eval_report) { $("eval-report").textContent = "no eval report"; return; }
@@ -568,6 +611,10 @@ async function selectRegistryEntry(tenant, entry) {
 async function openChat() {
   if (!selectedRegistry) {
     $("artifact-msg").textContent = "select a registry entry first";
+    return;
+  }
+  if (selectedRegistry.source === "remote") {
+    $("artifact-msg").textContent = "remote agents cannot be opened here";
     return;
   }
   const select = $("agent");
@@ -623,6 +670,17 @@ async function openChat() {
   select.value = name;
   sessionId = null;
   showTab("chat");
+}
+
+async function refreshSelectedRemote() {
+  if (!selectedRegistry || selectedRegistry.source !== "remote") return;
+  const result = await postJson(
+    "/api/remote-agents/" + encodeURIComponent(selectedRegistry.id) + "/refresh", {});
+  $("artifact-msg").textContent = result.ok
+    ? "refresh: " + ((result.data && result.data.status) || "ok")
+    : "refresh failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+  await loadRegistry();
 }
 
 async function loadTools() {
@@ -1278,6 +1336,7 @@ $("tenant").addEventListener("change", () => { loadRegistry(); loadTools(); load
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-registry").addEventListener("click", loadRegistry);
+$("refresh-remote").addEventListener("click", refreshSelectedRemote);
 $("open-chat").addEventListener("click", openChat);
 $("unload-agent").addEventListener("click", unloadAgent);
 $("refresh-runs").addEventListener("click", loadRuns);
@@ -1781,45 +1840,84 @@ def build_console_app(
 
     @app.get("/api/registry")
     async def list_registry(request: Request, tenant: str | None = None) -> Any:
-        if registry is None:
+        if registry is None and remote_agents is None:
             return JSONResponse({"error": "registry_not_configured"}, status_code=404)
         caller = _principal_for(request)
         target = tenant or caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
-        try:
-            records = await registry.list(target)
-        except RegistryIntegrityError:
-            return JSONResponse({"error": "registry_corrupt"}, status_code=500)
-        except ValueError:
+        if tenant is not None and not _SAFE_NAME.fullmatch(tenant):
             return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
-        try:
-            states = [await _lifecycle(record) for record in records]
-        except Exception:  # noqa: BLE001
-            logger.exception("lifecycle read failed")
-            return JSONResponse({"error": "lifecycle_unavailable"}, status_code=503)
 
-        entries = []
-        for record, state in zip(records, states, strict=True):
-            has_report = (
-                await eval_reports.has(target, record.manifest.id, record.manifest.version)
-                if eval_reports is not None
-                else False
+        entries: list[dict[str, Any]] = []
+        if registry is not None:
+            try:
+                records = await registry.list(target)
+            except RegistryIntegrityError:
+                return JSONResponse({"error": "registry_corrupt"}, status_code=500)
+            except ValueError:
+                return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
+            try:
+                states = [await _lifecycle(record) for record in records]
+            except Exception:  # noqa: BLE001
+                logger.exception("lifecycle read failed")
+                return JSONResponse({"error": "lifecycle_unavailable"}, status_code=503)
+            for record, state in zip(records, states, strict=True):
+                has_report = (
+                    await eval_reports.has(target, record.manifest.id, record.manifest.version)
+                    if eval_reports is not None
+                    else False
+                )
+                entries.append(
+                    {
+                        "tenant": target,
+                        "id": record.manifest.id,
+                        "source": "local",
+                        "version": record.manifest.version,
+                        "digest": record.digest,
+                        "description": record.manifest.description,
+                        "published_at": record.published_at.isoformat(),
+                        "has_eval_report": has_report,
+                        "manifest": record.manifest.model_dump(mode="json"),
+                        "artifact": _artifact_info(record),
+                        "lifecycle": state.model_dump(mode="json"),
+                    }
+                )
+
+        if remote_agents is not None:
+            try:
+                remote_records = await remote_agents.list()
+            except RemoteAgentError:
+                logger.exception("remote agent list failed: tenant=%s", target)
+                return JSONResponse({"error": "remote_agent_store_unavailable"}, status_code=503)
+            for remote_record in remote_records:
+                if remote_record.tenant != target:
+                    continue
+                entries.append(
+                    {
+                        "tenant": remote_record.tenant,
+                        "id": remote_record.remote_id,
+                        "source": "remote",
+                        "peer_id": remote_record.peer_id,
+                        "label": remote_record.label,
+                        "agent_card_url": remote_record.agent_card_url,
+                        "enabled": remote_record.enabled,
+                        "trust": {
+                            "status": remote_record.status,
+                            "card_digest": remote_record.card_digest,
+                            "observed_digest": remote_record.observed_digest,
+                            "checked_at": remote_record.checked_at.isoformat(),
+                        },
+                    }
+                )
+
+        entries.sort(
+            key=lambda entry: (
+                entry["id"],
+                0 if entry["source"] == "local" else 1,
+                entry.get("version") or "",
             )
-            entries.append(
-                {
-                    "tenant": target,
-                    "id": record.manifest.id,
-                    "version": record.manifest.version,
-                    "digest": record.digest,
-                    "description": record.manifest.description,
-                    "published_at": record.published_at.isoformat(),
-                    "has_eval_report": has_report,
-                    "manifest": record.manifest.model_dump(mode="json"),
-                    "artifact": _artifact_info(record),
-                    "lifecycle": state.model_dump(mode="json"),
-                }
-            )
+        )
         return entries
 
     @app.post("/api/registry/load")

@@ -110,12 +110,13 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/registry?tenant=<name>` -> `[RegistryEntry]`
 
-返回该租户的已发布版本，按 `(id, version)` 排序。`tenant` 缺失时用当前 principal 的租户。
+返回该租户的已发布版本与远端目录记录。`tenant` 缺失时用当前 principal 的租户。本地条目按 `(id, version)` 排序，远端条目按 `id` 排序；混合视图按 `id` 排序，同 `id` 时 `local` 在前。
 
 ```json
 {
   "tenant": "team-a",
   "id": "support-bot",
+  "source": "local",
   "version": "1.0.0",
   "digest": "sha256:...",
   "description": "support",
@@ -127,13 +128,36 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 }
 ```
 
+远端条目（ADR-0015）形状不同，`source` 为 `remote`：
+
+```json
+{
+  "tenant": "team-a",
+  "id": "crm-bot",
+  "source": "remote",
+  "peer_id": "crm",
+  "label": "CRM bot",
+  "agent_card_url": "https://crm.example.com/.well-known/agent-card.json",
+  "enabled": true,
+  "trust": {
+    "status": "pinned",
+    "card_digest": "sha256:...",
+    "observed_digest": null,
+    "checked_at": "2026-11-14T09:30:00Z"
+  }
+}
+```
+
+远端条目没有 `version`、`digest`、`published_at`、`manifest`、`artifact` 与 `lifecycle`。`trust.status` 为 `pinned`、`changed` 或 `unreachable`；后两种仍返回，由界面显示警告。停用的远端条目也返回，`enabled` 为 `false`。
+
 `lifecycle` 是 ADR-0010 的状态；没有状态行时是默认的 `published`。`artifact` 为 `null` 表示该版本没有工件。`status` 是 `verified`、`untrusted`、`unknown`（控制台没有配置可信密钥）或 `unsigned`（工件没有签名）。
 
 - 非法租户返回 400 `unsafe_tenant`。
 - 非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
 - 记录损坏返回 500 `registry_corrupt`，响应不含文件路径。
 - 生命周期存储不可用返回 503 `lifecycle_unavailable`。
-- 未配置注册表返回 404 `registry_not_configured`。
+- 远端存储不可用返回 503 `remote_agent_store_unavailable`。
+- 注册表与远端目录都未配置返回 404 `registry_not_configured`；只配置其一则只返回该来源的条目。
 
 ## `GET /api/registry/{tenant}/{id}/{version}/eval` -> `EvalReport`
 

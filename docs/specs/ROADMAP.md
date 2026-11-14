@@ -184,6 +184,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-091 peer 管理面（ADR-0014）：控制台五个接口与 Peer 面板、`peers` 命令、管理审计。已完成。
 - SLICE-092 模式互斥验证与迁移（ADR-0014）：库层与 CLI 负向验证、契约记录形状、legacy 迁移说明。已完成。
 - SLICE-093 远端 agent 目录记录（ADR-0015）：`RemoteAgent`、固定 card 摘要与刷新、控制台四接口、`remote-agents` 命令。已完成。
+- SLICE-094 市场页合并远端条目（ADR-0015）：`/api/registry` 双来源、来源与信任徽标、刷新入口、远端行禁止开聊。已完成。
 
 ## 完成定义
 
