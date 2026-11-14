@@ -147,6 +147,16 @@
 - 成功后 stdout 输出 `restored <N> files to <path>`，退出 0。
 - 解包失败不留下半成品目录。
 
+## `adk-agent connectors list|register|disable`
+
+管理外部 API 连接器（ADR-0013）。
+
+- `--connectors-dir DIR` 用文件存储；`--registry-url URL` 用控制面服务。二选一，必须提供一个。
+- `connectors list --tenant TENANT` 输出 JSON 数组，含全局与租户连接器。
+- `connectors register` 接受 `--id`、`--kind`（http/openapi/mcp）、`--base-url`、`--auth-ref`、`--methods`（逗号分隔）、`--path-prefixes`（逗号分隔）、`--data-classes`（逗号分隔）、`--timeout-seconds`、`--max-response-bytes`、可选 `--tenant`。输出已存记录的 JSON；同 id 不同定义退出 1。
+- `connectors disable --id ID` 输出停用后的 JSON。未知 id 退出 1。
+- 成功写 `connector.register` 或 `connector.disable` 审计；控制面模式下写端要求 admin。
+
 ## `adk-agent approvals prune --dir DIR --older-than SECONDS [--delete]`
 
 归档或删除已经终结、且超过保留期的审批记录。

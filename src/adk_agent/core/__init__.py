@@ -8,6 +8,7 @@ from .audit import AuditEvent, AuditRecord
 from .canary import CanaryPolicy
 from .connectors import (
     ConnectorConflict,
+    ConnectorForbidden,
     ConnectorKind,
     ConnectorNotFound,
     ConnectorSpec,
@@ -84,6 +85,7 @@ from .tool_grants import (
 
 __all__ = [
     "ConnectorConflict",
+    "ConnectorForbidden",
     "ConnectorKind",
     "ConnectorNotFound",
     "ConnectorSpec",

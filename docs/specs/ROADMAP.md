@@ -177,6 +177,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-084 跨副本限流（ADR-0012）：`RedisFixedWindowLimiter`、`RATE_LIMIT_URL`、七个接线点与故障回退指标。已完成。
 - SLICE-085 连接器类型与存储（ADR-0013）：`ConnectorSpec` 校验、文件/Postgres 注册表、停用语义。已完成。
 - SLICE-086 连接器执行适配器（ADR-0013）：出站白名单、`secret://` 解析、`third_party` 审计、工具网关接线。已完成。
+- SLICE-087 连接器控制面与控制台（ADR-0013）：`serve-registry` 四个端点、`HttpConnectorStore`、Connectors 面板、`connectors` 命令，ADR-0013 闭环。已完成。
 
 ## 完成定义
 

@@ -23,6 +23,12 @@ from ..core import (
     ArtifactStore,
     AuditEvent,
     AuditSink,
+    ConnectorConflict,
+    ConnectorNotFound,
+    ConnectorSpec,
+    ConnectorStore,
+    ConnectorStoreError,
+    ConnectorStoreUnavailable,
     EvalReport,
     EvalReportStore,
     IdentityProvider,
@@ -92,12 +98,46 @@ def _read_error(exc: RegistryError) -> JSONResponse:
     return _error("registry_unavailable", 502)
 
 
+def _connector_spec_error(exc: ConnectorStoreError) -> JSONResponse:
+    if isinstance(exc, ConnectorConflict):
+        return _error("connector_conflict", 409)
+    if isinstance(exc, ConnectorNotFound):
+        return _error("connector_not_found", 404)
+    if isinstance(exc, ConnectorStoreUnavailable):
+        return _error("connector_store_failed", 502)
+    return _error("connector_store_failed", 502)
+
+
+def _connector_visible(principal: Principal | None, tenant: str | None) -> bool:
+    return (
+        tenant is None
+        or principal is None
+        or "admin" in principal.roles
+        or tenant == principal.tenant
+    )
+
+
+def _connector_actor(principal: Principal | None, tenant: str | None) -> Principal:
+    return principal or Principal(
+        tenant=tenant or "global", subject="registry_operator", kind="human", roles=["admin"]
+    )
+
+
+def _connector_ref(spec: ConnectorSpec) -> AgentRef:
+    return AgentRef(
+        id=spec.connector_id,
+        version="connector",
+        digest=f"sha256:{hash_text(spec.model_dump_json())}",
+    )
+
+
 def build_registry_service_app(
     registry: AgentRegistry,
     *,
     artifact_store: ArtifactStore | None = None,
     eval_reports: EvalReportStore | None = None,
     lifecycle: AgentLifecycleStore | None = None,
+    connectors: ConnectorStore | None = None,
     audit: AuditSink | None = None,
     trust: TrustStore | None = None,
     host: str = "127.0.0.1",
@@ -258,6 +298,122 @@ def build_registry_service_app(
                 )
             )
         return JSONResponse(changed.model_dump(mode="json"))
+
+    @app.get("/v1/connectors")
+    async def list_connectors(request: Request, tenant: str | None = None) -> JSONResponse:
+        if connectors is None:
+            return _error("connector_store_unavailable", 503)
+        caller = _principal(request)
+        if tenant is not None and _cross_tenant(caller, tenant):
+            return _error("tenant_forbidden", 403)
+        try:
+            if tenant is not None:
+                records = await connectors.list(tenant)
+            elif caller is None or "admin" in caller.roles:
+                records = await connectors.list_all()
+            else:
+                records = await connectors.list(caller.tenant)
+        except ConnectorStoreError as exc:
+            return _connector_spec_error(exc)
+        records.sort(key=lambda spec: spec.connector_id)
+        return JSONResponse(
+            {
+                "connectors": [spec.model_dump(mode="json") for spec in records],
+                "count": len(records),
+            }
+        )
+
+    @app.get("/v1/connectors/{connector_id}")
+    async def get_connector(request: Request, connector_id: str) -> JSONResponse:
+        if connectors is None:
+            return _error("connector_store_unavailable", 503)
+        try:
+            spec = await connectors.get(connector_id)
+        except ConnectorStoreError as exc:
+            return _connector_spec_error(exc)
+        if spec is None:
+            return _error("connector_not_found", 404)
+        if not _connector_visible(_principal(request), spec.tenant):
+            return _error("tenant_forbidden", 403)
+        return JSONResponse(spec.model_dump(mode="json"))
+
+    @app.post("/v1/connectors")
+    async def register_connector(request: Request) -> JSONResponse:
+        caller = _principal(request)
+        if caller is not None and "admin" not in caller.roles:
+            return _error("forbidden", 403)
+        if connectors is None:
+            return _error("connector_store_unavailable", 503)
+        try:
+            body = await request.json()
+        except ValueError:
+            return _error("invalid_json", 400)
+        if not isinstance(body, dict):
+            return _error("invalid_json", 400)
+        try:
+            spec = ConnectorSpec.model_validate(body)
+        except ValidationError:
+            return _error("invalid_connector", 400)
+        try:
+            stored = await connectors.add(spec)
+        except ConnectorStoreError as exc:
+            return _connector_spec_error(exc)
+        if audit is not None:
+            actor = _connector_actor(caller, spec.tenant)
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=uuid.uuid4().hex,
+                    tenant=actor.tenant,
+                    principal=actor,
+                    agent_ref=_connector_ref(spec),
+                    action="connector.register",
+                    target=f"{spec.tenant or 'global'}/{spec.connector_id}",
+                    args_hash=hash_text(stored.model_dump_json()),
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse(stored.model_dump(mode="json"), status_code=201)
+
+    @app.post("/v1/connectors/{connector_id}/disable")
+    async def disable_connector(request: Request, connector_id: str) -> JSONResponse:
+        caller = _principal(request)
+        if caller is not None and "admin" not in caller.roles:
+            return _error("forbidden", 403)
+        if connectors is None:
+            return _error("connector_store_unavailable", 503)
+        try:
+            existing = await connectors.get(connector_id)
+        except ConnectorStoreError as exc:
+            return _connector_spec_error(exc)
+        if existing is None:
+            return _error("connector_not_found", 404)
+        if not _connector_visible(caller, existing.tenant):
+            return _error("tenant_forbidden", 403)
+        actor = _connector_actor(caller, existing.tenant)
+        try:
+            disabled = await connectors.disable(connector_id, by=actor.subject)
+        except ConnectorStoreError as exc:
+            return _connector_spec_error(exc)
+        if audit is not None and existing.enabled:
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=uuid.uuid4().hex,
+                    tenant=actor.tenant,
+                    principal=actor,
+                    agent_ref=_connector_ref(existing),
+                    action="connector.disable",
+                    target=f"{existing.tenant or 'global'}/{connector_id}",
+                    args_hash=hash_text("enabled->disabled"),
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse(disabled.model_dump(mode="json"))
 
     @app.get("/v1/agents/{tenant}/{agent_id}/{version}/eval")
     async def get_eval_report(

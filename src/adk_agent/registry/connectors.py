@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import os
 import re
@@ -68,6 +69,15 @@ class FileConnectorStore:
             spec = ConnectorSpec.model_validate_json(path.read_text(encoding="utf-8"))
             if spec.tenant is None or spec.tenant == tenant:
                 specs.append(spec)
+        return sorted(specs, key=lambda spec: spec.connector_id)
+
+    async def list_all(self) -> builtins.list[ConnectorSpec]:
+        if not self.root.is_dir():
+            return []
+        specs = [
+            ConnectorSpec.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in self.root.glob("*.json")
+        ]
         return sorted(specs, key=lambda spec: spec.connector_id)
 
     async def disable(self, connector_id: str, *, by: str) -> ConnectorSpec:

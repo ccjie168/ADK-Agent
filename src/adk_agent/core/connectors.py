@@ -30,6 +30,10 @@ class ConnectorConflict(ConnectorStoreError):
     """The connector id already exists with a different definition."""
 
 
+class ConnectorForbidden(ConnectorStoreError):
+    """The caller may not read or change the connector."""
+
+
 class ConnectorStoreUnavailable(ConnectorStoreError):
     """The connector store backend cannot be reached."""
 

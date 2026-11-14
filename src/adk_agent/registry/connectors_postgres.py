@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from datetime import datetime, timezone
 from typing import Any
 
@@ -102,6 +103,21 @@ class PostgresConnectorStore:
                 f"connector read failed ({type(exc).__name__})"
             ) from exc
         return [self._parse(row["definition"], tenant) for row in rows]
+
+    async def list_all(self) -> builtins.list[ConnectorSpec]:
+        try:
+            pool = await self._pool.get()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
+                    "SELECT definition FROM adk_connectors ORDER BY connector_id"
+                )
+        except ConnectorStoreError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ConnectorStoreUnavailable(
+                f"connector read failed ({type(exc).__name__})"
+            ) from exc
+        return [self._parse(row["definition"], "list") for row in rows]
 
     async def disable(self, connector_id: str, *, by: str) -> ConnectorSpec:
         try:

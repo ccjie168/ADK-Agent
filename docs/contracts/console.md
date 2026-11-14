@@ -188,6 +188,44 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - `granted_agents` 来自该租户注册表记录中 `manifest.tool_grants` 的同名工具，按 `(id, version)` 排序。没有注册表时为空列表；注册表损坏返回 500 `registry_corrupt`。
 - 结果按 `tool_id` 排序。
 
+## `GET /api/connectors?tenant=<name>` -> `[ConnectorSpec]`
+
+只读连接器列表，按 `connector_id` 排序。全局连接器（`tenant` 为 `null`）对所有租户可见。
+
+- 由 `console --connectors-dir DIR`（文件存储）或已有的 `--registry-url`（控制面）提供；都未配置时返回 404 `connectors_not_configured`。
+- `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
+- 存储不可达返回 503 `connector_store_unavailable`。
+
+## `POST /api/connectors` -> `ConnectorSpec`
+
+```json
+{
+  "connector_id": "crm",
+  "tenant": "acme",
+  "kind": "http",
+  "base_url": "https://crm.example.com",
+  "auth_ref": "secret://crm/token",
+  "methods": ["GET"],
+  "path_prefixes": ["/v1/crm/"],
+  "data_classes": ["internal"],
+  "timeout_seconds": 10,
+  "max_response_bytes": 1048576
+}
+```
+
+- 只有 `admin` 能注册，非 admin 返回 403 `forbidden`。
+- 请求体不是 JSON 或不是对象 400 `invalid_request`；`ConnectorSpec` 校验失败 400 `invalid_connector`。
+- 同 id 同定义重发 201，幂等；不同定义 409 `connector_conflict`。
+- 成功 201，写 `connector.register` 审计，`target` 是 `<tenant>/<id>` 或 `global/<id>`。
+- 未配置存储 404 `connectors_not_configured`；存储不可达 503 `connector_store_unavailable`。
+
+## `POST /api/connectors/{connector_id}/disable` -> `ConnectorSpec`
+
+- 只有 `admin` 能停用，非 admin 403 `forbidden`。
+- 不存在 404 `connector_not_found`。
+- 成功 200，重复停用幂等，写 `connector.disable` 审计。
+- 未配置存储 404 `connectors_not_configured`；存储不可达 503 `connector_store_unavailable`。
+
 ## `GET /api/tool-grants?tenant=<name>&status=<status>` -> `[ToolGrantRequest]`
 
 列出工具临时授权请求，按 `requested_at` 倒序。`status` 取 `pending`、`approved`、`denied`、`expired`、`cancelled`，其他值 400 `invalid_status`。

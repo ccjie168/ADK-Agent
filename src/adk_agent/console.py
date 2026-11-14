@@ -35,6 +35,11 @@ from .core import (
     ArtifactStore,
     AuditEvent,
     AuditSink,
+    ConnectorConflict,
+    ConnectorSpec,
+    ConnectorStore,
+    ConnectorStoreError,
+    ConnectorStoreUnavailable,
     EvalReportStore,
     GrantRequestConflict,
     GrantRequestExpired,
@@ -142,6 +147,7 @@ _INDEX_HTML = """<!doctype html>
   <button id="tab-chat" class="tab active" data-tab="chat">Chat</button>
   <button id="tab-registry" class="tab" data-tab="registry">Registry</button>
   <button id="tab-tools" class="tab" data-tab="tools">Tools</button>
+  <button id="tab-connectors" class="tab" data-tab="connectors">Connectors</button>
   <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
   <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
   <button id="tab-approvals" class="tab" data-tab="approvals">Approvals</button>
@@ -200,6 +206,38 @@ _INDEX_HTML = """<!doctype html>
     <thead><tr><th>tool</th><th>source</th><th>data classes</th><th>approval</th><th>granted agents</th></tr></thead>
     <tbody id="tools-body"></tbody>
   </table>
+</section>
+
+<section id="connectors" class="panel">
+  <div class="row">
+    <button id="refresh-connectors">Refresh</button>
+  </div>
+  <div id="connectors-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>id</th><th>tenant</th><th>kind</th><th>base url</th><th>methods</th><th>enabled</th></tr></thead>
+    <tbody id="connectors-body"></tbody>
+  </table>
+  <h3>Register</h3>
+  <div class="row">
+    <input id="connector-id" placeholder="connector id" autocomplete="off">
+    <input id="connector-tenant" placeholder="tenant (blank = global)" autocomplete="off">
+    <select id="connector-kind">
+      <option value="http">http</option>
+      <option value="openapi">openapi</option>
+      <option value="mcp">mcp</option>
+    </select>
+    <input id="connector-base-url" placeholder="https://api.example.com" autocomplete="off">
+  </div>
+  <div class="row">
+    <input id="connector-auth-ref" placeholder="secret://name/token (optional)" autocomplete="off">
+    <input id="connector-methods" placeholder="methods: GET,POST" autocomplete="off">
+    <input id="connector-prefixes" placeholder="path prefixes: /v1/" autocomplete="off">
+    <input id="connector-data-classes" placeholder="data classes: internal" autocomplete="off">
+  </div>
+  <div class="row">
+    <button id="connector-register">Register</button>
+    <button id="connector-disable">Disable selected</button>
+  </div>
 </section>
 
 <section id="runs" class="panel">
@@ -295,11 +333,12 @@ _INDEX_HTML = """<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["chat", "registry", "tools", "runs", "sessions", "approvals", "grants", "plans", "policy"];
+const TABS = ["chat", "registry", "tools", "connectors", "runs", "sessions", "approvals", "grants", "plans", "policy"];
 let sessionId = null;
 let selectedApproval = null;
 let selectedRegistry = null;
 let selectedGrant = null;
+let selectedConnector = null;
 const token = () => $("token").value.trim();
 $("token").value = sessionStorage.getItem("adk_token") || "";
 $("token").addEventListener("change", () => sessionStorage.setItem("adk_token", token()));
@@ -548,6 +587,76 @@ async function loadTools() {
     row.appendChild(cell(agents || "-"));
     body.appendChild(row);
   }
+}
+
+async function loadConnectors() {
+  const tenant = $("tenant").value;
+  $("connectors-msg").textContent = "";
+  const body = $("connectors-body");
+  body.innerHTML = "";
+  if (!tenant) return;
+  const result = await getJson("/api/connectors?tenant=" + encodeURIComponent(tenant));
+  if (!result.ok) {
+    $("connectors-msg").textContent = "connectors unavailable (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  for (const connector of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(connector.connector_id));
+    row.appendChild(cell(connector.tenant || "global"));
+    row.appendChild(cell(connector.kind));
+    row.appendChild(cell(connector.base_url));
+    row.appendChild(cell((connector.methods || []).join(", ")));
+    row.appendChild(cell(connector.enabled ? "yes" : "no"));
+    row.addEventListener("click", () => { selectedConnector = connector; });
+    body.appendChild(row);
+  }
+}
+
+function listValue(id) {
+  return $(id).value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+async function registerConnector() {
+  $("connectors-msg").textContent = "";
+  const tenant = $("connector-tenant").value.trim();
+  const body = {
+    connector_id: $("connector-id").value.trim(),
+    kind: $("connector-kind").value,
+    base_url: $("connector-base-url").value.trim(),
+    methods: listValue("connector-methods"),
+    path_prefixes: listValue("connector-prefixes"),
+    data_classes: listValue("connector-data-classes"),
+  };
+  if (tenant) body.tenant = tenant;
+  const authRef = $("connector-auth-ref").value.trim();
+  if (authRef) body.auth_ref = authRef;
+  const result = await postJson("/api/connectors", body);
+  if (!result.ok) {
+    $("connectors-msg").textContent = "register failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("connectors-msg").textContent = "registered " + result.data.connector_id;
+  await loadConnectors();
+}
+
+async function disableConnector() {
+  if (!selectedConnector) {
+    $("connectors-msg").textContent = "select a connector first";
+    return;
+  }
+  const result = await postJson(
+    "/api/connectors/" + encodeURIComponent(selectedConnector.connector_id) + "/disable", {});
+  if (!result.ok) {
+    $("connectors-msg").textContent = "disable failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("connectors-msg").textContent = "disabled " + result.data.connector_id;
+  selectedConnector = result.data;
+  await loadConnectors();
 }
 
 async function unloadAgent() {
@@ -805,6 +914,7 @@ async function connect() {
   await loadApprovals();
   await loadPlans();
   await loadTools();
+  await loadConnectors();
   await loadGrants();
   loadAudit();
 }
@@ -972,7 +1082,7 @@ async function savePolicy() {
 }
 
 $("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
-$("tenant").addEventListener("change", () => { loadRegistry(); loadTools(); loadGrants(); });
+$("tenant").addEventListener("change", () => { loadRegistry(); loadTools(); loadConnectors(); loadGrants(); });
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-registry").addEventListener("click", loadRegistry);
@@ -980,6 +1090,9 @@ $("open-chat").addEventListener("click", openChat);
 $("unload-agent").addEventListener("click", unloadAgent);
 $("refresh-runs").addEventListener("click", loadRuns);
 $("refresh-tools").addEventListener("click", loadTools);
+$("refresh-connectors").addEventListener("click", loadConnectors);
+$("connector-register").addEventListener("click", registerConnector);
+$("connector-disable").addEventListener("click", disableConnector);
 $("refresh-sessions").addEventListener("click", loadSessions);
 $("refresh-approvals").addEventListener("click", loadApprovals);
 $("refresh-grants").addEventListener("click", loadGrants);
@@ -1239,6 +1352,7 @@ def build_console_app(
     tool_catalog: ToolCatalog | None = None,
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
+    connectors: ConnectorStore | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1662,6 +1776,110 @@ def build_console_app(
             if event.policy_version == "grants-v2":
                 row["temporary"] += 1
         return sorted(counts.values(), key=lambda row: row["tool_id"])
+
+    @app.get("/api/connectors")
+    async def list_connectors(request: Request, tenant: str | None = None) -> Any:
+        if connectors is None:
+            return JSONResponse({"error": "connectors_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        target = tenant or caller.tenant
+        if tenant and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        try:
+            records = await connectors.list(target)
+        except ConnectorStoreError:
+            logger.exception("connector list failed: tenant=%s", target)
+            return JSONResponse({"error": "connector_store_unavailable"}, status_code=503)
+        return [record.model_dump(mode="json") for record in records]
+
+    @app.post("/api/connectors")
+    async def register_connector(request: Request) -> Any:
+        caller = _principal_for(request)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if connectors is None:
+            return JSONResponse({"error": "connectors_not_configured"}, status_code=404)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            spec = ConnectorSpec.model_validate(body)
+        except ValidationError:
+            return JSONResponse({"error": "invalid_connector"}, status_code=400)
+        try:
+            stored = await connectors.add(spec)
+        except ConnectorConflict:
+            return JSONResponse({"error": "connector_conflict"}, status_code=409)
+        except ConnectorStoreUnavailable:
+            logger.exception("connector register failed: id=%s", spec.connector_id)
+            return JSONResponse({"error": "connector_store_unavailable"}, status_code=503)
+        except ConnectorStoreError:
+            logger.exception("connector register failed: id=%s", spec.connector_id)
+            return JSONResponse({"error": "connector_store_unavailable"}, status_code=503)
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=uuid.uuid4().hex,
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(
+                    id=spec.connector_id,
+                    version="connector",
+                    digest=f"sha256:{hash_text(spec.model_dump_json())}",
+                ),
+                action="connector.register",
+                target=f"{spec.tenant or 'global'}/{spec.connector_id}",
+                args_hash=hash_text(stored.model_dump_json()),
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse(stored.model_dump(mode="json"), status_code=201)
+
+    @app.post("/api/connectors/{connector_id}/disable")
+    async def disable_connector(request: Request, connector_id: str) -> Any:
+        caller = _principal_for(request)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if connectors is None:
+            return JSONResponse({"error": "connectors_not_configured"}, status_code=404)
+        try:
+            existing = await connectors.get(connector_id)
+        except ConnectorStoreError:
+            logger.exception("connector read failed: id=%s", connector_id)
+            return JSONResponse({"error": "connector_store_unavailable"}, status_code=503)
+        if existing is None:
+            return JSONResponse({"error": "connector_not_found"}, status_code=404)
+        try:
+            disabled = await connectors.disable(connector_id, by=caller.subject)
+        except ConnectorStoreError:
+            logger.exception("connector disable failed: id=%s", connector_id)
+            return JSONResponse({"error": "connector_store_unavailable"}, status_code=503)
+        if existing.enabled:
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=uuid.uuid4().hex,
+                    tenant=caller.tenant,
+                    principal=caller,
+                    agent_ref=AgentRef(
+                        id=existing.connector_id,
+                        version="connector",
+                        digest=f"sha256:{hash_text(existing.model_dump_json())}",
+                    ),
+                    action="connector.disable",
+                    target=f"{existing.tenant or 'global'}/{connector_id}",
+                    args_hash=hash_text("enabled->disabled"),
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse(disabled.model_dump(mode="json"))
 
     @app.get("/api/tool-grants")
     async def list_tool_grants(
@@ -2249,6 +2467,7 @@ def run_console(
     tool_catalog: ToolCatalog | None = None,
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
+    connectors: ConnectorStore | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -2279,6 +2498,7 @@ def run_console(
         tool_catalog=tool_catalog,
         lifecycle=lifecycle,
         tool_grants=tool_grants,
+        connectors=connectors,
         artifact_store=artifact_store,
         artifact_loader=artifact_loader,
         artifact_trust=artifact_trust,

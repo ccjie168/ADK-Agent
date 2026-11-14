@@ -1,0 +1,71 @@
+SLICE-087 connectors control plane, console and CLI
+===================================================
+
+red, base commit 4e1ceca
+-------------------------
+$ git worktree add <tmp>/adk-087-red 4e1ceca
+$ PYTHONPATH=<tmp>/adk-087-red/src ./.venv/Scripts/python.exe <tmp>/adk-087-red-probe.py
+source: <tmp>\adk-087-red\src\adk_agent\__init__.py
+case1: ImportError cannot import name 'HttpConnectorStore' from 'adk_agent.registry'
+case2: GET /v1/connectors -> 404
+case3: SystemExit 2 (argument cmd: invalid choice: 'connectors')
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/registry/test_connector_service.py \
+    tests/registry/test_connector_client.py tests/test_console_connectors.py \
+    tests/test_cli_connectors.py -q
+20 passed in 2.43s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --fast
+997 passed, 29 skipped in 56.04s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test [PASS] secrets
+ALL PASS
+
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+997 passed, 29 skipped in 55.28s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, real Postgres control plane and loopback console
+-----------------------------------------------------
+postgres: container adk-postgres-070, postgresql://adk:adk@127.0.0.1:55432/adk
+registry: serve-registry on 127.0.0.1:8807, static token, --audit-file
+console: console on 127.0.0.1:8808 with --registry-url 127.0.0.1:8807
+
+$ adk-agent connectors register --registry-url http://127.0.0.1:8807 ... --id crm087 --tenant acme087
+  exit 0, enabled true, methods ["GET","POST"], path_prefixes ["/v1/crm/"]
+
+$ adk-agent connectors list --tenant acme087 --registry-url http://127.0.0.1:8807 ...
+  exit 0, ["crm087" (tenant acme087, enabled), "pg-8758ae83" (global, disabled)]
+
+$ adk-agent connectors disable --id crm087 ...   exit 0, enabled false
+$ adk-agent connectors disable --id crm087 ...   exit 0, enabled false (idempotent)
+$ adk-agent connectors register ... --base-url https://other.example.com
+  exit 1, connector service returned status 409
+
+GET /v1/connectors?tenant=acme087 -> 200, count 2
+audit file:
+  connector.register acme087/crm087 acme087 ok
+  connector.disable acme087/crm087 acme087 ok
+
+GET /api/connectors?tenant=acme087 -> 200, ["crm087", "pg-8758ae83"]
+POST /api/connectors -> 201 console087 enabled true
+GET after console write -> 200, ["console087", "crm087", "pg-8758ae83"]
+POST /api/connectors/console087/disable -> 200 enabled false
+
+notes
+-----
+- The red probes ran against a detached worktree at 4e1ceca with PYTHONPATH
+  pointing at that tree's src; the editable venv install otherwise resolves to
+  the working tree.
+- `pg-8758ae83` is a global connector left by the SLICE-085 live check. It
+  proves the list merges global and tenant records for a tenant caller.
+- Audit events use the caller tenant and target `<tenant>/<id>`. Static token
+  mode has no roles, so the token holder may write; the OIDC non-admin 403 path
+  is covered by `test_non_admin_forbidden`.
+- The console reaches the same Postgres rows through `HttpConnectorStore`, so
+  the panel and the CLI share one store and one audit file.

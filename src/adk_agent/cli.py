@@ -126,6 +126,25 @@ def _tool_grant_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _connector_store(args: argparse.Namespace) -> Any:
+    """Build the connector store from ``--connectors-dir`` or ``--registry-url``."""
+    from .registry import FileConnectorStore, HttpConnectorStore
+
+    directory = getattr(args, "connectors_dir", None)
+    url = getattr(args, "registry_url", None)
+    if directory and url:
+        print("set exactly one of --connectors-dir or --registry-url", file=sys.stderr)
+        raise SystemExit(1)
+    if directory:
+        return FileConnectorStore(directory)
+    if url:
+        if not url.startswith(("http://", "https://")):
+            print(f"invalid --registry-url {url!r}: expected http:// or https://", file=sys.stderr)
+            raise SystemExit(1)
+        return HttpConnectorStore(url, auth_token=_registry_token(args))
+    return None
+
+
 def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
     """Load agents named by ``--agent-ref`` from the registry."""
     refs = getattr(args, "agent_ref", None)
@@ -822,6 +841,11 @@ def main(argv: list[str] | None = None) -> None:
         help="JSON file mapping key id to a 64 hex Ed25519 public key",
     )
     p_console.add_argument(
+        "--connectors-dir",
+        default=None,
+        help="connector store directory for the Connectors panel (falls back to --registry-url)",
+    )
+    p_console.add_argument(
         "--tool-catalog",
         default=None,
         help="read-only tool catalog JSON for the Tools panel",
@@ -909,6 +933,33 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="delete records instead of moving them to <dir>/archive",
     )
+
+    p_connectors = sub.add_parser("connectors", help="register and list external API connectors")
+    connectors_sub = p_connectors.add_subparsers(dest="connectors_cmd", required=True)
+
+    p_cl_list = connectors_sub.add_parser("list", help="list visible connectors")
+    p_cl_list.add_argument("--tenant", required=True)
+    p_cl_list.add_argument("--connectors-dir", default=None)
+    _add_registry_client_args(p_cl_list)
+
+    p_cl_register = connectors_sub.add_parser("register", help="register a connector")
+    p_cl_register.add_argument("--connectors-dir", default=None)
+    p_cl_register.add_argument("--tenant", default=None)
+    p_cl_register.add_argument("--id", required=True)
+    p_cl_register.add_argument("--kind", required=True, choices=["http", "openapi", "mcp"])
+    p_cl_register.add_argument("--base-url", required=True)
+    p_cl_register.add_argument("--auth-ref", default=None)
+    p_cl_register.add_argument("--methods", default="GET")
+    p_cl_register.add_argument("--path-prefixes", default="/")
+    p_cl_register.add_argument("--data-classes", default="")
+    p_cl_register.add_argument("--timeout-seconds", type=int, default=10)
+    p_cl_register.add_argument("--max-response-bytes", type=int, default=1024 * 1024)
+    _add_registry_client_args(p_cl_register)
+
+    p_cl_disable = connectors_sub.add_parser("disable", help="disable a connector")
+    p_cl_disable.add_argument("--connectors-dir", default=None)
+    p_cl_disable.add_argument("--id", required=True)
+    _add_registry_client_args(p_cl_disable)
 
     p_lifecycle = sub.add_parser("lifecycle", help="change a published version's lifecycle state")
     lifecycle_sub = p_lifecycle.add_subparsers(dest="lifecycle_cmd", required=True)
@@ -1320,6 +1371,7 @@ def main(argv: list[str] | None = None) -> None:
             FileArtifactStore,
             PostgresAgentLifecycleStore,
             PostgresAgentRegistry,
+            PostgresConnectorStore,
             PostgresEvalReportStore,
             RegistryStoreUnavailable,
         )
@@ -1336,6 +1388,7 @@ def main(argv: list[str] | None = None) -> None:
             registry = PostgresAgentRegistry(args.database_url)
             eval_reports = PostgresEvalReportStore(args.database_url)
             lifecycle = PostgresAgentLifecycleStore(args.database_url)
+            connectors = PostgresConnectorStore(args.database_url)
         except RegistryStoreUnavailable as exc:
             print(f"registry store unavailable: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
@@ -1360,6 +1413,7 @@ def main(argv: list[str] | None = None) -> None:
             artifact_store=store,
             eval_reports=eval_reports,
             lifecycle=lifecycle,
+            connectors=connectors,
             audit=_audit_sink(args),
             trust=_artifact_trust(args),
             host=args.host,
@@ -1396,7 +1450,9 @@ def main(argv: list[str] | None = None) -> None:
         from .console import run_console
         from .registry import (
             FileAgentLifecycleStore,
+            FileConnectorStore,
             FileEvalReportStore,
+            HttpConnectorStore,
             HttpEvalReportStore,
             InProcessArtifactLoader,
         )
@@ -1434,6 +1490,15 @@ def main(argv: list[str] | None = None) -> None:
         registry_client = _agent_registry(args)
         console_lifecycle = _lifecycle_source(args, registry_client)
         tool_grants = _tool_grant_store(args)
+        console_connectors: Any = None
+        if args.connectors_dir:
+            console_connectors = FileConnectorStore(args.connectors_dir)
+        elif args.registry_url:
+            console_connectors = HttpConnectorStore(
+                args.registry_url, auth_token=_registry_token(args)
+            )
+        else:
+            console_connectors = None
         run_console(
             agents=agents,
             host=args.host,
@@ -1447,6 +1512,7 @@ def main(argv: list[str] | None = None) -> None:
             tool_catalog=_tool_catalog(args),
             lifecycle=console_lifecycle,
             tool_grants=tool_grants,
+            connectors=console_connectors,
             eval_reports=(
                 HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
                 if args.registry_url
@@ -1531,6 +1597,62 @@ def main(argv: list[str] | None = None) -> None:
         print(
             f"{manifest.tenant}/{manifest.id}@{manifest.version} sha256:{manifest_digest(manifest)}"
         )
+    elif args.cmd == "connectors":
+        from pydantic import ValidationError
+
+        from .core import ConnectorSpec, ConnectorStoreError, DataClass, HttpMethod
+        from .registry import ConnectorForbidden, ConnectorNotFound
+
+        store = _connector_store(args)
+        if store is None:
+            print("set --connectors-dir or --registry-url", file=sys.stderr)
+            raise SystemExit(1)
+
+        def _split(value: str) -> list[str]:
+            return [item.strip() for item in value.split(",") if item.strip()]
+
+        async def run_connectors() -> Any:
+            try:
+                if args.connectors_cmd == "list":
+                    return await store.list(args.tenant)
+                if args.connectors_cmd == "disable":
+                    return await store.disable(args.id, by="cli")
+                spec = ConnectorSpec(
+                    connector_id=args.id,
+                    tenant=args.tenant or None,
+                    kind=args.kind,
+                    base_url=args.base_url,
+                    auth_ref=args.auth_ref or None,
+                    methods=cast(
+                        "list[HttpMethod]", [item.upper() for item in _split(args.methods)]
+                    ),
+                    path_prefixes=_split(args.path_prefixes),
+                    data_classes=cast("list[DataClass]", _split(args.data_classes)),
+                    timeout_seconds=args.timeout_seconds,
+                    max_response_bytes=args.max_response_bytes,
+                )
+                return await store.add(spec)
+            finally:
+                close = getattr(store, "aclose", None)
+                if close is not None:
+                    await close()
+
+        try:
+            result = asyncio.run(run_connectors())
+        except (
+            ConnectorStoreError,
+            ConnectorForbidden,
+            ConnectorNotFound,
+            ValidationError,
+            ValueError,
+        ) as exc:
+            print(f"connectors failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        if args.connectors_cmd == "list":
+            print(json.dumps([record.model_dump(mode="json") for record in result]))
+        else:
+            print(json.dumps(result.model_dump(mode="json")))
     elif args.cmd == "lifecycle":
         from .core import LifecycleTransitionError
         from .registry import (

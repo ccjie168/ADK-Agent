@@ -85,6 +85,38 @@
 - 成功返回 200 和新的生命周期记录。变化写一条 `agent.lifecycle` 审计，`target` 是 `<tenant>/<id>@<version>`，状态为 `ok`。
 - 生命周期存储不可用返回 503 `lifecycle_store_unavailable`。
 
+## `GET /v1/connectors?tenant=<name>` -> `{"connectors": [ConnectorSpec], "count": <n>}`
+
+列出可见连接器，按 `connector_id` 排序。全局连接器（`tenant` 为 `null`）对所有租户可见。
+
+- `tenant` 缺失时取 token 租户；静态 token 模式省略时返回全部连接器。
+- OIDC 非 admin 跨租户 403 `tenant_forbidden`。
+- 服务没有配置连接器存储返回 503 `connector_store_unavailable`；存储不可达返回 502 `connector_store_failed`。
+
+## `GET /v1/connectors/{connector_id}` -> `ConnectorSpec`
+
+- 不存在返回 404 `connector_not_found`。
+- 连接器属于其他租户且调用方不是 admin 返回 403 `tenant_forbidden`。
+- 存储错误同上。
+
+## `POST /v1/connectors`
+
+请求体是一条 `ConnectorSpec`。
+
+- 只有 admin 或静态 token 操作者能写，OIDC 非 admin 返回 403 `forbidden`。
+- 请求体不是 JSON 返回 400 `invalid_json`，不是合法 `ConnectorSpec` 返回 400 `invalid_connector`。
+- 同 id 同定义重发返回 201 和已有记录，幂等；同 id 不同定义返回 409 `connector_conflict`。
+- 成功返回 201 和已存记录，写一条 `connector.register` 审计，`target` 是 `<tenant>/<id>` 或 `global/<id>`，`tenant` 是调用方租户。
+- 存储不可达返回 502 `connector_store_failed`；服务没有配置存储返回 503 `connector_store_unavailable`。
+
+## `POST /v1/connectors/{connector_id}/disable`
+
+- 只有 admin 或静态 token 操作者能写，OIDC 非 admin 返回 403 `forbidden`。
+- 不存在返回 404 `connector_not_found`；属于其他租户且调用方不是 admin 返回 403 `tenant_forbidden`。
+- 成功返回 200 和停用后的记录。已停用时重发返回 200，幂等。
+- 成功写一条 `connector.disable` 审计，`target` 规则同上。
+- 存储错误同上。
+
 ## 错误
 
 | 状态 | 错误码 | 含义 |
@@ -95,6 +127,7 @@
 | 400 | `digest_mismatch` | 上传字节与摘要不符 |
 | 400 | `size_mismatch` | 上传字节大小与记录不符 |
 | 400 | `artifact_untrusted` | 工件签名不可信 |
+| 400 | `invalid_connector` | `ConnectorSpec` 非法 |
 | 400 | `invalid_report` | `EvalReport` 非法 |
 | 400 | `invalid_status` | 生命周期状态非法 |
 | 400 | `invalid_request` | 生命周期请求体非法 |
@@ -116,7 +149,14 @@
 | 502 | `registry_integrity_error` | 存储的记录与摘要不符 |
 | 503 | `artifact_store_unavailable` | 服务没有配置工件存储 |
 | 503 | `lifecycle_store_unavailable` | 服务没有配置生命周期存储 |
+| 403 | `forbidden` | 非 admin 写连接器 |
+| 404 | `connector_not_found` | 连接器不存在 |
+| 409 | `connector_conflict` | 同 id 已有不同定义 |
+| 502 | `connector_store_failed` | 连接器存储不可达 |
+| 503 | `connector_store_unavailable` | 服务没有配置连接器存储 |
 | 503 | `artifact_trust_unavailable` | 发布带工件但服务没有可信公钥 |
+
+`HttpConnectorStore` 实现 `ConnectorStore` 端口，接同一服务。409 映射为 `ConnectorConflict`，404 映射为 `ConnectorNotFound`，401 和 403 映射为 `ConnectorForbidden`，400 映射为 `ConnectorStoreError`，传输失败和 5xx 映射为 `ConnectorStoreUnavailable`。
 
 ## 客户端
 
