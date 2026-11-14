@@ -1,0 +1,93 @@
+SLICE-098 approval inbox in Postgres
+====================================
+
+red, pre-slice commit 08d4477
+-----------------------------
+$ git worktree add <tmp>/adk-098-red 08d4477
+$ PYTHONPATH=<tmp>/adk-098-red/src ./.venv/Scripts/python.exe \
+    -c "from adk_agent.approvals_postgres import PostgresApprovalInbox"
+source: <tmp>\adk-098-red\src\adk_agent\__init__.py
+ModuleNotFoundError: No module named 'adk_agent.approvals_postgres'
+
+fresh schema, no table:
+$ CREATE SCHEMA red098; SET search_path = red098;
+$ SELECT to_regclass('adk_approvals');
+-> null
+
+$ ./.venv/Scripts/python.exe -m pytest tests/test_approvals_postgres.py --collect-only -q \
+    -o pythonpath="<tmp>/adk-098-red/src"
+tests\test_approvals_postgres.py:19: ModuleNotFoundError: No module named
+'adk_agent.approvals_postgres'
+no tests collected, 1 error in 2.29s
+
+red, two review-fix tests against the pre-fix prune SQL
+-------------------------------------------------------
+$ pytest tests/test_approvals_postgres.py -k "prune_archives_expired_without_decision" \
+    -o pythonpath=<tmp>/adk-098-prefix/src
+assert result.archived == 1
+E       assert 0 == 1
+E        +  where 0 = PruneResult(archived=0, deleted=0, kept=0).archived
+
+$ pytest ... -k "prune_does_not_overwrite_archive_for_reused_id"
+E       adk_agent.approvals_postgres.ApprovalInboxUnavailable: approval prune failed
+        (UniqueViolationError)
+2 failed, 11 deselected in 2.01s
+
+green
+-----
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe -m pytest tests/test_approvals_postgres.py -q
+13 passed in 3.55s
+
+Without TEST_POSTGRES_URL: 2 passed, 11 skipped.
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1141 passed, 56 skipped in 53.38s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, one real Postgres
+-----------------------
+postgres: postgresql://adk:adk@127.0.0.1:55432/adk
+
+$ ./.venv/Scripts/python.exe <tmp>/adk-098-live/drive.py
+submit idempotent -> 1 pending
+conflicting submit -> ApprovalConflict
+concurrent decide -> ['decision', 'ApprovalConflict']
+stored decision -> True alice
+expired decide -> ApprovalExpired
+pending after expiry -> []
+prune -> PruneResult(archived=1, deleted=0, kept=0)
+live rows after cleanup -> 0
+archive rows after cleanup -> 0
+archive rows -> [('r-e8f784b30ad7', 'expired')]
+rows left in live table -> 1
+
+notes
+-----
+- Two concurrent decisions ran on two pooled connections (pool max_size=5). One
+  recorded a decision, the other got ApprovalConflict.
+- The expired undecided row was archived with status 'expired' by prune.
+- Review fix 1: the first prune SQL only matched terminal statuses, so a request
+  that expired without anyone deciding stayed 'pending' forever and was hidden
+  from pending(). It now counts rows with status 'pending' and a past expires_at
+  as terminated, and archives them as 'expired'.
+- Review fix 2: pruning a reused request id raised UniqueViolation on the archive
+  insert. The insert is now ON CONFLICT (request_id) DO NOTHING, and the live
+  row is left in place, matching FileApprovalInbox's `kept` behavior.
+- Review fix 3: for expired rows the prune cutoff now uses expires_at, not
+  requested_at, matching the file implementation's deadline.
+- PruneResult.kept stays 0 for the Postgres inbox. The CLI only prints archived
+  or deleted counts, so the field is not observable.
+- Observed clock skew: the host clock was about 4 s ahead of the Postgres
+  container. An expires_at of "now minus 1 second" on the host was still in the
+  future by server time, so the decision was accepted. Expiry is judged by the
+  database's now(). Keep app and database clocks NTP-synced, and size approval
+  deadlines well above the skew. The live driver uses a one hour margin.
+- Idempotent submit compares the effective expiry, so a ttl-derived deadline is
+  stored and returned by get(). FileApprovalInbox returns the raw request with
+  expires_at=None. Stored deadlines are the deliberate difference.
+- No RLS in v1. Tenant filtering, console and executor wiring are SLICE-099.
