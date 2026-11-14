@@ -25,8 +25,9 @@ $ pip-compile --generate-hashes --no-emit-index-url --no-emit-trusted-host \
 runtime.lock: 91 -> 96 pins
   added hatchling 1.33.0, pathspec 1.1.1, pluggy 1.7.0, tomlkit 0.15.2,
   trove-classifiers 2026.9.21.13
-dev.lock: 129 -> 132 pins
-  added hatchling 1.33.0, tomlkit 0.15.2, trove-classifiers 2026.9.21.13
+dev.lock: 129 -> 134 pins
+  added hatchling 1.33.0, tomlkit 0.15.2, trove-classifiers 2026.9.21.13,
+  plus pip 26.3 and setuptools 84.2.1 from --allow-unsafe
 no existing pin changed version; no index-url or trusted-host line is emitted
 
 actions
@@ -86,6 +87,10 @@ notes
   trivy-action's composite ref to setup-trivy@v0.2.1 no longer resolves. The
   workflow now installs Trivy with the SHA-pinned setup-trivy v0.3.1 and runs
   the CLI directly, which also makes the ignore-file flag explicit.
+- The second CI run failed installing the dev lock: pip-tools 7.6.2 pulls
+  unpinned setuptools, which --require-hashes rejects. The dev lock is now
+  compiled with --allow-unsafe, so pip 26.3 and setuptools 84.2.1 are pinned.
+  A `pip download --require-hashes -r requirements/dev.lock` check exits 0.
 - The project install runs with --no-build-isolation in both Dockerfile and CI,
   so hatchling comes from the hash-checked lock instead of being fetched at
   build time.

@@ -8,6 +8,7 @@
 SLICE-101 锁住了运行时依赖，但构建侧还有两个口子。这一刀让构建过程也不再从索引无哈希拉取任何包，并把 CI 的第三方 action 固定到 commit SHA。不改运行时行为，不新增运行时功能依赖，不推送镜像。
 
 - 构建后端进入锁。`[build-system].requires` 目前只有 `hatchling`，Dockerfile 和 CI 用 build isolation，构建项目时从索引拉取 hatchling，没有哈希校验。把 hatchling 及其传递依赖锁进 `requirements/runtime.lock` 和 `requirements/dev.lock`，构建改用 `--no-build-isolation`。
+- dev 锁用 `--allow-unsafe` 固定 `pip` 与 `setuptools`。`pip-tools` 依赖未固定的 `setuptools`，CI 的 `--require-hashes` 安装否则会失败。
 - CI 的 action 按 commit SHA 固定。`actions/checkout@v4`、`actions/setup-python@v5`、`aquasecurity/setup-trivy@v0.3.1`、`actions/upload-artifact@v4` 都改为 `@<40 位 SHA>`，行尾注释保留原版本号。Trivy 用 `setup-trivy` 安装固定版本，再直接运行 `trivy image`。原先的 `trivy-action@0.28.0` 是复合 action，内部引用已删除的 `setup-trivy@v0.2.1`，首次 CI 运行即失败。
 - 镜像推送与 digest 回写不在本刀范围。它需要 registry 地址与凭据，属于运维决策。
 

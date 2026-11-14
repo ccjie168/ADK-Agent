@@ -72,14 +72,17 @@
   ```bash
   docker run --rm -v "$PWD:/w" -w /w python:3.13-slim bash -lc '
     pip install --quiet "pip-tools>=7.4" && mkdir -p requirements &&
-    pip-compile --generate-hashes --output-file requirements/runtime.lock \
-      --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml &&
-    pip-compile --generate-hashes --output-file requirements/dev.lock \
-      --extra dev --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml
+    pip-compile --generate-hashes --no-emit-index-url --no-emit-trusted-host \
+      --output-file requirements/runtime.lock \
+      --extra build --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml &&
+    pip-compile --allow-unsafe --generate-hashes --no-emit-index-url --no-emit-trusted-host \
+      --output-file requirements/dev.lock \
+      --extra dev --extra build --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml
   '
   ```
 
   改 `pyproject.toml` 后必须重编两个锁，diff 和代码一起评审。不要在镜像或 CI 里用范围安装。
+- dev 锁用 `--allow-unsafe`，把 `pip` 与 `setuptools` 固定下来。`pip-tools` 依赖未固定的 `setuptools`，CI 用 `--require-hashes` 安装时必须有这个 pin。
 - 默认镜像包含 `litellm`，因为未设置 `ADK_AGENT_MODEL` 时模型默认回退到 LiteLLM 的 `deepseek/deepseek-v4-pro`。国内模型用 `litellm:deepseek/<model>`，凭据放在 Secret 的 `DEEPSEEK_API_KEY`（或 LiteLLM 对应的 provider 变量）。也可以继续用清单里的 Anthropic 兼容端点。
 - CI 按 `dev.lock` 安装后跑门禁，构建镜像，Trivy 扫描 `HIGH,CRITICAL` 可修复项，并上传 SBOM。扫描失败不得合入。
 - 发布时先推送镜像，取得 digest，再替换清单里的全零 digest。`image:` 只接受 `adk-agent@sha256:<digest>`，不接受 `:latest` 或可移动标签。取 digest 可用 `docker buildx imagetools inspect <image>` 或 `crane digest <image>`。
