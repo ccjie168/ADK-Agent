@@ -254,3 +254,48 @@ def test_peer_mode_forwards_stores(tmp_path, monkeypatch):
     assert captured["oidc"] is None
     assert captured["auth_token"] is None
     assert captured["allow_unauthenticated"] is False
+
+
+def test_peer_mode_rejects_allow_unauthenticated(tmp_path, monkeypatch, capsys):
+    _patch_serve(monkeypatch)
+    monkeypatch.delenv("ADK_MCP_AUTH_TOKEN", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            [
+                "serve-a2a",
+                "--agent",
+                "x.py",
+                "--manifest",
+                _manifest(tmp_path),
+                "--peer-dir",
+                str(tmp_path),
+                "--peer-token-file",
+                _token_file(tmp_path),
+                "--allow-unauthenticated",
+            ]
+        )
+
+    assert exc.value.code == 2
+    assert "allow-unauthenticated" in capsys.readouterr().err
+
+
+def test_peer_mode_requires_store(tmp_path, monkeypatch, capsys):
+    _patch_serve(monkeypatch)
+    monkeypatch.delenv("ADK_MCP_AUTH_TOKEN", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            [
+                "serve-a2a",
+                "--agent",
+                "x.py",
+                "--manifest",
+                _manifest(tmp_path),
+                "--peer-token-file",
+                _token_file(tmp_path),
+            ]
+        )
+
+    assert exc.value.code == 2
+    assert "peer-dir" in capsys.readouterr().err

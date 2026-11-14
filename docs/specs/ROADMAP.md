@@ -182,6 +182,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-089 连接器健康检查（ADR-0013）：受约束探测、七种结论、控制台 Check 与 `connectors check`。已完成。
 - SLICE-090 A2A peer 身份与授权（ADR-0014）：peer 注册表与授权存储、两种身份模式、动作级强制、审计身份切换。已完成。
 - SLICE-091 peer 管理面（ADR-0014）：控制台五个接口与 Peer 面板、`peers` 命令、管理审计。已完成。
+- SLICE-092 模式互斥验证与迁移（ADR-0014）：库层与 CLI 负向验证、契约记录形状、legacy 迁移说明。已完成。
 
 ## 完成定义
 

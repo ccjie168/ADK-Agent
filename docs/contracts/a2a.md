@@ -22,6 +22,32 @@ A2A 服务的路径由 `rpc_path` 决定：agent card 与 JSON-RPC 都在该前�
 
 审计身份随 peer：`agent.run` 的 `tenant` 与 `principal` 来自 peer，不再是 `local/a2a_user`。legacy 模式保持原样。
 
+### 记录形状
+
+```text
+PeerIdentity {
+  peer_id: safe name,
+  tenant: safe name,
+  subject: non-empty string,
+  kind: "human" | "service" | "agent",
+  roles: [string],
+  enabled: bool
+}
+
+PeerGrant {
+  peer_id: safe name,
+  tenant: safe name,          # 必须等于 peer.tenant
+  agent_id: safe name,
+  actions: ["read" | "invoke"]  # 非空且不重复
+}
+```
+
+### 存储
+
+- `--peer-dir DIR`：`<DIR>/peers/<peer_id>.json` 与 `<DIR>/grants/<peer_id>/<agent_id>.json`。写入用临时文件加原子替换，重复写覆盖。
+- `--peer-db URL`：Postgres 表 `adk_peers` 与 `adk_peer_grants`，按 `(peer_id, agent_id)` 主键 upsert。
+- `--peer-token-file FILE`：JSON 对象，`peer_id -> 64 位十六进制 sha256(token)`。文件里不放明文 token，匹配用常量时间比较。
+
 ## 授权
 
 动作只有两个。

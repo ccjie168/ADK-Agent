@@ -1,0 +1,67 @@
+SLICE-092 A2A mode exclusivity verification and migration notes
+===============================================================
+
+red, peer behavior absent at 6146450
+------------------------------------
+$ git worktree add <tmp>/adk-092-red 6146450
+$ PYTHONPATH=<tmp>/adk-092-red/src ./.venv/Scripts/python.exe -m pytest \
+    -o pythonpath= tests/test_a2a_modes.py tests/test_cli_a2a_runtime.py -q
+FAILED tests/test_a2a_modes.py::test_peer_mode_requires_manifest - TypeError
+FAILED tests/test_a2a_modes.py::test_peer_mode_rejects_wrong_exposure - TypeError
+FAILED tests/test_a2a_modes.py::test_peer_mode_requires_exactly_one_identity
+FAILED tests/test_a2a_modes.py::test_peer_mode_requires_both_stores - TypeError
+FAILED tests/test_a2a_modes.py::test_peer_mode_builds - TypeError
+FAILED tests/test_cli_a2a_runtime.py::test_peer_mode_requires_manifest
+FAILED tests/test_cli_a2a_runtime.py::test_peer_mode_forwards_stores - SystemExit
+FAILED tests/test_cli_a2a_runtime.py::test_peer_mode_rejects_allow_unauthenticated
+FAILED tests/test_cli_a2a_runtime.py::test_peer_mode_requires_store
+9 failed, 9 passed in 3.14s
+
+$ PYTHONPATH=<tmp>/adk-092-red/src ./.venv/Scripts/python.exe -c \
+    "from adk_agent import cli; cli.main(['serve-a2a','--agent','x.py','--peer-dir','d'])"
+adk-agent: error: unrecognized arguments: --peer-dir d
+SystemExit 2
+
+red, contract lacked the record shapes at d0b38b7
+-------------------------------------------------
+$ git show d0b38b7:docs/contracts/a2a.md | grep -c "### 记录形状"
+0
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_a2a_modes.py \
+    tests/test_cli_a2a_runtime.py -q
+18 passed in 3.30s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1086 passed, 32 skipped in 55.11s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, legacy and peer serving of one agent side by side
+-------------------------------------------------------
+legacy on 127.0.0.1:8813 with the old shared token
+peer   on 127.0.0.1:8814 with a file peer store, a hashed token file and a
+       read-only grant for peer-a
+
+legacy card with the old token -> 200
+legacy card without a token    -> 401
+peer card with the old token   -> 401
+peer card with the new token   -> 200
+peer invoke with read-only grant ->
+  403 {"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"forbidden"}}
+
+notes
+-----
+- The two modes ran as separate processes on separate ports, which is the
+  supported way to overlap them. One process cannot serve both.
+- The old shared token is rejected by the peer process, so the cutover does not
+  leave a usable legacy credential behind.
+- The red test run is against 6146450 because this slice verifies behavior that
+  SLICE-090 added. The Library checks are unit-level (`build_a2a_app` raises
+  before the optional SDK is imported), so they run without `a2a-sdk`.
+- The migration guide is `docs/guides/a2a-peer-migration.md`; it uses
+  placeholders only, no real tokens.
