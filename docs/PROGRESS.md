@@ -132,7 +132,7 @@ python -m adk_agent console --agents examples/minimal/agent.py \
   --host 127.0.0.1 --port 8081 --allow-unauthenticated
 
 # 控制台带共享配额（多副本时 QUOTA_URL 指向同一个库）
-QUOTA_URL=postgresql://postgres:adk@127.0.0.1:5432/adk \
+QUOTA_URL=postgresql://postgres@127.0.0.1:5432/adk \
   python -m adk_agent console --agents examples/minimal/agent.py \
   --quota-config quota.json
 
@@ -141,7 +141,7 @@ python -m adk_agent console --agents examples/minimal/agent.py \
   --approval-dir ./approvals --approval-ttl 3600
 
 # MCP 服务带审计、配额和指标
-QUOTA_URL=postgresql://postgres:adk@127.0.0.1:5432/adk \
+QUOTA_URL=postgresql://postgres@127.0.0.1:5432/adk \
   python -m adk_agent serve --agent examples/minimal/agent.py \
   --transport streamable-http --audit-file ./audit.jsonl \
   --quota-config quota.json --metrics

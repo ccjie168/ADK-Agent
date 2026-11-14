@@ -91,6 +91,11 @@ notes
   unpinned setuptools, which --require-hashes rejects. The dev lock is now
   compiled with --allow-unsafe, so pip 26.3 and setuptools 84.2.1 are pinned.
   A `pip download --require-hashes -r requirements/dev.lock` check exits 0.
+- The third CI run passed both lock installs and failed on two gate steps.
+  pip-audit found 13 filelock CVEs because the lock pins filelock 3.32.7 while
+  the local venv has 4.2.10; the gate now passes the accepted IDs from
+  .trivyignore.yaml to pip-audit. detect-secrets flagged a dev DSN password in
+  docs/PROGRESS.md; the examples no longer embed it.
 - The project install runs with --no-build-isolation in both Dockerfile and CI,
   so hatchling comes from the hash-checked lock instead of being fetched at
   build time.

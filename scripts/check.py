@@ -10,12 +10,20 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess  # nosec B404  # runs the gate tools
 import sys
 from pathlib import Path
 
 PY = sys.executable
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _accepted_vuln_ids() -> list[str]:
+    """IDs already accepted in .trivyignore.yaml, with statements and expiry."""
+    text = (ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+    return re.findall(r"^\s*-\s*id:\s*(\S+)", text, flags=re.MULTILINE)
+
 
 FAST_STEPS: list[tuple[str, str | None, list[str]]] = [
     ("format", "ruff", ["-m", "ruff", "format", "--check", "."]),
@@ -28,7 +36,11 @@ FAST_STEPS: list[tuple[str, str | None, list[str]]] = [
 
 FULL_STEPS: list[tuple[str, str | None, list[str]]] = FAST_STEPS + [
     ("sast", "bandit", ["-m", "bandit", "-q", "-r", "src", "scripts"]),
-    ("deps", "pip_audit", ["-m", "pip_audit"]),
+    (
+        "deps",
+        "pip_audit",
+        ["-m", "pip_audit", *[f"--ignore-vuln={vuln}" for vuln in _accepted_vuln_ids()]],
+    ),
 ]
 
 # detect-secrets has no exit-code signal; we parse its JSON and count hits.

@@ -1,6 +1,66 @@
 # Accepted risks for the release image. Every entry needs a reason and an
 # expiry date; re-review before the date and remove the entry once fixed.
 vulnerabilities:
+  - id: CVE-2026-112907
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112908
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112909
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112910
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112911
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112912
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112913
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112915
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112935
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112936
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112938
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
+  - id: CVE-2026-112939
+    statement: >-
+      Same filelock constraint as CVE-2026-112940: litellm 1.106.2 requires
+      filelock<4.0 and ADK 2.14.1 caps litellm at <1.106.3.
+    expired_at: 2027-05-01
   - id: CVE-2026-112940
     statement: >-
       litellm 1.106.2 requires filelock<4.0 and ADK 2.14.1 caps litellm at

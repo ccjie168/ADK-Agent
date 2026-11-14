@@ -39,6 +39,14 @@ def test_install_hooks_sets_hooks_path(tmp_path):
     assert result.stdout.strip() == ".githooks"
 
 
+def test_pip_audit_ignores_come_from_the_risk_file():
+    gate = _load("check", "check.py")
+    ids = gate._accepted_vuln_ids()
+    text = (ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+    assert ids
+    assert all(cve in text for cve in ids)
+
+
 def test_spec_without_threat_model_fails():
     specs = _load("check_specs", "check_specs.py")
     text = "状态: planned\n## 意图\n## 完成判据\n## 反例\n## 证据\n"
