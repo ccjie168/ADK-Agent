@@ -24,7 +24,7 @@
 
 ## 当前在做
 
-- M4 平台加固（M0、M1、M2、M3 已完成，见 `docs/specs/ROADMAP.md`）
+- M0 到 M5 已完成，最新切片 SLICE-101（发行完整性，ADR-0018）。下一步从 `docs/PROGRESS.md` 的缺口清单和 `docs/specs/ROADMAP.md` 里选。
 
 ## 项目特有禁区
 

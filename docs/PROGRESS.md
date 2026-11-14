@@ -108,8 +108,8 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1139 passed, 45 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS（测试集合同 `--fast`）
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1158 passed, 58 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1158 passed, 58 skipped（`docs/evidence/SLICE-101-release-integrity.txt`）
 - 本轮未推送，CI 未运行。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
 跳过项主要是需要 `TEST_POSTGRES_URL` 的 Postgres 集成用例（配额、RLS、注册表、peer、远端目录、审计），以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。设 `TEST_POSTGRES_URL` 后本地全部可跑。CI 不装 `a2a-sdk`，另有少量 A2A 用例按条件跳过。
@@ -215,24 +215,20 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 ## 未决事项（恢复时先看）
 
-1. ADR-0003 到 ADR-0007 已于 2026-11-12 接受。ADR-0003 到 ADR-0006 都决定可选依赖不进默认依赖。ADR-0007 新增可选 extra `oidc`，内容是 `PyJWT[crypto]`。
+1. ADR-0001 到 ADR-0018 均已接受。ADR-0003 到 ADR-0006 决定可选依赖不进默认依赖，ADR-0007 新增可选 extra `oidc`（`PyJWT[crypto]`）。
 2. 本地 venv 为验证装了 `a2a-sdk`、`sqlalchemy`、`asyncpg`、`greenlet`，都不在项目依赖里。换环境要先装。
 3. 未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`package.json`、`package-lock.json` 是本地工具，不要加进仓库。
 
 ## 已知缺口与下一刀建议
 
-按优先级：
+已核实的开放项：
 
-1. ADR-0009 注册表服务与 Postgres 后端已拟好，状态 Proposed，待签字：`docs/decisions/ADR-0009-registry-service.md`。签字后按 Postgres 实现 → 服务与客户端 → 控制台/MCP/发布接线 → 市场页切服务的顺序开工。
-2. 按需加载未启动的版本（市场页的 Open chat 目前只对启动时已加载的 agent 生效）。
-4. 注册表 Postgres 后端与控制面 API（ADR-0009）。
-2. 注册表 Postgres 后端（Phase B2）：元数据与 manifest 先入库，保留 `AgentRegistry` 端口，文件实现降级。
-3. 跨副本共享限流计数。需要 Redis 或入口网关，属于新依赖，先出 ADR。
-2. Inbound 请求限流。目前只有运行配额和 provider 熔断，入口层限流仍留给网关或反向代理。
-3. ADK 会话表的行级隔离。它的查询由 ADK 生成，无法注入 `app.tenant_id`，目前只按 subject 隔离。
-4. 审计签名的密钥轮换。换密钥后旧记录不能用新密钥验证。
+1. ADK 会话表只有 `user_id` 隔离。它的查询由 ADK 生成，无法注入 `app.tenant_id`，见 SLICE-052 的边界说明。
+2. 发行完整性残留：项目自身仍用 build isolation，hatchling 在构建时无哈希获取；Trivy action 按版本 0.28.0 而非 commit SHA 固定；CI 构建并扫描镜像但不推送，也不产出最终 digest。见 `docs/evidence/SLICE-101-release-integrity.txt` 的 notes。
 
-MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 的消费方 `RemoteA2aAgent` 仍在本进程外，没有审计。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
+其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
+
+MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
 
 配额表启用了 Postgres RLS，策略依赖 `app.tenant_id`。生产连接必须是表的属主，不能用超级用户或 `BYPASSRLS` 角色，否则策略不生效。建表步骤会自动 `ENABLE` 和 `FORCE`，连接角色没有 `ALTER TABLE` 权限时启动会失败。
 
