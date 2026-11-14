@@ -1,13 +1,13 @@
 # 项目进度登记
 
-更新日期: 2026-11-14
+更新日期: 2026-11-15
 分支: master
-最新提交: `3a7dcc4` build: lock dependencies and scan the release image (SLICE-101)
+最新提交: `f12246e` docs(operations): document the session RLS runbook (SLICE-104)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
 
-企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线、服务面 OIDC 接线、MCP HTTP 认证、MCP principal 注入、共享配额、审批收件箱、MCP 运行审计、指标与 trace、A2A 运行审计、审批过期、服务指标端点、审批归档、配额行级隔离、审计轮转签名、模型熔断、文件状态备份恢复、压测基线、SSE 有界缓冲、入口限流、MCP/A2A 限流、审计密钥轮换、可选的会话租户隔离和审计只读查询和控制台共享审计、工件类型、工件存储、带签名发布、验签加载、注册表启动和市场视图、Postgres 注册表、控制面、命令接线、按需加载、报告集中存储、工具目录、生命周期存储与拦截、工具授权请求存储与 MCP/A2A 工具守卫与临时授权合并、审批入口、用量视图、卸载置换、跨副本限流、连接器存储、连接器执行、控制面、工具目录合并、健康检查、A2A peer 身份、管理面、迁移收口、远端目录记录、市场页合并、出站审计、审计 Postgres 存储与数据库接线、审批 Postgres 收件箱与接线、多副本清单与运维手册、发行完整性六十六个切片。本地门禁全绿。OIDC 身份链路完整，多副本配额在 Postgres 上共享并由 RLS 约束，审批可以跨进程走通并有截止时间和归档，MCP 和 A2A 调用都有审计和配额，控制台、两个网关和 MCP 都有 Prometheus 指标，trace 能跨边界传播，审计链支持分段和 HMAC 验签，模型 provider 有熔断，注册表和审计可以打包备份并安全恢复，配额与审计吞吐有可复现的压测基线，控制台 SSE 在慢客户端下内存有界且会报告丢弃数，控制台、三个独立服务、MCP 和 A2A 都按调用方限流，审计签名密钥可轮换而不作废旧记录，会话可以按租户隔离，审计服务可按租户查询事件，控制台的审计与运行面板读同一份共享数据，工件可按 digest 存在文件或 Postgres，发布时可用 Ed25519 签名，注册的工件可按引用验签加载成 agent，控制台与 MCP 可直接从注册表启动，市场页显示工件摘要与验签状态，并附演示种子与截图，已发布版本可从共享 Postgres 读写而不依赖共享卷，控制面服务按契约发布、读取并接收工件字节，四个命令可用 `--registry-url` 读写同一份目录，市场页可按需验签加载版本并直接开聊，评测报告与版本同库并由控制台跨副本读取，工具目录可按租户展示来源、数据分级和授权关系。ADR-0010 已签字，生命周期状态可存储、读取与审计，退役版本无法再被加载或启动。ADR-0011 已签字，工具临时授权请求可存储、审批与到期判断，MCP 与 A2A 运行路径也按允许清单拦截工具，已批准的临时授权可按版本合并放行，控制台与 CLI 可申请、审批并留痕，Grants 面板显示用量与即将到期，按需加载的版本可卸载并同位置换。ADR-0012 已签字，限流计数可走 Redis 跨副本共享并在故障时回退。ADR-0013 已签字，连接器可注册、按租户列出并停用，并能在工具网关里按出站策略执行，控制台与 CLI 也能管理连接器，工具目录会显示已启用连接器及其授权版本，连接器可主动探测并给出结构化健康结论。ADR-0014 已签字，A2A 提供方按 peer 身份认证并按 `read`/`invoke` 授权，审计身份随 peer，legacy 共享单 token 模式保留且与 peer 模式互斥，peer 与授权可在控制台和 `peers` 命令里管理，两种模式的互斥有库层与 CLI 双重验证，迁移步骤见 `docs/guides/a2a-peer-migration.md`。远端 peer 暴露的 agent 可作为目录记录登记，card 摘要固定后刷新会区分固定、已变化与不可达，但暂不可从控制台加载；市场页会显示来源与信任徽标，并提供刷新入口。ADR-0015 已签字，消费者出站调用按 `a2a.call` 与 `egress=third_party` 审计，跨组织审计边界只覆盖本地侧，按 trace id 关联。ADR-0016 已签字，审计可按租户写入 Postgres、并发写安全并可整链验证。审计服务、控制台与网关可用 `--audit-db`/`AUDIT_DATABASE_URL` 共享同一份 Postgres 审计，`serve-audit` 文件与数据库双后端均可用。ADR-0017 已签字，审批请求与决定可按行存入 Postgres，条件 `UPDATE` 保证并发决策只生效一次，过期判定、归档与删除语义对齐文件实现，控制台、CLI prune 与执行器已共享同一份审批，两个进程的轮询与决策验证通过。Phase E 已收口，四个无本地卷的 Deployment 可多副本运行，运维手册覆盖环境变量、扩缩容、备份恢复、密钥轮换、时钟与故障处理。ADR-0018 已签字，运行时与开发依赖锁定为带哈希的集合，CI 按锁安装后构建并扫描镜像，SBOM 随构建产出，部署按 digest 引用；两条扫描接受风险带到期日。可做内部试点，未达对外多租户生产标准。
+企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线、服务面 OIDC 接线、MCP HTTP 认证、MCP principal 注入、共享配额、审批收件箱、MCP 运行审计、指标与 trace、A2A 运行审计、审批过期、服务指标端点、审批归档、配额行级隔离、审计轮转签名、模型熔断、文件状态备份恢复、压测基线、SSE 有界缓冲、入口限流、MCP/A2A 限流、审计密钥轮换、可选的会话租户隔离和审计只读查询和控制台共享审计、工件类型、工件存储、带签名发布、验签加载、注册表启动和市场视图、Postgres 注册表、控制面、命令接线、按需加载、报告集中存储、工具目录、生命周期存储与拦截、工具授权请求存储与 MCP/A2A 工具守卫与临时授权合并、审批入口、用量视图、卸载置换、跨副本限流、连接器存储、连接器执行、控制面、工具目录合并、健康检查、A2A peer 身份、管理面、迁移收口、远端目录记录、市场页合并、出站审计、审计 Postgres 存储与数据库接线、审批 Postgres 收件箱与接线、多副本清单与运维手册、发行完整性六十六个切片。本地门禁全绿。OIDC 身份链路完整，多副本配额在 Postgres 上共享并由 RLS 约束，审批可以跨进程走通并有截止时间和归档，MCP 和 A2A 调用都有审计和配额，控制台、两个网关和 MCP 都有 Prometheus 指标，trace 能跨边界传播，审计链支持分段和 HMAC 验签，模型 provider 有熔断，注册表和审计可以打包备份并安全恢复，配额与审计吞吐有可复现的压测基线，控制台 SSE 在慢客户端下内存有界且会报告丢弃数，控制台、三个独立服务、MCP 和 A2A 都按调用方限流，审计签名密钥可轮换而不作废旧记录，会话可以按租户隔离，审计服务可按租户查询事件，控制台的审计与运行面板读同一份共享数据，工件可按 digest 存在文件或 Postgres，发布时可用 Ed25519 签名，注册的工件可按引用验签加载成 agent，控制台与 MCP 可直接从注册表启动，市场页显示工件摘要与验签状态，并附演示种子与截图，已发布版本可从共享 Postgres 读写而不依赖共享卷，控制面服务按契约发布、读取并接收工件字节，四个命令可用 `--registry-url` 读写同一份目录，市场页可按需验签加载版本并直接开聊，评测报告与版本同库并由控制台跨副本读取，工具目录可按租户展示来源、数据分级和授权关系。ADR-0010 已签字，生命周期状态可存储、读取与审计，退役版本无法再被加载或启动。ADR-0011 已签字，工具临时授权请求可存储、审批与到期判断，MCP 与 A2A 运行路径也按允许清单拦截工具，已批准的临时授权可按版本合并放行，控制台与 CLI 可申请、审批并留痕，Grants 面板显示用量与即将到期，按需加载的版本可卸载并同位置换。ADR-0012 已签字，限流计数可走 Redis 跨副本共享并在故障时回退。ADR-0013 已签字，连接器可注册、按租户列出并停用，并能在工具网关里按出站策略执行，控制台与 CLI 也能管理连接器，工具目录会显示已启用连接器及其授权版本，连接器可主动探测并给出结构化健康结论。ADR-0014 已签字，A2A 提供方按 peer 身份认证并按 `read`/`invoke` 授权，审计身份随 peer，legacy 共享单 token 模式保留且与 peer 模式互斥，peer 与授权可在控制台和 `peers` 命令里管理，两种模式的互斥有库层与 CLI 双重验证，迁移步骤见 `docs/guides/a2a-peer-migration.md`。远端 peer 暴露的 agent 可作为目录记录登记，card 摘要固定后刷新会区分固定、已变化与不可达，但暂不可从控制台加载；市场页会显示来源与信任徽标，并提供刷新入口。ADR-0015 已签字，消费者出站调用按 `a2a.call` 与 `egress=third_party` 审计，跨组织审计边界只覆盖本地侧，按 trace id 关联。ADR-0016 已签字，审计可按租户写入 Postgres、并发写安全并可整链验证。审计服务、控制台与网关可用 `--audit-db`/`AUDIT_DATABASE_URL` 共享同一份 Postgres 审计，`serve-audit` 文件与数据库双后端均可用。ADR-0017 已签字，审批请求与决定可按行存入 Postgres，条件 `UPDATE` 保证并发决策只生效一次，过期判定、归档与删除语义对齐文件实现，控制台、CLI prune 与执行器已共享同一份审批，两个进程的轮询与决策验证通过。Phase E 已收口，四个无本地卷的 Deployment 可多副本运行，运维手册覆盖环境变量、扩缩容、备份恢复、密钥轮换、时钟与故障处理。ADR-0018 已签字，运行时与开发依赖锁定为带哈希的集合，CI 按锁安装后构建并扫描镜像，SBOM 随构建产出，部署按 digest 引用；两条扫描接受风险带到期日。SLICE-102 把构建后端锁进依赖集合并把 CI action 固定到 commit SHA。ADR-0019 与 SLICE-103/104 让 Postgres 会话表启用并强制 RLS，租户取自已认证 principal，策略由 `sessions enable-rls` 显式安装，运维手册覆盖启用、回滚与排障。可做内部试点，未达对外多租户生产标准。
 
 ## 里程碑
 
@@ -101,6 +101,9 @@
 | SLICE-099 | 审批数据库接线 | `8e20a2b` |
 | SLICE-100 | 多副本清单与运维手册 | `da6f9d3` |
 | SLICE-101 | 发行完整性 | `3a7dcc4` |
+| SLICE-102 | 构建供应链收尾 | `1334fea` |
+| SLICE-103 | 会话存储租户 RLS | `4f66e4d` |
+| SLICE-104 | 会话 RLS 运维收口 | `f12246e` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
@@ -108,8 +111,9 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1158 passed, 58 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1158 passed, 58 skipped（`docs/evidence/SLICE-101-release-integrity.txt`）
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1168 passed, 65 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1168 passed, 65 skipped（`docs/evidence/SLICE-104-session-rls-ops.txt`）
+- 设置 `TEST_POSTGRES_URL` 后 `--full` 为 1232 passed, 1 skipped，Postgres 用例全部执行（`docs/evidence/SLICE-103-session-rls.txt`）。
 - 本轮未推送，CI 未运行。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
 跳过项主要是需要 `TEST_POSTGRES_URL` 的 Postgres 集成用例（配额、RLS、注册表、peer、远端目录、审计），以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。设 `TEST_POSTGRES_URL` 后本地全部可跑。CI 不装 `a2a-sdk`，另有少量 A2A 用例按条件跳过。
@@ -215,7 +219,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 ## 未决事项（恢复时先看）
 
-1. ADR-0001 到 ADR-0018 均已接受。ADR-0003 到 ADR-0006 决定可选依赖不进默认依赖，ADR-0007 新增可选 extra `oidc`（`PyJWT[crypto]`）。
+1. ADR-0001 到 ADR-0019 均已接受。ADR-0003 到 ADR-0006 决定可选依赖不进默认依赖，ADR-0007 新增可选 extra `oidc`（`PyJWT[crypto]`），ADR-0019 决定会话表用 Postgres RLS 做租户隔离。
 2. 本地 venv 为验证装了 `a2a-sdk`、`sqlalchemy`、`asyncpg`、`greenlet`，都不在项目依赖里。换环境要先装。
 3. 未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`package.json`、`package-lock.json` 是本地工具，不要加进仓库。
 
@@ -223,8 +227,9 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 已核实的开放项：
 
-1. ADK 会话表只有 `user_id` 隔离。它的查询由 ADK 生成，无法注入 `app.tenant_id`，见 SLICE-052 的边界说明。
-2. 发行完整性残留：项目自身仍用 build isolation，hatchling 在构建时无哈希获取；Trivy action 按版本 0.28.0 而非 commit SHA 固定；CI 构建并扫描镜像但不推送，也不产出最终 digest。见 `docs/evidence/SLICE-101-release-integrity.txt` 的 notes。
+1. `app_states` 只有 `app_name` 维度，没有租户列。租户敏感的应用级状态不能放那里；按租户拆分 `app_name` 需要 ADR-0020。
+2. 发行完整性残留只剩 CI 推送与 digest 回写。构建后端已进锁，Dockerfile 与 CI 使用 `--no-build-isolation`，四个 action 已按 commit SHA 固定。见 `docs/evidence/SLICE-102-build-supply-chain.txt`。
+3. legacy 无前缀 `user_id` 的会话在 `--session-rls` 开启后不可见，不自动迁移；需要迁移时单独评审。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 

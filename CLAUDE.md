@@ -24,7 +24,7 @@
 
 ## 当前在做
 
-- M0 到 M5 已完成，最新切片 SLICE-101（发行完整性，ADR-0018）。下一步从 `docs/PROGRESS.md` 的缺口清单和 `docs/specs/ROADMAP.md` 里选。
+- M0 到 M5 已完成，最新切片 SLICE-104（会话 RLS 运维收口）。下一步是 ADR-0020（`app_states` 租户隔离），以及 SLICE-102 剩余的 CI 推送决定。
 
 ## 项目特有禁区
 

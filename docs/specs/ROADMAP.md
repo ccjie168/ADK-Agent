@@ -192,6 +192,9 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-099 审批数据库接线（ADR-0017）：控制台 `--approval-db`、`approvals prune --db`、同步/异步收件箱、503 映射、跨进程 `request()` 验证，ADR-0017 闭环。已完成。
 - SLICE-100 多副本部署清单与运维手册：四个无本地卷的 Deployment、Secret 注入、结构守卫测试、环境变量矩阵、备份恢复、密钥轮换、时钟与故障手册，Phase E 收口。已完成。
 - SLICE-101 发行完整性（ADR-0018）：运行时与开发依赖锁、哈希校验安装、镜像构建与 Trivy 扫描、SBOM、digest 引用、接受风险带到期日。已完成。
+- SLICE-102 构建供应链收尾：构建后端进锁、`--no-build-isolation`、CI action 固定 SHA。已完成。
+- SLICE-103 会话存储租户 RLS（ADR-0019）：Postgres RLS 策略、principal 上下文、`--session-rls`、`sessions enable-rls`。已完成。
+- SLICE-104 会话 RLS 运维收口：启用顺序、角色要求、回滚与排障、跨进程实测。已完成。
 
 ## 完成定义
 
