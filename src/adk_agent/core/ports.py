@@ -20,6 +20,7 @@ from .model import ModelRequest, ModelResponse
 from .peers import PeerGrant, PeerIdentity
 from .policy import PolicyDecision
 from .quota import QuotaPolicy
+from .remote_agents import RemoteAgent
 from .tool import ToolRequest, ToolResponse
 from .tool_grants import GrantStatus, ToolGrantRequest
 
@@ -158,6 +159,14 @@ class PeerGrantStore(Protocol):
     async def delete(self, peer_id: str, agent_id: str) -> bool: ...
 
 
+class RemoteAgentStore(Protocol):
+    async def get(self, remote_id: str) -> RemoteAgent | None: ...
+
+    async def list(self) -> builtins.list[RemoteAgent]: ...
+
+    async def put(self, record: RemoteAgent) -> RemoteAgent: ...
+
+
 class TemplateSource(Protocol):
     async def render(self, template_id: str, params: Mapping[str, str]) -> Mapping[str, str]: ...
 
@@ -194,6 +203,7 @@ __all__ = [
     "PeerStore",
     "PolicyEngine",
     "QuotaManager",
+    "RemoteAgentStore",
     "SecretProvider",
     "TemplateSource",
     "ToolGateway",

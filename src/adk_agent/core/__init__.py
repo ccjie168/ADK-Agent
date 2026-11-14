@@ -70,6 +70,7 @@ from .ports import (
     PeerStore,
     PolicyEngine,
     QuotaManager,
+    RemoteAgentStore,
     SecretProvider,
     TemplateSource,
     ToolGateway,
@@ -78,6 +79,15 @@ from .ports import (
 from .progress import ProgressEvent, ProgressKind
 from .quota import QuotaConfig, QuotaExceeded, QuotaPolicy
 from .rbac import AccessPolicy, RoleBinding
+from .remote_agents import (
+    RemoteAgent,
+    RemoteAgentError,
+    RemoteAgentFetchError,
+    RemoteAgentFetchReason,
+    RemoteAgentRegistration,
+    RemoteAgentStatus,
+    RemoteAgentStoreUnavailable,
+)
 from .tool import ToolGatewayRequest, ToolRequest, ToolResponse
 from .tool_grants import (
     GrantRequestConflict,
@@ -166,6 +176,14 @@ __all__ = [
     "QuotaExceeded",
     "QuotaManager",
     "QuotaPolicy",
+    "RemoteAgent",
+    "RemoteAgentError",
+    "RemoteAgentFetchError",
+    "RemoteAgentFetchReason",
+    "RemoteAgentRegistration",
+    "RemoteAgentStatus",
+    "RemoteAgentStore",
+    "RemoteAgentStoreUnavailable",
     "RoleBinding",
     "RouteWhen",
     "SecretProvider",

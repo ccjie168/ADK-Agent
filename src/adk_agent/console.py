@@ -59,6 +59,12 @@ from .core import (
     QuotaConfig,
     QuotaExceeded,
     QuotaManager,
+    RemoteAgent,
+    RemoteAgentError,
+    RemoteAgentFetchError,
+    RemoteAgentRegistration,
+    RemoteAgentStore,
+    SecretProvider,
     ToolGrantRequest,
     ToolGrantStore,
 )
@@ -75,11 +81,13 @@ from .registry import (
     RegistryIntegrityError,
     TrustStore,
     check_connector,
+    fetch_agent_card,
 )
 from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .runtime.sessions import scoped_user_id
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
+from .secretstore import PrefixedEnvSecretProvider, SecretNotFound
 from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_declared_guards
 from .tracing import resolve_trace_id
 
@@ -1390,6 +1398,10 @@ def _peer_ref(identity: PeerIdentity) -> AgentRef:
     )
 
 
+def _remote_ref(record: RemoteAgent) -> AgentRef:
+    return AgentRef(id=record.remote_id, version="remote", digest=record.card_digest)
+
+
 def _visible_events(events: Iterable[AuditEvent], principal: Principal) -> list[AuditEvent]:
     visible = list(events)
     if "admin" in principal.roles:
@@ -1553,6 +1565,8 @@ def build_console_app(
     connectors: ConnectorStore | None = None,
     peers: PeerStore | None = None,
     peer_grants: PeerGrantStore | None = None,
+    remote_agents: RemoteAgentStore | None = None,
+    remote_secrets: SecretProvider | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1614,6 +1628,7 @@ def build_console_app(
 
     policy_store = FilePolicyStore(policy_file) if policy_file else None
     policy_engine = RolePolicyEngine(policy_store.load()) if policy_store else None
+    secrets = remote_secrets if remote_secrets is not None else PrefixedEnvSecretProvider()
 
     from google.adk.runners import Runner
 
@@ -1636,6 +1651,30 @@ def build_console_app(
                 tenant=caller.tenant,
                 principal=caller,
                 agent_ref=_peer_ref(identity),
+                action=action,
+                target=target,
+                args_hash=args_hash or None,
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+
+    async def _emit_remote(
+        action: str,
+        *,
+        target: str,
+        caller: Principal,
+        record: RemoteAgent,
+        args_hash: str = "",
+    ) -> None:
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=uuid.uuid4().hex,
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=_remote_ref(record),
                 action=action,
                 target=target,
                 args_hash=args_hash or None,
@@ -2342,6 +2381,196 @@ def build_console_app(
             )
         return JSONResponse({"revoked": revoked})
 
+    @app.get("/api/remote-agents")
+    async def list_remote_agents(request: Request, tenant: str | None = None) -> Any:
+        if remote_agents is None:
+            return JSONResponse({"error": "remote_agents_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        if tenant is not None and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        try:
+            records = await remote_agents.list()
+        except RemoteAgentError:
+            logger.exception("remote agent list failed: tenant=%s", caller.tenant)
+            return JSONResponse({"error": "remote_agent_store_unavailable"}, status_code=503)
+        if "admin" in caller.roles:
+            if tenant is not None:
+                records = [record for record in records if record.tenant == tenant]
+        else:
+            records = [record for record in records if record.tenant == caller.tenant]
+        records.sort(key=lambda record: record.remote_id)
+        return [record.model_dump(mode="json") for record in records]
+
+    @app.post("/api/remote-agents")
+    async def register_remote_agent(request: Request) -> Any:
+        caller = _principal_for(request)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if remote_agents is None or peers is None:
+            return JSONResponse({"error": "remote_agents_not_configured"}, status_code=404)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            registration = RemoteAgentRegistration.model_validate(body)
+        except ValidationError:
+            return JSONResponse({"error": "invalid_remote_agent"}, status_code=400)
+        try:
+            peer = await peers.get(registration.peer_id)
+        except ValueError:
+            return JSONResponse({"error": "peer_not_found"}, status_code=404)
+        except PeerStoreError:
+            logger.exception("peer read failed: id=%s", registration.peer_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        if peer is None or not peer.enabled:
+            return JSONResponse({"error": "peer_not_found"}, status_code=404)
+        if peer.tenant != registration.tenant:
+            return JSONResponse({"error": "tenant_mismatch"}, status_code=400)
+        try:
+            existing = await remote_agents.get(registration.remote_id)
+        except ValueError:
+            return JSONResponse({"error": "invalid_remote_agent"}, status_code=400)
+        except RemoteAgentError:
+            logger.exception("remote agent read failed: id=%s", registration.remote_id)
+            return JSONResponse({"error": "remote_agent_store_unavailable"}, status_code=503)
+        if existing is not None and existing.tenant != registration.tenant:
+            return JSONResponse({"error": "remote_agent_tenant_immutable"}, status_code=409)
+        credential = None
+        if registration.credential_ref is not None:
+            try:
+                credential = await secrets.resolve(registration.credential_ref)
+            except SecretNotFound:
+                return JSONResponse({"error": "secret_unavailable"}, status_code=503)
+        try:
+            digest, card = await fetch_agent_card(registration.agent_card_url, credential)
+        except RemoteAgentFetchError as exc:
+            code = {
+                "unreachable": "card_unreachable",
+                "unauthorized": "card_unauthorized",
+                "too_large": "card_too_large",
+                "invalid_card": "card_invalid",
+            }[exc.reason]
+            return JSONResponse({"error": code}, status_code=502)
+        if card.get("name") != registration.remote_id:
+            return JSONResponse({"error": "card_name_mismatch"}, status_code=400)
+        record = RemoteAgent(
+            remote_id=registration.remote_id,
+            tenant=registration.tenant,
+            peer_id=registration.peer_id,
+            agent_card_url=registration.agent_card_url,
+            credential_ref=registration.credential_ref,
+            label=registration.label,
+            card_digest=digest,
+            observed_digest=None,
+            checked_at=datetime.now(timezone.utc),
+            status="pinned",
+            enabled=existing.enabled if existing is not None else True,
+        )
+        try:
+            stored = await remote_agents.put(record)
+        except RemoteAgentError:
+            logger.exception("remote agent register failed: id=%s", registration.remote_id)
+            return JSONResponse({"error": "remote_agent_store_unavailable"}, status_code=503)
+        await _emit_remote(
+            "remote_agent.register",
+            target=stored.remote_id,
+            caller=caller,
+            record=stored,
+            args_hash=hash_text(stored.model_dump_json()),
+        )
+        return JSONResponse(stored.model_dump(mode="json"))
+
+    @app.post("/api/remote-agents/{remote_id}/refresh")
+    async def refresh_remote_agent(request: Request, remote_id: str) -> Any:
+        if remote_agents is None:
+            return JSONResponse({"error": "remote_agents_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            existing = await remote_agents.get(remote_id)
+        except ValueError:
+            return JSONResponse({"error": "remote_agent_not_found"}, status_code=404)
+        except RemoteAgentError:
+            logger.exception("remote agent read failed: id=%s", remote_id)
+            return JSONResponse({"error": "remote_agent_store_unavailable"}, status_code=503)
+        if existing is None:
+            return JSONResponse({"error": "remote_agent_not_found"}, status_code=404)
+        if existing.tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        digest: str | None = None
+        try:
+            credential = (
+                await secrets.resolve(existing.credential_ref)
+                if existing.credential_ref is not None
+                else None
+            )
+            digest, _card = await fetch_agent_card(existing.agent_card_url, credential)
+        except (SecretNotFound, RemoteAgentFetchError):
+            digest = None
+        checked_at = datetime.now(timezone.utc)
+        if digest == existing.card_digest:
+            record = existing.model_copy(
+                update={"checked_at": checked_at, "status": "pinned", "observed_digest": None}
+            )
+        elif digest is not None:
+            record = existing.model_copy(
+                update={"checked_at": checked_at, "status": "changed", "observed_digest": digest}
+            )
+        else:
+            record = existing.model_copy(update={"checked_at": checked_at, "status": "unreachable"})
+        try:
+            stored = await remote_agents.put(record)
+        except RemoteAgentError:
+            logger.exception("remote agent refresh failed: id=%s", remote_id)
+            return JSONResponse({"error": "remote_agent_store_unavailable"}, status_code=503)
+        await _emit_remote(
+            "remote_agent.refresh",
+            target=stored.remote_id,
+            caller=caller,
+            record=stored,
+            args_hash=hash_text(stored.model_dump_json()),
+        )
+        return JSONResponse(stored.model_dump(mode="json"))
+
+    @app.post("/api/remote-agents/{remote_id}/disable")
+    async def disable_remote_agent(request: Request, remote_id: str) -> Any:
+        if remote_agents is None:
+            return JSONResponse({"error": "remote_agents_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            existing = await remote_agents.get(remote_id)
+        except ValueError:
+            return JSONResponse({"error": "remote_agent_not_found"}, status_code=404)
+        except RemoteAgentError:
+            logger.exception("remote agent read failed: id=%s", remote_id)
+            return JSONResponse({"error": "remote_agent_store_unavailable"}, status_code=503)
+        if existing is None:
+            return JSONResponse({"error": "remote_agent_not_found"}, status_code=404)
+        if existing.tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if existing.enabled:
+            try:
+                stored = await remote_agents.put(existing.model_copy(update={"enabled": False}))
+            except RemoteAgentError:
+                logger.exception("remote agent disable failed: id=%s", remote_id)
+                return JSONResponse({"error": "remote_agent_store_unavailable"}, status_code=503)
+            await _emit_remote(
+                "remote_agent.disable",
+                target=stored.remote_id,
+                caller=caller,
+                record=existing,
+                args_hash=hash_text("enabled->disabled"),
+            )
+        else:
+            stored = existing
+        return JSONResponse(stored.model_dump(mode="json"))
+
     @app.get("/api/tool-grants")
     async def list_tool_grants(
         request: Request, tenant: str | None = None, status: str | None = None
@@ -2931,6 +3160,8 @@ def run_console(
     connectors: ConnectorStore | None = None,
     peers: PeerStore | None = None,
     peer_grants: PeerGrantStore | None = None,
+    remote_agents: RemoteAgentStore | None = None,
+    remote_secrets: SecretProvider | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -2964,6 +3195,8 @@ def run_console(
         connectors=connectors,
         peers=peers,
         peer_grants=peer_grants,
+        remote_agents=remote_agents,
+        remote_secrets=remote_secrets,
         artifact_store=artifact_store,
         artifact_loader=artifact_loader,
         artifact_trust=artifact_trust,

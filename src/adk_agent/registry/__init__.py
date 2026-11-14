@@ -38,6 +38,8 @@ from .peers import FilePeerStore
 from .peers_postgres import PostgresPeerStore
 from .postgres import PostgresAgentRegistry, RegistryStoreUnavailable
 from .refs import RefError, load_registry_agents, parse_agent_ref
+from .remote_agents import FileRemoteAgentStore, fetch_agent_card
+from .remote_agents_postgres import PostgresRemoteAgentStore
 from .reports import EvalReportConflict, FileEvalReportStore
 from .reports_postgres import PostgresEvalReportStore
 from .signing import PublishUnavailable, load_private_key, sign_digest, verify_digest
@@ -59,6 +61,7 @@ __all__ = [
     "FileArtifactStore",
     "FilePeerGrantStore",
     "FilePeerStore",
+    "FileRemoteAgentStore",
     "FileToolGrantStore",
     "GrantRequestConflict",
     "GrantRequestError",
@@ -74,6 +77,7 @@ __all__ = [
     "PostgresEvalReportStore",
     "PostgresPeerGrantStore",
     "PostgresPeerStore",
+    "PostgresRemoteAgentStore",
     "PostgresToolGrantStore",
     "PublishUnavailable",
     "FileAgentRegistry",
@@ -93,6 +97,7 @@ __all__ = [
     "TrustStore",
     "artifact_digest",
     "check_connector",
+    "fetch_agent_card",
     "load_agent",
     "load_manifest",
     "load_private_key",

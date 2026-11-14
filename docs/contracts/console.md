@@ -293,6 +293,59 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - peer 不存在 404 `peer_not_found`；授权不存在返回 `{"revoked": false}` 与 200。
 - 实际删除时写 `peer.revoke` 审计。
 
+## `GET /api/remote-agents?tenant=<name>` -> `[RemoteAgent]`
+
+远端 A2A agent 的目录记录（ADR-0015）。按 `remote_id` 排序。
+
+```json
+{
+  "remote_id": "crm-bot",
+  "tenant": "acme",
+  "peer_id": "crm",
+  "agent_card_url": "https://crm.example.com/.well-known/agent-card.json",
+  "credential_ref": "secret://crm/token",
+  "label": "CRM bot",
+  "card_digest": "sha256:<64 hex>",
+  "observed_digest": null,
+  "checked_at": "2026-11-14T09:30:00Z",
+  "status": "pinned",
+  "enabled": true
+}
+```
+
+- 由 `console --peer-dir DIR` 或 `--peer-db URL` 提供；未配置返回 404 `remote_agents_not_configured`。
+- 非 `admin` 只返回自己租户的记录；`admin` 可按 `tenant` 过滤，缺省返回全部。
+- 存储不可达返回 503 `remote_agent_store_unavailable`。
+
+## `POST /api/remote-agents` -> `RemoteAgent`
+
+```json
+{"remote_id": "crm-bot", "tenant": "acme", "peer_id": "crm",
+ "agent_card_url": "https://crm.example.com/.well-known/agent-card.json",
+ "credential_ref": "secret://crm/token", "label": "CRM bot"}
+```
+
+- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 请求体非法 400 `invalid_request`；字段校验失败 400 `invalid_remote_agent`。
+- peer 不存在或未启用 404 `peer_not_found`；记录租户与 peer 租户不一致 400 `tenant_mismatch`。
+- 用 `credential_ref` 经 `SecretProvider` 解析凭据拉取 card，要求 card 的 `name` 等于 `remote_id`。
+- 拉取失败 502 `card_unreachable`、502 `card_unauthorized`、502 `card_too_large` 或 502 `card_invalid`；名称不符 400 `card_name_mismatch`；凭据解析失败 503 `secret_unavailable`。
+- 成功返回 200，`status="pinned"`，`card_digest` 是 card 原始字节的 sha256，`observed_digest` 为空。已存在的 `remote_id` 重新注册即重新批准；已存在记录的 `tenant` 不可改，返回 409 `remote_agent_tenant_immutable`。
+- 写 `remote_agent.register` 审计，`target` 是 `remote_id`。
+
+## `POST /api/remote-agents/{remote_id}/refresh` -> `RemoteAgent`
+
+- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 不存在 404 `remote_agent_not_found`。
+- 重新拉取并比较摘要。一致记 `pinned` 并清空 `observed_digest`；不一致保留 `card_digest`，把新摘要写入 `observed_digest` 并记 `changed`；拉取或凭据失败保留两个摘要，记 `unreachable`。三种情况都更新 `checked_at`。
+- 写 `remote_agent.refresh` 审计。
+
+## `POST /api/remote-agents/{remote_id}/disable` -> `RemoteAgent`
+
+- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 不存在 404 `remote_agent_not_found`；重复停用幂等。
+- 写 `remote_agent.disable` 审计。
+
 ## `GET /api/tool-grants?tenant=<name>&status=<status>` -> `[ToolGrantRequest]`
 
 列出工具临时授权请求，按 `requested_at` 倒序。`status` 取 `pending`、`approved`、`denied`、`expired`、`cancelled`，其他值 400 `invalid_status`。

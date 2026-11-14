@@ -164,6 +164,15 @@ def _peer_stores(args: argparse.Namespace) -> tuple[Any, Any]:
     return PostgresPeerStore(database_url), PostgresPeerGrantStore(database_url)
 
 
+def _remote_agent_store(args: argparse.Namespace) -> Any:
+    from .registry import FileRemoteAgentStore, PostgresRemoteAgentStore
+
+    directory = getattr(args, "peer_dir", None)
+    if directory:
+        return FileRemoteAgentStore(directory)
+    return PostgresRemoteAgentStore(cast("str", getattr(args, "peer_db", None)))
+
+
 def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
     """Load agents named by ``--agent-ref`` from the registry."""
     refs = getattr(args, "agent_ref", None)
@@ -1105,6 +1114,30 @@ def main(argv: list[str] | None = None) -> None:
     p_pe_revoke.add_argument("--agent", required=True)
     _add_peer_store_args(p_pe_revoke)
 
+    p_remote = sub.add_parser("remote-agents", help="manage remote A2A agent catalog records")
+    remote_sub = p_remote.add_subparsers(dest="remote_cmd", required=True)
+
+    p_ra_list = remote_sub.add_parser("list", help="list remote agents")
+    p_ra_list.add_argument("--tenant", default=None)
+    _add_peer_store_args(p_ra_list)
+
+    p_ra_register = remote_sub.add_parser("register", help="register a remote agent card")
+    p_ra_register.add_argument("--id", required=True)
+    p_ra_register.add_argument("--tenant", required=True)
+    p_ra_register.add_argument("--peer", required=True)
+    p_ra_register.add_argument("--card-url", required=True)
+    p_ra_register.add_argument("--credential-ref", default=None)
+    p_ra_register.add_argument("--label", default="")
+    _add_peer_store_args(p_ra_register)
+
+    p_ra_refresh = remote_sub.add_parser("refresh", help="refresh a remote agent card")
+    p_ra_refresh.add_argument("--id", required=True)
+    _add_peer_store_args(p_ra_refresh)
+
+    p_ra_disable = remote_sub.add_parser("disable", help="disable a remote agent record")
+    p_ra_disable.add_argument("--id", required=True)
+    _add_peer_store_args(p_ra_disable)
+
     p_lifecycle = sub.add_parser("lifecycle", help="change a published version's lifecycle state")
     lifecycle_sub = p_lifecycle.add_subparsers(dest="lifecycle_cmd", required=True)
     p_lifecycle_set = lifecycle_sub.add_parser("set", help="set the lifecycle status")
@@ -1647,8 +1680,12 @@ def main(argv: list[str] | None = None) -> None:
             console_connectors = None
         console_peers: Any = None
         console_peer_grants: Any = None
+        console_remote_agents: Any = None
         if args.peer_dir or args.peer_db:
             console_peers, console_peer_grants = _peer_stores(args)
+            console_remote_agents = _remote_agent_store(args)
+        from .secretstore import PrefixedEnvSecretProvider
+
         run_console(
             agents=agents,
             host=args.host,
@@ -1665,6 +1702,8 @@ def main(argv: list[str] | None = None) -> None:
             connectors=console_connectors,
             peers=console_peers,
             peer_grants=console_peer_grants,
+            remote_agents=console_remote_agents,
+            remote_secrets=PrefixedEnvSecretProvider(),
             eval_reports=(
                 HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
                 if args.registry_url
@@ -1819,6 +1858,124 @@ def main(argv: list[str] | None = None) -> None:
             result = asyncio.run(run_peers())
         except (PeerStoreError, ValidationError, LookupError, ValueError) as exc:
             print(f"peers failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        payload = result if isinstance(result, (dict, list)) else result.model_dump(mode="json")
+        print(json.dumps(payload))
+    elif args.cmd == "remote-agents":
+        from pydantic import ValidationError
+
+        from .core import (
+            RemoteAgent,
+            RemoteAgentError,
+            RemoteAgentFetchError,
+            RemoteAgentRegistration,
+        )
+        from .registry import fetch_agent_card
+        from .secretstore import PrefixedEnvSecretProvider, SecretNotFound
+
+        peer_store, _ = _peer_stores(args)
+        remote_store = _remote_agent_store(args)
+        secrets = PrefixedEnvSecretProvider()
+
+        async def run_remote_agents() -> Any:
+            if args.remote_cmd == "list":
+                records = await remote_store.list()
+                if args.tenant is not None:
+                    records = [record for record in records if record.tenant == args.tenant]
+                records.sort(key=lambda record: record.remote_id)
+                return [record.model_dump(mode="json") for record in records]
+
+            if args.remote_cmd == "register":
+                registration = RemoteAgentRegistration(
+                    remote_id=args.id,
+                    tenant=args.tenant,
+                    peer_id=args.peer,
+                    agent_card_url=args.card_url,
+                    credential_ref=args.credential_ref,
+                    label=args.label,
+                )
+                peer = await peer_store.get(registration.peer_id)
+                if peer is None or not peer.enabled:
+                    raise LookupError(f"unknown or disabled peer: {registration.peer_id}")
+                if peer.tenant != registration.tenant:
+                    raise ValueError(
+                        f"tenant mismatch: record {registration.tenant} != peer {peer.tenant}"
+                    )
+                existing = await remote_store.get(registration.remote_id)
+                if existing is not None and existing.tenant != registration.tenant:
+                    raise ValueError(f"remote agent tenant is immutable: {registration.remote_id}")
+                credential = (
+                    await secrets.resolve(registration.credential_ref)
+                    if registration.credential_ref is not None
+                    else None
+                )
+                digest, card = await fetch_agent_card(registration.agent_card_url, credential)
+                if card.get("name") != registration.remote_id:
+                    raise ValueError(
+                        f"card name mismatch: {card.get('name')!r} != {registration.remote_id}"
+                    )
+                record = RemoteAgent(
+                    remote_id=registration.remote_id,
+                    tenant=registration.tenant,
+                    peer_id=registration.peer_id,
+                    agent_card_url=registration.agent_card_url,
+                    credential_ref=registration.credential_ref,
+                    label=registration.label,
+                    card_digest=digest,
+                    observed_digest=None,
+                    checked_at=datetime.now(timezone.utc),
+                    status="pinned",
+                    enabled=existing.enabled if existing is not None else True,
+                )
+                return await remote_store.put(record)
+
+            existing = await remote_store.get(args.id)
+            if existing is None:
+                raise LookupError(f"unknown remote agent: {args.id}")
+
+            if args.remote_cmd == "disable":
+                return await remote_store.put(existing.model_copy(update={"enabled": False}))
+
+            refreshed: str | None = None
+            try:
+                credential = (
+                    await secrets.resolve(existing.credential_ref)
+                    if existing.credential_ref is not None
+                    else None
+                )
+                refreshed, _card = await fetch_agent_card(existing.agent_card_url, credential)
+            except (SecretNotFound, RemoteAgentFetchError):
+                refreshed = None
+            checked_at = datetime.now(timezone.utc)
+            if refreshed == existing.card_digest:
+                record = existing.model_copy(
+                    update={"checked_at": checked_at, "status": "pinned", "observed_digest": None}
+                )
+            elif refreshed is not None:
+                record = existing.model_copy(
+                    update={
+                        "checked_at": checked_at,
+                        "status": "changed",
+                        "observed_digest": refreshed,
+                    }
+                )
+            else:
+                record = existing.model_copy(
+                    update={"checked_at": checked_at, "status": "unreachable"}
+                )
+            return await remote_store.put(record)
+
+        try:
+            result = asyncio.run(run_remote_agents())
+        except (
+            RemoteAgentError,
+            RemoteAgentFetchError,
+            SecretNotFound,
+            ValidationError,
+            LookupError,
+            ValueError,
+        ) as exc:
+            print(f"remote agents failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
         payload = result if isinstance(result, (dict, list)) else result.model_dump(mode="json")
         print(json.dumps(payload))

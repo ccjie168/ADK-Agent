@@ -1,0 +1,61 @@
+SLICE-093 remote A2A agent catalog records
+==========================================
+
+red, pre-slice commit be4449e
+-----------------------------
+$ git worktree add <tmp>/adk-093-red be4449e
+$ PYTHONPATH=<tmp>/adk-093-red/src ./.venv/Scripts/python.exe <tmp>/adk-093-red-probe.py
+source: <tmp>\adk-093-red\src\adk_agent\__init__.py
+case1: ImportError cannot import name 'RemoteAgent' from 'adk_agent.core'
+case2: GET /api/remote-agents -> 404 {'detail': 'Not Found'}
+case3: SystemExit 2 (argument cmd: invalid choice: 'remote-agents')
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/core/test_remote_agents.py \
+    tests/registry/test_remote_agent_store.py tests/test_console_remote_agents.py \
+    tests/test_cli_remote_agents.py -q
+23 passed, 1 skipped in 3.08s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1109 passed, 33 skipped in 53.76s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, loopback card server and real httpx
+-----------------------------------------
+card server on 127.0.0.1:8891, requires "Authorization: Bearer card-token"
+console on 127.0.0.1:8808 with --peer-dir, ADK_SECRET_CRM_TOKEN=card-token
+peer crm (tenant acme) seeded in the file store
+
+register -> 200 pinned sha256:653c3b8003e22...
+card fetch saw -> Bearer card-token
+list -> 200
+
+server card description changed, then:
+refresh -> 200 changed, observed_digest sha256:231b62f351a9...
+re-register -> 200 pinned, observed_digest null
+
+server card changed again, then the server stopped:
+refresh -> 200 unreachable, kept card_digest sha256:231b62f351a9...
+
+$ adk-agent remote-agents list --peer-dir <dir> --tenant acme
+exit 0
+[{"remote_id":"crm-bot","tenant":"acme","peer_id":"crm","status":"unreachable",
+  "card_digest":"sha256:231b...","observed_digest":"sha256:7d23..."}]
+
+notes
+-----
+- The card fetch sends the resolved `secret://` credential as a Bearer header and
+  never stores or logs the raw token.
+- A changed card does not overwrite the approved digest. `card_digest` stays at
+  the last approval, `observed_digest` records the new bytes, and the status
+  flips to `changed`. Only a re-registration approves the new digest.
+- An unreachable refresh keeps both digests and only updates `checked_at`.
+- Review hardening added a 409 `remote_agent_tenant_immutable`: re-registering an
+  existing id under a different tenant is rejected before the card fetch.
+- The Postgres upsert reads plain SQL literals instead of f-strings, which keeps
+  bandit B608 quiet without a suppression.
