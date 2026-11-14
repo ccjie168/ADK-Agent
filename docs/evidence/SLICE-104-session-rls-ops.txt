@@ -1,0 +1,49 @@
+SLICE-104 session RLS operations
+================================
+
+red, before the runbook section
+--------------------------------
+$ rg -c "会话存储的租户隔离" docs/guides/operations.md
+0
+
+negative control, before enabling RLS
+-------------------------------------
+process A created a session as acme in schema xproc, role adk_session_rls
+process B (separate process, rls off) read the same session:
+  pre-rls other=row acme=row
+the check distinguishes an enforced boundary from one that is not enforced.
+
+cli
+---
+$ adk-agent sessions enable-rls --database-url postgresql://adk_session_rls:x@127.0.0.1:55432/adk
+session rls enabled
+$ adk-agent sessions enable-rls --database-url postgresql://adk_session_rls:x@127.0.0.1:55432/adk
+session rls enabled
+the command is idempotent.
+
+postgres
+--------
+process B (separate process, rls on) read the same session:
+  post-rls other=none acme=row
+
+cleanup:
+  ALTER ROLE adk_session_rls RESET search_path
+  DROP SCHEMA xproc CASCADE
+  docker stop adk-pg-slice103
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1168 passed, 65 skipped in 48.88s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+notes
+-----
+- The runbook section covers the enable order, role requirements, behavior,
+  rollback and troubleshooting. It also records that superuser bypasses RLS
+  and that legacy unscoped sessions stay invisible.
+- The cross-process check used two separate Python processes. The reading
+  process was a different connection and transaction from the writer.
+- The test database and schema were removed after the check.
