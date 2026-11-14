@@ -57,6 +57,14 @@ class FilePeerGrantStore:
             tmp_path.unlink(missing_ok=True)
         return grant
 
+    async def delete(self, peer_id: str, agent_id: str) -> bool:
+        path = self._path(peer_id, agent_id)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return False
+        return True
+
     def _load(self, path: Path) -> PeerGrant:
         try:
             return PeerGrant.model_validate_json(path.read_text(encoding="utf-8"))

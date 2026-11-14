@@ -145,6 +145,25 @@ def _connector_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _peer_stores(args: argparse.Namespace) -> tuple[Any, Any]:
+    from .registry import (
+        FilePeerGrantStore,
+        FilePeerStore,
+        PostgresPeerGrantStore,
+        PostgresPeerStore,
+    )
+
+    directory = getattr(args, "peer_dir", None)
+    url = getattr(args, "peer_db", None)
+    if bool(directory) == bool(url):
+        print("set exactly one of --peer-dir or --peer-db", file=sys.stderr)
+        raise SystemExit(1)
+    if directory:
+        return FilePeerStore(directory), FilePeerGrantStore(directory)
+    database_url = cast("str", url)
+    return PostgresPeerStore(database_url), PostgresPeerGrantStore(database_url)
+
+
 def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
     """Load agents named by ``--agent-ref`` from the registry."""
     refs = getattr(args, "agent_ref", None)
@@ -331,6 +350,11 @@ def _add_tool_grant_args(parser: argparse.ArgumentParser) -> None:
 def _auth_token(args: argparse.Namespace) -> str | None:
     env_name = getattr(args, "auth_token_env", None)
     return os.environ.get(env_name) if env_name else None
+
+
+def _add_peer_store_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--peer-dir", default=None, help="peer and grant file store root")
+    parser.add_argument("--peer-db", default=None, help="Postgres URL for peers and grants")
 
 
 def _add_registry_client_args(parser: argparse.ArgumentParser) -> None:
@@ -929,6 +953,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="connector store directory for the Connectors panel (falls back to --registry-url)",
     )
+    _add_peer_store_args(p_console)
     p_console.add_argument(
         "--tool-catalog",
         default=None,
@@ -1049,6 +1074,36 @@ def main(argv: list[str] | None = None) -> None:
     p_cl_check.add_argument("--connectors-dir", default=None)
     p_cl_check.add_argument("--id", required=True)
     _add_registry_client_args(p_cl_check)
+
+    p_peers = sub.add_parser("peers", help="manage A2A peers and their action grants")
+    peers_sub = p_peers.add_subparsers(dest="peers_cmd", required=True)
+
+    p_pe_list = peers_sub.add_parser("list", help="list peers with their grants")
+    p_pe_list.add_argument("--tenant", default=None)
+    _add_peer_store_args(p_pe_list)
+
+    p_pe_register = peers_sub.add_parser("register", help="register a peer identity")
+    p_pe_register.add_argument("--id", required=True)
+    p_pe_register.add_argument("--tenant", required=True)
+    p_pe_register.add_argument("--subject", default=None)
+    p_pe_register.add_argument("--kind", default="service", choices=["service", "human", "agent"])
+    p_pe_register.add_argument("--roles", default="")
+    _add_peer_store_args(p_pe_register)
+
+    p_pe_disable = peers_sub.add_parser("disable", help="disable a peer")
+    p_pe_disable.add_argument("--id", required=True)
+    _add_peer_store_args(p_pe_disable)
+
+    p_pe_grant = peers_sub.add_parser("grant", help="grant agent actions to a peer")
+    p_pe_grant.add_argument("--id", required=True)
+    p_pe_grant.add_argument("--agent", required=True)
+    p_pe_grant.add_argument("--actions", required=True)
+    _add_peer_store_args(p_pe_grant)
+
+    p_pe_revoke = peers_sub.add_parser("revoke", help="revoke an agent grant from a peer")
+    p_pe_revoke.add_argument("--id", required=True)
+    p_pe_revoke.add_argument("--agent", required=True)
+    _add_peer_store_args(p_pe_revoke)
 
     p_lifecycle = sub.add_parser("lifecycle", help="change a published version's lifecycle state")
     lifecycle_sub = p_lifecycle.add_subparsers(dest="lifecycle_cmd", required=True)
@@ -1590,6 +1645,10 @@ def main(argv: list[str] | None = None) -> None:
             )
         else:
             console_connectors = None
+        console_peers: Any = None
+        console_peer_grants: Any = None
+        if args.peer_dir or args.peer_db:
+            console_peers, console_peer_grants = _peer_stores(args)
         run_console(
             agents=agents,
             host=args.host,
@@ -1604,6 +1663,8 @@ def main(argv: list[str] | None = None) -> None:
             lifecycle=console_lifecycle,
             tool_grants=tool_grants,
             connectors=console_connectors,
+            peers=console_peers,
+            peer_grants=console_peer_grants,
             eval_reports=(
                 HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
                 if args.registry_url
@@ -1688,6 +1749,79 @@ def main(argv: list[str] | None = None) -> None:
         print(
             f"{manifest.tenant}/{manifest.id}@{manifest.version} sha256:{manifest_digest(manifest)}"
         )
+    elif args.cmd == "peers":
+        from pydantic import ValidationError
+
+        from .core import PeerAction, PeerGrant, PeerIdentity, PeerStoreError
+
+        peers_store, grants_store = _peer_stores(args)
+
+        def _split(value: str) -> list[str]:
+            return [item.strip() for item in value.split(",") if item.strip()]
+
+        async def run_peers() -> Any:
+            if args.peers_cmd == "list":
+                identities = await peers_store.list()
+                grants = await grants_store.list()
+                if args.tenant is not None:
+                    identities = [
+                        identity for identity in identities if identity.tenant == args.tenant
+                    ]
+                by_peer: dict[str, list[PeerGrant]] = {}
+                for grant in grants:
+                    by_peer.setdefault(grant.peer_id, []).append(grant)
+                identities.sort(key=lambda identity: identity.peer_id)
+                return [
+                    {
+                        "peer": identity.model_dump(mode="json"),
+                        "grants": [
+                            grant.model_dump(mode="json")
+                            for grant in sorted(
+                                by_peer.get(identity.peer_id, []),
+                                key=lambda grant: grant.agent_id,
+                            )
+                        ],
+                    }
+                    for identity in identities
+                ]
+            if args.peers_cmd == "register":
+                identity = PeerIdentity(
+                    peer_id=args.id,
+                    tenant=args.tenant,
+                    subject=args.subject or args.id,
+                    kind=args.kind,
+                    roles=_split(args.roles),
+                )
+                existing = await peers_store.get(identity.peer_id)
+                if existing is not None and existing.tenant != identity.tenant:
+                    raise LookupError(f"peer tenant is immutable: {identity.peer_id}")
+                return await peers_store.put(identity)
+            peer = await peers_store.get(args.id)
+            if peer is None:
+                raise LookupError(f"unknown peer: {args.id}")
+            if args.peers_cmd == "disable":
+                return await peers_store.put(peer.model_copy(update={"enabled": False}))
+            if args.peers_cmd == "grant":
+                actions = _split(args.actions)
+                if not actions or any(action not in {"read", "invoke"} for action in actions):
+                    raise ValueError(f"invalid actions: {args.actions!r}")
+                return await grants_store.put(
+                    PeerGrant(
+                        peer_id=peer.peer_id,
+                        tenant=peer.tenant,
+                        agent_id=args.agent,
+                        actions=cast("list[PeerAction]", actions),
+                    )
+                )
+            return {"revoked": await grants_store.delete(peer.peer_id, args.agent)}
+
+        try:
+            result = asyncio.run(run_peers())
+        except (PeerStoreError, ValidationError, LookupError, ValueError) as exc:
+            print(f"peers failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        payload = result if isinstance(result, (dict, list)) else result.model_dump(mode="json")
+        print(json.dumps(payload))
     elif args.cmd == "connectors":
         from pydantic import ValidationError
 

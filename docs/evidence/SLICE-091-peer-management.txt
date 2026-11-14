@@ -1,0 +1,67 @@
+SLICE-091 peer and grant management plane
+=========================================
+
+red, pre-slice commit 34ea439
+-----------------------------
+$ git worktree add <tmp>/adk-091-red 34ea439
+$ PYTHONPATH=<tmp>/adk-091-red/src ./.venv/Scripts/python.exe <tmp>/adk-091-red-probe.py
+source: <tmp>\adk-091-red\src\adk_agent\__init__.py
+case1: GET /api/peers -> 404 {'detail': 'Not Found'}
+case2: SystemExit 2 (argument cmd: invalid choice: 'peers')
+case3: PeerGrantStore has delete -> False
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/registry/test_peer_stores.py \
+    tests/test_console_peers.py tests/test_cli_peers.py tests/test_console.py \
+    tests/test_cli_a2a_runtime.py -q
+42 passed, 3 skipped in 2.92s
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1078 passed, 32 skipped in 50.52s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, console and CLI on one file store, then a real A2A server
+---------------------------------------------------------------
+console on 127.0.0.1:8808 with --peer-dir and --audit-file
+
+POST /api/peers  -> 200 peer-mgmt tenant acme enabled true
+GET  /api/peers?tenant=acme -> 200, one peer, grants []
+POST /api/peers/peer-mgmt/grants {"agent_id":"bot","actions":["read"]} -> 200
+GET  /api/peers?tenant=acme -> 200, grant bot:read
+
+$ adk-agent peers list --peer-dir <dir> --tenant acme
+[{"peer": {"peer_id": "peer-mgmt", ...}, "grants": [{"agent_id": "bot", "actions": ["read"]}]}]
+$ adk-agent peers revoke --peer-dir <dir> --id peer-mgmt --agent bot   exit 0 {"revoked": true}
+$ adk-agent peers revoke --peer-dir <dir> --id peer-mgmt --agent bot   exit 0 {"revoked": false}
+$ adk-agent peers grant  --peer-dir <dir> --id peer-mgmt --agent bot --actions read
+  exit 0 {"peer_id": "peer-mgmt", "agent_id": "bot", "actions": ["read"]}
+
+serve-a2a on 127.0.0.1:8812 with the same --peer-dir:
+GET /.well-known/agent-card.json with peer-mgmt's token -> 200
+
+POST /api/peers/peer-mgmt/disable -> 200 enabled false
+GET  /.well-known/agent-card.json with the same token -> 403 (no restart)
+
+audit file:
+  peer.register ok local peer-mgmt
+  peer.grant    ok local peer-mgmt/bot
+  peer.disable  ok local peer-mgmt
+
+notes
+-----
+- The console writes the three management audit events under the caller's
+  tenant (`local` for the static token), with the peer id or `<peer>/<agent>`
+  as the target. CLI writes go straight to the store and do not audit, matching
+  the existing `connectors` and `lifecycle` commands; the contract says so.
+- The A2A server reads peers per request, so disabling through the console took
+  effect on the next card request without a restart.
+- `peer.call` denials and `agent.run` events already render in `/api/audit`
+  because the view does not filter actions; `test_peer_call_in_audit_view`
+  pins that.
+- A non-admin request for another tenant's list now returns `tenant_forbidden`
+  instead of silently returning their own rows.

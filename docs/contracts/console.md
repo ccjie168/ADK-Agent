@@ -251,6 +251,48 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - `status` 取 `healthy`、`unauthorized`、`not_found`、`redirect`、`server_error`、`unexpected_status`、`unreachable`。`reason` 只在 `unreachable` 时取 `timeout` 或 `connect_error`。
 - 不写审计，不改连接器记录。
 
+## `GET /api/peers?tenant=<name>` -> `[{"peer": PeerIdentity, "grants": [PeerGrant]}]`
+
+只读 peer 与其授权。按 `peer_id` 排序。
+
+- 由 `console --peer-dir DIR`（文件）或 `--peer-db URL`（Postgres）提供；都未配置返回 404 `peers_not_configured`。
+- 非 `admin` 只返回自己租户的 peer；`admin` 可按 `tenant` 取一个租户，缺省返回全部。
+- 存储不可达返回 503 `peer_store_unavailable`。
+
+## `POST /api/peers` -> `PeerIdentity`
+
+```json
+{"peer_id": "peer-a", "tenant": "acme", "subject": "sub-1", "kind": "service", "roles": []}
+```
+
+- 只有 `admin` 能写，非 admin 403 `forbidden`。
+- 请求体不是对象 400 `invalid_request`；校验失败 400 `invalid_peer`。
+- 新 peer 返回 200；已存在且字段一致幂等返回 200；已存在但改 `tenant` 返回 409 `peer_tenant_immutable`。
+- 成功写 `peer.register` 审计，`target` 是 peer id，tenant 是调用方租户。
+
+## `POST /api/peers/{peer_id}/disable` -> `PeerIdentity`
+
+- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 不存在 404 `peer_not_found`；重复停用幂等返回 200。
+- 成功写 `peer.disable` 审计。
+
+## `POST /api/peers/{peer_id}/grants` -> `PeerGrant`
+
+```json
+{"agent_id": "bot", "actions": ["read", "invoke"]}
+```
+
+- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- peer 不存在 404 `peer_not_found`；`actions` 为空或含未知值 400 `invalid_grant`。
+- 授权记录的 `tenant` 取 peer 的租户，请求体不接受 `tenant`。
+- 写入按 `(peer_id, agent_id)` 覆盖，成功返回 200 并写 `peer.grant` 审计，`target` 是 `<peer_id>/<agent_id>`。
+
+## `DELETE /api/peers/{peer_id}/grants/{agent_id}` -> `{"revoked": bool}`
+
+- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- peer 不存在 404 `peer_not_found`；授权不存在返回 `{"revoked": false}` 与 200。
+- 实际删除时写 `peer.revoke` 审计。
+
 ## `GET /api/tool-grants?tenant=<name>&status=<status>` -> `[ToolGrantRequest]`
 
 列出工具临时授权请求，按 `requested_at` 倒序。`status` 取 `pending`、`approved`、`denied`、`expired`、`cancelled`，其他值 400 `invalid_status`。

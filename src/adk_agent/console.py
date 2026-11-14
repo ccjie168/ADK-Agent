@@ -49,6 +49,11 @@ from .core import (
     IdentityProvider,
     Invocation,
     ModelPolicy,
+    PeerGrant,
+    PeerGrantStore,
+    PeerIdentity,
+    PeerStore,
+    PeerStoreError,
     Principal,
     ProgressEvent,
     QuotaConfig,
@@ -149,6 +154,7 @@ _INDEX_HTML = """<!doctype html>
   <button id="tab-registry" class="tab" data-tab="registry">Registry</button>
   <button id="tab-tools" class="tab" data-tab="tools">Tools</button>
   <button id="tab-connectors" class="tab" data-tab="connectors">Connectors</button>
+  <button id="tab-peers" class="tab" data-tab="peers">Peers</button>
   <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
   <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
   <button id="tab-approvals" class="tab" data-tab="approvals">Approvals</button>
@@ -241,6 +247,38 @@ _INDEX_HTML = """<!doctype html>
     <button id="connector-check">Check selected</button>
   </div>
   <div id="connector-health" class="panel-msg"></div>
+</section>
+
+<section id="peers" class="panel">
+  <div class="row">
+    <button id="refresh-peers">Refresh</button>
+  </div>
+  <div id="peers-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>peer</th><th>tenant</th><th>subject</th><th>kind</th><th>enabled</th><th>grants</th></tr></thead>
+    <tbody id="peers-body"></tbody>
+  </table>
+  <h3>Register</h3>
+  <div class="row">
+    <input id="peer-id" placeholder="peer id" autocomplete="off">
+    <input id="peer-tenant" placeholder="tenant" autocomplete="off">
+    <input id="peer-subject" placeholder="subject (blank = id)" autocomplete="off">
+    <select id="peer-kind">
+      <option value="service">service</option>
+      <option value="human">human</option>
+      <option value="agent">agent</option>
+    </select>
+    <button id="peer-register">Register</button>
+    <button id="peer-disable">Disable selected</button>
+  </div>
+  <h3>Grant</h3>
+  <div class="row">
+    <input id="peer-agent" placeholder="agent id" autocomplete="off">
+    <label><input type="checkbox" id="peer-action-read" checked> read</label>
+    <label><input type="checkbox" id="peer-action-invoke" checked> invoke</label>
+    <button id="peer-grant">Grant</button>
+    <button id="peer-revoke">Revoke</button>
+  </div>
 </section>
 
 <section id="runs" class="panel">
@@ -336,12 +374,13 @@ _INDEX_HTML = """<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["chat", "registry", "tools", "connectors", "runs", "sessions", "approvals", "grants", "plans", "policy"];
+const TABS = ["chat", "registry", "tools", "connectors", "peers", "runs", "sessions", "approvals", "grants", "plans", "policy"];
 let sessionId = null;
 let selectedApproval = null;
 let selectedRegistry = null;
 let selectedGrant = null;
 let selectedConnector = null;
+let selectedPeer = null;
 const token = () => $("token").value.trim();
 $("token").value = sessionStorage.getItem("adk_token") || "";
 $("token").addEventListener("change", () => sessionStorage.setItem("adk_token", token()));
@@ -370,6 +409,16 @@ async function postJson(path, body) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await response.json(); } catch (e) { data = null; }
+  return { ok: response.ok, status: response.status, data: data };
+}
+
+async function deleteJson(path) {
+  const response = await fetch(path, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + token() },
   });
   let data = null;
   try { data = await response.json(); } catch (e) { data = null; }
@@ -678,6 +727,120 @@ async function checkConnector() {
   const health = result.data;
   $("connector-health").textContent =
     health.status + " status=" + health.status_code + " latency=" + health.latency_ms + "ms";
+}
+
+function peerGrantsText(grants) {
+  const text = (grants || []).map(
+    (grant) => grant.agent_id + ":" + (grant.actions || []).join("+")
+  ).join(", ");
+  return text || "-";
+}
+
+async function loadPeers() {
+  const tenant = $("tenant").value;
+  $("peers-msg").textContent = "";
+  const body = $("peers-body");
+  body.innerHTML = "";
+  const path = tenant ? "/api/peers?tenant=" + encodeURIComponent(tenant) : "/api/peers";
+  const result = await getJson(path);
+  if (!result.ok) {
+    $("peers-msg").textContent = "peers unavailable (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  for (const entry of result.data || []) {
+    const peer = entry.peer;
+    const row = document.createElement("tr");
+    row.appendChild(cell(peer.peer_id));
+    row.appendChild(cell(peer.tenant));
+    row.appendChild(cell(peer.subject));
+    row.appendChild(cell(peer.kind));
+    row.appendChild(cell(peer.enabled ? "yes" : "no"));
+    row.appendChild(cell(peerGrantsText(entry.grants)));
+    row.addEventListener("click", () => { selectedPeer = peer; });
+    body.appendChild(row);
+  }
+}
+
+async function registerPeer() {
+  $("peers-msg").textContent = "";
+  const id = $("peer-id").value.trim();
+  const body = {
+    peer_id: id,
+    tenant: $("peer-tenant").value.trim(),
+    subject: $("peer-subject").value.trim() || id,
+    kind: $("peer-kind").value,
+  };
+  const result = await postJson("/api/peers", body);
+  if (!result.ok) {
+    $("peers-msg").textContent = "register failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("peers-msg").textContent = "registered " + result.data.peer_id;
+  selectedPeer = result.data;
+  await loadPeers();
+}
+
+async function disablePeer() {
+  if (!selectedPeer) {
+    $("peers-msg").textContent = "select a peer first";
+    return;
+  }
+  const result = await postJson(
+    "/api/peers/" + encodeURIComponent(selectedPeer.peer_id) + "/disable", {});
+  if (!result.ok) {
+    $("peers-msg").textContent = "disable failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("peers-msg").textContent = "disabled " + result.data.peer_id;
+  selectedPeer = result.data;
+  await loadPeers();
+}
+
+function peerActions() {
+  const actions = [];
+  if ($("peer-action-read").checked) actions.push("read");
+  if ($("peer-action-invoke").checked) actions.push("invoke");
+  return actions;
+}
+
+async function grantPeer() {
+  if (!selectedPeer) {
+    $("peers-msg").textContent = "select a peer first";
+    return;
+  }
+  const agent = $("peer-agent").value.trim();
+  const result = await postJson(
+    "/api/peers/" + encodeURIComponent(selectedPeer.peer_id) + "/grants",
+    { agent_id: agent, actions: peerActions() });
+  if (!result.ok) {
+    $("peers-msg").textContent = "grant failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("peers-msg").textContent =
+    "granted " + result.data.agent_id + " " + (result.data.actions || []).join("+");
+  await loadPeers();
+}
+
+async function revokePeer() {
+  if (!selectedPeer) {
+    $("peers-msg").textContent = "select a peer first";
+    return;
+  }
+  const agent = $("peer-agent").value.trim();
+  const result = await deleteJson(
+    "/api/peers/" + encodeURIComponent(selectedPeer.peer_id) + "/grants/" +
+    encodeURIComponent(agent));
+  if (!result.ok) {
+    $("peers-msg").textContent = "revoke failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("peers-msg").textContent = result.data.revoked ? "revoked " + agent : "no grant for " + agent;
+  await loadPeers();
 }
 
 async function unloadAgent() {
@@ -1115,6 +1278,11 @@ $("refresh-connectors").addEventListener("click", loadConnectors);
 $("connector-register").addEventListener("click", registerConnector);
 $("connector-disable").addEventListener("click", disableConnector);
 $("connector-check").addEventListener("click", checkConnector);
+$("refresh-peers").addEventListener("click", loadPeers);
+$("peer-register").addEventListener("click", registerPeer);
+$("peer-disable").addEventListener("click", disablePeer);
+$("peer-grant").addEventListener("click", grantPeer);
+$("peer-revoke").addEventListener("click", revokePeer);
 $("refresh-sessions").addEventListener("click", loadSessions);
 $("refresh-approvals").addEventListener("click", loadApprovals);
 $("refresh-grants").addEventListener("click", loadGrants);
@@ -1212,6 +1380,14 @@ def _trace_payload(events: Iterable[AuditEvent], trace_id: str) -> dict:
     node = _trace_node(root)
     node["children"] = [_trace_node(event) for event in relevant if event is not root]
     return {"trace_id": trace_id, "root": node, "error": None}
+
+
+def _peer_ref(identity: PeerIdentity) -> AgentRef:
+    return AgentRef(
+        id=identity.peer_id,
+        version="peer",
+        digest=f"sha256:{hash_text(identity.model_dump_json())}",
+    )
 
 
 def _visible_events(events: Iterable[AuditEvent], principal: Principal) -> list[AuditEvent]:
@@ -1375,6 +1551,8 @@ def build_console_app(
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
     connectors: ConnectorStore | None = None,
+    peers: PeerStore | None = None,
+    peer_grants: PeerGrantStore | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -1441,6 +1619,30 @@ def build_console_app(
 
     service = session_service if session_service is not None else _session_service(session_db)
     audit = audit_sink if audit_sink is not None else ListAuditSink()
+
+    async def _emit_peer(
+        action: str,
+        *,
+        target: str,
+        caller: Principal,
+        identity: PeerIdentity,
+        args_hash: str = "",
+    ) -> None:
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=uuid.uuid4().hex,
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=_peer_ref(identity),
+                action=action,
+                target=target,
+                args_hash=args_hash or None,
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
 
     async def _query_events(request: Request, limit: int = 1000) -> list[AuditEvent]:
         if audit_query is None:
@@ -1937,6 +2139,208 @@ def build_console_app(
             return JSONResponse({"error": "forbidden"}, status_code=403)
         health = await check_connector(spec)
         return JSONResponse(health.model_dump(mode="json"))
+
+    @app.get("/api/peers")
+    async def list_peers(request: Request, tenant: str | None = None) -> Any:
+        if peers is None or peer_grants is None:
+            return JSONResponse({"error": "peers_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        if tenant is not None and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        try:
+            identities = await peers.list()
+            grants = await peer_grants.list()
+        except PeerStoreError:
+            logger.exception("peer list failed: tenant=%s", caller.tenant)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        if "admin" in caller.roles:
+            if tenant is not None:
+                identities = [identity for identity in identities if identity.tenant == tenant]
+        else:
+            identities = [identity for identity in identities if identity.tenant == caller.tenant]
+        by_peer: dict[str, list[PeerGrant]] = {}
+        for grant in grants:
+            by_peer.setdefault(grant.peer_id, []).append(grant)
+        identities.sort(key=lambda identity: identity.peer_id)
+        return [
+            {
+                "peer": identity.model_dump(mode="json"),
+                "grants": [
+                    grant.model_dump(mode="json")
+                    for grant in sorted(
+                        by_peer.get(identity.peer_id, []),
+                        key=lambda grant: grant.agent_id,
+                    )
+                ],
+            }
+            for identity in identities
+        ]
+
+    @app.post("/api/peers")
+    async def register_peer(request: Request) -> Any:
+        caller = _principal_for(request)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if peers is None or peer_grants is None:
+            return JSONResponse({"error": "peers_not_configured"}, status_code=404)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            identity = PeerIdentity.model_validate(body)
+        except ValidationError:
+            return JSONResponse({"error": "invalid_peer"}, status_code=400)
+        try:
+            existing = await peers.get(identity.peer_id)
+        except ValueError:
+            return JSONResponse({"error": "invalid_peer"}, status_code=400)
+        except PeerStoreError:
+            logger.exception("peer read failed: id=%s", identity.peer_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        if existing is not None and existing.tenant != identity.tenant:
+            return JSONResponse({"error": "peer_tenant_immutable"}, status_code=409)
+        try:
+            stored = await peers.put(identity)
+        except PeerStoreError:
+            logger.exception("peer register failed: id=%s", identity.peer_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        await _emit_peer(
+            "peer.register",
+            target=stored.peer_id,
+            caller=caller,
+            identity=stored,
+            args_hash=hash_text(stored.model_dump_json()),
+        )
+        return JSONResponse(stored.model_dump(mode="json"))
+
+    @app.post("/api/peers/{peer_id}/disable")
+    async def disable_peer(request: Request, peer_id: str) -> Any:
+        if peers is None or peer_grants is None:
+            return JSONResponse({"error": "peers_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            existing = await peers.get(peer_id)
+        except ValueError:
+            return JSONResponse({"error": "peer_not_found"}, status_code=404)
+        except PeerStoreError:
+            logger.exception("peer read failed: id=%s", peer_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        if existing is None:
+            return JSONResponse({"error": "peer_not_found"}, status_code=404)
+        if existing.tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            stored = await peers.put(existing.model_copy(update={"enabled": False}))
+        except PeerStoreError:
+            logger.exception("peer disable failed: id=%s", peer_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        if existing.enabled:
+            await _emit_peer(
+                "peer.disable",
+                target=stored.peer_id,
+                caller=caller,
+                identity=existing,
+                args_hash=hash_text("enabled->disabled"),
+            )
+        return JSONResponse(stored.model_dump(mode="json"))
+
+    @app.post("/api/peers/{peer_id}/grants")
+    async def put_peer_grant(request: Request, peer_id: str) -> Any:
+        if peers is None or peer_grants is None:
+            return JSONResponse({"error": "peers_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            peer = await peers.get(peer_id)
+        except ValueError:
+            return JSONResponse({"error": "peer_not_found"}, status_code=404)
+        except PeerStoreError:
+            logger.exception("peer read failed: id=%s", peer_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        if peer is None:
+            return JSONResponse({"error": "peer_not_found"}, status_code=404)
+        if peer.tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        agent_id = body.get("agent_id")
+        actions = body.get("actions")
+        if (
+            not isinstance(agent_id, str)
+            or not agent_id
+            or not isinstance(actions, list)
+            or not actions
+            or not all(isinstance(action, str) for action in actions)
+            or any(action not in {"read", "invoke"} for action in actions)
+        ):
+            return JSONResponse({"error": "invalid_grant"}, status_code=400)
+        try:
+            grant = PeerGrant(
+                peer_id=peer.peer_id,
+                tenant=peer.tenant,
+                agent_id=agent_id,
+                actions=actions,
+            )
+        except ValidationError:
+            return JSONResponse({"error": "invalid_grant"}, status_code=400)
+        try:
+            stored = await peer_grants.put(grant)
+        except PeerStoreError:
+            logger.exception("peer grant write failed: peer=%s agent=%s", peer_id, agent_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        await _emit_peer(
+            "peer.grant",
+            target=f"{stored.peer_id}/{stored.agent_id}",
+            caller=caller,
+            identity=peer,
+            args_hash=hash_text(stored.model_dump_json()),
+        )
+        return JSONResponse(stored.model_dump(mode="json"))
+
+    @app.delete("/api/peers/{peer_id}/grants/{agent_id}")
+    async def revoke_peer_grant(request: Request, peer_id: str, agent_id: str) -> Any:
+        if peers is None or peer_grants is None:
+            return JSONResponse({"error": "peers_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            peer = await peers.get(peer_id)
+        except ValueError:
+            return JSONResponse({"error": "peer_not_found"}, status_code=404)
+        except PeerStoreError:
+            logger.exception("peer read failed: id=%s", peer_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        if peer is None:
+            return JSONResponse({"error": "peer_not_found"}, status_code=404)
+        if peer.tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            revoked = await peer_grants.delete(peer_id, agent_id)
+        except ValueError:
+            return JSONResponse({"error": "invalid_grant"}, status_code=400)
+        except PeerStoreError:
+            logger.exception("peer grant delete failed: peer=%s agent=%s", peer_id, agent_id)
+            return JSONResponse({"error": "peer_store_unavailable"}, status_code=503)
+        if revoked:
+            await _emit_peer(
+                "peer.revoke",
+                target=f"{peer_id}/{agent_id}",
+                caller=caller,
+                identity=peer,
+                args_hash=hash_text(agent_id),
+            )
+        return JSONResponse({"revoked": revoked})
 
     @app.get("/api/tool-grants")
     async def list_tool_grants(
@@ -2525,6 +2929,8 @@ def run_console(
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
     connectors: ConnectorStore | None = None,
+    peers: PeerStore | None = None,
+    peer_grants: PeerGrantStore | None = None,
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
@@ -2556,6 +2962,8 @@ def run_console(
         lifecycle=lifecycle,
         tool_grants=tool_grants,
         connectors=connectors,
+        peers=peers,
+        peer_grants=peer_grants,
         artifact_store=artifact_store,
         artifact_loader=artifact_loader,
         artifact_trust=artifact_trust,

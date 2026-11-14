@@ -104,6 +104,31 @@ def test_file_grant_bad_json(tmp_path):
         asyncio.run(store.get("peer-a", "bot"))
 
 
+def test_grant_delete(tmp_path):
+    store = FilePeerGrantStore(tmp_path)
+
+    asyncio.run(store.put(_grant()))
+
+    assert asyncio.run(store.delete("peer-a", "bot")) is True
+    assert asyncio.run(store.delete("peer-a", "bot")) is False
+    assert asyncio.run(store.get("peer-a", "bot")) is None
+    with pytest.raises(ValueError):
+        asyncio.run(store.delete("../peer", "bot"))
+
+
+@_live
+@_needs_driver
+def test_postgres_grant_delete():
+    store = PostgresPeerGrantStore(_LIVE_URL)
+    grant = _grant(peer_id="p" + uuid.uuid4().hex[:12])
+
+    asyncio.run(store.put(grant))
+
+    assert asyncio.run(store.delete(grant.peer_id, "bot")) is True
+    assert asyncio.run(store.delete(grant.peer_id, "bot")) is False
+    assert asyncio.run(store.get(grant.peer_id, "bot")) is None
+
+
 @_live
 @_needs_driver
 def test_postgres_peer_roundtrip():

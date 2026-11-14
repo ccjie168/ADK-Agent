@@ -31,6 +31,7 @@ _SELECT = (
     "WHERE peer_id = $1 AND agent_id = $2"
 )
 _SELECT_ALL = "SELECT peer_id, agent_id, tenant, actions FROM adk_peer_grants"
+_DELETE = "DELETE FROM adk_peer_grants WHERE peer_id = $1 AND agent_id = $2 RETURNING peer_id"
 
 
 async def _ensure_schema(pool: Any) -> None:
@@ -102,6 +103,17 @@ class PostgresPeerGrantStore:
         if row is None:
             raise PeerStoreUnavailable("peer grant disappeared during write")
         return _parse(row)
+
+    async def delete(self, peer_id: str, agent_id: str) -> bool:
+        try:
+            pool = await self._pool.get()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(_DELETE, peer_id, agent_id)
+        except PeerStoreError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise PeerStoreUnavailable(f"peer grant delete failed ({type(exc).__name__})") from exc
+        return row is not None
 
 
 __all__ = ["PostgresPeerGrantStore"]

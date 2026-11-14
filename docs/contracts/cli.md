@@ -158,6 +158,18 @@
 - `connectors check --id ID` 输出 `ConnectorHealth` JSON，从 CLI 进程探测第一个路径前缀，不带凭据、不跟随重定向、超时不超过 5 秒。未知 id 退出 1；探测失败也输出结果并退出 0，因为结果本身就是检查结论。
 - 成功写 `connector.register` 或 `connector.disable` 审计；控制面模式下写端要求 admin。
 
+## `adk-agent peers list|register|disable|grant|revoke`
+
+管理 A2A peer 与其动作授权（ADR-0014）。
+
+- `--peer-dir DIR` 或 `--peer-db URL` 指定存储，二选一，必须提供一个。控制台 `console` 也接受同样两个参数。
+- `peers list [--tenant T]` 输出 `[{"peer": PeerIdentity, "grants": [PeerGrant]}]`，按 `peer_id` 排序。
+- `peers register --id ID --tenant T [--subject S] [--kind service|human|agent] [--roles A,B]` 输出 peer。已存在但改租户退出 1。
+- `peers disable --id ID` 输出停用后的 peer，幂等。
+- `peers grant --id ID --agent AGENT --actions read,invoke` 输出授权。未知动作或空列表退出 1。
+- `peers revoke --id ID --agent AGENT` 输出 `{"revoked": bool}`，授权不存在也退出 0。
+- 控制台的写操作写 `peer.register`、`peer.disable`、`peer.grant` 或 `peer.revoke` 审计。CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
+
 ## `adk-agent approvals prune --dir DIR --older-than SECONDS [--delete]`
 
 归档或删除已经终结、且超过保留期的审批记录。
