@@ -186,6 +186,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-093 远端 agent 目录记录（ADR-0015）：`RemoteAgent`、固定 card 摘要与刷新、控制台四接口、`remote-agents` 命令。已完成。
 - SLICE-094 市场页合并远端条目（ADR-0015）：`/api/registry` 双来源、来源与信任徽标、刷新入口、远端行禁止开聊。已完成。
 - SLICE-095 A2A 出站审计（ADR-0015）：`AuditTransport`、`a2a.call` 与 `egress=third_party`、跨组织审计边界，ADR-0015 闭环。已完成。
+- SLICE-096 审计 Postgres 写读验链（ADR-0016）：每租户哈希链、租户级 advisory lock、共享查询与 `verify-audit --audit-db`。已完成。
 
 ## 完成定义
 

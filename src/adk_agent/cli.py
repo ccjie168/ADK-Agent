@@ -934,7 +934,8 @@ def main(argv: list[str] | None = None) -> None:
     _add_audit_args(p_registry)
 
     p_verify = sub.add_parser("verify-audit", help="verify an audit chain file")
-    p_verify.add_argument("path", help="path to a chained audit JSONL file")
+    p_verify.add_argument("path", nargs="?", help="path to a chained audit JSONL file")
+    p_verify.add_argument("--audit-db", default=None, help="Postgres audit database URL")
 
     p_console = sub.add_parser("console", help="serve a private web console for agents")
     p_console.add_argument(
@@ -1606,11 +1607,25 @@ def main(argv: list[str] | None = None) -> None:
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "verify-audit":
-        from .audit import AuditChainBroken, AuditSignatureInvalid, verify_audit_file
+        from .audit import (
+            AuditChainBroken,
+            AuditSignatureInvalid,
+            verify_audit_database,
+            verify_audit_file,
+        )
+
+        if (args.path is None) == (args.audit_db is None):
+            print("verify-audit requires exactly one of FILE or --audit-db", file=sys.stderr)
+            raise SystemExit(2)
 
         signing_key, keyring = _audit_signing()
         try:
-            count = verify_audit_file(args.path, signing_key=signing_key, keyring=keyring)
+            if args.audit_db is not None:
+                count = asyncio.run(
+                    verify_audit_database(args.audit_db, signing_key=signing_key, keyring=keyring)
+                )
+            else:
+                count = verify_audit_file(args.path, signing_key=signing_key, keyring=keyring)
         except AuditSignatureInvalid as exc:
             print(f"audit signature invalid at record {exc.index}", file=sys.stderr)
             raise SystemExit(1) from None

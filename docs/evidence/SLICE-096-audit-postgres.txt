@@ -1,0 +1,72 @@
+SLICE-096 Postgres audit write, read and chain verification
+==========================================================
+
+red, pre-slice commit 664caf1
+-----------------------------
+$ git worktree add <tmp>/adk-096-red 664caf1
+$ PYTHONPATH=<tmp>/adk-096-red/src ./.venv/Scripts/python.exe <tmp>/adk-096-red-probe.py
+source: <tmp>\adk-096-red\src\adk_agent\__init__.py
+case1: ImportError cannot import name 'PostgresAuditSink' from 'adk_agent.audit'
+case2: SystemExit 2 (unrecognized arguments: --audit-db)
+
+$ git grep -c "adk_audit_records" 664caf1 -- src
+0 matches
+$ git show 664caf1:src/adk_agent/audit/__init__.py | grep -c PostgresAuditSink
+0
+
+green
+-----
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk \
+    ./.venv/Scripts/python.exe -m pytest tests/audit/test_audit_postgres.py -q
+13 passed in 2.84s
+
+Without TEST_POSTGRES_URL the eight live cases skip; the CLI exclusivity and
+validation cases still run.
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1132 passed, 42 skipped in 52.40s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+live, real Postgres container
+-----------------------------
+postgres: adk-postgres-070, postgresql://adk:adk@127.0.0.1:55432/adk
+
+three sequential emits for tenant acme:
+  verify -> 3 records
+  query order -> ['run-0', 'run-1', 'run-2']
+  sequences -> [(1, 'ok'), (2, 'ok'), (3, 'ok')]
+
+tamper: UPDATE adk_audit_records SET event = jsonb_set(event, '{status}', '"error"')
+  WHERE tenant = 'acme' AND sequence = 1
+  verify -> AuditChainBroken(index=1, tenant='acme')
+
+ten concurrent emits for one tenant:
+  sequences -> [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  verify -> 10 records
+
+$ ADK_AUDIT_SIGNING_KEY=<key> adk-agent verify-audit --audit-db <dsn>
+exit 0, ok 10 records
+
+notes
+-----
+- Each tenant has its own chain and its own advisory lock; the sequence starts
+  at 1 per tenant and concurrent writers do not interleave.
+- The tamper test changed a field without touching the stored hash, and the
+  verifier reported the exact tenant and sequence.
+- Review fix: a row whose `event` JSON no longer parses used to surface as
+  `AuditStoreUnavailable` from the generic handler. It now raises
+  `AuditChainBroken`, and `test_corrupt_event_detected_as_chain_break` pins it.
+- The dynamic WHERE clause only interpolates fixed column fragments and `$n`
+  placeholders; values stay bound. Bandit B608 flags the concatenation, so the
+  line carries a `# nosec B608` with that reason.
+- Verification is fail-closed across the whole table: a row signed with a key
+  the verifier does not hold fails the run. A leftover live-run row signed with
+  a different key did fail the test suite until it was removed, which is the
+  intended behavior for one platform-wide keyring.
+- `query_audit_records` opens and closes its own pool for one-off callers;
+  long-lived wiring in SLICE-097 should use `PostgresAuditQuery` or a sink that
+  keeps the pool.

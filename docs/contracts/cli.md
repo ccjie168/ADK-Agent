@@ -193,9 +193,13 @@
 - 成功输出 `archived N requests` 或 `deleted N requests`，退出 0。
 - 这个命令不写审计事件。
 
-## `adk-agent verify-audit FILE`
+## `adk-agent verify-audit FILE | --audit-db URL`
 
 逐条重算审计链，包括 `FILE.000001` 这类轮转段，按序号顺序处理。
+
+- `FILE` 与 `--audit-db` 二选一，同时给或都不给退出 2。
+- `--audit-db` 接受 `postgresql://` 或 `postgresql+asyncpg://`，按租户读取 `adk_audit_records` 并按 `sequence` 遍历，链算法与文件模式相同。
+- 数据库模式下的输出与退出码与文件模式一致；断链时报告租户与记录序号。
 
 - 通过：stdout 输出 `ok <N> records`，退出 0。
 - 断链或文件非法：stderr 输出原因，退出 1。

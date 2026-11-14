@@ -15,6 +15,13 @@ from .pipeline import (
     record_signature,
     verify_audit_file,
 )
+from .postgres import (
+    AuditStoreUnavailable,
+    PostgresAuditQuery,
+    PostgresAuditSink,
+    query_audit_records,
+    verify_audit_database,
+)
 from .query import AuditQuery, FileAuditQuery
 
 __all__ = [
@@ -24,15 +31,20 @@ __all__ = [
     "AuditQueryUnavailable",
     "AuditSignatureInvalid",
     "AuditSinkUnavailable",
+    "AuditStoreUnavailable",
     "FileAuditQuery",
     "HttpAuditQuery",
     "HttpAuditSink",
     "JsonlAuditSink",
     "KeyringError",
     "ListAuditSink",
+    "PostgresAuditQuery",
+    "PostgresAuditSink",
     "SigningKeyring",
     "load_records",
+    "query_audit_records",
     "query_events",
     "record_signature",
+    "verify_audit_database",
     "verify_audit_file",
 ]
