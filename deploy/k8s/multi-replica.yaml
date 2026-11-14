@@ -1,0 +1,411 @@
+# Multi-replica example for the shared-state deployment.
+# All state lives in Postgres and Redis; do not add volumes to these pods.
+# Seed the `adk-agent-secrets` Secret first; see secret.example.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-console
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: adk-console
+  template:
+    metadata:
+      labels:
+        app: adk-console
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: console
+          image: adk-agent:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -m
+            - adk_agent
+            - console
+            - --agents
+            - /app/examples/minimal/agent.py
+            - --host
+            - 0.0.0.0
+            - --role
+            - admin
+            - --rate-limit
+            - "120"
+            - --rate-limit-window
+            - "60"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: ADK_AGENT_MODEL
+              value: "claude:deepseek-v4-pro"
+            - name: ANTHROPIC_BASE_URL
+              value: "https://api.deepseek.com/anthropic"
+            - name: SESSION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: SESSION_URL
+            - name: AUDIT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: AUDIT_DATABASE_URL
+            - name: APPROVAL_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: APPROVAL_DATABASE_URL
+            - name: GRANT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: GRANT_URL
+            - name: QUOTA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: QUOTA_URL
+            - name: RATE_LIMIT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: RATE_LIMIT_URL
+            - name: ADK_AUDIT_KEYRING
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_AUDIT_KEYRING
+            - name: ADK_MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_MCP_AUTH_TOKEN
+            - name: ANTHROPIC_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ANTHROPIC_AUTH_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-console
+spec:
+  selector:
+    app: adk-console
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-mcp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: adk-mcp
+  template:
+    metadata:
+      labels:
+        app: adk-mcp
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: mcp
+          image: adk-agent:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -m
+            - adk_agent
+            - serve
+            - --agent
+            - /app/examples/minimal/agent.py
+            - --transport
+            - streamable-http
+            - --host
+            - 0.0.0.0
+            - --rate-limit
+            - "120"
+            - --rate-limit-window
+            - "60"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: ADK_AGENT_MODEL
+              value: "claude:deepseek-v4-pro"
+            - name: ANTHROPIC_BASE_URL
+              value: "https://api.deepseek.com/anthropic"
+            - name: SESSION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: SESSION_URL
+            - name: AUDIT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: AUDIT_DATABASE_URL
+            - name: QUOTA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: QUOTA_URL
+            - name: RATE_LIMIT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: RATE_LIMIT_URL
+            - name: ADK_AUDIT_KEYRING
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_AUDIT_KEYRING
+            - name: ADK_MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_MCP_AUTH_TOKEN
+            - name: ANTHROPIC_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ANTHROPIC_AUTH_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-mcp
+spec:
+  selector:
+    app: adk-mcp
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-audit
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: adk-audit
+  template:
+    metadata:
+      labels:
+        app: adk-audit
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: audit
+          image: adk-agent:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -m
+            - adk_agent
+            - serve-audit
+            - --host
+            - 0.0.0.0
+            - --rate-limit
+            - "240"
+            - --rate-limit-window
+            - "60"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: AUDIT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: AUDIT_DATABASE_URL
+            - name: RATE_LIMIT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: RATE_LIMIT_URL
+            - name: ADK_AUDIT_KEYRING
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_AUDIT_KEYRING
+            - name: ADK_MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_MCP_AUTH_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-audit
+spec:
+  selector:
+    app: adk-audit
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adk-registry
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: adk-registry
+  template:
+    metadata:
+      labels:
+        app: adk-registry
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: registry
+          image: adk-agent:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -m
+            - adk_agent
+            - serve-registry
+            - --host
+            - 0.0.0.0
+            - --rate-limit
+            - "240"
+            - --rate-limit-window
+            - "60"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: REGISTRY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: REGISTRY_DATABASE_URL
+            - name: ARTIFACT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ARTIFACT_URL
+            - name: AUDIT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: AUDIT_DATABASE_URL
+            - name: RATE_LIMIT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: RATE_LIMIT_URL
+            - name: ADK_AUDIT_KEYRING
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_AUDIT_KEYRING
+            - name: ADK_MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_MCP_AUTH_TOKEN
+            - name: ADK_ARTIFACT_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: adk-agent-secrets
+                  key: ADK_ARTIFACT_KEYS
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: adk-registry
+spec:
+  selector:
+    app: adk-registry
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: adk-console
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: adk-console

@@ -1,0 +1,61 @@
+SLICE-100 multi-replica manifests and operations runbook
+========================================================
+
+red, before the manifest and runbook existed
+--------------------------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_deploy_manifests.py -q
+FileNotFoundError: ...\deploy\k8s\multi-replica.yaml
+FileNotFoundError: ...\docs\guides\operations.md
+4 failed, 1 passed
+
+Same invariants applied to the old single-replica manifest:
+$ python - <<'PY' (count kinds, PVC, SESSION_DB, replicas, probes)
+{'deployments == 4': False, 'no PVC': False, 'no SESSION_DB': False,
+ 'replicas >= 2': False, 'health probes': False}
+
+green
+-----
+$ ./.venv/Scripts/python.exe -m pytest tests/test_deploy_manifests.py -q
+5 passed in 0.03s
+
+$ python - <<'PY' (yaml.safe_load_all, local PyYAML)
+deploy/k8s/multi-replica.yaml ['Deployment/adk-console', 'Service/adk-console',
+ 'Deployment/adk-mcp', 'Service/adk-mcp', 'Deployment/adk-audit',
+ 'Service/adk-audit', 'Deployment/adk-registry', 'Service/adk-registry',
+ 'PodDisruptionBudget/adk-console']
+  adk-console replicas 3 no volumes
+  adk-mcp replicas 3 no volumes
+  adk-audit replicas 2 no volumes
+  adk-registry replicas 2 no volumes
+deploy/k8s/secret.example.yaml ['Secret/adk-agent-secrets']
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1152 passed, 58 skipped in 53.57s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+notes
+-----
+- kubectl is installed but there is no cluster: `kubectl apply --dry-run=client`
+  still asks the API server for discovery and fails with connection refused.
+  The gate therefore relies on `tests/test_deploy_manifests.py`, a text-level
+  structural guard, and the local PyYAML parse above. PyYAML is not a project
+  dependency, so the test does not import it.
+- First gate run failed the secrets step: `SESSION_URL` used
+  `postgresql+asyncpg://adk:replace-me@...` and detect-secrets' Basic Auth
+  detector flagged the `user:password@` shape. The example Secret now omits the
+  password from every placeholder and says so in a comment. Re-run is green.
+- Every deployment is stateless: no `volumes`, no PVC, no `SESSION_DB`. Shared
+  state is Postgres plus Redis, injected from `secretKeyRef` only. The manifest
+  contains no plaintext DSN or token.
+- The console and MCP deployments use 3 replicas, the audit and registry
+  deployments use 2, and the console has a PodDisruptionBudget with
+  `minAvailable: 2`.
+- Limits are documented rather than tested: audit writes serialize per tenant
+  on an advisory lock, approvals wait by polling, Redis loss degrades rate
+  limiting to per-process counters, and file backends stay single-node.
+- The runbook records the measured host-versus-Postgres clock skew (about 4 s)
+  and repeats the NTP requirement.
