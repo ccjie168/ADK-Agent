@@ -65,6 +65,31 @@
 6. 冒烟：四个 `/healthz` 返回 200；控制台能列版本与工具；审批接口在 `APPROVAL_DATABASE_URL` 设置后可用；`adk-agent verify-audit --audit-db "$AUDIT_DATABASE_URL"` 通过。
 7. Service 默认 ClusterIP。需要外部访问时在入口层做 TLS 与认证，不要直接暴露未鉴权端口。
 
+## 发行与升级
+
+- 依赖锁由 `pip-tools` 生成，不要手改。两个文件都在 `requirements/`，全部 `==` 且带哈希。重新生成：
+
+  ```bash
+  docker run --rm -v "$PWD:/w" -w /w python:3.13-slim bash -lc '
+    pip install --quiet "pip-tools>=7.4" && mkdir -p requirements &&
+    pip-compile --generate-hashes --output-file requirements/runtime.lock \
+      --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml &&
+    pip-compile --generate-hashes --output-file requirements/dev.lock \
+      --extra dev --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml
+  '
+  ```
+
+  改 `pyproject.toml` 后必须重编两个锁，diff 和代码一起评审。不要在镜像或 CI 里用范围安装。
+- 默认镜像包含 `litellm`，因为未设置 `ADK_AGENT_MODEL` 时模型默认回退到 LiteLLM 的 `deepseek/deepseek-v4-pro`。国内模型用 `litellm:deepseek/<model>`，凭据放在 Secret 的 `DEEPSEEK_API_KEY`（或 LiteLLM 对应的 provider 变量）。也可以继续用清单里的 Anthropic 兼容端点。
+- CI 按 `dev.lock` 安装后跑门禁，构建镜像，Trivy 扫描 `HIGH,CRITICAL` 可修复项，并上传 SBOM。扫描失败不得合入。
+- 发布时先推送镜像，取得 digest，再替换清单里的全零 digest。`image:` 只接受 `adk-agent@sha256:<digest>`，不接受 `:latest` 或可移动标签。取 digest 可用 `docker buildx imagetools inspect <image>` 或 `crane digest <image>`。
+- 受限网络构建时可传 `--build-arg PIP_INDEX_URL=<mirror>` 与 `--build-arg APT_MIRROR=<debian mirror>`。这两个 arg 都不写进镜像；锁里的哈希仍然校验下载的包。
+- 镜像构建会把基础镜像里的 `zlib1g` 升到当前安全版本。基础镜像快照早于该更新，不升级就会被 Trivy 拦下。
+- 扫描的接受风险写在 `.trivyignore.yaml`，每条必须有 `statement` 与 `expired_at`。到期后 Trivy 会重新报出，必须修复或重新评审后延期。当前两条：`filelock` 受 litellm 与 ADK 的版本上限约束无法升级，`setuptools` 只存在于基础镜像被删除的层里，合并后的文件系统没有它。
+- 基础镜像的 digest 写在 `Dockerfile` 的 `ARG PYTHON_IMAGE` 里。升级基础镜像是显式提交，重新构建、重新扫描、重新跑门禁。
+- 回滚用上一个 digest 重新 apply，不重建镜像。数据库 schema 只做加法，旧镜像可以在新表结构上运行；破坏性变更必须单独评审。
+- `gemini` 不在默认镜像里。需要时另建带该 extra 的镜像和锁，不要在生产镜像里临时 `pip install`。
+
 ## 扩缩容
 
 - 扩副本前逐项确认上表里的共享后端都已设置。任一文件后端仍在用时禁止扩容。

@@ -18,7 +18,7 @@ spec:
         runAsUser: 10001
       containers:
         - name: adk-agent
-          image: adk-agent:latest
+          image: adk-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

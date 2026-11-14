@@ -1,0 +1,106 @@
+SLICE-101 release integrity
+===========================
+
+red, before the locks and build changes
+---------------------------------------
+$ ./.venv/Scripts/python.exe -m pytest tests/test_release_lock.py -q
+FileNotFoundError: ...\requirements\runtime.lock
+... 5 failed in 0.12s
+
+$ grep -c "require-hashes" Dockerfile .github/workflows/ci.yml
+Dockerfile:0
+.github/workflows/ci.yml:0
+$ grep -c "image: adk-agent:latest" deploy/k8s/multi-replica.yaml deploy/k8s/deployment.yaml
+deploy/k8s/multi-replica.yaml:4
+deploy/k8s/deployment.yaml:1
+$ grep -c "trivy\|docker build" .github/workflows/ci.yml
+0
+
+locks
+-----
+generated in python:3.13-slim with pip-tools 7.6.2
+$ pip-compile --generate-hashes --no-emit-index-url --no-emit-trusted-host \
+    --output-file requirements/runtime.lock \
+    --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml
+$ pip-compile ... --extra dev ... --output-file requirements/dev.lock
+
+runtime.lock: 91 pins, dev.lock: 129 pins, 91 shared, 0 version mismatches
+every pin uses == and --hash=sha256:
+
+reproducible
+------------
+two fresh containers, same runtime lock:
+$ docker run ... python:3.13-slim pip download --require-hashes --only-binary :all: \
+    -r /req/runtime.lock -d /tmp/dl && sha256sum * | sort | sha256sum
+run 1 files=91
+faa262b0c72ba496593e3200d0d5e087614d4486c432c70aae620866dd230bbf
+run 2 files=91
+faa262b0c72ba496593e3200d0d5e087614d4486c432c70aae620866dd230bbf
+
+image
+-----
+$ docker build --build-arg PIP_INDEX_URL=<mirror> --build-arg APT_MIRROR=<mirror> \
+    -t adk-agent:slice101 .
+image adk-agent:slice101 780MB
+
+$ docker run ... adk-agent:slice101
+$ curl http://127.0.0.1:8841/healthz
+healthz=200
+{"status":"ok"}
+$ dpkg -s zlib1g | grep Version
+Version: 1:1.3.dfsg+really1.3.1-1+deb13u1
+
+scan
+----
+first scan, before remediation:
+  adk-agent:slice101 (debian 13.7): Total: 2 (HIGH: 2, CRITICAL: 0)
+    zlib1g 1:1.3.dfsg+really1.3.1-1+b1 -> 1:1.3.dfsg+really1.3.1-1+deb13u1
+  Python: Total: 2 (HIGH: 2, CRITICAL: 0)
+    filelock 3.32.7 -> 4.2.1
+    setuptools 70.3.0 -> 78.1.1
+
+remediation:
+  - zlib1g: Dockerfile now runs apt-get install zlib1g from the Debian security
+    suite. Rebuilt image reports the fixed version.
+  - filelock: cannot upgrade. litellm 1.106.2 declares filelock>=3.16.1,<4.0 and
+    ADK 2.14.1 caps litellm at <1.106.3. Accepted risk with expiry.
+  - setuptools: 70.3.0 is only in a base-image layer deleted by a later layer.
+    The merged filesystem has no setuptools, `pip show` finds none, and
+    `import setuptools` fails. Scanner false positive, accepted with expiry.
+
+final scan:
+$ trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+    --ignorefile .trivyignore.yaml adk-agent:slice101
+Total: 0 (HIGH: 0, CRITICAL: 0)
+Some vulnerabilities have been ignored/suppressed.
+exit=0
+
+accepted risks, each with statement and expired_at 2027-05-01:
+  CVE-2026-112940 filelock
+  CVE-2025-47273 setuptools
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1158 passed, 58 skipped in 55.76s
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs [PASS] test
+[PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+notes
+-----
+- PyPI and Debian mirrors were used for generation and the local build because
+  the default indexes were unreachable from this network. The lock files carry
+  no index URL (--no-emit-index-url), and build args are not persisted in the
+  image. The hashes are what is verified.
+- `--only-binary :all:` is used in the image install. All 91 runtime pins have
+  a Linux wheel, confirmed by the reproducible download above.
+- Residual gap: the project itself is built with build isolation, so hatchling
+  is fetched from the index at build time without a hash. Closing it means
+  adding a build extra to both locks and using --no-build-isolation; that is
+  follow-up work, not claimed here.
+- CI builds and scans the image but does not push it, so it cannot emit the
+  final digest. The manifests use an all-zero digest placeholder and the
+  runbook says to replace it with the pushed digest.
+- The Trivy GitHub Action is pinned by version (0.28.0), not by commit SHA.
+  SHA pinning is a follow-up.

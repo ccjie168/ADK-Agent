@@ -191,6 +191,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-098 审批的 Postgres 收件箱（ADR-0017）：`PostgresApprovalInbox`、单行状态机、条件 `UPDATE` 的原子决策、过期判定、归档与删除、并发决策测试。已完成。
 - SLICE-099 审批数据库接线（ADR-0017）：控制台 `--approval-db`、`approvals prune --db`、同步/异步收件箱、503 映射、跨进程 `request()` 验证，ADR-0017 闭环。已完成。
 - SLICE-100 多副本部署清单与运维手册：四个无本地卷的 Deployment、Secret 注入、结构守卫测试、环境变量矩阵、备份恢复、密钥轮换、时钟与故障手册，Phase E 收口。已完成。
+- SLICE-101 发行完整性（ADR-0018）：运行时与开发依赖锁、哈希校验安装、镜像构建与 Trivy 扫描、SBOM、digest 引用、接受风险带到期日。已完成。
 
 ## 完成定义
 

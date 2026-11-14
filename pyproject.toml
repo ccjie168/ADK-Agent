@@ -30,6 +30,7 @@ dev = [
     "detect-secrets",
     "bandit",
     "import-linter>=2.0",
+    "pip-tools>=7.4",
 ]
 
 [project.scripts]

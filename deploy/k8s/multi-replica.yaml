@@ -1,6 +1,7 @@
 # Multi-replica example for the shared-state deployment.
 # All state lives in Postgres and Redis; do not add volumes to these pods.
 # Seed the `adk-agent-secrets` Secret first; see secret.example.yaml.
+# Replace the all-zero image digest with the digest produced by the release job.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,7 +21,7 @@ spec:
         runAsUser: 10001
       containers:
         - name: console
-          image: adk-agent:latest
+          image: adk-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: IfNotPresent
           command:
             - python
@@ -135,7 +136,7 @@ spec:
         runAsUser: 10001
       containers:
         - name: mcp
-          image: adk-agent:latest
+          image: adk-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: IfNotPresent
           command:
             - python
@@ -240,7 +241,7 @@ spec:
         runAsUser: 10001
       containers:
         - name: audit
-          image: adk-agent:latest
+          image: adk-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: IfNotPresent
           command:
             - python
@@ -322,7 +323,7 @@ spec:
         runAsUser: 10001
       containers:
         - name: registry
-          image: adk-agent:latest
+          image: adk-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
           imagePullPolicy: IfNotPresent
           command:
             - python

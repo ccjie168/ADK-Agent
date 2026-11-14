@@ -12,15 +12,24 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e ".[dev,claude,http]"
+      - run: python -m pip install --require-hashes -r requirements/dev.lock
+      - run: python -m pip install --no-deps .
       - run: python scripts/check.py --full --strict
+      - run: docker build -t adk-agent:${{ github.sha }} .
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: adk-agent:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
       - run: python scripts/sbom.py -o sbom.json
       - uses: actions/upload-artifact@v4
         with:

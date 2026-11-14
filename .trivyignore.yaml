@@ -1,0 +1,15 @@
+# Accepted risks for the release image. Every entry needs a reason and an
+# expiry date; re-review before the date and remove the entry once fixed.
+vulnerabilities:
+  - id: CVE-2026-112940
+    statement: >-
+      litellm 1.106.2 requires filelock<4.0 and ADK 2.14.1 caps litellm at
+      <1.106.3, so no fixed filelock is installable. Revisit when ADK raises
+      the litellm range. The app does not call filelock directly.
+    expired_at: 2027-05-01
+  - id: CVE-2025-47273
+    statement: >-
+      setuptools 70.3.0 exists only in a base-image layer that a later layer
+      deletes. The merged filesystem has no setuptools, pip cannot show it,
+      and the app cannot import it.
+    expired_at: 2027-05-01
