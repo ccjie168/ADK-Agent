@@ -122,6 +122,8 @@
 
 ## 怎么跑
 
+下面的 Postgres DSN 不写口令。本地用 `PGPASSWORD` 或 `~/.pgpass` 提供，不要把明文写进命令或文档。
+
 ```bash
 # 唯一门禁
 python scripts/check.py --fast
@@ -164,7 +166,7 @@ cat demo/keys.json   # 填入 ADK_ARTIFACT_KEYS 后启动控制台
 ADK_ARTIFACT_KEYS='{"publisher-1":"<64 hex public key>"}' \n  adk-agent console --agent-ref acme/bot@1.0.0 \n  --registry ./registry --artifact-dir ./store
 
 # 发布带工件（目录或 zip），Ed25519 签名，字节入文件 store 或 ARTIFACT_URL
-ARTIFACT_URL=postgresql://postgres:***@127.0.0.1:5432/adk \n  adk-agent publish manifest.json --artifact ./my-agent \n  --key publisher.pem --key-id publisher-1
+ARTIFACT_URL=postgresql://postgres@127.0.0.1:5432/adk \n  adk-agent publish manifest.json --artifact ./my-agent \n  --key publisher.pem --key-id publisher-1
 
 # 控制台读写共享审计服务（审计、运行、trace 面板都读服务）
 ADK_AUDIT_AUTH_TOKEN=... adk-agent console --agents agents.py \n  --audit-url http://127.0.0.1:8000 --audit-token-env ADK_AUDIT_AUTH_TOKEN
@@ -192,7 +194,7 @@ python -m adk_agent serve-a2a --agent examples/minimal/agent.py \
   --audit-file ./audit.jsonl --quota-config quota.json
 
 # 配额并发与审计吞吐基线（Postgres 用 --url 或 LOADTEST_URL）
-python scripts/loadtest.py quota --requests 2000 --concurrency 32 --max-runs 1000 \n  --url postgresql://postgres:adk@127.0.0.1:55432/adk
+python scripts/loadtest.py quota --requests 2000 --concurrency 32 --max-runs 1000 \n  --url postgresql://postgres@127.0.0.1:55432/adk
 python scripts/loadtest.py audit --records 5000 --path ./audit-bench.jsonl --max-records 1000
 
 # MCP 与 A2A 也支持限流（MCP 限 streamable-http）
