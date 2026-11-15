@@ -55,6 +55,25 @@
 
 生产环境建议用 OIDC 替代共享 Bearer token：各服务加 `--oidc-config`，控制台去掉 `--role admin`，授权由 token 的租户与角色决定。共享 token 只适合演示与内网。
 
+控制台的浏览器登录需要在同一配置文件加 `browser` 段。`redirect_uri` 必须与控制台的真实地址一致，回调路径固定为 `/auth/callback`：
+
+```json
+{
+  "issuer": "https://idp.example.com",
+  "audience": "adk-console",
+  "jwks_url": "https://idp.example.com/jwks",
+  "browser": {
+    "client_id": "adk-console",
+    "authorization_endpoint": "https://idp.example.com/authorize",
+    "token_endpoint": "https://idp.example.com/token",
+    "redirect_uri": "https://adk.example.com/auth/callback",
+    "scopes": ["openid", "profile", "email"]
+  }
+}
+```
+
+浏览器只拿到授权端点、client id 与回调地址；`token_endpoint` 和 `client_secret_env` 留在服务端。机密客户端把 `client_secret_env` 指向环境变量名，不要写明文。没有 `browser` 段时控制台仍可用手工 Bearer token 登录。
+
 ## 首次部署
 
 1. 建库建角色。配额表的行级安全要求应用角色拥有表且不是 superuser、没有 `BYPASSRLS`，否则策略被绕过。审计与审批 v1 没有 RLS，靠服务层过滤。

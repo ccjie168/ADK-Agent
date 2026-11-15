@@ -70,6 +70,7 @@ from .core import (
     ToolGrantRequest,
     ToolGrantStore,
 )
+from .identity import OidcLogin, OidcLoginError
 from .mcp.http import resolve_port
 from .metrics import MetricsRegistry
 from .models.gateway_llm import GatewayLlm, provider_for_model
@@ -102,79 +103,146 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 _USER_ID = "console_user"
-_OPEN_PATHS = frozenset({"/", "/healthz"})
+_OPEN_PATHS = frozenset({"/", "/healthz", "/auth/config", "/auth/token", "/auth/callback"})
 _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 _GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})
 
-_INDEX_HTML = """<!doctype html>
+_INDEX_HTML = r"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>ADK Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230f766e'/%3E%3Ctext x='16' y='22' font-family='system-ui' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-  #log { border: 1px solid #ccc; border-radius: 6px; padding: .75rem; height: 320px; overflow-y: auto; }
-  #log div { white-space: pre-wrap; margin: .2rem 0; }
-  .row { display: flex; gap: .5rem; margin-top: .75rem; }
-  input, select, button { font: inherit; padding: .45rem .6rem; }
-  #msg { flex: 1; }
-  .you { color: #0b5; }
-  .agent { color: #246; }
-  .system { color: #a00; }
-  #tabs { display: flex; gap: .25rem; margin: 1rem 0 .5rem; flex-wrap: wrap; }
-  .tab { background: #eee; border: 1px solid #ccc; border-radius: 6px 6px 0 0; cursor: pointer; }
-  .tab.active { background: #fff; border-bottom-color: #fff; font-weight: 600; }
+  :root {
+    --bg: #f4f6fb; --panel: #ffffff; --ink: #1e293b; --muted: #64748b;
+    --line: #e2e8f0; --accent: #0f766e; --accent-soft: #ecfdf5;
+    --bad: #b91c1c; --radius: 10px;
+  }
+  html[data-theme="dark"] {
+    --bg: #0b1220; --panel: #111a2b; --ink: #e2e8f0; --muted: #94a3b8;
+    --line: #24324a; --accent: #2dd4bf; --accent-soft: #0f2e2b;
+    --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: system-ui, sans-serif; }
+  #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+  .login-card { width: min(420px, 94vw); background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 2rem; box-shadow: 0 24px 60px rgba(15, 23, 42, .12); }
+  .login-card h1 { margin: .7rem 0 .3rem; font-size: 1.6rem; }
+  .brand-mark { width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .primary { background: var(--accent); color: #fff; border: none; border-radius: var(--radius); padding: .7rem .9rem; font-weight: 600; cursor: pointer; }
+  .primary:hover { filter: brightness(1.06); color: #fff; }
+  #app { display: grid; grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr); min-height: 100vh; }
+  .topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: .6rem; padding: 0 1rem; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 700; margin-right: .3rem; }
+  .spacer { flex: 1; }
+  #tabs { padding: 1rem .7rem; border-right: 1px solid var(--line); background: var(--panel); overflow: auto; }
+  .nav-group { margin-bottom: 1.1rem; }
+  .nav-title { font-size: .68rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); padding: .3rem .6rem; }
+  .tab { display: block; width: 100%; text-align: left; background: transparent; border: none; color: var(--ink); padding: .55rem .7rem; border-radius: 8px; cursor: pointer; font: inherit; }
+  .tab:hover { background: var(--accent-soft); }
+  .tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  #main { padding: 1.25rem 1.4rem 2rem; overflow: auto; }
   .panel { display: none; }
   .panel.active { display: block; }
+  .row { display: flex; gap: .5rem; margin-top: .75rem; flex-wrap: wrap; align-items: center; }
+  input, select, button { font: inherit; }
+  input, select { padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+  button { cursor: pointer; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: .4rem .65rem; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  .ghost { background: transparent; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); padding: .4rem .65rem; }
+  #msg { flex: 1; }
+  #log { border: 1px solid var(--line); border-radius: var(--radius); padding: .75rem; height: 320px; overflow-y: auto; background: var(--panel); }
+  #log div { white-space: pre-wrap; margin: .2rem 0; }
+  .you { color: var(--accent); }
+  .agent { color: #2563eb; }
+  .system { color: var(--bad); }
   table { border-collapse: collapse; width: 100%; font-size: .85rem; }
-  th, td { text-align: left; border-bottom: 1px solid #ddd; padding: .3rem .4rem; }
+  th, td { text-align: left; border-bottom: 1px solid var(--line); padding: .3rem .4rem; }
   tbody tr { cursor: pointer; }
-  tbody tr:hover { background: #f5f8ff; }
-  .badge { background: #e6f5ea; color: #0b5; border-radius: 4px; padding: 0 .35rem; font-size: .75rem; }
-  .badge.bad { background: #fde8e8; color: #a00; }
-  .badge.muted { background: #eee; color: #666; }
-  pre { background: #f7f7f7; border: 1px solid #ddd; border-radius: 6px; padding: .6rem; overflow: auto; max-height: 260px; font-size: .78rem; }
-  .panel-msg { color: #a00; font-size: .85rem; min-height: 1.2rem; }
-  #audit { border: 1px solid #ccc; border-radius: 6px; padding: .5rem .75rem; max-height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; }
+  tbody tr:hover { background: var(--accent-soft); }
+  .badge { background: #e6f5ea; color: #047857; border-radius: 4px; padding: 0 .35rem; font-size: .75rem; }
+  .badge.bad { background: #fde8e8; color: var(--bad); }
+  .badge.muted { background: var(--bg); color: var(--muted); }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .6rem; overflow: auto; max-height: 260px; font-size: .78rem; color: var(--ink); }
+  .panel-msg { color: var(--bad); font-size: .85rem; min-height: 1.2rem; }
+  #audit { border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem .75rem; max-height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; background: var(--panel); }
   #audit div { white-space: pre-wrap; margin: .15rem 0; }
-  #policy { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: .8rem; }
-  #policy-msg { color: #666; font-size: .85rem; margin-top: .35rem; }
-  #status { font-family: ui-monospace, monospace; font-size: .82rem; color: #444; min-height: 1.2rem; }
-  #timeline { border-left: 3px solid #ddd; margin: .4rem 0 .2rem 0; padding-left: .6rem; max-height: 180px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; }
-  #timeline div { margin: .15rem 0; color: #444; }
-  #timeline .tool { color: #246; }
-  #timeline .fail { color: #a00; }
+  #policy { width: 100%; font-family: ui-monospace, monospace; font-size: .8rem; }
+  #policy-msg { color: var(--muted); font-size: .85rem; margin-top: .35rem; }
+  #status { font-family: ui-monospace, monospace; font-size: .82rem; color: var(--muted); min-height: 1.2rem; }
+  #timeline { border-left: 3px solid var(--line); margin: .4rem 0 .2rem 0; padding-left: .6rem; max-height: 180px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; }
+  #timeline div { margin: .15rem 0; color: var(--muted); }
+  #timeline .tool { color: #2563eb; }
+  #timeline .fail { color: var(--bad); }
   #trace { font-family: ui-monospace, monospace; font-size: .78rem; }
   #trace div { margin: .12rem 0; }
-  #trace .child { padding-left: 1.1rem; color: #444; }
-  #trace .ok { color: #0b5; }
-  #trace .error, #trace .denied { color: #a00; }
-  small { color: #666; }
+  #trace .child { padding-left: 1.1rem; color: var(--muted); }
+  #trace .ok { color: #047857; }
+  #trace .error, #trace .denied { color: var(--bad); }
+  small, .muted { color: var(--muted); }
+  @media (max-width: 760px) {
+    #app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+    .topbar { flex-wrap: wrap; padding: .5rem .75rem; }
+    #tabs { display: flex; flex-wrap: wrap; gap: .2rem; border-right: none; border-bottom: 1px solid var(--line); padding: .5rem; }
+    .nav-group { display: flex; align-items: center; flex-wrap: wrap; gap: .15rem; margin: 0; }
+    .nav-title { padding: .2rem .4rem; }
+    .tab { width: auto; }
+  }
 </style>
 </head>
 <body>
-<h2>ADK Console</h2>
-<p><small>All data endpoints require the bearer token. It is kept in this tab only.</small></p>
-<div class="row">
-  <select id="agent"></select>
-  <input id="token" type="password" placeholder="Bearer token" autocomplete="off">
-  <button id="connect">Connect</button>
+<div id="login">
+  <div class="login-card">
+    <div class="brand-mark">ADK</div>
+    <h1>ADK Console</h1>
+    <p class="muted">使用组织账号登录，或输入开发用 Bearer token。</p>
+    <button id="oidc-login" class="primary" hidden>使用 OIDC 登录</button>
+    <div id="token-row" class="row">
+      <input id="token" type="password" placeholder="Bearer token" autocomplete="off">
+      <button id="connect">Connect</button>
+    </div>
+    <div id="login-msg" class="panel-msg"></div>
+    <p class="muted"><small>token 只保存在当前标签页的 sessionStorage。</small></p>
+  </div>
 </div>
 
-<div id="tabs">
-  <button id="tab-chat" class="tab active" data-tab="chat">Chat</button>
-  <button id="tab-registry" class="tab" data-tab="registry">Registry</button>
-  <button id="tab-tools" class="tab" data-tab="tools">Tools</button>
-  <button id="tab-connectors" class="tab" data-tab="connectors">Connectors</button>
-  <button id="tab-peers" class="tab" data-tab="peers">Peers</button>
-  <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
-  <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
-  <button id="tab-approvals" class="tab" data-tab="approvals">Approvals</button>
-  <button id="tab-grants" class="tab" data-tab="grants">Grants</button>
-  <button id="tab-plans" class="tab" data-tab="plans">Plans</button>
-  <button id="tab-policy" class="tab" data-tab="policy">Policy</button>
-</div>
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="brand">ADK Console</div>
+    <select id="agent" aria-label="agent"></select>
+    <select id="tenant" aria-label="tenant"></select>
+    <span class="spacer"></span>
+    <span id="who" class="muted"></span>
+    <button id="theme" class="ghost" title="切换主题" aria-label="切换主题">◐</button>
+    <button id="logout" class="ghost">退出</button>
+  </header>
+  <nav id="tabs">
+    <div class="nav-group">
+      <div class="nav-title">运营</div>
+      <button id="tab-chat" class="tab active" data-tab="chat">Chat</button>
+      <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
+      <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
+      <button id="tab-approvals" class="tab" data-tab="approvals">Approvals</button>
+      <button id="tab-grants" class="tab" data-tab="grants">Grants</button>
+      <button id="tab-plans" class="tab" data-tab="plans">Plans</button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-title">构建</div>
+      <button id="tab-registry" class="tab" data-tab="registry">Registry</button>
+      <button id="tab-tools" class="tab" data-tab="tools">Tools</button>
+      <button id="tab-connectors" class="tab" data-tab="connectors">Connectors</button>
+      <button id="tab-peers" class="tab" data-tab="peers">Peers</button>
+    </div>
+    <div class="nav-group">
+      <div class="nav-title">治理</div>
+      <button id="tab-policy" class="tab" data-tab="policy">Policy</button>
+    </div>
+  </nav>
+  <main id="main">
 
 <section id="chat" class="panel active">
   <div id="log"></div>
@@ -194,7 +262,6 @@ _INDEX_HTML = """<!doctype html>
 
 <section id="registry" class="panel">
   <div class="row">
-    <select id="tenant"></select>
     <button id="refresh-registry">Refresh</button>
     <button id="refresh-remote" disabled>Refresh selected</button>
   </div>
@@ -385,6 +452,8 @@ _INDEX_HTML = """<!doctype html>
   </div>
   <div id="policy-msg"></div>
 </section>
+  </main>
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -406,10 +475,15 @@ function showTab(name) {
     if (panel) panel.classList.toggle("active", tab === name);
     if (button) button.classList.toggle("active", tab === name);
   }
+  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
 }
 
 async function getJson(path) {
   const response = await fetch(path, { headers: { Authorization: "Bearer " + token() } });
+  if (response.status === 401) {
+    sessionStorage.removeItem("adk_token");
+    showLogin();
+  }
   let data = null;
   try { data = await response.json(); } catch (e) { data = null; }
   return { ok: response.ok, status: response.status, data: data };
@@ -498,6 +572,14 @@ function append(who, text) {
   $("log").scrollTop = $("log").scrollHeight;
 }
 
+function info(text) {
+  const line = document.createElement("div");
+  line.className = "muted";
+  line.textContent = text;
+  $("log").appendChild(line);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
 async function refreshAgents() {
   const result = await getJson("/api/agents");
   if (!result.ok) return result;
@@ -518,7 +600,7 @@ async function refreshAgents() {
 async function loadAgents() {
   const result = await refreshAgents();
   if (!result.ok) { append("system", "connect failed (" + result.status + ")"); return; }
-  append("system", "connected: " + result.agents.map((a) => a.name).join(", "));
+  info("connected: " + result.agents.map((a) => a.name).join(", "));
 }
 
 async function loadTenants() {
@@ -1162,7 +1244,15 @@ async function loadPlans() {
 }
 
 async function connect() {
-  await loadAgents();
+  const result = await refreshAgents();
+  if (!result.ok) {
+    loginError("连接失败 (" + result.status + ")");
+    return;
+  }
+  sessionStorage.setItem(TOKEN_KEY, token());
+  showApp();
+  $("who").textContent = "已连接";
+  info("connected: " + result.agents.map((a) => a.name).join(", "));
   await loadTenants();
   await loadRuns();
   await loadSessions();
@@ -1172,6 +1262,7 @@ async function connect() {
   await loadConnectors();
   await loadGrants();
   loadAudit();
+  applyHashTab();
 }
 
 function resetProgress() {
@@ -1337,6 +1428,141 @@ async function savePolicy() {
 }
 
 $("agent").addEventListener("change", () => { sessionId = null; append("system", "agent switched"); });
+const TOKEN_KEY = "adk_token";
+const PKCE_VERIFIER_KEY = "adk_pkce_verifier";
+const PKCE_STATE_KEY = "adk_pkce_state";
+let oidcConfig = { enabled: false };
+
+function showApp() { $("login").hidden = true; $("app").hidden = false; }
+function showLogin() { $("app").hidden = true; $("login").hidden = false; }
+function loginError(message) { $("login-msg").textContent = message || ""; }
+
+async function loadAuthConfig() {
+  try {
+    const response = await fetch("/auth/config");
+    oidcConfig = await response.json();
+  } catch (e) {
+    oidcConfig = { enabled: false };
+  }
+  if (oidcConfig.enabled) {
+    $("oidc-login").hidden = false;
+    $("token-row").hidden = true;
+  }
+}
+
+function base64url(bytes) {
+  let text = "";
+  for (const byte of bytes) text += String.fromCharCode(byte);
+  return btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function randomString(size) {
+  const bytes = new Uint8Array(size);
+  crypto.getRandomValues(bytes);
+  return base64url(bytes);
+}
+
+async function pkceChallenge(verifier) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return base64url(new Uint8Array(digest));
+}
+
+async function startOidcLogin() {
+  const verifier = randomString(48);
+  const state = randomString(16);
+  sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
+  sessionStorage.setItem(PKCE_STATE_KEY, state);
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: oidcConfig.client_id,
+    redirect_uri: oidcConfig.redirect_uri,
+    scope: (oidcConfig.scopes || []).join(" "),
+    state: state,
+    code_challenge: await pkceChallenge(verifier),
+    code_challenge_method: "S256",
+  });
+  const separator = oidcConfig.authorization_endpoint.includes("?") ? "&" : "?";
+  location.assign(oidcConfig.authorization_endpoint + separator + params.toString());
+}
+
+async function finishOidcLogin() {
+  const params = new URLSearchParams(location.search);
+  const code = params.get("code");
+  const state = params.get("state");
+  const expected = sessionStorage.getItem(PKCE_STATE_KEY);
+  if (!code || !state || !expected || state !== expected) {
+    loginError("登录状态不匹配，请重试");
+    return false;
+  }
+  const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+  sessionStorage.removeItem(PKCE_STATE_KEY);
+  sessionStorage.removeItem(PKCE_VERIFIER_KEY);
+  if (!verifier) { loginError("缺少 PKCE verifier，请重试"); return false; }
+  let response;
+  try {
+    response = await fetch("/auth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: code,
+        code_verifier: verifier,
+        redirect_uri: oidcConfig.redirect_uri,
+      }),
+    });
+  } catch (e) {
+    loginError("登录服务不可达");
+    return false;
+  }
+  if (!response.ok) { loginError("登录失败 (" + response.status + ")"); return false; }
+  const data = await response.json();
+  if (!data.access_token) { loginError("登录响应缺少 access token"); return false; }
+  sessionStorage.setItem(TOKEN_KEY, data.access_token);
+  history.replaceState({}, "", "/");
+  return true;
+}
+
+function logout() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  location.assign("/");
+}
+
+function initTheme() {
+  const saved = localStorage.getItem("adk_theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+}
+
+function toggleTheme() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  if (dark) delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = "dark";
+  localStorage.setItem("adk_theme", dark ? "" : "dark");
+}
+
+function applyHashTab() {
+  const name = location.hash.replace("#", "");
+  if (TABS.includes(name)) showTab(name);
+}
+
+async function bootstrap() {
+  initTheme();
+  await loadAuthConfig();
+  const onCallback = location.pathname === "/auth/callback";
+  if (oidcConfig.enabled) {
+    if (onCallback) {
+      const ok = await finishOidcLogin();
+      if (!ok) { showLogin(); return; }
+    }
+    const saved = sessionStorage.getItem(TOKEN_KEY);
+    if (!saved) { showLogin(); return; }
+    $("token").value = saved;
+    await connect();
+    return;
+  }
+  const saved = sessionStorage.getItem(TOKEN_KEY);
+  if (saved) { $("token").value = saved; await connect(); }
+  else showLogin();
+}
+
 $("tenant").addEventListener("change", () => { loadRegistry(); loadTools(); loadConnectors(); loadGrants(); });
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
@@ -1372,6 +1598,10 @@ $("msg").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
 for (const tab of TABS) {
   $("tab-" + tab).addEventListener("click", () => showTab(tab));
 }
+$("oidc-login").addEventListener("click", startOidcLogin);
+$("logout").addEventListener("click", logout);
+$("theme").addEventListener("click", toggleTheme);
+bootstrap();
 </script>
 </body>
 </html>
@@ -1639,6 +1869,7 @@ def build_console_app(
     audit_sink: AuditSink | None = None,
     audit_query: AuditQuery | None = None,
     oidc: IdentityProvider | None = None,
+    oidc_login: OidcLogin | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
     approvals: FileApprovalInbox | PostgresApprovalInbox | None = None,
@@ -1825,6 +2056,44 @@ def build_console_app(
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         return _INDEX_HTML
+
+    @app.get("/auth/callback", response_class=HTMLResponse)
+    async def auth_callback() -> str:
+        return _INDEX_HTML
+
+    @app.get("/auth/config")
+    async def auth_config() -> Any:
+        if oidc_login is None:
+            return {"enabled": False}
+        return oidc_login.public_config()
+
+    @app.post("/auth/token")
+    async def oidc_token(request: Request) -> Any:
+        if oidc_login is None:
+            return JSONResponse({"error": "oidc_not_configured"}, status_code=404)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        code = body.get("code")
+        verifier = body.get("code_verifier")
+        redirect_uri = body.get("redirect_uri")
+        if not isinstance(code, str) or not code:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(verifier, str) or not verifier:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(redirect_uri, str) or not redirect_uri:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            tokens = await oidc_login.exchange(
+                code=code, code_verifier=verifier, redirect_uri=redirect_uri
+            )
+        except OidcLoginError:
+            logger.warning("oidc code exchange failed")
+            return JSONResponse({"error": "oidc_login_failed"}, status_code=401)
+        return JSONResponse(tokens)
 
     @app.get("/api/agents")
     async def list_agents() -> list[dict[str, str]]:
@@ -3295,6 +3564,7 @@ def run_console(
     audit_sink: AuditSink | None = None,
     audit_query: AuditQuery | None = None,
     oidc: IdentityProvider | None = None,
+    oidc_login: OidcLogin | None = None,
     quota: QuotaManager | None = None,
     quota_config: QuotaConfig | None = None,
     approvals: FileApprovalInbox | PostgresApprovalInbox | None = None,
@@ -3331,6 +3601,7 @@ def run_console(
         audit_sink=audit_sink,
         audit_query=audit_query,
         oidc=oidc,
+        oidc_login=oidc_login,
         quota=quota,
         quota_config=quota_config,
         approvals=approvals,
