@@ -38,6 +38,39 @@ class IdentityUnavailable(IdentityError):
     """Identity verification cannot run, for example a missing dependency."""
 
 
+class OidcBrowserConfig(BaseModel):
+    """Settings for the browser PKCE flow. Secrets stay in the environment."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    client_id: str = Field(min_length=1)
+    authorization_endpoint: str = Field(min_length=1)
+    token_endpoint: str = Field(min_length=1)
+    redirect_uri: str = Field(min_length=1)
+    scopes: tuple[str, ...] = ("openid", "profile", "email")
+    client_secret_env: str | None = None
+
+    @field_validator("authorization_endpoint", "token_endpoint", "redirect_uri")
+    @classmethod
+    def _check_url(cls, value: str) -> str:
+        parts = urlsplit(value)
+        host = parts.hostname
+        if not host:
+            raise ValueError("endpoint must have a hostname")
+        if parts.scheme not in {"http", "https"}:
+            raise ValueError("endpoint must use http or https")
+        if host not in LOOPBACK_HOSTS and parts.scheme != "https":
+            raise ValueError("endpoint must use https outside loopback")
+        return value
+
+    @field_validator("scopes")
+    @classmethod
+    def _check_scopes(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value or any(not scope for scope in value):
+            raise ValueError("scopes must not be empty")
+        return value
+
+
 class OidcConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -49,6 +82,7 @@ class OidcConfig(BaseModel):
     tenant_claim: str = Field(default="tenant", min_length=1)
     roles_claim: str = Field(default="roles", min_length=1)
     kind_claim: str = Field(default="kind", min_length=1)
+    browser: OidcBrowserConfig | None = None
 
     @field_validator("algorithms")
     @classmethod

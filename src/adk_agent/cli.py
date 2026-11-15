@@ -492,20 +492,28 @@ def _verify_session_rls(url: str) -> None:
         raise SystemExit(1) from None
 
 
-def _identity_provider(args: argparse.Namespace) -> IdentityProvider | None:
+def _oidc_config(args: argparse.Namespace) -> Any:
     if not getattr(args, "oidc_config", None):
+        return None
+    try:
+        from .identity import OidcConfig
+
+        return OidcConfig.model_validate_json(Path(args.oidc_config).read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"invalid oidc config: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
+def _identity_provider(args: argparse.Namespace) -> IdentityProvider | None:
+    config = _oidc_config(args)
+    if config is None:
         return None
     if getattr(args, "allow_unauthenticated", False):
         print("oidc config cannot combine with allow_unauthenticated", file=sys.stderr)
         raise SystemExit(1)
-    try:
-        from .identity import OidcConfig, OidcIdentityProvider
+    from .identity import OidcIdentityProvider
 
-        config = OidcConfig.model_validate_json(Path(args.oidc_config).read_text(encoding="utf-8"))
-        return OidcIdentityProvider(config)
-    except Exception as exc:  # noqa: BLE001
-        print(f"invalid oidc config: {exc}", file=sys.stderr)
-        raise SystemExit(1) from None
+    return OidcIdentityProvider(config)
 
 
 def _audit_signing() -> tuple[str | None, SigningKeyring | None]:
@@ -1850,6 +1858,12 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1)
 
         oidc = _identity_provider(args)
+        oidc_config = _oidc_config(args)
+        oidc_login = None
+        if oidc_config is not None and oidc_config.browser is not None:
+            from .identity import OidcLogin
+
+            oidc_login = OidcLogin(oidc_config.browser)
         quota, quota_config = _quota_settings(args)
         approval_backend = _approval_backend(args.approval_dir, args.approval_db)
         approvals: Any = None
@@ -1932,6 +1946,7 @@ def main(argv: list[str] | None = None) -> None:
             audit_sink=audit_sink,
             audit_query=audit_query,
             oidc=oidc,
+            oidc_login=oidc_login,
             quota=quota,
             quota_config=quota_config,
             approvals=approvals,

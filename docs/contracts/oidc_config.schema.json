@@ -1,4 +1,64 @@
 {
+  "$defs": {
+    "OidcBrowserConfig": {
+      "additionalProperties": false,
+      "description": "Settings for the browser PKCE flow. Secrets stay in the environment.",
+      "properties": {
+        "authorization_endpoint": {
+          "minLength": 1,
+          "title": "Authorization Endpoint",
+          "type": "string"
+        },
+        "client_id": {
+          "minLength": 1,
+          "title": "Client Id",
+          "type": "string"
+        },
+        "client_secret_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Secret Env"
+        },
+        "redirect_uri": {
+          "minLength": 1,
+          "title": "Redirect Uri",
+          "type": "string"
+        },
+        "scopes": {
+          "default": [
+            "openid",
+            "profile",
+            "email"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "token_endpoint": {
+          "minLength": 1,
+          "title": "Token Endpoint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_id",
+        "authorization_endpoint",
+        "token_endpoint",
+        "redirect_uri"
+      ],
+      "title": "OidcBrowserConfig",
+      "type": "object"
+    }
+  },
   "additionalProperties": false,
   "properties": {
     "algorithms": {
@@ -16,6 +76,17 @@
       "minLength": 1,
       "title": "Audience",
       "type": "string"
+    },
+    "browser": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OidcBrowserConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "issuer": {
       "minLength": 1,

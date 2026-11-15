@@ -203,6 +203,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-110 OTel 导出与 trace 瀑布：agent、model、tool 与 A2A span，默认关闭，不导出原文。已完成。
 - SLICE-111 运行检查点与恢复：单与顺序计划按步骤存 Postgres，恢复跳过已完成步骤，审批等待可恢复。已完成。
 - SLICE-112 输入输出护栏：模型网关的内置 PII 脱敏与提示注入阻断，失败即拒绝，审计不存原文。已完成。
+- SLICE-113 控制台 OIDC 登录与应用外壳：浏览器 PKCE 登录、分组导航、深色主题、标签直达与窄屏布局。已完成。
 
 ## 完成定义
 

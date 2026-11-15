@@ -1,0 +1,59 @@
+SLICE-113 控制台 OIDC 登录与应用外壳
+
+环境
+- Windows 11 Pro, Python 3.14 venv, FastAPI TestClient
+- 浏览器: headless Edge 157 via DevTools Protocol
+- IdP: 临时 mock（127.0.0.1:9000），RS256 JWKS 与 S256 PKCE 校验
+- 控制台: 127.0.0.1:8083，带 --oidc-config（browser 段）
+
+一、反例红（逐个移除守卫后跑对应测试）
+[redirect guard removed] exit=1 1 failed in 2.02s
+[public config leaks token endpoint] exit=1 1 failed in 1.85s
+[status guard removed] test_non_200_is_an_error exit=1 1 failed in 1.51s
+[missing token guard removed] test_missing_access_token_is_an_error exit=1 1 failed in 1.84s
+[token body validation removed] exit=1 1 failed in 1.61s
+restored, full files: 15 passed in 1.82s
+
+每个变异只改一个守卫，跑完立即还原；还原后两套测试全绿。state 不匹配的反例在浏览器流程中验证，见第三节。
+
+二、实现后绿
+tests/test_oidc_login.py + tests/test_console_oidc_login.py
+  15 passed in 1.82s
+tests/test_oidc_login.py + tests/test_console_oidc_login.py + tests/test_console_oidc.py + tests/test_console.py
+  32 passed in 2.54s
+
+三、浏览器端到端
+1. 登录页
+   GET /auth/config -> {"enabled":true,"client_id":"console","authorization_endpoint":"http://127.0.0.1:9000/authorize","redirect_uri":"http://127.0.0.1:8083/auth/callback","scopes":["openid","profile","email"]}
+   OIDC 按钮可见，手工 token 行隐藏；页面无 JS 异常。
+2. PKCE 跳转（mock IdP 日志）
+   GET /authorize?response_type=code&client_id=console&redirect_uri=http%3A%2F%2F127.0.0.1%3A8083%2Fauth%2Fcallback&scope=openid+profile+email&state=2NoQ5yEXtTEgVuYefXgQow&code_challenge=De6tjSBSQXOUX4nVqubLmUVVMave2OpSDgUzoe6lS5A&code_challenge_method=S256 -> 302
+   POST /token -> 200（服务端校验 S256(verifier) 与 code_challenge 一致）
+3. 回调后
+   path=/，app 显示、login 隐藏，token 长度 613，agents=[bot_a, bot_b]，registry rows=2
+   GET /api/agents 200，GET /api/tenants 200，GET /api/registry?tenant=acme 200，GET /api/runs 200，GET /api/plans 200，GET /api/audit 200
+4. state 不匹配
+   访问 /auth/callback?code=abc&state=wrong -> 停留在登录页，文案“登录状态不匹配，请重试”
+5. 退出
+   path=/，login 显示，sessionStorage 中 adk_token 已清空
+6. 布局
+   1440x900: 左侧导航宽 220px，主区 1220px；深色主题切换后背景与面板变量生效
+   755px（媒体查询生效）: 顶栏换行，导航变为顶部换行布局，无横向溢出
+
+截图（临时目录，未入库）
+- C:/Users/Jie/AppData/Local/Temp/adk-shell-login.png（手工 token 登录页）
+- C:/Users/Jie/AppData/Local/Temp/adk-shell-oidc.png（OIDC 登录页）
+- C:/Users/Jie/AppData/Local/Temp/adk-shell-desktop.png（登录后外壳）
+- C:/Users/Jie/AppData/Local/Temp/adk-shell-dark.png（深色主题）
+- C:/Users/Jie/AppData/Local/Temp/adk-shell-oidc-app.png（OIDC 登录后）
+
+四、门禁
+python scripts/check.py --fast
+  1222 passed, 70 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1222 passed, 70 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

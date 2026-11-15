@@ -1,10 +1,18 @@
 # Console HTTP 契约
 
-`GET /` 和 `GET /healthz` 开放。其余 `/api/*` 需要 `Authorization: Bearer <token>`。
+`GET /`、`GET /healthz`、`GET /auth/config`、`GET /auth/callback` 和 `POST /auth/token` 开放。其余 `/api/*` 需要 `Authorization: Bearer <token>`。
 
 鉴权有两种模式。静态 token 模式比较启动时给的单一 token。OIDC 模式验证 JWT，把解析出的 `Principal` 挂到请求上。OIDC 模式下 token 不合法返回 401 `{"error":"unauthorized"}`，签发方不可达返回 503 `{"error":"identity_unavailable"}`。
 
 OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份只能读自己租户的注册表，越权返回 403 `{"error":"tenant_forbidden"}`。策略更新仍由 `policy.update` 的 RBAC 判定，角色来自 token。
+
+## 浏览器登录（PKCE）
+
+配置文件的 `browser` 段（见 `oidc_config.schema.json`）存在时，控制台启用授权码加 PKCE（S256）登录。浏览器用 `/auth/config` 拿公开参数，跳转到授权端点，回调页用 code 和 sessionStorage 里的 verifier 换 token，再把 token 当作后续 `/api/*` 的 bearer token。`token_endpoint` 与 `client_secret_env` 不下发浏览器。
+
+- `GET /auth/config`：没有浏览器配置时返回 `{"enabled": false}`；否则返回 `{enabled: true, client_id, authorization_endpoint, redirect_uri, scopes}`。
+- `GET /auth/callback`：返回控制台 HTML，不校验查询参数。
+- `POST /auth/token`：请求 `{code, code_verifier, redirect_uri}`。`redirect_uri` 必须与配置一致，verifier 长度 43 到 128。服务端以 `grant_type=authorization_code` 调 token endpoint；成功返回 `{access_token, token_type, expires_in?}`。字段缺失或不是非空字符串返回 400 `{"error":"invalid_request"}`；兑换失败返回 401 `{"error":"oidc_login_failed"}`，不返回上游错误细节；没有配置登录返回 404 `{"error":"oidc_not_configured"}`。
 
 ## `GET /metrics` -> `text/plain`
 
