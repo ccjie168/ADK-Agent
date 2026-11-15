@@ -176,6 +176,17 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 }
 ```
 
+节点还带下列审计字段，供运行详情下钻使用。事件没有值时可空字段为 `null`。
+
+- `event_id`、`run_id`、`action`、`target`、`tenant`
+- `principal`：`{subject, kind}`
+- `agent`：`{id, version}`
+- `approver`、`args_hash`、`result_hash`、`policy_decision_id`、`policy_version`
+- `data_classes`：字符串数组
+- `tokens`、`egress`
+
+这些字段只来自审计事件，不包含 prompt、completion 或工具参数原文。
+
 ## `GET /api/audit?limit=50` -> `[AuditEvent]`
 
 `limit` 上限 200。事件按时间正序，最多返回最近 200 条。非 `admin` 身份只返回自己租户的事件。配置了 `--audit-url` 时从审计服务读取，服务不可用返回 502 `audit_unavailable`。
