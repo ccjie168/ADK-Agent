@@ -4,11 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess  # nosec B404  # runs pip-audit
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _accepted_vuln_ids() -> list[str]:
+    text = (ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+    return re.findall(r"^\s*-\s*id:\s*(\S+)", text, flags=re.MULTILINE)
 
 
 def build_command(out: str) -> list[str]:
@@ -22,6 +28,7 @@ def build_command(out: str) -> list[str]:
         out,
         "--progress-spinner",
         "off",
+        *[f"--ignore-vuln={vuln}" for vuln in _accepted_vuln_ids()],
     ]
 
 

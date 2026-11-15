@@ -47,6 +47,13 @@ def test_pip_audit_ignores_come_from_the_risk_file():
     assert all(cve in text for cve in ids)
 
 
+def test_sbom_uses_accepted_vuln_ids():
+    gate = _load("check", "check.py")
+    sbom = _load("sbom", "sbom.py")
+    cmd = sbom.build_command("out.json")
+    assert all(f"--ignore-vuln={cve}" in cmd for cve in gate._accepted_vuln_ids())
+
+
 def test_spec_without_threat_model_fails():
     specs = _load("check_specs", "check_specs.py")
     text = "状态: planned\n## 意图\n## 完成判据\n## 反例\n## 证据\n"
