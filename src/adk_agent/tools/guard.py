@@ -12,6 +12,7 @@ from google.adk.tools import BaseTool
 from ..audit.hashing import safe_hash_json
 from ..core import AuditEvent, AuditSink, DataClass, Invocation, PolicyEngine
 from ..core.context import current_invocation
+from ..observability import finish_span, start_tool_span
 from .gateway import ToolDenied
 
 _DATA_CLASSES = frozenset({"public", "internal", "confidential", "restricted"})
@@ -42,6 +43,7 @@ class ToolGuard:
         self._started: dict[str, float] = {}
         self._denied: set[str] = set()
         self._policies: dict[str, str] = {}
+        self._spans: dict[str, Any] = {}
 
     async def before(
         self, tool: BaseTool, args: dict[str, Any], context: Any
@@ -52,12 +54,20 @@ class ToolGuard:
 
         key = _call_key(context)
         self._started[key] = time.perf_counter()
+        self._spans[key] = start_tool_span(
+            invocation, tool_id=tool.name, args_hash=safe_hash_json(args)
+        )
         decision = await self.policy.decide(invocation, "tool.call", tool.name)
         if decision.decision == "allow":
             self._policies[key] = decision.policy_version
             return None
 
         self._denied.add(key)
+        finish_span(
+            self._spans.pop(key),
+            status="denied",
+            error_code=decision.error_code or "policy_denied",
+        )
         await self._audit(
             invocation,
             tool,
@@ -78,11 +88,14 @@ class ToolGuard:
             return
 
         key = _call_key(context)
+        span = self._spans.pop(key, None)
         if key in self._denied:
             self._denied.discard(key)
             self._started.pop(key, None)
             return
 
+        if span is not None:
+            finish_span(span, status="ok")
         await self._audit(
             invocation,
             tool,
@@ -102,6 +115,9 @@ class ToolGuard:
             return
 
         key = _call_key(context)
+        span = self._spans.pop(key, None)
+        if span is not None:
+            finish_span(span, status="error", error_code=type(error).__name__)
         await self._audit(
             invocation,
             tool,

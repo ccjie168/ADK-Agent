@@ -5,14 +5,16 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from contextlib import nullcontext
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
 
 from .audit.hashing import hash_text
 from .core import AgentRef, AuditEvent, AuditSink, Principal
 from .core.context import current_invocation
+from .observability import a2a_span
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +44,20 @@ class AuditTransport(httpx.AsyncBaseTransport):
         self._agent_ref = agent_ref
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        started = time.perf_counter()
-        try:
-            response = await self._inner.handle_async_request(request)
-        except Exception:
-            await self._emit(request, "error", started)
-            raise
-        status: Literal["ok", "error"] = "ok" if response.status_code < 500 else "error"
-        await self._emit(request, status, started)
-        return response
+        invocation = current_invocation()
+        context: Any = (
+            a2a_span(invocation, target=self._target) if invocation is not None else nullcontext()
+        )
+        with context:
+            started = time.perf_counter()
+            try:
+                response = await self._inner.handle_async_request(request)
+            except Exception:
+                await self._emit(request, "error", started)
+                raise
+            status: Literal["ok", "error"] = "ok" if response.status_code < 500 else "error"
+            await self._emit(request, status, started)
+            return response
 
     async def aclose(self) -> None:
         await self._inner.aclose()

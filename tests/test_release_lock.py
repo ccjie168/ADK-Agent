@@ -53,6 +53,7 @@ def test_lock_files_cover_declared_dependencies():
         "pyjwt",
         "cryptography",
         "redis",
+        "opentelemetry-exporter-otlp-proto-http",
     ):
         assert name in runtime, f"{name} missing from runtime.lock"
         assert name in dev, f"{name} missing from dev.lock"

@@ -74,10 +74,10 @@
     pip install --quiet "pip-tools>=7.4" && mkdir -p requirements &&
     pip-compile --generate-hashes --no-emit-index-url --no-emit-trusted-host \
       --output-file requirements/runtime.lock \
-      --extra build --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml &&
+      --extra build --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis --extra otel pyproject.toml &&
     pip-compile --allow-unsafe --generate-hashes --no-emit-index-url --no-emit-trusted-host \
       --output-file requirements/dev.lock \
-      --extra dev --extra build --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis pyproject.toml
+      --extra dev --extra build --extra claude --extra litellm --extra http --extra oidc --extra publish --extra redis --extra otel pyproject.toml
   '
   ```
 
@@ -185,5 +185,6 @@
 - Postgres：连接数、advisory lock 等待、`adk_audit_records` 与 `adk_approvals` 的增长、WAL 与磁盘。
 - Redis：内存与淘汰；淘汰只影响限流精度。
 - 日志与指标不得出现 token、DSN 或待审 `input`。发现即按泄露处理并轮换。
+- OTel 默认关闭。设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 后导出 `agent.run`、`model.call`、`tool.call` 与 `a2a.call`，属性只含租户、run、agent、模型、token 用量与成本，不含 prompt、completion 或工具参数原文。导出失败只告警一次，不影响运行；审计链继续是权威记录。
 - 公开仓库已启用 GitHub secret scanning、push protection 与 Dependabot security updates。自定义 pattern 与 validity checks 需要付费套餐，当前关闭。仓库根的 `.secrets.baseline` 是 detect-secrets 的已审基线；门禁只读它、不改写，新命中会让门禁失败。更新基线必须单独提交并评审。已接受漏洞的到期由 `.trivyignore.yaml` 的 `expired_at` 控制，`check.py` 与 `sbom.py` 会停止忽略过期项。
 - 滚动升级前跑一次 `python scripts/check.py --full`，升级后重跑冒烟与验签。

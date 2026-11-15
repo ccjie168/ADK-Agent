@@ -1,8 +1,7 @@
 # SLICE-110 OTel 导出与 trace 瀑布
 
-状态: planned
-依据: 调研记录 `docs/research/agent-framework-landscape.md`；新依赖与导出边界需先接受 ADR-0021。
-前置: ADR-0021 接受后才能进入实现。
+状态: gated
+依据: 调研记录 `docs/research/agent-framework-landscape.md`；ADR-0021 已接受。
 
 ## 意图（要什么，不写怎么写）
 
@@ -28,19 +27,21 @@
 
 ## 完成判据（可执行）
 
-- [ ] 一次运行产生根 span 与子 span，父子关系与 trace_id 正确 -> `tests/test_otel_spans.py::test_span_hierarchy`
-- [ ] 租户、run_id、agent 引用与 token 用量出现在属性里 -> `::test_attributes`
-- [ ] 默认不包含 prompt、completion 与工具参数原文 -> `::test_no_content_by_default`
-- [ ] 没有 endpoint 时不导出，运行照常完成 -> `::test_disabled_without_endpoint`
-- [ ] 导出失败只告警一次，运行不失败 -> `::test_exporter_failure_is_soft`
-- [ ] 审计事件的 trace_id 与 OTel trace_id 一致 -> `::test_trace_id_matches_audit`
+- [x] 一次运行产生根 span 与子 span，父子关系与 trace_id 正确 -> `tests/test_otel_spans.py::test_span_hierarchy`
+- [x] 租户、run_id、agent 引用与 token 用量出现在属性里 -> `::test_attributes_and_usage`
+- [x] 默认不包含 prompt、completion 与工具参数原文 -> `::test_no_content_by_default`
+- [x] 没有 endpoint 时不导出，运行照常完成 -> `::test_disabled_without_endpoint`
+- [x] 导出失败只告警一次，运行不失败 -> `::test_exporter_failure_is_soft`
+- [x] 审计事件的 trace_id 与 OTel trace_id 一致 -> `::test_trace_id_matches_audit`
+- [x] 非法 endpoint 只禁用导出，不崩溃 -> `::test_invalid_endpoint_is_disabled`
+- [x] 不同租户的 span 属性不串 -> `::test_tenants_do_not_mix`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：子 span 没有父 span -> 期望层级断言失败
-- [ ] 反例 2：工具参数含 token 原文进入属性 -> 期望 `::test_no_content_by_default` 失败
-- [ ] 反例 3：OTLP endpoint 非法 -> 期望启动告警并禁用导出，而不是崩溃
-- [ ] 反例 4：跨租户运行共用 trace_id -> 期望属性里各自租户正确
+- [x] 反例 1：子 span 没有父 span -> 期望层级断言失败
+- [x] 反例 2：工具参数含 token 原文进入属性 -> 期望 `::test_no_content_by_default` 失败
+- [x] 反例 3：OTLP endpoint 非法 -> 期望启动告警并禁用导出，而不是崩溃
+- [x] 反例 4：跨租户运行共用 trace_id -> 期望属性里各自租户正确
 
 ## 契约（如涉及对外接口）
 
@@ -62,5 +63,5 @@
 
 ## 证据
 
-- 反例红: 待实现
-- 实现后绿: 待实现
+- 反例红、实现后绿与门禁结果: `docs/evidence/SLICE-110-otel-tracing.txt`
+- 依赖决定: `docs/decisions/ADR-0021-opentelemetry-export.md`

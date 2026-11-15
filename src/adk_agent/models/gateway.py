@@ -18,6 +18,7 @@ from ..core import (
     ModelRequest,
     ModelResponse,
 )
+from ..observability import model_span, record_error, record_usage
 
 
 class ModelDenied(Exception):
@@ -143,7 +144,12 @@ class PolicyModelGateway:
             raise ModelDenied(f"provider {request.provider!r} is not configured")
 
         try:
-            response = await provider.complete(request)
+            with model_span(invocation, provider=request.provider, model=request.model) as span:
+                try:
+                    response = await provider.complete(request)
+                except Exception as exc:
+                    record_error(span, getattr(exc, "error_code", type(exc).__name__))
+                    raise
         except Exception as exc:
             await emit_model_audit(
                 self.audit,
@@ -161,6 +167,12 @@ class PolicyModelGateway:
             )
             raise
 
+        record_usage(
+            span,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            cost_usd=response.cost_usd,
+        )
         await emit_model_audit(
             self.audit,
             invocation,
