@@ -38,7 +38,8 @@ ALL PASS
 
 ci
 --
-PR gate: pending.
+PR #9 gate: pass (2m17s)
+https://github.com/ccjie168/ADK-Agent/actions/runs/43694675667
 
 notes
 -----
