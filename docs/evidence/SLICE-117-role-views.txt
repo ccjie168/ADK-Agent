@@ -1,0 +1,56 @@
+SLICE-117 角色视图与能力清单
+
+环境
+- Windows 11 Pro, Python 3.14 venv, FastAPI TestClient
+- 浏览器: headless Edge via DevTools Protocol
+- 三个控制台同源代码，--allow-unauthenticated，分别给 --role operator、viewer、publisher
+- 端口 8092 operator、8093 viewer、8094 publisher
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_console_me.py -q
+    7 failed, 1 passed
+  七个能力用例都因 GET /api/me 返回 404 失败。未认证用例本来就应通过，bearer 中间件在路由前拦截。
+  此时页面没有 data-capability。
+
+二、实现后绿
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_console_me.py -q
+    8 passed
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_console_me.py tests/test_console.py tests/test_console_registry.py tests/test_console_approvals.py tests/test_console_connectors.py tests/test_console_peers.py tests/test_console_tool_grants.py -q
+    70 passed
+
+三、浏览器
+operator (8092)
+  tabs: Chat, Runs, Sessions, Approvals, Grants, Plans, Registry, Connectors, Peers, Policy
+  panels: chat, registry, connectors, peers, runs, sessions, approvals, grants, plans, policy
+  buttons: approve=true, grant_approve=true, open_chat=false, grant_request=false,
+           connector_register=false, peer_register=false, save_policy=false
+  结论: 能看运营、构建与治理，能审批；管理类写按钮与 Open chat 不出现。
+
+viewer (8093)
+  tabs: Chat, Runs, Sessions, Plans
+  panels: chat, runs, sessions, plans
+  buttons: 全部 false
+  深链 http://127.0.0.1:8093/#policy 加载后 active 仍是 Chat，Policy 未打开
+  结论: 只有基础视图，深链不会绕过能力检查。
+
+publisher (8094)
+  tabs: Chat, Runs, Sessions, Grants, Plans, Registry, Tools
+  panels: chat, registry, tools, runs, sessions, grants, plans
+  buttons: grant_request=true, open_chat=true, grant_approve=false,
+           approve=false, save_policy=false
+  结论: 能发布与申请工具授权，不能审批，不能管理连接器或 peer。
+
+四、截图
+- docs/evidence/ui/SLICE-117-operator.png
+- docs/evidence/ui/SLICE-117-viewer.png
+
+五、门禁
+python scripts/check.py --fast
+  1236 passed, 70 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1236 passed, 70 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

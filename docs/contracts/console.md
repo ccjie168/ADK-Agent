@@ -6,6 +6,26 @@
 
 OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份只能读自己租户的注册表，越权返回 403 `{"error":"tenant_forbidden"}`。策略更新仍由 `policy.update` 的 RBAC 判定，角色来自 token。
 
+## `GET /api/me` -> 能力清单
+
+```json
+{
+  "tenant": "acme",
+  "subject": "console_user",
+  "roles": ["operator"],
+  "capabilities": ["approvals.decide", "approvals.read", "audit.read", "chat.run"]
+}
+```
+
+- 鉴权与其他 `/api/*` 相同，缺少或错误的 token 返回 401 `{"error":"unauthorized"}`。
+- `capabilities` 由服务端按角色映射计算，映射只在一处定义。同一主体有多个角色时取并集。未知角色只得到基础能力。
+- 基础能力是 `chat.run`、`runs.read`、`sessions.read`。
+- `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`grants.decide`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。
+- `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
+- 其余管理能力只由 `admin` 得到，包括 `connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
+- 控制台的前端只按 `capabilities` 显示导航与按钮。每个接口仍各自授权，403 语义不变。能力清单不能替代接口检查。
+- 能力清单获取失败时控制台保持现有布局，不阻断使用。
+
 ## 浏览器登录（PKCE）
 
 配置文件的 `browser` 段（见 `oidc_config.schema.json`）存在时，控制台启用授权码加 PKCE（S256）登录。浏览器用 `/auth/config` 拿公开参数，跳转到授权端点，回调页用 code 和 sessionStorage 里的 verifier 换 token，再把 token 当作后续 `/api/*` 的 bearer token。`token_endpoint` 与 `client_secret_env` 不下发浏览器。

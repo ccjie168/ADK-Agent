@@ -108,6 +108,68 @@ _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 _GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})
 
+_CAPABILITIES_ALL = frozenset(
+    {
+        "chat.run",
+        "runs.read",
+        "sessions.read",
+        "approvals.read",
+        "approvals.decide",
+        "grants.read",
+        "grants.request",
+        "grants.decide",
+        "audit.read",
+        "registry.read",
+        "registry.publish",
+        "registry.load",
+        "eval.read",
+        "tools.read",
+        "lifecycle.read",
+        "connectors.read",
+        "connectors.manage",
+        "peers.read",
+        "peers.manage",
+        "policy.read",
+        "policy.write",
+        "ops.status",
+    }
+)
+_CAPABILITIES_BASE = frozenset({"chat.run", "runs.read", "sessions.read"})
+_CAPABILITIES_OPERATOR = _CAPABILITIES_BASE | {
+    "approvals.read",
+    "approvals.decide",
+    "grants.read",
+    "grants.decide",
+    "audit.read",
+    "connectors.read",
+    "peers.read",
+    "registry.read",
+    "policy.read",
+}
+_CAPABILITIES_PUBLISHER = _CAPABILITIES_BASE | {
+    "registry.read",
+    "registry.publish",
+    "registry.load",
+    "eval.read",
+    "tools.read",
+    "lifecycle.read",
+    "grants.read",
+    "grants.request",
+}
+
+
+def _capabilities_for(roles: Iterable[str]) -> list[str]:
+    granted: set[str] = set()
+    for role in roles:
+        if role == "admin":
+            granted |= _CAPABILITIES_ALL
+        elif role in {"operator", "ops", "approver"}:
+            granted |= _CAPABILITIES_OPERATOR
+        elif role in {"publisher", "developer"}:
+            granted |= _CAPABILITIES_PUBLISHER
+    return sorted(granted or _CAPABILITIES_BASE)
+
+
 _INDEX_HTML = r"""<!doctype html>
 <html lang="en">
 <head>
@@ -260,28 +322,28 @@ _INDEX_HTML = r"""<!doctype html>
   <nav id="tabs">
     <div class="nav-group">
       <div class="nav-title">运营</div>
-      <button id="tab-chat" class="tab active" data-tab="chat">Chat</button>
-      <button id="tab-runs" class="tab" data-tab="runs">Runs</button>
-      <button id="tab-sessions" class="tab" data-tab="sessions">Sessions</button>
-      <button id="tab-approvals" class="tab" data-tab="approvals">Approvals</button>
-      <button id="tab-grants" class="tab" data-tab="grants">Grants</button>
-      <button id="tab-plans" class="tab" data-tab="plans">Plans</button>
+      <button id="tab-chat" class="tab active" data-tab="chat" data-capability="chat.run">Chat</button>
+      <button id="tab-runs" class="tab" data-tab="runs" data-capability="runs.read">Runs</button>
+      <button id="tab-sessions" class="tab" data-tab="sessions" data-capability="sessions.read">Sessions</button>
+      <button id="tab-approvals" class="tab" data-tab="approvals" data-capability="approvals.read">Approvals</button>
+      <button id="tab-grants" class="tab" data-tab="grants" data-capability="grants.read">Grants</button>
+      <button id="tab-plans" class="tab" data-tab="plans" data-capability="runs.read">Plans</button>
     </div>
     <div class="nav-group">
       <div class="nav-title">构建</div>
-      <button id="tab-registry" class="tab" data-tab="registry">Registry</button>
-      <button id="tab-tools" class="tab" data-tab="tools">Tools</button>
-      <button id="tab-connectors" class="tab" data-tab="connectors">Connectors</button>
-      <button id="tab-peers" class="tab" data-tab="peers">Peers</button>
+      <button id="tab-registry" class="tab" data-tab="registry" data-capability="registry.read">Registry</button>
+      <button id="tab-tools" class="tab" data-tab="tools" data-capability="tools.read">Tools</button>
+      <button id="tab-connectors" class="tab" data-tab="connectors" data-capability="connectors.read">Connectors</button>
+      <button id="tab-peers" class="tab" data-tab="peers" data-capability="peers.read">Peers</button>
     </div>
     <div class="nav-group">
       <div class="nav-title">治理</div>
-      <button id="tab-policy" class="tab" data-tab="policy">Policy</button>
+      <button id="tab-policy" class="tab" data-tab="policy" data-capability="policy.read">Policy</button>
     </div>
   </nav>
   <main id="main">
 
-<section id="chat" class="panel active">
+<section id="chat" class="panel active" data-capability="chat.run">
   <div id="log"></div>
   <div class="row">
     <input id="msg" placeholder="Ask the agent..." autocomplete="off">
@@ -297,7 +359,7 @@ _INDEX_HTML = r"""<!doctype html>
   </div>
 </section>
 
-<section id="registry" class="panel">
+<section id="registry" class="panel" data-capability="registry.read">
   <div class="row">
     <button id="refresh-registry">Refresh</button>
     <button id="refresh-remote" disabled>Refresh selected</button>
@@ -314,13 +376,13 @@ _INDEX_HTML = r"""<!doctype html>
   <h3>Lifecycle</h3>
   <pre id="lifecycle-info"></pre>
   <div class="row">
-    <button id="open-chat">Open chat</button>
-    <button id="unload-agent">Unload</button>
+    <button id="open-chat" data-capability="registry.load">Open chat</button>
+    <button id="unload-agent" data-capability="registry.load">Unload</button>
     <span id="artifact-msg" class="panel-msg"></span>
   </div>
 </section>
 
-<section id="tools" class="panel">
+<section id="tools" class="panel" data-capability="tools.read">
   <div class="row">
     <button id="refresh-tools">Refresh</button>
   </div>
@@ -331,7 +393,7 @@ _INDEX_HTML = r"""<!doctype html>
   </table>
 </section>
 
-<section id="connectors" class="panel">
+<section id="connectors" class="panel" data-capability="connectors.read">
   <div class="row">
     <button id="refresh-connectors">Refresh</button>
   </div>
@@ -358,14 +420,14 @@ _INDEX_HTML = r"""<!doctype html>
     <input id="connector-data-classes" placeholder="data classes: internal" autocomplete="off">
   </div>
   <div class="row">
-    <button id="connector-register">Register</button>
-    <button id="connector-disable">Disable selected</button>
-    <button id="connector-check">Check selected</button>
+    <button id="connector-register" data-capability="connectors.manage">Register</button>
+    <button id="connector-disable" data-capability="connectors.manage">Disable selected</button>
+    <button id="connector-check" data-capability="connectors.manage">Check selected</button>
   </div>
   <div id="connector-health" class="panel-msg"></div>
 </section>
 
-<section id="peers" class="panel">
+<section id="peers" class="panel" data-capability="peers.read">
   <div class="row">
     <button id="refresh-peers">Refresh</button>
   </div>
@@ -384,20 +446,20 @@ _INDEX_HTML = r"""<!doctype html>
       <option value="human">human</option>
       <option value="agent">agent</option>
     </select>
-    <button id="peer-register">Register</button>
-    <button id="peer-disable">Disable selected</button>
+    <button id="peer-register" data-capability="peers.manage">Register</button>
+    <button id="peer-disable" data-capability="peers.manage">Disable selected</button>
   </div>
   <h3>Grant</h3>
   <div class="row">
     <input id="peer-agent" placeholder="agent id" autocomplete="off">
     <label><input type="checkbox" id="peer-action-read" checked> read</label>
     <label><input type="checkbox" id="peer-action-invoke" checked> invoke</label>
-    <button id="peer-grant">Grant</button>
-    <button id="peer-revoke">Revoke</button>
+    <button id="peer-grant" data-capability="peers.manage">Grant</button>
+    <button id="peer-revoke" data-capability="peers.manage">Revoke</button>
   </div>
 </section>
 
-<section id="runs" class="panel">
+<section id="runs" class="panel" data-capability="runs.read">
   <div class="row">
     <button id="refresh-runs">Refresh</button>
   </div>
@@ -410,7 +472,7 @@ _INDEX_HTML = r"""<!doctype html>
   <div id="trace"></div>
 </section>
 
-<section id="sessions" class="panel">
+<section id="sessions" class="panel" data-capability="sessions.read">
   <div class="row">
     <select id="session-agent"></select>
     <button id="refresh-sessions">Refresh</button>
@@ -423,7 +485,7 @@ _INDEX_HTML = r"""<!doctype html>
   <div id="selected-session"><small></small></div>
 </section>
 
-<section id="approvals" class="panel">
+<section id="approvals" class="panel" data-capability="approvals.read">
   <div class="row">
     <button id="refresh-approvals">Refresh</button>
     <input id="approval-filter" placeholder="filter by id, step, agent or reason" autocomplete="off">
@@ -439,12 +501,12 @@ _INDEX_HTML = r"""<!doctype html>
   <pre id="approval-detail"></pre>
   <div class="row">
     <input id="approval-reason" placeholder="decision reason (optional)" autocomplete="off">
-    <button id="approve">Approve</button>
-    <button id="deny">Deny</button>
+    <button id="approve" data-capability="approvals.decide">Approve</button>
+    <button id="deny" data-capability="approvals.decide">Deny</button>
   </div>
 </section>
 
-<section id="grants" class="panel">
+<section id="grants" class="panel" data-capability="grants.read">
   <div class="row">
     <button id="refresh-grants">Refresh</button>
   </div>
@@ -456,11 +518,11 @@ _INDEX_HTML = r"""<!doctype html>
   <div class="row">
     <input id="grant-tool" placeholder="tool id (e.g. crm.read)" autocomplete="off">
     <input id="grant-reason" placeholder="reason" autocomplete="off">
-    <button id="grant-request">Request for selected</button>
+    <button id="grant-request" data-capability="grants.request">Request for selected</button>
   </div>
   <div class="row">
-    <button id="grant-approve">Approve</button>
-    <button id="grant-deny">Deny</button>
+    <button id="grant-approve" data-capability="grants.decide">Approve</button>
+    <button id="grant-deny" data-capability="grants.decide">Deny</button>
   </div>
   <h3>Tool usage (recent audit)</h3>
   <table>
@@ -469,7 +531,7 @@ _INDEX_HTML = r"""<!doctype html>
   </table>
 </section>
 
-<section id="plans" class="panel">
+<section id="plans" class="panel" data-capability="runs.read">
   <div class="row">
     <button id="refresh-plans">Refresh</button>
   </div>
@@ -482,12 +544,12 @@ _INDEX_HTML = r"""<!doctype html>
   <div id="plan-trace"></div>
 </section>
 
-<section id="policy" class="panel">
+<section id="policy" class="panel" data-capability="policy.read">
   <h3>Policies</h3>
   <textarea id="policy" rows="12" spellcheck="false"></textarea>
   <div class="row">
     <button id="load-policy">Load policy</button>
-    <button id="save-policy">Save policy</button>
+    <button id="save-policy" data-capability="policy.write">Save policy</button>
   </div>
   <div id="policy-msg"></div>
 </section>
@@ -498,6 +560,7 @@ _INDEX_HTML = r"""<!doctype html>
 const $ = (id) => document.getElementById(id);
 const TABS = ["chat", "registry", "tools", "connectors", "peers", "runs", "sessions", "approvals", "grants", "plans", "policy"];
 let sessionId = null;
+let capabilities = null;
 let approvalsData = [];
 let selectedApproval = null;
 let selectedRegistry = null;
@@ -508,14 +571,48 @@ const token = () => $("token").value.trim();
 $("token").value = sessionStorage.getItem("adk_token") || "";
 $("token").addEventListener("change", () => sessionStorage.setItem("adk_token", token()));
 
+function can(cap) {
+  return capabilities === null || capabilities.has(cap);
+}
+
+async function loadMe() {
+  try {
+    const result = await getJson("/api/me");
+    if (!result.ok || !result.data || !Array.isArray(result.data.capabilities)) return;
+    capabilities = new Set(result.data.capabilities);
+  } catch (e) {
+    capabilities = null;
+  }
+}
+
+function applyCapabilities() {
+  if (capabilities === null) return;
+  for (const el of document.querySelectorAll("[data-capability]")) {
+    el.hidden = !capabilities.has(el.dataset.capability);
+  }
+  for (const group of document.querySelectorAll("#tabs .nav-group")) {
+    const tabs = Array.from(group.querySelectorAll("[data-capability]"));
+    const visible = tabs.some((tab) => !tab.hidden);
+    group.hidden = !visible;
+    const title = group.querySelector(".nav-title");
+    if (title) title.hidden = !visible;
+  }
+}
+
 function showTab(name) {
+  let target = name;
+  const requested = $("tab-" + name);
+  if (!requested || requested.hidden) {
+    const first = document.querySelector("#tabs .tab:not([hidden])");
+    if (first) target = first.dataset.tab;
+  }
   for (const tab of TABS) {
     const panel = $(tab);
     const button = $("tab-" + tab);
-    if (panel) panel.classList.toggle("active", tab === name);
-    if (button) button.classList.toggle("active", tab === name);
+    if (panel) panel.classList.toggle("active", tab === target);
+    if (button) button.classList.toggle("active", tab === target);
   }
-  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+  if (location.hash !== "#" + target) history.replaceState(null, "", "#" + target);
 }
 
 async function getJson(path) {
@@ -692,7 +789,7 @@ async function loadTenants() {
     option.textContent = tenant;
     select.appendChild(option);
   }
-  await loadRegistry();
+  if (can("registry.read")) await loadRegistry();
 }
 
 async function loadRegistry() {
@@ -1407,17 +1504,19 @@ async function connect() {
   }
   sessionStorage.setItem(TOKEN_KEY, token());
   showApp();
+  await loadMe();
+  applyCapabilities();
   $("who").textContent = "已连接";
   info("connected: " + result.agents.map((a) => a.name).join(", "));
   await loadTenants();
-  await loadRuns();
-  await loadSessions();
-  await loadApprovals();
-  await loadPlans();
-  await loadTools();
-  await loadConnectors();
-  await loadGrants();
-  loadAudit();
+  if (can("runs.read")) await loadRuns();
+  if (can("sessions.read")) await loadSessions();
+  if (can("approvals.read")) await loadApprovals();
+  if (can("runs.read")) await loadPlans();
+  if (can("tools.read")) await loadTools();
+  if (can("connectors.read")) await loadConnectors();
+  if (can("grants.read")) await loadGrants();
+  if (can("chat.run")) loadAudit();
   applyHashTab();
 }
 
@@ -1772,7 +1871,12 @@ async function bootstrap() {
   else showLogin();
 }
 
-$("tenant").addEventListener("change", () => { loadRegistry(); loadTools(); loadConnectors(); loadGrants(); });
+$("tenant").addEventListener("change", () => {
+  if (can("registry.read")) loadRegistry();
+  if (can("tools.read")) loadTools();
+  if (can("connectors.read")) loadConnectors();
+  if (can("grants.read")) loadGrants();
+});
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-registry").addEventListener("click", loadRegistry);
@@ -1800,7 +1904,7 @@ $("grant-deny").addEventListener("click", () => decideGrant(false));
 $("refresh-plans").addEventListener("click", loadPlans);
 $("approve").addEventListener("click", () => decideApproval(true));
 $("deny").addEventListener("click", () => decideApproval(false));
-$("load-policy").addEventListener("click", loadPolicy);
+$("load-policy").addEventListener("click", () => { if (can("policy.read")) loadPolicy(); });
 $("save-policy").addEventListener("click", savePolicy);
 $("connect").addEventListener("click", connect);
 $("send").addEventListener("click", send);
@@ -2315,6 +2419,16 @@ def build_console_app(
             logger.warning("oidc code exchange failed")
             return JSONResponse({"error": "oidc_login_failed"}, status_code=401)
         return JSONResponse(tokens)
+
+    @app.get("/api/me")
+    async def me(request: Request) -> dict[str, Any]:
+        caller = _principal_for(request)
+        return {
+            "tenant": caller.tenant,
+            "subject": caller.subject,
+            "roles": list(caller.roles),
+            "capabilities": _capabilities_for(caller.roles),
+        }
 
     @app.get("/api/agents")
     async def list_agents() -> list[dict[str, str]]:
