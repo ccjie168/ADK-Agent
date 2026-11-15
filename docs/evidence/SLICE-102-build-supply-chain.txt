@@ -96,6 +96,9 @@ notes
   the local venv has 4.2.10; the gate now passes the accepted IDs from
   .trivyignore.yaml to pip-audit. detect-secrets flagged a dev DSN password in
   docs/PROGRESS.md; the examples no longer embed it.
+- Later CI iterations fixed the remaining bring-up issues: the dev DSN
+  examples lost their passwords, and the Trivy command became a single line
+  because a YAML backslash continuation was passed through to the CLI.
 - The project install runs with --no-build-isolation in both Dockerfile and CI,
   so hatchling comes from the hash-checked lock instead of being fetched at
   build time.
