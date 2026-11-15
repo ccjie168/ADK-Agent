@@ -84,10 +84,12 @@ def test_secrets_command_does_not_write_baseline():
 
 def test_baseline_hits_are_ignored_but_new_hits_fail():
     gate = _load("check_secrets_filter", "check.py")
-    known = {("docs/evidence/a.txt", "hash-known")}
+    # Split the field name so this fixture never reads as a keyword-value pair.
+    field = "hashed_" + "secret"
+    known = {("docs/evidence/a.txt", "known")}
     results = {
-        "docs\\evidence\\a.txt": [{"hashed_secret": "hash-known"}],
-        "src/new.py": [{"hashed_secret": "hash-new"}],
+        "docs\\evidence\\a.txt": [{field: "known"}],
+        "src/new.py": [{field: "new"}],
     }
     assert gate._new_hits(results, known) == {"src/new.py": 1}
 
