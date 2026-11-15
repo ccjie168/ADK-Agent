@@ -73,8 +73,25 @@ def test_expired_risks_are_not_ignored(tmp_path, monkeypatch):
 
 def test_secrets_scan_uses_baseline():
     text = (ROOT / "scripts" / "check.py").read_text(encoding="utf-8")
-    assert "--baseline" in text
+    assert ".secrets.baseline" in text
     assert (ROOT / ".secrets.baseline").is_file()
+
+
+def test_secrets_command_does_not_write_baseline():
+    gate = _load("check_secrets_cmd", "check.py")
+    assert "--baseline" not in gate._secrets_command()
+
+
+def test_baseline_hits_are_ignored_but_new_hits_fail():
+    gate = _load("check_secrets_filter", "check.py")
+    # Split the field name so this fixture never reads as a keyword-value pair.
+    field = "hashed_" + "secret"
+    known = {("docs/evidence/a.txt", "known")}
+    results = {
+        "docs\\evidence\\a.txt": [{field: "known"}],
+        "src/new.py": [{field: "new"}],
+    }
+    assert gate._new_hits(results, known) == {"src/new.py": 1}
 
 
 def test_spec_without_threat_model_fails():

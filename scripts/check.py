@@ -57,6 +57,43 @@ SECRET_EXCLUDES = (
 )
 
 
+def _baseline_hits() -> set[tuple[str, str]]:
+    """Reviewed hits from .secrets.baseline, keyed by file and hashed secret."""
+    data = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
+    return {
+        (name.replace("\\", "/"), hit["hashed_secret"])
+        for name, hits in data.get("results", {}).items()
+        for hit in hits
+    }
+
+
+def _new_hits(results: dict[str, list[dict]], known: set[tuple[str, str]]) -> dict[str, int]:
+    """Count hits per file that the reviewed baseline does not cover."""
+    new: dict[str, int] = {}
+    for name, hits in results.items():
+        count = sum(
+            1 for hit in hits if (name.replace("\\", "/"), hit.get("hashed_secret")) not in known
+        )
+        if count:
+            new[name] = count
+    return new
+
+
+def _secrets_command() -> list[str]:
+    """Scan without --baseline; that flag merges new hits into the file."""
+    return [
+        PY,
+        "-m",
+        "detect_secrets",
+        "scan",
+        "--all-files",
+        "--force-use-all-plugins",
+        "--exclude-files",
+        SECRET_EXCLUDES,
+        ".",
+    ]
+
+
 def _available(module: str | None) -> bool:
     return module is None or importlib.util.find_spec(module) is not None
 
@@ -72,20 +109,9 @@ def _run_secrets() -> bool | None:
     if not _available("detect_secrets"):
         print("[SKIP] secrets: detect_secrets not found")
         return None
-    cmd = [
-        PY,
-        "-m",
-        "detect_secrets",
-        "scan",
-        "--all-files",
-        "--force-use-all-plugins",
-        "--baseline",
-        ".secrets.baseline",
-        "--exclude-files",
-        SECRET_EXCLUDES,
-        ".",
-    ]
-    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)  # nosec B603  # fixed argv
+    proc = subprocess.run(  # nosec B603  # fixed argv
+        _secrets_command(), cwd=ROOT, capture_output=True, text=True
+    )
     if proc.returncode != 0:
         print(proc.stderr.strip())
         print("[FAIL] secrets")
@@ -95,11 +121,11 @@ def _run_secrets() -> bool | None:
     except json.JSONDecodeError:
         print("[FAIL] secrets: unparsable detect-secrets output")
         return False
-    results = data.get("results", {})
-    count = sum(len(hits) for hits in results.values())
+    new = _new_hits(data.get("results", {}), _baseline_hits())
+    count = sum(new.values())
     if count:
-        for path, hits in results.items():
-            print(f"  {path}: {len(hits)}")
+        for path, hits in new.items():
+            print(f"  {path}: {hits}")
         print(f"[FAIL] secrets: {count} potential secret(s)")
         return False
     print("[PASS] secrets")
