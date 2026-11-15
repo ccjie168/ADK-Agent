@@ -201,6 +201,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-108 密钥基线只读：门禁不再给 detect-secrets 传 `--baseline`，改在内存抵扣已审命中。已完成。
 - SLICE-109 发布流水线与 digest 回写：手动 workflow 先门禁与扫描再推送，脚本校验并回写 digest。已完成。
 - SLICE-110 OTel 导出与 trace 瀑布：agent、model、tool 与 A2A span，默认关闭，不导出原文。已完成。
+- SLICE-111 运行检查点与恢复：单与顺序计划按步骤存 Postgres，恢复跳过已完成步骤，审批等待可恢复。已完成。
 
 ## 完成定义
 

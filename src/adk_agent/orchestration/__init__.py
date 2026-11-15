@@ -4,6 +4,17 @@ from __future__ import annotations
 
 from .approval import ApprovalCallback, CallbackApprovalGate
 from .cancel import CancellationToken
+from .checkpoints import (
+    CheckpointCorrupt,
+    CheckpointError,
+    CheckpointStore,
+    CheckpointStoreUnavailable,
+    CheckpointTerminal,
+    InMemoryCheckpointStore,
+    PostgresCheckpointStore,
+    RunCheckpoint,
+    build_checkpoint_store,
+)
 from .errors import (
     ApprovalDenied,
     ApprovalProtocolError,
@@ -36,6 +47,12 @@ __all__ = [
     "BudgetExceeded",
     "CallbackApprovalGate",
     "CancellationToken",
+    "CheckpointCorrupt",
+    "CheckpointError",
+    "CheckpointStore",
+    "CheckpointStoreUnavailable",
+    "CheckpointTerminal",
+    "InMemoryCheckpointStore",
     "NoRoute",
     "PlanCancelled",
     "PlanDenied",
@@ -43,9 +60,12 @@ __all__ = [
     "PlanExecutionError",
     "PlanExecutor",
     "PlanTimeout",
+    "PostgresCheckpointStore",
+    "RunCheckpoint",
     "StepTimeout",
     "SupervisorLimit",
     "SupervisorProtocolError",
     "UnknownAgent",
+    "build_checkpoint_store",
     "build_trace",
 ]

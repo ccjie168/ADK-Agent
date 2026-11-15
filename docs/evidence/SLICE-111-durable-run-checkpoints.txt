@@ -1,0 +1,44 @@
+SLICE-111 durable run checkpoints
+=================================
+
+red
+---
+$ pytest tests/orchestration/test_checkpoints.py -q
+    from adk_agent.orchestration import (
+E   ImportError: cannot import name 'CheckpointCorrupt' from 'adk_agent.orchestration'
+1 error in 2.04s
+
+green
+-----
+$ pytest tests/orchestration/test_checkpoints.py tests/orchestration/test_postgres_checkpoints.py -q
+8 passed, 1 skipped
+- a plan that fails at step 3 resumes and runs only step 3
+- a completed checkpoint returns the stored result without calling agents
+- an approval wait resumes once a gate is supplied
+- a cancelled checkpoint refuses to resume
+- a plan digest mismatch fails closed
+- checkpoints are tenant scoped in memory and in Postgres
+- an empty URL selects the in-memory store and an unknown URL is rejected
+The Postgres roundtrip is skipped without TEST_POSTGRES_URL.
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1196 passed, 70 skipped
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+ci
+--
+PR gate: pending.
+
+notes
+-----
+- v1 covers single and sequential plans. fan_out, routing and supervisor keep
+  their current behavior.
+- Completed steps are skipped. A step that dies mid-execution is retried;
+  tool calls inside a step still need to be idempotent.
+- Postgres table: adk_run_checkpoints, tenant RLS, one row per (tenant, run_id).
+- The executor is a library boundary; service wiring comes when a plan entry
+  point lands.

@@ -27,10 +27,18 @@ from ..core import (
     QuotaManager,
     QuotaPolicy,
     SupervisorDecision,
+    plan_digest,
     plan_ref,
 )
 from ..metrics import MetricsRegistry
 from .cancel import CancellationToken
+from .checkpoints import (
+    CheckpointCorrupt,
+    CheckpointStatus,
+    CheckpointStore,
+    CheckpointTerminal,
+    RunCheckpoint,
+)
 from .errors import (
     ApprovalDenied,
     ApprovalProtocolError,
@@ -93,11 +101,13 @@ class PlanExecutor:
         policy: PolicyEngine,
         audit: AuditSink | None = None,
         metrics: MetricsRegistry | None = None,
+        checkpoints: CheckpointStore | None = None,
     ) -> None:
         self.agents = dict(agents)
         self.policy = policy
         self.audit = audit
         self.metrics = metrics
+        self.checkpoints = checkpoints
 
     async def run(
         self,
@@ -110,13 +120,33 @@ class PlanExecutor:
         quota_policy: QuotaPolicy | None = None,
     ) -> PlanResult:
         started = time.perf_counter()
+        resume: RunCheckpoint | None = None
+        if self.checkpoints is not None and plan.strategy in ("single", "sequential"):
+            resume = await self.checkpoints.load(invocation.principal.tenant, invocation.run_id)
+            if resume is not None:
+                if resume.plan_digest != plan_digest(plan):
+                    raise CheckpointCorrupt("plan digest does not match the stored checkpoint")
+                if resume.status == "completed":
+                    return PlanResult(
+                        plan_id=plan.plan_id,
+                        version=plan.version,
+                        run_id=invocation.run_id,
+                        trace_id=invocation.trace_id,
+                        outputs=dict(resume.outputs),
+                        final_text=resume.final_text,
+                        cost_usd=resume.spent_usd,
+                    )
+                if resume.status == "cancelled":
+                    raise CheckpointTerminal("run was cancelled and cannot resume")
         try:
             if quota is None or quota_policy is None:
-                result = await self._dispatch(plan, invocation, cancel, approvals)
+                result = await self._dispatch(plan, invocation, cancel, approvals, resume=resume)
             else:
                 try:
                     async with quota.reserve(invocation.principal.tenant, quota_policy):
-                        result = await self._dispatch(plan, invocation, cancel, approvals)
+                        result = await self._dispatch(
+                            plan, invocation, cancel, approvals, resume=resume
+                        )
                 except QuotaExceeded:
                     await self._audit_run(
                         invocation,
@@ -173,6 +203,8 @@ class PlanExecutor:
         invocation: Invocation,
         cancel: CancellationToken | None,
         approvals: ApprovalGate | None,
+        *,
+        resume: RunCheckpoint | None = None,
     ) -> PlanResult:
         if plan.strategy == "routing":
             return await self._run_routing(plan, invocation, cancel, approvals)
@@ -180,7 +212,38 @@ class PlanExecutor:
             return await self._run_fan_out(plan, invocation, cancel, approvals)
         if plan.strategy == "supervisor":
             return await self._run_supervisor(plan, invocation, cancel, approvals)
-        return await self._run_sequential(plan, invocation, cancel, approvals)
+        return await self._run_sequential(plan, invocation, cancel, approvals, resume=resume)
+
+    async def _save_checkpoint(
+        self,
+        invocation: Invocation,
+        plan: OrchestrationPlan,
+        status: str,
+        outputs: dict[str, str],
+        spent_usd: float,
+        completed: set[str],
+        *,
+        waiting_step: str | None = None,
+        final_text: str = "",
+    ) -> None:
+        if self.checkpoints is None:
+            return
+        await self.checkpoints.save(
+            RunCheckpoint(
+                tenant=invocation.principal.tenant,
+                run_id=invocation.run_id,
+                plan_id=plan.plan_id,
+                plan_version=plan.version,
+                plan_digest=plan_digest(plan),
+                status=cast(CheckpointStatus, status),
+                outputs=dict(outputs),
+                spent_usd=spent_usd,
+                completed_steps=sorted(completed),
+                waiting_step=waiting_step,
+                final_text=final_text,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
 
     async def _run_sequential(
         self,
@@ -188,24 +251,60 @@ class PlanExecutor:
         invocation: Invocation,
         cancel: CancellationToken | None,
         approvals: ApprovalGate | None,
+        *,
+        resume: RunCheckpoint | None = None,
     ) -> PlanResult:
         started = time.perf_counter()
         reference = plan_ref(plan)
-        outputs: dict[str, str] = {}
-        spent_usd = 0.0
+        outputs: dict[str, str] = dict(resume.outputs) if resume else {}
+        spent_usd = resume.spent_usd if resume else 0.0
+        completed = set(resume.completed_steps) if resume else set()
+        current_step: str | None = None
         ordered = plan.order()
 
         try:
             for step in ordered:
+                if step.id in completed:
+                    continue
+                current_step = step.id
                 self._check_cancelled(cancel)
                 self._check_deadline(invocation)
                 self._check_budget(invocation, spent_usd)
+                if step.requires_approval:
+                    await self._save_checkpoint(
+                        invocation,
+                        plan,
+                        "waiting_approval",
+                        outputs,
+                        spent_usd,
+                        completed,
+                        waiting_step=step.id,
+                    )
                 spent_usd += await self._run_step(
                     step, invocation, outputs, spent_usd, cancel, approvals=approvals
+                )
+                completed.add(step.id)
+                await self._save_checkpoint(
+                    invocation, plan, "running", outputs, spent_usd, completed
                 )
                 if invocation.budget_usd is not None and spent_usd > invocation.budget_usd:
                     raise BudgetExceeded("plan budget exceeded")
         except Exception as exc:
+            if isinstance(exc, PlanCancelled):
+                checkpoint_status: str = "cancelled"
+            elif isinstance(exc, ApprovalRequired):
+                checkpoint_status = "waiting_approval"
+            else:
+                checkpoint_status = "failed"
+            await self._save_checkpoint(
+                invocation,
+                plan,
+                checkpoint_status,
+                outputs,
+                spent_usd,
+                completed,
+                waiting_step=current_step if checkpoint_status == "waiting_approval" else None,
+            )
             status: Status = (
                 "denied"
                 if isinstance(exc, (PlanDenied, BudgetExceeded, ApprovalDenied, ApprovalRequired))
@@ -224,6 +323,9 @@ class PlanExecutor:
             raise
 
         final_text = outputs.get(ordered[-1].id, "")
+        await self._save_checkpoint(
+            invocation, plan, "completed", outputs, spent_usd, completed, final_text=final_text
+        )
         await self._audit_run(
             invocation,
             reference,
