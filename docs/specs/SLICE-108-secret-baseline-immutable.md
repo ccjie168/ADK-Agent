@@ -30,7 +30,7 @@
 - [x] 基线内命中抵扣、基线外命中失败 -> `::test_baseline_hits_are_ignored_but_new_hits_fail`
 - [x] 扫描后基线文件字节不变 -> 证据 baseline 段
 - [x] 本地 `python scripts/check.py --full` 全绿 -> 证据 gate 段
-- [ ] PR 的 `gate` 检查通过 -> 证据 ci 段
+- [x] PR 的 `gate` 检查通过 -> 证据 ci 段
 
 ## 反例（必须在实现前跑红）
 
