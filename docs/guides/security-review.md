@@ -44,7 +44,7 @@ ADR-XXXX CodeQL 安全审核
 批次 head: <commit>
 commit 范围: <base>..<head>
 workflow run: <url>
-CodeQL: v3 / security-extended / Python
+CodeQL: v4 / security-extended / Python
 
 发现统计
   critical: N
