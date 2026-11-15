@@ -14,8 +14,9 @@ SLICE-118 审批历史
 二、实现后绿
   $ ./.venv/Scripts/python.exe -m pytest tests/test_approvals_history.py tests/test_console_approvals_history.py tests/test_approvals_postgres.py tests/test_console_approvals.py tests/test_console.py -q
     31 passed, 12 skipped
-  $ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk ./.venv/Scripts/python.exe -m pytest tests/test_approvals_history_postgres.py -q
+  $ TEST_POSTGRES_URL=postgresql://adk@127.0.0.1:55432/adk ./.venv/Scripts/python.exe -m pytest tests/test_approvals_history_postgres.py -q
     4 passed
+  口令由 PGPASSWORD 提供，不写进证据文件。
   Postgres 用例覆盖 live 与 archive 合并、live 过期 pending 记 expired、过滤排序与 limit、非法状态。
 
 三、浏览器
