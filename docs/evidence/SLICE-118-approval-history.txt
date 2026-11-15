@@ -1,0 +1,46 @@
+SLICE-118 审批历史
+
+环境
+- Windows 11 Pro, Python 3.14 venv, FastAPI TestClient
+- 浏览器: headless Edge via DevTools Protocol
+- Postgres: postgres:15-alpine 容器 adk-postgres-070，127.0.0.1:55432
+- 控制台 127.0.0.1:8101，--approval-dir 指向种子目录
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_approvals_history.py tests/test_console_approvals_history.py -q
+    12 failed
+  文件用例在 FileApprovalInbox.history 上 AttributeError。控制台用例在 GET /api/approvals/history 上失败，页面缺少 approval-history-body。
+
+二、实现后绿
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_approvals_history.py tests/test_console_approvals_history.py tests/test_approvals_postgres.py tests/test_console_approvals.py tests/test_console.py -q
+    31 passed, 12 skipped
+  $ TEST_POSTGRES_URL=postgresql://adk@127.0.0.1:55432/adk ./.venv/Scripts/python.exe -m pytest tests/test_approvals_history_postgres.py -q
+    4 passed
+  口令由 PGPASSWORD 提供，不写进证据文件。
+  Postgres 用例覆盖 live 与 archive 合并、live 过期 pending 记 expired、过滤排序与 limit、非法状态。
+
+三、浏览器
+待决列表
+  hist-pending 仍在待决，带 requested 2026-11-15 20:05:06 与 no deadline。
+历史，status=all
+  hist-denied    denied    probe@1.0.0  bob    2026-11-15 21:05:06  no policy exception  no   [badge bad]
+  hist-archived  approved  probe@1.0.0  carol  2026-11-15 21:05:06  reviewed last week   yes  [badge]
+  hist-approved  approved  probe@1.0.0  alice  2026-11-15 21:05:06  looks fine           no   [badge]
+  hist-expired   expired   probe@1.0.0  -      2026-11-15 20:05:06  -                    no   [badge warn]
+历史，status=expired
+  只剩 hist-expired。
+结论: 已决、已归档与已过期都可见，未过期的待决不出现在历史里，过滤生效。
+
+四、截图
+- docs/evidence/ui/SLICE-118-approval-history.png
+
+五、门禁
+python scripts/check.py --fast
+  1248 passed, 74 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1248 passed, 74 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

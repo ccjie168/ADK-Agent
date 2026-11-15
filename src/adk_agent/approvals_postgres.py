@@ -16,8 +16,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .approvals import (
+    HISTORY_STATUSES,
     ApprovalConflict,
     ApprovalExpired,
+    ApprovalHistoryEntry,
     ApprovalInboxError,
     ApprovalNotFound,
     ApprovalRecord,
@@ -105,6 +107,26 @@ WHERE status = 'pending' AND (expires_at IS NULL OR expires_at > now())
 ORDER BY requested_at, request_id
 """
 
+_SELECT_HISTORY = """
+SELECT * FROM (
+    SELECT request_id, tenant, run_id, trace_id, step_id, agent_ref, principal,
+           input, reason, requested_at, expires_at,
+           CASE WHEN status = 'pending' THEN 'expired' ELSE status END AS status,
+           decided_at, decided_by, decision, false AS archived
+    FROM adk_approvals
+    WHERE status <> 'pending' OR (expires_at IS NOT NULL AND expires_at <= now())
+    UNION ALL
+    SELECT request_id, tenant, run_id, trace_id, step_id, agent_ref, principal,
+           input, reason, requested_at, expires_at, status,
+           decided_at, decided_by, decision, true AS archived
+    FROM adk_approvals_archive
+) AS history
+WHERE ($1::text IS NULL OR tenant = $1)
+  AND ($2::text IS NULL OR status = $2)
+ORDER BY COALESCE(decided_at, expires_at, requested_at) DESC, request_id
+LIMIT $3
+"""
+
 _UPDATE_DECIDE = """
 UPDATE adk_approvals
 SET status = $2, decided_at = $3, decided_by = $4, decision = $5::jsonb
@@ -188,6 +210,21 @@ def _record_from_row(row: Any) -> ApprovalRecord:
         else None
     )
     return ApprovalRecord(request=_request_from_row(row), decision=decision)
+
+
+def _history_from_row(row: Any) -> ApprovalHistoryEntry:
+    decision = (
+        ApprovalDecision.model_validate_json(row["decision"])
+        if row["decision"] is not None
+        else None
+    )
+    return ApprovalHistoryEntry(
+        request=_request_from_row(row),
+        decision=decision,
+        status=row["status"],
+        archived=row["archived"],
+        terminal_at=row["decided_at"] or row["expires_at"] or row["requested_at"],
+    )
 
 
 class PostgresApprovalInbox:
@@ -332,6 +369,28 @@ class PostgresApprovalInbox:
                 f"approval pending failed ({type(exc).__name__})"
             ) from exc
         return [_request_from_row(row) for row in rows]
+
+    async def history(
+        self,
+        *,
+        tenant: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[ApprovalHistoryEntry]:
+        if status is not None and status not in HISTORY_STATUSES:
+            raise ValueError(f"unknown approval history status: {status!r}")
+        limit = max(1, min(200, limit))
+        try:
+            pool = await self._pool.get()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(_SELECT_HISTORY, tenant, status, limit)
+        except ApprovalInboxError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ApprovalInboxUnavailable(
+                f"approval history failed ({type(exc).__name__})"
+            ) from exc
+        return [_history_from_row(row) for row in rows]
 
     async def prune(
         self,
