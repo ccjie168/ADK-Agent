@@ -340,8 +340,8 @@ def test_panel_has_remote_controls(tmp_path):
 
     assert response.status_code == 200
     assert 'id="refresh-remote"' in response.text
-    assert "<th>source</th>" in response.text
-    assert "<th>trust</th>" in response.text
+    assert 'id="registry-cards"' in response.text
+    assert 'id="registry-body"' not in response.text
 
 
 def test_unsafe_tenant_remote_only(tmp_path):
