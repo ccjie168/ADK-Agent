@@ -2,8 +2,17 @@
 
 更新日期: 2026-11-15
 分支: master
-最新提交: `69531f9` feat: turn the console approvals panel into a workbench (SLICE-115) (#19)
+最新提交: `1b29c8c` docs: record SLICE-115 in the progress log (#20)；最新功能提交 `69531f9` (SLICE-115)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
+
+## 本次暂停交接
+
+- 代码停在 master `1b29c8c`，SLICE-113、114、115 已合并。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
+- 最近门禁: `--fast` 与 `--full` 都是 1228 passed, 70 skipped；CI 在 PR #19、#20 上全绿。
+- 演示进程已全部停止: 控制台 8081 到 8085、mock IdP 9000、审计 8010、headless Edge 9223。`adk-registry` 容器仍在 127.0.0.1:5000。
+- 演示数据留在 `C:/Users/Jie/AppData/Local/Temp/adk-ui-demo/` 与 `adk-ui-shell/`，需要时重建。
+- 下一刀: 市场卡片改版（Registry 面板从表格升级为卡片，带来源、信任、评测与生命周期徽标）。再往后是审批历史与运行详情下钻。
+- 恢复顺序: 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件，跑 `./.venv/Scripts/python.exe scripts/check.py --fast`，再从缺口清单挑一项。
 
 ## 一句话
 
