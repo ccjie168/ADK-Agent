@@ -1,0 +1,57 @@
+SLICE-116 市场卡片改版
+
+环境
+- Windows 11 Pro, Python 3.14 venv, FastAPI TestClient
+- 浏览器: headless Edge via DevTools Protocol
+- 控制台 127.0.0.1:8091，--agent-ref acme/bot_a@1.0.0，--allow-unauthenticated
+- 种子目录 C:/Users/Jie/AppData/Local/Temp/adk-116-seed/state-cards
+- 种子含 6 条本地记录与 4 条远端记录，覆盖 good、warn、bad、muted 四种色调
+
+一、反例红（实现前）
+临时 worktree 检出 4dbb34c~1 (431b9f4)，用最终测试文件运行:
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_console_registry.py::test_panel_has_remote_controls -q -o pythonpath=src
+    >       assert 'id="registry-cards"' in response.text
+    E       assert 'id="registry-cards"' in '<!doctype html>...'
+    tests\test_console_registry.py:343: AssertionError
+    1 failed in 2.84s
+同一旧页面仍有两处 id="registry-body"（表格与 JS 取数），第二项新断言同样为红。
+
+二、实现后绿
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_console_registry.py tests/test_console_marketplace.py tests/test_console_on_demand.py tests/test_console_unload.py tests/test_console.py -q
+    48 passed in 3.37s
+
+三、浏览器（10 张卡片）
+bot_a 1.0.0                  local[muted] verified[good] eval[good] published[good]
+bot_b 0.9.0                  local[muted] no eval[muted] deprecated[warn]
+bot_b 1.0.0                  local[muted] verified[good] no eval[muted] retired[bad]
+bot_c 1.0.0                  local[muted] untrusted[bad] no eval[muted] published[good]
+bot_d 1.0.0                  local[muted] unsigned[warn] no eval[muted] published[good]
+bot_e 1.0.0                  local[muted] no eval[muted] published[good]
+changed-bot Billing agent    remote[muted] changed[bad]
+down-bot Orders agent        remote[muted] unreachable[warn]
+off-bot Legacy CRM bot       remote[muted] pinned[good] disabled[muted]
+pinned-bot CRM support bot   remote[muted] pinned[good]
+
+- 本地卡片带 id、版本、描述、发布时间与 12 位 digest 前缀。
+- 远端卡片带 id、label 与 peer 行，没有版本与 digest。
+- 无工件的 bot_b 0.9.0 与 bot_e 不显示工件徽标。
+- 选中: 点击第 1 张后 aria-pressed 为 [true, false, ...]，Manifest 详情 394 字符。
+- 键盘: 焦点移到第 2 张按 Enter 后第 2 张 aria-pressed=true；焦点移到第 3 张按 Space 后第 3 张=true。
+- XSS: bot_e 描述按字面显示，window.__card_xss 未定义。
+- 空态: 有 10 条时 #registry-empty 隐藏。
+- 窄屏: 755px 视口 scrollWidth 740 等于 clientWidth 740，无横向溢出。
+
+四、截图
+- docs/evidence/ui/SLICE-116-marketplace-cards.png
+- docs/evidence/ui/SLICE-116-marketplace-cards-dark.png
+
+五、门禁
+python scripts/check.py --fast
+  1228 passed, 70 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1228 passed, 70 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

@@ -166,7 +166,21 @@ _INDEX_HTML = r"""<!doctype html>
   tbody tr:hover, tbody tr.selected { background: var(--accent-soft); }
   .badge { background: #e6f5ea; color: #047857; border-radius: 4px; padding: 0 .35rem; font-size: .75rem; }
   .badge.bad { background: #fde8e8; color: var(--bad); }
+  .badge.warn { background: #fef3c7; color: #b45309; }
   .badge.muted { background: var(--bg); color: var(--muted); }
+  html[data-theme="dark"] .badge { background: #10352c; color: #6ee7b7; }
+  html[data-theme="dark"] .badge.bad { background: #3b1416; color: #fca5a5; }
+  html[data-theme="dark"] .badge.warn { background: #3a2c0b; color: #fcd34d; }
+  html[data-theme="dark"] .badge.muted { background: var(--bg); color: var(--muted); }
+  #registry-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .8rem; }
+  .card { display: flex; flex-direction: column; align-items: flex-start; gap: .3rem; text-align: left; padding: .55rem .7rem; background: var(--panel); color: var(--ink); }
+  .card:hover { border-color: var(--accent); color: var(--ink); }
+  .card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .card-head { font-weight: 600; }
+  .card-desc { color: var(--muted); font-size: .8rem; white-space: pre-wrap; }
+  .card-badges { display: flex; flex-wrap: wrap; gap: .25rem; }
+  .card-meta { color: var(--muted); font-size: .72rem; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+  #registry-empty { font-size: .85rem; }
   pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .6rem; overflow: auto; max-height: 260px; font-size: .78rem; color: var(--ink); }
   .panel-msg { color: var(--bad); font-size: .85rem; min-height: 1.2rem; }
   .panel-msg.ok { color: #047857; }
@@ -289,10 +303,8 @@ _INDEX_HTML = r"""<!doctype html>
     <button id="refresh-remote" disabled>Refresh selected</button>
   </div>
   <div id="registry-msg" class="panel-msg"></div>
-  <table>
-    <thead><tr><th>id</th><th>source</th><th>version</th><th>published</th><th>eval</th><th>artifact</th><th>lifecycle</th><th>trust</th></tr></thead>
-    <tbody id="registry-body"></tbody>
-  </table>
+  <div id="registry-cards"></div>
+  <div id="registry-empty" class="empty muted" hidden>no registry entries</div>
   <h3>Manifest</h3>
   <pre id="manifest"></pre>
   <h3>Eval report</h3>
@@ -547,45 +559,80 @@ function cell(text) {
   return td;
 }
 
-function artifactCell(info) {
-  const td = document.createElement("td");
-  if (!info) { td.textContent = "-"; return td; }
-  const badge = document.createElement("span");
-  badge.className = info.status === "verified" ? "badge"
-    : info.status === "untrusted" ? "badge bad" : "badge muted";
-  const hex = String(info.digest || "").replace(/^sha256:/, "").slice(0, 12);
-  badge.textContent = info.status + " " + hex;
-  td.appendChild(badge);
-  return td;
+const BADGE_TONES = {
+  verified: "good", pinned: "good", eval: "good", published: "good",
+  untrusted: "bad", changed: "bad", retired: "bad",
+  unsigned: "warn", unreachable: "warn", deprecated: "warn",
+};
+
+function badgeLabel(label) {
+  const tone = BADGE_TONES[label] || "muted";
+  return tone === "good" ? "badge"
+    : tone === "bad" ? "badge bad"
+      : tone === "warn" ? "badge warn" : "badge muted";
 }
 
-function lifecycleCell(info) {
-  const td = document.createElement("td");
-  if (!info || info.status === "published") { td.textContent = "published"; return td; }
-  const badge = document.createElement("span");
-  badge.className = info.status === "retired" ? "badge bad" : "badge muted";
-  badge.textContent = info.status;
-  td.appendChild(badge);
-  return td;
+function badgeSpan(label) {
+  const span = document.createElement("span");
+  span.className = badgeLabel(label);
+  span.textContent = label;
+  return span;
 }
 
-function trustCell(entry, local) {
-  const td = document.createElement("td");
-  if (local) { td.textContent = "-"; return td; }
-  const trust = entry.trust || {};
-  const badge = document.createElement("span");
-  badge.className = trust.status === "pinned" ? "badge"
-    : trust.status === "changed" ? "badge bad" : "badge muted";
-  badge.textContent = trust.status || "unknown";
-  td.appendChild(badge);
-  if (!entry.enabled) {
-    td.appendChild(document.createTextNode(" "));
-    const disabled = document.createElement("span");
-    disabled.className = "badge muted";
-    disabled.textContent = "disabled";
-    td.appendChild(disabled);
+function span(text, className) {
+  const el = document.createElement("span");
+  if (className) el.className = className;
+  el.textContent = text == null ? "" : String(text);
+  return el;
+}
+
+function registryCard(entry) {
+  const local = entry.source !== "remote";
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "card";
+  card.setAttribute("aria-pressed", "false");
+
+  const head = span(entry.id, "card-head");
+  if (local) {
+    if (entry.version) {
+      head.appendChild(document.createTextNode(" "));
+      head.appendChild(span(entry.version, "muted"));
+    }
+  } else if (entry.label) {
+    head.appendChild(document.createTextNode(" "));
+    head.appendChild(span(entry.label, "muted"));
   }
-  return td;
+  card.appendChild(head);
+  if (local && entry.description) card.appendChild(span(entry.description, "card-desc"));
+
+  const badges = span(null, "card-badges");
+  badges.appendChild(badgeSpan(local ? "local" : "remote"));
+  if (local) {
+    if (entry.artifact) badges.appendChild(badgeSpan(entry.artifact.status || "unknown"));
+    badges.appendChild(badgeSpan(entry.has_eval_report ? "eval" : "no eval"));
+    badges.appendChild(badgeSpan((entry.lifecycle && entry.lifecycle.status) || "published"));
+  } else {
+    const trust = entry.trust || {};
+    badges.appendChild(badgeSpan(trust.status || "unknown"));
+    if (!entry.enabled) badges.appendChild(badgeSpan("disabled"));
+  }
+  card.appendChild(badges);
+
+  if (local) {
+    const published = String(entry.published_at || "").replace("T", " ").slice(0, 19);
+    const digest = String(entry.digest || "").replace(/^sha256:/, "").slice(0, 12);
+    card.appendChild(span(published + " " + digest, "card-meta"));
+  } else {
+    card.appendChild(span("peer " + (entry.peer_id || ""), "card-meta"));
+  }
+  return card;
+}
+
+function pressCard(card) {
+  for (const other of $("registry-cards").children) {
+    other.setAttribute("aria-pressed", other === card ? "true" : "false");
+  }
 }
 
 function updateRefreshRemote() {
@@ -651,8 +698,10 @@ async function loadTenants() {
 async function loadRegistry() {
   const tenant = $("tenant").value;
   $("registry-msg").textContent = "";
-  const body = $("registry-body");
-  body.innerHTML = "";
+  const cards = $("registry-cards");
+  const empty = $("registry-empty");
+  cards.innerHTML = "";
+  empty.hidden = true;
   if (!tenant) return;
   const result = await getJson("/api/registry?tenant=" + encodeURIComponent(tenant));
   if (!result.ok) {
@@ -660,38 +709,16 @@ async function loadRegistry() {
       ((result.data && result.data.error) || "error");
     return;
   }
-  for (const entry of result.data || []) {
-    const local = entry.source !== "remote";
-    const row = document.createElement("tr");
-    row.appendChild(cell(entry.id));
-    const sourceCell = document.createElement("td");
-    const sourceBadge = document.createElement("span");
-    sourceBadge.className = "badge muted";
-    sourceBadge.textContent = local ? "local" : "remote";
-    sourceCell.appendChild(sourceBadge);
-    row.appendChild(sourceCell);
-    row.appendChild(cell(local ? entry.version : null));
-    const published = document.createElement("td");
-    published.textContent = local
-      ? String(entry.published_at || "").replace("T", " ").slice(0, 19)
-      : "-";
-    row.appendChild(published);
-    const evalCell = document.createElement("td");
-    if (local && entry.has_eval_report) {
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.textContent = "eval";
-      evalCell.appendChild(badge);
-    } else {
-      evalCell.textContent = "-";
-    }
-    row.appendChild(evalCell);
-    row.appendChild(local ? artifactCell(entry.artifact) : cell(null));
-    row.appendChild(local ? lifecycleCell(entry.lifecycle) : cell(null));
-    row.appendChild(trustCell(entry, local));
-    row.addEventListener("click", () => selectRegistryEntry(tenant, entry));
-    body.appendChild(row);
+  const entries = result.data || [];
+  for (const entry of entries) {
+    const card = registryCard(entry);
+    card.addEventListener("click", () => {
+      pressCard(card);
+      selectRegistryEntry(tenant, entry);
+    });
+    cards.appendChild(card);
   }
+  empty.hidden = entries.length !== 0;
   updateRefreshRemote();
 }
 
