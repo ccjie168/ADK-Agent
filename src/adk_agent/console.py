@@ -71,6 +71,7 @@ from .core import (
     ToolGrantStore,
 )
 from .identity import OidcLogin, OidcLoginError
+from .logsafe import install_log_sanitizer
 from .mcp.http import resolve_port
 from .metrics import MetricsRegistry
 from .models.gateway_llm import GatewayLlm, provider_for_model
@@ -2354,6 +2355,7 @@ def build_console_app(
     session_rls: bool = False,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
+    install_log_sanitizer()
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
     metrics = metrics if metrics is not None else MetricsRegistry()
     principal = Principal(
