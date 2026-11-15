@@ -1,0 +1,49 @@
+SLICE-119 运行详情下钻
+
+环境
+- Windows 11 Pro, Python 3.14 venv, FastAPI TestClient
+- 浏览器: headless Edge via DevTools Protocol
+- 控制台 127.0.0.1:8102，--audit-file 指向种入的审计链
+- 种子: 一条 agent 运行 trace 与一条 orchestration 计划 trace，含拒绝态、出站标记、策略版本与注入文本
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_console_trace_detail.py -q
+    3 failed, 1 passed
+  test_node_carries_audit_fields 断言失败。
+  test_node_keeps_null_fields 在 approver 上 KeyError。
+  test_payload_propagates_fields_to_child 在 event_id 上 KeyError。
+  不过原文用例在红态下本就通过，因为缺字段时自然没有 prompt、completion、input、args 这些键。
+
+二、实现后绿
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_console_trace_detail.py tests/test_console_trace.py tests/test_console.py -q
+    16 passed
+
+三、浏览器
+Runs
+  点击 tool.call 段，详情 23 个字段:
+    kind=tool, action=tool.call, target=<img src=x onerror="window.__trace_xss=1">,
+    status=denied, error=policy_denied, start offset=60ms, duration=5ms, latency=5ms,
+    tenant=local, principal=ops-user (human), agent=probe@1.0.0,
+    args hash=sha256:bbbb...，policy decision=decision-1, policy version=rbac:3,
+    data classes=internal, egress=third_party, event id 与 run id 齐全。
+  点击选中: aria-pressed 为 [false, false, true, false]。
+  焦点移到 model.call 按 Enter: [false, true, false, false]。
+  焦点移到 approval.wait 按 Space: [false, false, false, true]。
+  XSS: target 按字面显示，window.__trace_xss 未定义。
+Plans
+  计划 trace 的 orchestration.step 段同样可点击，详情显示 action=orchestration.step、target=step-1、egress=none 等字段。
+  结论: Runs 与 Plans 两处都能下钻，鼠标与键盘都生效。
+
+四、截图
+- docs/evidence/ui/SLICE-119-run-drilldown.png
+
+五、门禁
+python scripts/check.py --fast
+  1252 passed, 74 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1252 passed, 74 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

@@ -1,0 +1,45 @@
+ADR-0022 CodeQL 安全审核
+
+日期: 2026-11-16
+批次 head: ca296aa（SLICE-119 改基后）
+commit 范围: 9790ba9..ca296aa
+workflow run: https://github.com/ccjie168/ADK-Agent/actions/runs/43771448857
+CodeQL: v4 / security-extended / Python
+扫描方式: workflow_dispatch on slice-119-run-drilldown，告警归属 master
+
+发现统计
+  critical: 3
+  high: 25
+  medium: 29
+
+分诊
+  critical py/partial-ssrf (3)
+    registry/client.py:247
+    registry/connectors_client.py:87
+    registry/connectors_client.py:114
+    accepted false positive。base_url 来自 --registry-url 运维配置，CLI 校验只接受 http 或 https，
+    路径段都经过 quote，没有请求可控的 host。
+
+  high py/path-injection (25)
+    approvals.py 8 处（153、156、158、176、187、189、192、193）
+    registry/connectors.py 6 处（60、62、86、88、94、100）
+    registry/file.py 1 处（59）
+    registry/peer_grants.py 1 处（63）
+    registry/peers.py 2 处（32、68）
+    registry/remote_agents.py 2 处（38、68）
+    registry/reports.py 3 处（54、56、59）
+    registry/tool_grants.py 2 处（165、194）
+    dismissed false positive。每个 sink 前有 _SAFE_NAME 或 _REQUEST_ID 全匹配校验，
+    CodeQL 没有建模 helper 内的 guard。
+
+  medium py/log-injection (29)
+    console.py 的请求处理与日志调用。
+    accepted won't fix，到期 2027-01-31。用户或租户名进入日志可能伪造日志行，
+    不影响授权与数据边界。另开切片在控制台加集中日志过滤器，转义换行，重扫后 dismiss。
+
+接受风险
+  py/log-injection 29 处，到期 2027-01-31，跟进切片为控制台集中日志过滤器。
+
+结论: PASS+NOTES
+  critical 与 high 共 28 条按误报 dismiss，medium 29 条按到期日接受并另开切片。
+  #26 新增的下钻代码没有告警，扫描发现都在既有代码上。

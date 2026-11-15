@@ -280,6 +280,12 @@ _INDEX_HTML = r"""<!doctype html>
   .trace-bar.error, .trace-bar.denied { background: var(--bad); }
   .trace-meta { color: var(--muted); font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .trace-meta .bad { color: var(--bad); }
+  .trace-row { cursor: pointer; }
+  .trace-row.selected { background: var(--accent-soft); }
+  .trace-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .trace-detail { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: .2rem .75rem; margin-top: .75rem; padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-family: ui-monospace, monospace; }
+  .trace-detail-label { color: var(--muted); }
+  .trace-detail-value { word-break: break-word; }
   small, .muted { color: var(--muted); }
   @media (max-width: 760px) {
     #app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
@@ -1687,9 +1693,71 @@ const TRACE_KINDS = {
   supervisor: "supervisor", approval: "approval", policy: "policy",
 };
 
+const ms = (value) => (value == null ? null : value + "ms");
+const TRACE_DETAIL_FIELDS = [
+  ["kind", (n) => n.kind],
+  ["action", (n) => n.action],
+  ["target", (n) => n.target],
+  ["status", (n) => n.status],
+  ["error", (n) => n.error_code],
+  ["start offset", (n) => ms(n.start_offset_ms)],
+  ["duration", (n) => ms(n.duration_ms)],
+  ["latency", (n) => ms(n.latency_ms)],
+  ["cost", (n) => (n.cost_usd == null ? null : "$" + n.cost_usd)],
+  ["tokens", (n) => n.tokens],
+  ["tenant", (n) => n.tenant],
+  ["principal", (n) => (n.principal ? n.principal.subject + " (" + n.principal.kind + ")" : null)],
+  ["approver", (n) => n.approver],
+  ["agent", (n) => (n.agent ? n.agent.id + "@" + n.agent.version : null)],
+  ["args hash", (n) => n.args_hash],
+  ["result hash", (n) => n.result_hash],
+  ["policy decision", (n) => n.policy_decision_id],
+  ["policy version", (n) => n.policy_version],
+  ["data classes", (n) => (n.data_classes && n.data_classes.length ? n.data_classes.join(", ") : null)],
+  ["egress", (n) => n.egress],
+  ["event id", (n) => n.event_id],
+  ["run id", (n) => n.run_id],
+  ["timestamp", (n) => n.timestamp],
+];
+
+function renderTraceDetail(detail, node) {
+  detail.textContent = "";
+  for (const [label, getter] of TRACE_DETAIL_FIELDS) {
+    const labelCell = document.createElement("span");
+    labelCell.className = "trace-detail-label";
+    labelCell.textContent = label;
+    const valueCell = document.createElement("span");
+    valueCell.className = "trace-detail-value";
+    const value = getter(node);
+    valueCell.textContent = value == null ? "-" : String(value);
+    detail.append(labelCell, valueCell);
+  }
+}
+
+function selectTraceRow(row, node) {
+  const box = row.parentElement;
+  for (const other of box.querySelectorAll(".trace-row")) {
+    const chosen = other === row;
+    other.classList.toggle("selected", chosen);
+    other.setAttribute("aria-pressed", chosen ? "true" : "false");
+  }
+  const detail = box.querySelector(".trace-detail");
+  if (detail) renderTraceDetail(detail, node);
+}
+
 function traceSpan(node, total) {
   const row = document.createElement("div");
   row.className = "trace-row";
+  row.tabIndex = 0;
+  row.setAttribute("role", "button");
+  row.setAttribute("aria-pressed", "false");
+  row.addEventListener("click", () => selectTraceRow(row, node));
+  row.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectTraceRow(row, node);
+    }
+  });
   const label = document.createElement("div");
   label.className = "trace-label";
   const kind = document.createElement("span");
@@ -1746,6 +1814,10 @@ function renderTrace(box, data) {
   axis.appendChild(document.createElement("div"));
   box.appendChild(axis);
   for (const node of spans) box.appendChild(traceSpan(node, total));
+  const detail = document.createElement("div");
+  detail.className = "trace-detail";
+  detail.textContent = "select a span to see details";
+  box.appendChild(detail);
 }
 
 async function loadTrace(traceId, targetId) {
@@ -2036,6 +2108,21 @@ def _trace_node(event: AuditEvent) -> dict:
         "latency_ms": event.latency_ms,
         "cost_usd": event.cost_usd,
         "timestamp": event.timestamp.isoformat(),
+        "event_id": event.event_id,
+        "run_id": event.run_id,
+        "action": event.action,
+        "target": event.target,
+        "tenant": event.tenant,
+        "principal": {"subject": event.principal.subject, "kind": event.principal.kind},
+        "agent": {"id": event.agent_ref.id, "version": event.agent_ref.version},
+        "approver": event.approver,
+        "args_hash": event.args_hash,
+        "result_hash": event.result_hash,
+        "policy_decision_id": event.policy_decision_id,
+        "policy_version": event.policy_version,
+        "data_classes": list(event.data_classes),
+        "tokens": event.tokens,
+        "egress": event.egress,
     }
 
 
