@@ -100,12 +100,41 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 非 `admin` 身份只看到自己租户的计划。
 - 计划历史只覆盖当前控制台进程。
 
-## `GET /api/traces/{trace_id}` -> `{trace_id, root, error}`
+## `GET /api/traces/{trace_id}` -> `{trace_id, root, total_ms, error}`
 
 根是最后一条 `agent.run` 或 `orchestration.run` 事件，`children` 是同一 trace 的其余事件。
 非 `admin` 身份只能看到自己租户的事件，别的租户的 trace 视为找不到。
 找不到根时 `root` 为 `null`，`error` 为 `trace_not_found`。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。`trace_id` 必须匹配
 `^[A-Za-z0-9._-]{1,128}$`。
+
+每个节点在原有字段外带两个瀑布图字段：
+
+- `start_offset_ms`：相对根事件时间戳的起点，整数毫秒；早于根的节点夹为 0。
+- `duration_ms`：`latency_ms` 的副本，缺失时为 0。
+
+顶层 `total_ms` 是所有节点 `start_offset_ms + duration_ms` 的最大值。全部节点都没有延迟时，取最晚起点的偏移。
+
+```json
+{
+  "trace_id": "trace-1",
+  "error": null,
+  "total_ms": 50,
+  "root": {
+    "id": "probe@dev", "kind": "agent", "status": "ok",
+    "start_offset_ms": 0, "duration_ms": 50,
+    "latency_ms": 50, "cost_usd": 0.001, "error_code": null,
+    "timestamp": "2026-01-01T00:00:00Z",
+    "children": [
+      {
+        "id": "litellm:deepseek", "kind": "model", "status": "ok",
+        "start_offset_ms": 10, "duration_ms": 20,
+        "latency_ms": 20, "cost_usd": 0.001, "error_code": null,
+        "timestamp": "2026-01-01T00:00:00.010000Z"
+      }
+    ]
+  }
+}
+```
 
 ## `GET /api/audit?limit=50` -> `[AuditEvent]`
 

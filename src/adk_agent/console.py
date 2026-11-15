@@ -163,7 +163,7 @@ _INDEX_HTML = r"""<!doctype html>
   table { border-collapse: collapse; width: 100%; font-size: .85rem; }
   th, td { text-align: left; border-bottom: 1px solid var(--line); padding: .3rem .4rem; }
   tbody tr { cursor: pointer; }
-  tbody tr:hover { background: var(--accent-soft); }
+  tbody tr:hover, tbody tr.selected { background: var(--accent-soft); }
   .badge { background: #e6f5ea; color: #047857; border-radius: 4px; padding: 0 .35rem; font-size: .75rem; }
   .badge.bad { background: #fde8e8; color: var(--bad); }
   .badge.muted { background: var(--bg); color: var(--muted); }
@@ -178,11 +178,23 @@ _INDEX_HTML = r"""<!doctype html>
   #timeline div { margin: .15rem 0; color: var(--muted); }
   #timeline .tool { color: #2563eb; }
   #timeline .fail { color: var(--bad); }
-  #trace { font-family: ui-monospace, monospace; font-size: .78rem; }
-  #trace div { margin: .12rem 0; }
-  #trace .child { padding-left: 1.1rem; color: var(--muted); }
-  #trace .ok { color: #047857; }
-  #trace .error, #trace .denied { color: var(--bad); }
+  #trace, #plan-trace { font-size: .78rem; }
+  .trace-summary { font-family: ui-monospace, monospace; color: var(--muted); font-size: .8rem; margin: .2rem 0 .55rem; }
+  .trace-axis { display: grid; grid-template-columns: 220px minmax(0, 1fr) 300px; gap: .6rem; color: var(--muted); font-size: .72rem; margin-bottom: .2rem; }
+  .trace-axis .track { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--line); }
+  .trace-row { display: grid; grid-template-columns: 220px minmax(0, 1fr) 300px; gap: .6rem; align-items: center; padding: .18rem 0; }
+  .trace-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trace-label .kind { color: var(--muted); margin-right: .35rem; font-family: ui-monospace, monospace; }
+  .trace-track { position: relative; height: 16px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+  .trace-bar { position: absolute; top: 3px; bottom: 3px; min-width: 2px; border-radius: 3px; background: var(--accent); opacity: .9; }
+  .trace-bar.model { background: #2563eb; }
+  .trace-bar.tool { background: #7c3aed; }
+  .trace-bar.plan, .trace-bar.step { background: #0891b2; }
+  .trace-bar.approval { background: #b45309; }
+  .trace-bar.policy, .trace-bar.supervisor { background: #475569; }
+  .trace-bar.error, .trace-bar.denied { background: var(--bad); }
+  .trace-meta { color: var(--muted); font-family: ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trace-meta .bad { color: var(--bad); }
   small, .muted { color: var(--muted); }
   @media (max-width: 760px) {
     #app { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
@@ -191,6 +203,8 @@ _INDEX_HTML = r"""<!doctype html>
     .nav-group { display: flex; align-items: center; flex-wrap: wrap; gap: .15rem; margin: 0; }
     .nav-title { padding: .2rem .4rem; }
     .tab { width: auto; }
+    .trace-axis { display: none; }
+    .trace-row { grid-template-columns: 1fr; gap: .1rem; padding: .35rem 0; }
   }
 </style>
 </head>
@@ -1032,7 +1046,12 @@ async function loadRuns() {
     row.appendChild(cell(run.latency_ms == null ? "-" : run.latency_ms + "ms"));
     row.appendChild(cell(run.cost_usd == null ? "-" : run.cost_usd));
     row.appendChild(cell(run.events));
-    row.addEventListener("click", () => { showTab("runs"); loadTrace(run.trace_id); });
+    row.addEventListener("click", () => {
+      body.querySelectorAll("tr.selected").forEach((other) => other.classList.remove("selected"));
+      row.classList.add("selected");
+      showTab("runs");
+      loadTrace(run.trace_id);
+    });
     body.appendChild(row);
   }
 }
@@ -1367,29 +1386,82 @@ async function send() {
   }
 }
 
+const TRACE_KINDS = {
+  agent: "agent", plan: "plan", model: "model", tool: "tool", step: "step",
+  supervisor: "supervisor", approval: "approval", policy: "policy",
+};
+
+function traceSpan(node, total) {
+  const row = document.createElement("div");
+  row.className = "trace-row";
+  const label = document.createElement("div");
+  label.className = "trace-label";
+  const kind = document.createElement("span");
+  kind.className = "kind";
+  kind.textContent = node.kind;
+  label.appendChild(kind);
+  label.appendChild(document.createTextNode(node.id || "-"));
+  const track = document.createElement("div");
+  track.className = "trace-track";
+  const bar = document.createElement("div");
+  const kindClass = TRACE_KINDS[node.kind] || "other";
+  bar.className = "trace-bar " + kindClass + " " + (node.status || "");
+  bar.style.left = ((node.start_offset_ms || 0) / total * 100) + "%";
+  bar.style.width = Math.max((node.duration_ms || 0) / total * 100, 0.4) + "%";
+  bar.title = node.kind + " " + node.id + " · +" + (node.start_offset_ms || 0) +
+    "ms · " + (node.duration_ms || 0) + "ms · " + node.status +
+    (node.error_code ? " [" + node.error_code + "]" : "");
+  track.appendChild(bar);
+  const meta = document.createElement("div");
+  meta.className = "trace-meta";
+  const status = document.createElement("span");
+  status.className = node.status === "error" || node.status === "denied" ? "bad" : "";
+  status.textContent = node.status + " · +" + (node.start_offset_ms || 0) +
+    "ms · " + (node.duration_ms || 0) + "ms";
+  meta.appendChild(status);
+  if (node.error_code) meta.appendChild(document.createTextNode(" [" + node.error_code + "]"));
+  if (node.cost_usd != null) meta.appendChild(document.createTextNode(" $" + node.cost_usd));
+  row.append(label, track, meta);
+  return row;
+}
+
+function renderTrace(box, data) {
+  box.innerHTML = "";
+  const root = data.root;
+  const spans = [root].concat(root.children || []);
+  const total = Math.max(data.total_ms || 0, 1);
+  const cost = spans.reduce((sum, node) => sum + (node.cost_usd || 0), 0);
+  const summary = document.createElement("div");
+  summary.className = "trace-summary";
+  summary.textContent = "trace " + data.trace_id + " · " + spans.length + " spans · " +
+    (data.total_ms || 0) + "ms total" + (cost > 0 ? " · $" + cost.toFixed(4) : "");
+  box.appendChild(summary);
+  const axis = document.createElement("div");
+  axis.className = "trace-axis";
+  axis.appendChild(document.createElement("div"));
+  const scale = document.createElement("div");
+  scale.className = "track";
+  const start = document.createElement("span");
+  start.textContent = "0ms";
+  const end = document.createElement("span");
+  end.textContent = (data.total_ms || 0) + "ms";
+  scale.append(start, end);
+  axis.appendChild(scale);
+  axis.appendChild(document.createElement("div"));
+  box.appendChild(axis);
+  for (const node of spans) box.appendChild(traceSpan(node, total));
+}
+
 async function loadTrace(traceId, targetId) {
   const boxId = targetId || "trace";
+  const box = $(boxId);
   const r = await fetch("/api/traces/" + encodeURIComponent(traceId), {
     headers: { Authorization: "Bearer " + token() },
   });
-  if (!r.ok) { $(boxId).textContent = "trace unavailable (" + r.status + ")"; return; }
+  if (!r.ok) { box.textContent = "trace unavailable (" + r.status + ")"; return; }
   const data = await r.json();
-  const box = $(boxId);
-  box.innerHTML = "";
   if (!data.root) { box.textContent = "trace not found"; return; }
-  const rootLine = document.createElement("div");
-  rootLine.className = data.root.status;
-  rootLine.textContent = data.root.kind + " " + data.root.id + " " + data.root.status +
-    (data.root.latency_ms == null ? "" : " " + data.root.latency_ms + "ms");
-  box.appendChild(rootLine);
-  for (const child of data.root.children || []) {
-    const line = document.createElement("div");
-    line.className = "child " + child.status;
-    line.textContent = child.kind + " " + child.id + " " + child.status +
-      (child.latency_ms == null ? "" : " " + child.latency_ms + "ms") +
-      (child.error_code ? " [" + child.error_code + "]" : "");
-    box.appendChild(line);
-  }
+  renderTrace(box, data);
 }
 
 async function loadAudit() {
@@ -1679,9 +1751,20 @@ def _trace_payload(events: Iterable[AuditEvent], trace_id: str) -> dict:
     if root is None:
         return {"trace_id": trace_id, "root": None, "error": "trace_not_found"}
 
-    node = _trace_node(root)
-    node["children"] = [_trace_node(event) for event in relevant if event is not root]
-    return {"trace_id": trace_id, "root": node, "error": None}
+    root_node = _trace_node(root)
+    children: list[dict] = []
+    total_ms = 0
+    for event in relevant:
+        node = root_node if event is root else _trace_node(event)
+        offset = max(0, int((event.timestamp - root.timestamp).total_seconds() * 1000))
+        duration = max(0, event.latency_ms or 0)
+        node["start_offset_ms"] = offset
+        node["duration_ms"] = duration
+        total_ms = max(total_ms, offset + duration)
+        if event is not root:
+            children.append(node)
+    root_node["children"] = children
+    return {"trace_id": trace_id, "root": root_node, "total_ms": total_ms, "error": None}
 
 
 def _peer_ref(identity: PeerIdentity) -> AgentRef:

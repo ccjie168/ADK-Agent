@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
@@ -46,7 +46,15 @@ class FakeEvent:
         return True
 
 
-def _event(action: str, target: str, *, trace_id: str = "trace-1", status="ok") -> AuditEvent:
+def _event(
+    action: str,
+    target: str,
+    *,
+    trace_id: str = "trace-1",
+    status="ok",
+    timestamp: datetime | None = None,
+    latency_ms: int | None = None,
+) -> AuditEvent:
     return AuditEvent(
         event_id=f"{action}-{target}",
         run_id="r1",
@@ -57,7 +65,8 @@ def _event(action: str, target: str, *, trace_id: str = "trace-1", status="ok") 
         action=action,
         target=target,
         status=status,
-        timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        timestamp=timestamp or datetime(2026, 1, 1, tzinfo=timezone.utc),
+        latency_ms=latency_ms,
     )
 
 
@@ -75,6 +84,64 @@ def test_trace_payload_has_root_and_children():
     assert root["kind"] == "agent"
     assert root["status"] == "ok"
     assert [child["kind"] for child in root["children"]] == ["model", "tool"]
+
+
+def test_trace_payload_includes_waterfall_geometry():
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _event("agent.run", "probe@dev", timestamp=base, latency_ms=50),
+        _event(
+            "model.call",
+            "litellm:deepseek",
+            timestamp=base + timedelta(milliseconds=10),
+            latency_ms=20,
+        ),
+        _event("tool.call", "get_time", timestamp=base + timedelta(milliseconds=20), latency_ms=5),
+    ]
+
+    payload = _trace_payload(events, "trace-1")
+
+    root = payload["root"]
+    assert payload["total_ms"] == 50
+    assert (root["start_offset_ms"], root["duration_ms"]) == (0, 50)
+    model, tool = root["children"]
+    assert (model["start_offset_ms"], model["duration_ms"]) == (10, 20)
+    assert (tool["start_offset_ms"], tool["duration_ms"]) == (20, 5)
+
+
+def test_trace_payload_clamps_offsets_before_the_root():
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _event("agent.run", "probe@dev", timestamp=base),
+        _event(
+            "model.call",
+            "litellm:deepseek",
+            timestamp=base - timedelta(seconds=5),
+            latency_ms=10,
+        ),
+    ]
+
+    payload = _trace_payload(events, "trace-1")
+
+    child = payload["root"]["children"][0]
+    assert child["start_offset_ms"] == 0
+    assert child["duration_ms"] == 10
+    assert payload["total_ms"] == 10
+
+
+def test_trace_payload_handles_missing_latency():
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _event("agent.run", "probe@dev", timestamp=base),
+        _event("tool.call", "get_time", timestamp=base + timedelta(seconds=2)),
+    ]
+
+    payload = _trace_payload(events, "trace-1")
+
+    child = payload["root"]["children"][0]
+    assert child["start_offset_ms"] == 2000
+    assert child["duration_ms"] == 0
+    assert payload["total_ms"] == 2000
 
 
 def test_trace_after_chat(monkeypatch):
