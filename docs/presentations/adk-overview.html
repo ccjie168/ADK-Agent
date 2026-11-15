@@ -90,10 +90,10 @@ th{background:#f8fafc;font-weight:600;color:#334155}
   <div class="meta">
     <span>版本 v0.1</span>
     <span>2026-11-15</span>
-    <span>代码基线 master a633310</span>
-    <span>本地门禁 1180 项测试通过</span>
+    <span>代码基线 master + SLICE-113</span>
+    <span>本地门禁 1222 项测试通过</span>
   </div>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>1 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>1 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -111,7 +111,7 @@ th{background:#f8fafc;font-weight:600;color:#334155}
     <div class="card"><h3>责任可查</h3><p>每租户一条哈希链，逐条 HMAC 签名，支持轮换密钥与整链验证。</p></div>
   </div>
   <p class="small">当前阶段建议：单团队内部试点，使用共享 Postgres 与 OIDC，把审批和审计真正用起来，再扩到多团队。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>2 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>2 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -125,7 +125,7 @@ th{background:#f8fafc;font-weight:600;color:#334155}
     <div class="card"><h3>身份与租户</h3><p>OIDC 解析、principal 注入、RBAC 拒绝优先、按租户配额、A2A peer 身份与动作级授权。</p></div>
     <div class="card"><h3>审计与运维</h3><p>租户哈希链、HMAC 与 kid 轮换、审计查询、Prometheus 指标、多副本清单、备份恢复。</p></div>
   </div>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>3 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>3 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -160,7 +160,7 @@ th{background:#f8fafc;font-weight:600;color:#334155}
     </div>
   </div>
   <p class="small">文件后端只用于单机与演示。多副本部署时，任何一个文件后端都会让副本看到不同状态，清单里禁止 PVC 与 SESSION_DB。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>4 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>4 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -178,7 +178,7 @@ th{background:#f8fafc;font-weight:600;color:#334155}
     <div class="card"><h3>被拒绝时</h3><p>越权工具返回拒绝并留痕；审批未通过不执行；限流返回 429；配额不足直接拒绝。</p></div>
     <div class="card"><h3>出问题时</h3><p>按 trace id 串起控制台、MCP、模型与工具事件；审计链可整链验证，失败按租户与序号定位。</p></div>
   </div>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>5 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>5 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -199,7 +199,40 @@ th{background:#f8fafc;font-weight:600;color:#334155}
     <div class="card"><h3>灰度</h3><p>按权重路由到不同版本，出现问题时回到上一个 digest。</p></div>
     <div class="card"><h3>留痕</h3><p>发布、加载、退役都写审计；谁在什么时候发布了什么，可以回查。</p></div>
   </div>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>6 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>6 / 18</span></div>
+</section>
+
+<section class="slide">
+  <div class="kicker">控制台体验</div>
+  <h2>从组织登录到运行观察，都在一个外壳里</h2>
+  <div class="grid g2">
+    <div class="card accent">
+      <h3>浏览器 OIDC 登录</h3>
+      <ul class="tight">
+        <li>授权码加 PKCE（S256），state 每次随机并校验</li>
+        <li>token 兑换由控制台代发，token endpoint 与客户端 secret 留在服务端</li>
+        <li>token 只存 sessionStorage，退出即清空</li>
+        <li>没有浏览器配置时保留手工 Bearer token 入口</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>应用外壳</h3>
+      <ul class="tight">
+        <li>顶栏放 agent、租户、连接状态、主题与退出</li>
+        <li>运营、构建、治理三组共十一个面板</li>
+        <li>#tab 直达面板，深色主题记住选择</li>
+        <li>窄屏改为顶部换行导航，无横向溢出</li>
+      </ul>
+    </div>
+  </div>
+  <div class="flow">
+    <div class="step"><b>1 登录</b><span>浏览器跳转 IdP，带 code_challenge 与 state。</span></div>
+    <div class="step"><b>2 回调</b><span>控制台用 code 与 verifier 换 token，secret 不出服务端。</span></div>
+    <div class="step"><b>3 外壳</b><span>token 作为 bearer，加载 agent、租户与面板数据。</span></div>
+    <div class="step"><b>4 观察</b><span>聊天进度、trace 瀑布、审计与审批同屏。</span></div>
+  </div>
+  <p class="small">实测：mock IdP 下完成登录并进入外壳，错误 state 被拒绝，退出后 token 清空。浏览器只拿到公开参数。</p>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>7 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -223,7 +256,7 @@ th{background:#f8fafc;font-weight:600;color:#334155}
     <tr><td>当前状态</td><td>文件与 Postgres 双后端，可独立服务化</td><td>本地 registry:2 已跑通，Harbor 待装</td></tr>
   </table>
   <p class="small">两者都用 digest 保证不可变，但用途不同。上线时先发布 agent 工件，再构建并推送镜像，最后把镜像 digest 写进部署清单。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>7 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>8 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -235,7 +268,7 @@ th{background:#f8fafc;font-weight:600;color:#334155}
       <ol class="steps">
         <li>format、lint、types、layering</li>
         <li>specs：活跃切片必须有意图、判据、反例、威胁模型与证据</li>
-        <li>test：本地 1180 项通过</li>
+        <li>test：本地 1222 项通过</li>
         <li>sast：bandit 覆盖 src 与 scripts</li>
         <li>deps：pip-audit，接受风险按到期日过滤</li>
         <li>secrets：detect-secrets 只读基线，新命中失败</li>
@@ -254,7 +287,7 @@ th{background:#f8fafc;font-weight:600;color:#334155}
     </div>
   </div>
   <p class="lede">本地与 CI 使用同一入口 <b>scripts/check.py</b>。pre-commit 跑 full，CI 跑 full 加 strict，分支保护要求 PR 且 gate 通过。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>8 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>9 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -272,14 +305,14 @@ docker push localhost:5000/adk/adk-agent:dev
     <div class="card"><h3>回写</h3><p>回写脚本把 5 条 image 行钉到 digest。本地 digest 只用于验证，没有提交进仓库。</p></div>
   </div>
   <p class="small">正式发布时把镜像地址换成内网 Harbor，凭据用机器人账号；workflow 与本机脚本不变。自建 registry 必须走 HTTPS，或显式加入 runner 的 insecure registries。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>9 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>10 / 18</span></div>
 </section>
 
 <section class="slide">
   <div class="kicker">租户、身份与权限</div>
   <h2>租户是边界，权限默认拒绝</h2>
   <div class="grid g3">
-    <div class="card"><h3>OIDC</h3><p>控制台与三个服务都能接 OIDC。token 解析出租户与角色，共享 Bearer 只建议内网演示。</p></div>
+    <div class="card"><h3>OIDC</h3><p>控制台支持浏览器授权码加 PKCE 登录，三个服务都能接 OIDC。token 解析出租户与角色，共享 Bearer 只建议内网演示。</p></div>
     <div class="card"><h3>RBAC</h3><p>租户角色绑定，拒绝优先。聊天、工具、计划、审批各走各的策略检查。</p></div>
     <div class="card"><h3>RLS</h3><p>sessions、events、user_states、app_states 四张表由 Postgres 行级安全强制，租户取自已认证 principal。</p></div>
     <div class="card"><h3>配额</h3><p>每租户运行次数与并发租约，存 Postgres，跨副本共享，表上带 RLS。</p></div>
@@ -287,7 +320,7 @@ docker push localhost:5000/adk/adk-agent:dev
     <div class="card"><h3>A2A peer</h3><p>提供方按 peer 身份认证，按 read 与 invoke 授权，审计身份随 peer，和共享 token 模式互斥。</p></div>
   </div>
   <p class="small">生产连接必须用表属主角色，不能是 superuser 或带 BYPASSRLS，否则 RLS 会被绕过。开启前先建表，再用 sessions enable-rls 安装策略。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>10 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>11 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -317,7 +350,7 @@ docker push localhost:5000/adk/adk-agent:dev
     </div>
   </div>
   <p class="small">审计与审批表当前不做 RLS，按服务层过滤，admin 才能跨租户。这是 ADR 里写明的后续加固项。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>11 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>12 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -344,7 +377,7 @@ docker push localhost:5000/adk/adk-agent:dev
     <div class="card"><h3>可恢复</h3><p>pg_dump 覆盖所有平台表与会话表；工件与审计密钥单独备份，恢复后先验链。</p></div>
     <div class="card"><h3>可轮换</h3><p>审计签名密钥、Bearer token、工件验签公钥、数据库口令都有轮换步骤，写进运行手册。</p></div>
   </div>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>12 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>13 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -372,7 +405,7 @@ docker push localhost:5000/adk/adk-agent:dev
     </tr>
   </table>
   <p class="lede">当前建议停在第一阶段到第二阶段的过渡：先把试点用稳，再装 Harbor 和补齐日志脱敏。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>13 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>14 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -386,6 +419,7 @@ docker push localhost:5000/adk/adk-agent:dev
         <li>租户 RLS、配额、RBAC、A2A peer 授权</li>
         <li>工具授权、连接器出站策略、沙箱</li>
         <li>审批收件箱、过期、归档</li>
+        <li>控制台浏览器 OIDC 登录、分组应用外壳与运行追踪</li>
         <li>审计哈希链、HMAC、轮换、Postgres 与查询</li>
         <li>多副本清单、备份恢复、密钥轮换、故障手册</li>
         <li>依赖锁、镜像扫描、SBOM、digest、发布 workflow</li>
@@ -407,7 +441,7 @@ docker push localhost:5000/adk/adk-agent:dev
     </div>
   </div>
   <p class="small">结论：内部试点可以直接开始，对外多租户生产还需要一轮安全与运维加固。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>14 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>15 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -424,7 +458,7 @@ docker push localhost:5000/adk/adk-agent:dev
     <div class="card"><h3>值班每天看</h3><p>四个 /healthz、审批积压与最老待办、审计日验、Postgres 连接与锁等待、Redis 内存。</p></div>
     <div class="card"><h3>发布前必做</h3><p>check.py --full、镜像扫描、SBOM、取 digest、回写清单、冒烟与 verify-audit。</p></div>
   </div>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>15 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>16 / 18</span></div>
 </section>
 
 <section class="slide">
@@ -438,7 +472,7 @@ docker push localhost:5000/adk/adk-agent:dev
     <li><b>审计与审批 RLS</b>：评估 admin 跨租户查询的上下文切换，给出 ADR。验收：非 admin 跨租户读为零行。</li>
   </ol>
   <p class="small">顺序建议：先试点，再 Harbor 与首次发布，然后补日志脱敏，最后做审计与审批 RLS。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>16 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>17 / 18</span></div>
 </section>
 
 <section class="slide title">
@@ -447,18 +481,18 @@ docker push localhost:5000/adk/adk-agent:dev
   <p class="lede">本文件是单页 HTML，无外部依赖，可直接在浏览器打开或用浏览器打印成 PDF。后续每完成一个阶段更新一次版本号与“已具备 / 待执行”两栏，代码基线同步更新。</p>
   <div class="meta">
     <span>源文件 docs/presentations/adk-overview.html</span>
-    <span>基线 master a633310</span>
+    <span>基线 master + SLICE-113</span>
     <span>2026-11-15</span>
   </div>
   <p class="lede">讨论问题：试点团队选谁、Harbor 装在哪台机器、首批接入哪些 agent、审批策略怎么定。</p>
-  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>17 / 17</span></div>
+  <div class="footer"><span>ADK Agent · 当前阶段说明</span><span>18 / 18</span></div>
 </section>
 
 </main>
 
 <nav class="nav" aria-label="翻页">
   <button id="prev" aria-label="上一页">‹</button>
-  <span id="counter">1 / 17</span>
+  <span id="counter">1 / 18</span>
   <button id="next" aria-label="下一页">›</button>
 </nav>
 <div class="hint">← → 或空格翻页 · Home / End 首尾 · Ctrl+P 打印</div>
