@@ -169,6 +169,15 @@ _INDEX_HTML = r"""<!doctype html>
   .badge.muted { background: var(--bg); color: var(--muted); }
   pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .6rem; overflow: auto; max-height: 260px; font-size: .78rem; color: var(--ink); }
   .panel-msg { color: var(--bad); font-size: .85rem; min-height: 1.2rem; }
+  .panel-msg.ok { color: #047857; }
+  #approval-filter, #approval-reason { flex: 1; min-width: 240px; }
+  .approval-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .45rem; margin: .5rem 0; }
+  .approval-summary div { border: 1px solid var(--line); border-radius: 8px; padding: .45rem .6rem; background: var(--panel); }
+  .approval-summary span { display: block; color: var(--muted); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+  .approval-summary b { font-size: .85rem; font-weight: 600; word-break: break-word; }
+  #approval-detail { min-height: 2rem; }
+  .expiry { color: var(--muted); font-size: .8rem; }
+  .expiry.soon { color: var(--bad); font-weight: 600; }
   #audit { border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem .75rem; max-height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: .78rem; background: var(--panel); }
   #audit div { white-space: pre-wrap; margin: .15rem 0; }
   #policy { width: 100%; font-family: ui-monospace, monospace; font-size: .8rem; }
@@ -405,15 +414,19 @@ _INDEX_HTML = r"""<!doctype html>
 <section id="approvals" class="panel">
   <div class="row">
     <button id="refresh-approvals">Refresh</button>
+    <input id="approval-filter" placeholder="filter by id, step, agent or reason" autocomplete="off">
   </div>
   <div id="approvals-msg" class="panel-msg"></div>
   <table>
-    <thead><tr><th>request</th><th>step</th><th>agent</th><th>reason</th><th>requested</th></tr></thead>
+    <thead><tr><th>request</th><th>step</th><th>agent</th><th>reason</th><th>requested</th><th>expires</th></tr></thead>
     <tbody id="approvals-body"></tbody>
   </table>
+  <div id="approval-empty" class="muted" hidden>没有待决审批。</div>
   <h3>Request</h3>
+  <div id="approval-summary" class="approval-summary"></div>
   <pre id="approval-detail"></pre>
   <div class="row">
+    <input id="approval-reason" placeholder="decision reason (optional)" autocomplete="off">
     <button id="approve">Approve</button>
     <button id="deny">Deny</button>
   </div>
@@ -473,6 +486,7 @@ _INDEX_HTML = r"""<!doctype html>
 const $ = (id) => document.getElementById(id);
 const TABS = ["chat", "registry", "tools", "connectors", "peers", "runs", "sessions", "approvals", "grants", "plans", "policy"];
 let sessionId = null;
+let approvalsData = [];
 let selectedApproval = null;
 let selectedRegistry = null;
 let selectedGrant = null;
@@ -1084,19 +1098,40 @@ async function loadSessions() {
   }
 }
 
-async function loadApprovals() {
-  $("approvals-msg").textContent = "";
+function expiryLabel(value) {
+  if (!value) return { text: "no deadline", soon: false };
+  const left = Date.parse(value) - Date.now();
+  if (Number.isNaN(left)) return { text: value, soon: false };
+  if (left <= 0) return { text: "expired", soon: true };
+  const minutes = Math.ceil(left / 60000);
+  if (minutes < 60) return { text: minutes + "m left", soon: minutes <= 10 };
+  const hours = Math.floor(minutes / 60);
+  return { text: hours + "h " + (minutes % 60) + "m left", soon: false };
+}
+
+function approvalMatches(request, needle) {
+  if (!needle) return true;
+  const agent = request.agent_ref ? request.agent_ref.id : "";
+  return [request.request_id, request.step_id, agent, request.reason].some(
+    (value) => String(value || "").toLowerCase().includes(needle),
+  );
+}
+
+function prettyInput(value) {
+  if (typeof value !== "string") return JSON.stringify(value, null, 2);
+  try { return JSON.stringify(JSON.parse(value), null, 2); } catch (e) { return value; }
+}
+
+function renderApprovals() {
+  const needle = $("approval-filter").value.trim().toLowerCase();
   const body = $("approvals-body");
   body.innerHTML = "";
-  const result = await getJson("/api/approvals");
-  if (!result.ok) {
-    $("approvals-msg").textContent = result.status === 404
-      ? "approvals not configured"
-      : "approvals unavailable (" + result.status + ")";
-    return;
-  }
-  for (const request of result.data || []) {
+  const visible = approvalsData.filter((request) => approvalMatches(request, needle));
+  for (const request of visible) {
     const row = document.createElement("tr");
+    if (selectedApproval && selectedApproval.request_id === request.request_id) {
+      row.classList.add("selected");
+    }
     row.appendChild(cell(String(request.request_id).slice(0, 16)));
     row.appendChild(cell(request.step_id));
     row.appendChild(cell(request.agent_ref && request.agent_ref.id));
@@ -1104,12 +1139,82 @@ async function loadApprovals() {
     const requested = document.createElement("td");
     requested.textContent = String(request.requested_at || "").replace("T", " ").slice(0, 19);
     row.appendChild(requested);
+    const expires = document.createElement("td");
+    const label = expiryLabel(request.expires_at);
+    const badge = document.createElement("span");
+    badge.className = "expiry" + (label.soon ? " soon" : "");
+    badge.textContent = label.text;
+    if (request.expires_at) badge.title = request.expires_at;
+    expires.appendChild(badge);
+    row.appendChild(expires);
     row.addEventListener("click", () => {
-      selectedApproval = request.request_id;
-      $("approval-detail").textContent = JSON.stringify(request, null, 2);
+      selectedApproval = request;
+      renderApprovals();
+      renderApprovalDetail();
     });
     body.appendChild(row);
   }
+  const empty = $("approval-empty");
+  empty.hidden = visible.length > 0;
+  empty.textContent = approvalsData.length === 0 ? "没有待决审批。" : "没有匹配的审批。";
+}
+
+function renderApprovalDetail() {
+  const summary = $("approval-summary");
+  summary.innerHTML = "";
+  if (!selectedApproval) { $("approval-detail").textContent = ""; return; }
+  const request = selectedApproval;
+  const expires = request.expires_at
+    ? String(request.expires_at).replace("T", " ").slice(0, 19) +
+      " (" + expiryLabel(request.expires_at).text + ")"
+    : "no deadline";
+  const fields = [
+    ["request", request.request_id],
+    ["run", request.run_id],
+    ["trace", request.trace_id],
+    ["step", request.step_id],
+    ["agent", request.agent_ref
+      ? request.agent_ref.id + "@" + request.agent_ref.version
+      : "-"],
+    ["tenant", request.principal ? request.principal.tenant : "-"],
+    ["requested", String(request.requested_at || "").replace("T", " ").slice(0, 19)],
+    ["expires", expires],
+  ];
+  for (const [caption, value] of fields) {
+    const box = document.createElement("div");
+    const label = document.createElement("span");
+    label.textContent = caption;
+    const content = document.createElement("b");
+    content.textContent = value == null || value === "" ? "-" : value;
+    box.append(label, content);
+    summary.appendChild(box);
+  }
+  $("approval-detail").textContent = prettyInput(request.input);
+}
+
+async function loadApprovals() {
+  $("approvals-msg").className = "panel-msg";
+  $("approvals-msg").textContent = "";
+  const result = await getJson("/api/approvals");
+  if (!result.ok) {
+    approvalsData = [];
+    selectedApproval = null;
+    renderApprovals();
+    renderApprovalDetail();
+    $("approval-empty").hidden = true;
+    $("approvals-msg").textContent = result.status === 404
+      ? "approvals not configured"
+      : "approvals unavailable (" + result.status + ")";
+    return;
+  }
+  approvalsData = result.data || [];
+  if (selectedApproval) {
+    selectedApproval = approvalsData.find(
+      (request) => request.request_id === selectedApproval.request_id,
+    ) || null;
+  }
+  renderApprovals();
+  renderApprovalDetail();
 }
 
 async function decideApproval(approved) {
@@ -1117,10 +1222,12 @@ async function decideApproval(approved) {
     $("approvals-msg").textContent = "select a request first";
     return;
   }
-  const r = await fetch("/api/approvals/" + encodeURIComponent(selectedApproval), {
+  const requestId = selectedApproval.request_id;
+  const reason = $("approval-reason").value.trim();
+  const r = await fetch("/api/approvals/" + encodeURIComponent(requestId), {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token() },
-    body: JSON.stringify({ approved: approved }),
+    body: JSON.stringify({ approved: approved, reason: reason }),
   });
   let data = null;
   try { data = await r.json(); } catch (e) { data = null; }
@@ -1130,9 +1237,12 @@ async function decideApproval(approved) {
     return;
   }
   selectedApproval = null;
+  $("approval-reason").value = "";
+  $("approval-summary").innerHTML = "";
   $("approval-detail").textContent = "";
   await loadApprovals();
-  $("approvals-msg").textContent = "decided " + data.request_id;
+  $("approvals-msg").className = "panel-msg ok";
+  $("approvals-msg").textContent = (approved ? "approved " : "denied ") + data.request_id;
   loadAudit();
 }
 
@@ -1655,6 +1765,7 @@ $("peer-grant").addEventListener("click", grantPeer);
 $("peer-revoke").addEventListener("click", revokePeer);
 $("refresh-sessions").addEventListener("click", loadSessions);
 $("refresh-approvals").addEventListener("click", loadApprovals);
+$("approval-filter").addEventListener("input", renderApprovals);
 $("refresh-grants").addEventListener("click", loadGrants);
 $("grant-request").addEventListener("click", requestGrant);
 $("grant-approve").addEventListener("click", () => decideGrant(true));
@@ -3244,7 +3355,13 @@ def build_console_app(
             return JSONResponse({"error": "approval_unavailable"}, status_code=503)
         if "admin" not in caller.roles:
             pending = [item for item in pending if item.principal.tenant == caller.tenant]
-        return [item.model_dump(mode="json") for item in pending]
+        payload = []
+        for item in pending:
+            deadline = approvals.expires_at(item) if hasattr(approvals, "expires_at") else None
+            if deadline is not None and deadline != item.expires_at:
+                item = item.model_copy(update={"expires_at": deadline})
+            payload.append(item.model_dump(mode="json"))
+        return payload
 
     @app.post("/api/approvals/{request_id}")
     async def decide_approval(request: Request, request_id: str) -> Any:

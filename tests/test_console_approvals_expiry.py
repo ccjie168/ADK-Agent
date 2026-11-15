@@ -96,3 +96,38 @@ def test_list_excludes_expired(tmp_path):
     [item] = response.json()
     assert item["request_id"] == "valid"
     assert item["expires_at"] is not None
+
+
+def _deadline(item: dict) -> datetime:
+    return datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00"))
+
+
+def test_list_materializes_the_ttl_deadline(tmp_path):
+    inbox = FileApprovalInbox(tmp_path, clock=Clock(), ttl_seconds=300)
+    inbox.submit(_request("req-1", expires_at=None))
+
+    with _app(inbox) as client:
+        [item] = client.get("/api/approvals", headers=AUTH).json()
+
+    assert _deadline(item) == _AT + timedelta(seconds=300)
+
+
+def test_list_keeps_an_explicit_deadline(tmp_path):
+    explicit = _AT + timedelta(hours=2)
+    inbox = FileApprovalInbox(tmp_path, clock=Clock(), ttl_seconds=300)
+    inbox.submit(_request("req-1", expires_at=explicit))
+
+    with _app(inbox) as client:
+        [item] = client.get("/api/approvals", headers=AUTH).json()
+
+    assert _deadline(item) == explicit
+
+
+def test_list_without_ttl_or_deadline_stays_null(tmp_path):
+    inbox = _inbox(tmp_path)
+    inbox.submit(_request("req-1", expires_at=None))
+
+    with _app(inbox) as client:
+        [item] = client.get("/api/approvals", headers=AUTH).json()
+
+    assert item["expires_at"] is None

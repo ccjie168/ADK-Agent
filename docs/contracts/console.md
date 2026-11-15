@@ -52,7 +52,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 返回待决的人工审批请求，按 `requested_at` 正序。结构见 `approval_request.schema.json`。
 
-- 已过期的请求不返回。`expires_at` 是请求自带的截止时间，可能为 `null`。
+- 已过期的请求不返回。`expires_at` 是有效截止时间。请求自带时原样返回；没有时由收件箱用 `requested_at` 加配置的 TTL 推算；两者都没有时为 `null`。
 - 未配置审批目录或审批数据库时返回 404 `approvals_not_configured`。
 - 非 `admin` 身份只看到自己租户的请求。
 - 请求里的 `input` 是待审内容，只在这里返回给有权限的调用方。
