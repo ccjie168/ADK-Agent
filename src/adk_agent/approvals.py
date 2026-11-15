@@ -25,6 +25,7 @@ from .core import ApprovalDecision, ApprovalRequest
 _REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _REQUEST_SUFFIX = ".request.json"
 _DECISION_SUFFIX = ".decision.json"
+HISTORY_STATUSES = ("approved", "denied", "expired", "cancelled")
 
 _logger = logging.getLogger(__name__)
 
@@ -53,6 +54,15 @@ class ApprovalExpired(ApprovalInboxError):
 class ApprovalRecord:
     request: ApprovalRequest
     decision: ApprovalDecision | None
+
+
+@dataclass(frozen=True)
+class ApprovalHistoryEntry:
+    request: ApprovalRequest
+    decision: ApprovalDecision | None
+    status: str
+    archived: bool
+    terminal_at: datetime
 
 
 @dataclass(frozen=True)
@@ -205,6 +215,69 @@ class FileApprovalInbox:
         found.sort(key=lambda request: (request.requested_at, request.request_id))
         return found
 
+    def history(
+        self,
+        *,
+        tenant: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[ApprovalHistoryEntry]:
+        if status is not None and status not in HISTORY_STATUSES:
+            raise ValueError(f"unknown approval history status: {status!r}")
+        limit = max(1, min(200, limit))
+        found: list[ApprovalHistoryEntry] = []
+        for directory, archived in ((self.root, False), (self.root / "archive", True)):
+            if not directory.is_dir():
+                continue
+            for path in directory.glob(f"*{_REQUEST_SUFFIX}"):
+                request_id = path.name[: -len(_REQUEST_SUFFIX)]
+                if not _REQUEST_ID.fullmatch(request_id):
+                    continue
+                try:
+                    request = ApprovalRequest.model_validate_json(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if tenant is not None and request.principal.tenant != tenant:
+                    continue
+                decision_path = directory / f"{request_id}{_DECISION_SUFFIX}"
+                try:
+                    decision = (
+                        ApprovalDecision.model_validate_json(
+                            decision_path.read_text(encoding="utf-8")
+                        )
+                        if decision_path.exists()
+                        else None
+                    )
+                except (OSError, ValueError):
+                    continue
+                if decision is not None:
+                    entry_status = "approved" if decision.approved else "denied"
+                    terminal_at = decision.decided_at
+                elif self.is_expired(request):
+                    deadline = self.expires_at(request)
+                    if deadline is None:
+                        continue
+                    entry_status = "expired"
+                    terminal_at = deadline
+                else:
+                    continue
+                if status is not None and entry_status != status:
+                    continue
+                found.append(
+                    ApprovalHistoryEntry(
+                        request=request,
+                        decision=decision,
+                        status=entry_status,
+                        archived=archived,
+                        terminal_at=terminal_at,
+                    )
+                )
+        found.sort(
+            key=lambda entry: (entry.terminal_at, entry.request.request_id),
+            reverse=True,
+        )
+        return found[:limit]
+
     def prune(
         self,
         max_age_seconds: float,
@@ -309,8 +382,10 @@ class FileApprovalInbox:
 
 
 __all__ = [
+    "HISTORY_STATUSES",
     "ApprovalConflict",
     "ApprovalExpired",
+    "ApprovalHistoryEntry",
     "ApprovalNotFound",
     "ApprovalRecord",
     "FileApprovalInbox",

@@ -95,6 +95,26 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 未配置审批目录或审批数据库时返回 404 `approvals_not_configured`。
 - 数据库不可达时返回 503 `approval_unavailable`。
 
+## `GET /api/approvals/history?limit=50&status=<status>` -> `[ApprovalHistoryEntry]`
+
+已决与已过期的审批记录，按终结时间倒序。`status` 取 `approved`、`denied`、`expired` 或 `cancelled`，其他值返回 400 `invalid_status`。`limit` 夹在 1 到 200。
+
+```json
+{
+  "request": {"request_id": "r1", "...": "ApprovalRequest"},
+  "decision": {"request_id": "r1", "approved": true, "approver": "alice", "...": "ApprovalDecision"},
+  "status": "approved",
+  "archived": false,
+  "terminal_at": "2026-11-16T10:00:00Z"
+}
+```
+
+- 未配置审批存储返回 404 `approvals_not_configured`；存储不可达返回 503 `approval_unavailable`。
+- 非 `admin` 只返回自己租户的记录，租户取 `request.principal.tenant`。`admin` 可看全部租户。
+- 包含已归档记录，`archived` 为 true。`terminal_at` 取 `decision.decided_at`；过期记录取 `expires_at`；都没有时取 `requested_at`。
+- 没有决定且未过期的待决请求不出现在历史里。
+- 读取历史不写审计。
+
 ## `GET /api/plans?limit=50` -> `[PlanSummary]`
 
 从当前进程的审计缓冲按 `trace_id` 聚合 `orchestration.run` 事件，按最后事件时间倒序。`limit` 夹在 1 到 200。

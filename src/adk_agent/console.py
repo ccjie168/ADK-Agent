@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Str
 from google.adk.models import BaseLlm
 from pydantic import ValidationError
 
-from .approvals import ApprovalConflict, ApprovalExpired, ApprovalNotFound
+from .approvals import HISTORY_STATUSES, ApprovalConflict, ApprovalExpired, ApprovalNotFound
 from .approvals_postgres import ApprovalInboxUnavailable
 from .audit import AuditQuery, AuditQueryUnavailable, ListAuditSink, query_events
 from .audit.hashing import hash_text
@@ -504,6 +504,22 @@ _INDEX_HTML = r"""<!doctype html>
     <button id="approve" data-capability="approvals.decide">Approve</button>
     <button id="deny" data-capability="approvals.decide">Deny</button>
   </div>
+  <h3>History</h3>
+  <div class="row">
+    <button id="refresh-approval-history">Refresh</button>
+    <select id="approval-history-status">
+      <option value="">all</option>
+      <option value="approved">approved</option>
+      <option value="denied">denied</option>
+      <option value="expired">expired</option>
+      <option value="cancelled">cancelled</option>
+    </select>
+  </div>
+  <div id="approval-history-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>request</th><th>status</th><th>agent</th><th>approver</th><th>terminal</th><th>reason</th><th>archived</th></tr></thead>
+    <tbody id="approval-history-body"></tbody>
+  </table>
 </section>
 
 <section id="grants" class="panel" data-capability="grants.read">
@@ -658,8 +674,10 @@ function cell(text) {
 
 const BADGE_TONES = {
   verified: "good", pinned: "good", eval: "good", published: "good",
-  untrusted: "bad", changed: "bad", retired: "bad",
-  unsigned: "warn", unreachable: "warn", deprecated: "warn",
+  approved: "good",
+  untrusted: "bad", changed: "bad", retired: "bad", denied: "bad",
+  unsigned: "warn", unreachable: "warn", deprecated: "warn", expired: "warn",
+  cancelled: "muted",
 };
 
 function badgeLabel(label) {
@@ -1341,6 +1359,47 @@ async function loadApprovals() {
   renderApprovalDetail();
 }
 
+async function loadApprovalHistory() {
+  $("approval-history-msg").className = "panel-msg";
+  $("approval-history-msg").textContent = "";
+  const body = $("approval-history-body");
+  body.innerHTML = "";
+  const status = $("approval-history-status").value;
+  let path = "/api/approvals/history?limit=50";
+  if (status) path += "&status=" + encodeURIComponent(status);
+  const result = await getJson(path);
+  if (!result.ok) {
+    $("approval-history-msg").textContent = result.status === 404
+      ? "approvals not configured"
+      : "history unavailable (" + result.status + ")";
+    return;
+  }
+  const entries = result.data || [];
+  if (entries.length === 0) {
+    $("approval-history-msg").className = "muted";
+    $("approval-history-msg").textContent = "no approval history";
+    return;
+  }
+  for (const entry of entries) {
+    const request = entry.request || {};
+    const decision = entry.decision || {};
+    const agentRef = request.agent_ref || {};
+    const row = document.createElement("tr");
+    row.appendChild(cell(request.request_id));
+    const statusCell = document.createElement("td");
+    statusCell.appendChild(badgeSpan(entry.status));
+    row.appendChild(statusCell);
+    row.appendChild(cell(agentRef.id ? agentRef.id + "@" + (agentRef.version || "") : null));
+    row.appendChild(cell(decision.approver));
+    const terminal = document.createElement("td");
+    terminal.textContent = String(entry.terminal_at || "").replace("T", " ").slice(0, 19);
+    row.appendChild(terminal);
+    row.appendChild(cell(decision.reason));
+    row.appendChild(cell(entry.archived ? "yes" : "no"));
+    body.appendChild(row);
+  }
+}
+
 async function decideApproval(approved) {
   if (!selectedApproval) {
     $("approvals-msg").textContent = "select a request first";
@@ -1512,6 +1571,7 @@ async function connect() {
   if (can("runs.read")) await loadRuns();
   if (can("sessions.read")) await loadSessions();
   if (can("approvals.read")) await loadApprovals();
+  if (can("approvals.read")) await loadApprovalHistory();
   if (can("runs.read")) await loadPlans();
   if (can("tools.read")) await loadTools();
   if (can("connectors.read")) await loadConnectors();
@@ -1897,6 +1957,8 @@ $("peer-revoke").addEventListener("click", revokePeer);
 $("refresh-sessions").addEventListener("click", loadSessions);
 $("refresh-approvals").addEventListener("click", loadApprovals);
 $("approval-filter").addEventListener("input", renderApprovals);
+$("refresh-approval-history").addEventListener("click", loadApprovalHistory);
+$("approval-history-status").addEventListener("change", loadApprovalHistory);
 $("refresh-grants").addEventListener("click", loadGrants);
 $("grant-request").addEventListener("click", requestGrant);
 $("grant-approve").addEventListener("click", () => decideGrant(true));
@@ -3595,6 +3657,34 @@ def build_console_app(
             )
         )
         return JSONResponse(decision.model_dump(mode="json"))
+
+    @app.get("/api/approvals/history")
+    async def approval_history(request: Request, limit: int = 50, status: str | None = None) -> Any:
+        if approvals is None:
+            return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
+        if status is not None and status not in HISTORY_STATUSES:
+            return JSONResponse({"error": "invalid_status"}, status_code=400)
+        limit = max(1, min(200, limit))
+        caller = _principal_for(request)
+        tenant = None if "admin" in caller.roles else caller.tenant
+        try:
+            entries = approvals.history(tenant=tenant, status=status, limit=limit)
+            if inspect.isawaitable(entries):
+                entries = await entries
+        except ApprovalInboxUnavailable:
+            return JSONResponse({"error": "approval_unavailable"}, status_code=503)
+        return [
+            {
+                "request": entry.request.model_dump(mode="json"),
+                "decision": (
+                    entry.decision.model_dump(mode="json") if entry.decision is not None else None
+                ),
+                "status": entry.status,
+                "archived": entry.archived,
+                "terminal_at": entry.terminal_at.isoformat().replace("+00:00", "Z"),
+            }
+            for entry in entries
+        ]
 
     @app.get("/api/plans")
     async def list_plans(request: Request, limit: int = 50) -> list[dict]:
