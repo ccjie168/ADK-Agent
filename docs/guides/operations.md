@@ -183,4 +183,5 @@
 - Postgres：连接数、advisory lock 等待、`adk_audit_records` 与 `adk_approvals` 的增长、WAL 与磁盘。
 - Redis：内存与淘汰；淘汰只影响限流精度。
 - 日志与指标不得出现 token、DSN 或待审 `input`。发现即按泄露处理并轮换。
+- 公开仓库已启用 GitHub secret scanning、push protection 与 Dependabot security updates。自定义 pattern 与 validity checks 需要付费套餐，当前关闭。仓库根的 `.secrets.baseline` 是 detect-secrets 的已审基线；新命中会让门禁失败。已接受漏洞的到期由 `.trivyignore.yaml` 的 `expired_at` 控制，`check.py` 与 `sbom.py` 会停止忽略过期项。
 - 滚动升级前跑一次 `python scripts/check.py --full`，升级后重跑冒烟与验签。

@@ -7,14 +7,22 @@ import argparse
 import re
 import subprocess  # nosec B404  # runs pip-audit
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def _accepted_vuln_ids() -> list[str]:
+    """Accepted IDs from .trivyignore.yaml that have not expired."""
     text = (ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
-    return re.findall(r"^\s*-\s*id:\s*(\S+)", text, flags=re.MULTILINE)
+    accepted: list[str] = []
+    for block in text.split("- id:")[1:]:
+        vuln = block.split()[0].strip()
+        expiry = re.search(r"expired_at:\s*(\d{4}-\d{2}-\d{2})", block)
+        if expiry is None or date.fromisoformat(expiry.group(1)) >= date.today():
+            accepted.append(vuln)
+    return accepted
 
 
 def build_command(out: str) -> list[str]:
