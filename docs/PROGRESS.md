@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-15
 分支: master
-最新提交: `358c12c` docs(operations): document app-state RLS and migration impact (SLICE-106)
+最新提交: `debde0c` build: apply accepted risks to the SBOM audit (SLICE-102)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
@@ -113,10 +113,10 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1168 passed, 69 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1168 passed, 69 skipped（`docs/evidence/SLICE-106-app-state-rls-ops.txt`）
-- 设置 `TEST_POSTGRES_URL` 后 `--full` 为 1236 passed, 1 skipped，Postgres 用例全部执行（`docs/evidence/SLICE-105-app-state-rls.txt`）。
-- 本轮未推送，CI 未运行。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1170 passed, 69 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1170 passed, 69 skipped（`docs/evidence/SLICE-102-build-supply-chain.txt`）
+- 设置 `TEST_POSTGRES_URL` 后 Postgres 用例全部执行，最近记录为 1236 passed, 1 skipped（`docs/evidence/SLICE-105-app-state-rls.txt`）。
+- CI 已推送并在 `debde0c` 上全绿（run 43656879225），包含锁安装、`--no-build-isolation`、完整门禁、镜像构建、Trivy 扫描与 SBOM 上传。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
 跳过项主要是需要 `TEST_POSTGRES_URL` 的 Postgres 集成用例（配额、RLS、注册表、peer、远端目录、审计），以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。设 `TEST_POSTGRES_URL` 后本地全部可跑。CI 不装 `a2a-sdk`，另有少量 A2A 用例按条件跳过。
 

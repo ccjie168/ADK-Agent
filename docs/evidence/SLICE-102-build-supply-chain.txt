@@ -66,10 +66,23 @@ healthz=200
 $ docker logs ...
 GET /healthz HTTP/1.1 200 OK
 
+ci
+--
+final run 43656879225 on debde0c, every step green:
+  actions/checkout, actions/setup-python
+  pip install --require-hashes -r requirements/dev.lock
+  pip install --no-build-isolation --no-deps .
+  python scripts/check.py --full --strict
+  docker build -t adk-agent:${{ github.sha }} .
+  aquasecurity/setup-trivy@81e5143 (v0.3.1, Trivy v0.76.2)
+  trivy image ... --ignorefile .trivyignore.yaml
+  python scripts/sbom.py -o sbom.json
+  actions/upload-artifact (sbom)
+
 gate
 ----
 $ ./.venv/Scripts/python.exe scripts/check.py --full
-1161 passed, 58 skipped in 47.68s
+1170 passed, 69 skipped in 47.35s
 [PASS] format
 [PASS] lint
 [PASS] types
