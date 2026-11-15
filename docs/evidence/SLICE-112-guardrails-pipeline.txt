@@ -1,0 +1,46 @@
+SLICE-112 input and output guardrails
+=====================================
+
+red
+---
+$ pytest tests/test_guardrails.py tests/models/test_gateway_guardrails.py -q
+E   ImportError: cannot import name 'GuardrailConfig' from 'adk_agent.guardrails'
+2 errors in 2.99s
+
+green
+-----
+$ pytest tests/test_guardrails.py tests/models/test_gateway_guardrails.py -q
+11 passed
+- default email, phone and ID card rules redact input
+- Chinese and English prompt injection rules block input
+- case and whitespace variants are still blocked
+- output-only rules do not touch input
+- disabled rules pass through
+- invalid regex and invalid config files fail startup
+- a pipeline exception fails closed
+- custom rule files load
+- the model gateway redacts request and response before the provider and
+  before the caller, and the audit never contains the raw values
+- a blocked input raises model_denied and never reaches the provider
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1207 passed, 70 skipped
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+ci
+--
+PR #13 gate: pass (2m55s)
+https://github.com/ccjie168/ADK-Agent/actions/runs/43701465387
+
+notes
+-----
+- No new dependency. Rules are regular expressions in a JSON file.
+- The pipeline is off unless --guardrails is passed to serve-model-gateway.
+- v1 covers the standalone model gateway. Console, MCP, A2A and the tool
+  gateway are a follow-up.
+- Audit actions are guardrail.input and guardrail.output. They record the
+  rule ids and the hash of the original text, never the text.

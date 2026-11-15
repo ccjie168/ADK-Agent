@@ -18,6 +18,7 @@ from ..core import (
     ModelRequest,
     ModelResponse,
 )
+from ..guardrails import GuardrailPipeline
 from ..observability import model_span, record_error, record_usage
 
 
@@ -89,6 +90,8 @@ class PolicyModelGateway:
         self,
         providers: Mapping[str, ModelProvider],
         audit: AuditSink | None = None,
+        *,
+        guardrails: GuardrailPipeline | None = None,
     ) -> None:
         for name, provider in providers.items():
             if name != provider.name:
@@ -97,6 +100,7 @@ class PolicyModelGateway:
                 )
         self.providers = dict(providers)
         self.audit = audit
+        self.guardrails = guardrails
 
     async def complete(
         self,
@@ -105,6 +109,8 @@ class PolicyModelGateway:
         policy: ModelPolicy,
     ) -> ModelResponse:
         started = time.perf_counter()
+        if self.guardrails is not None:
+            request = await self._guard_input(invocation, request)
         args_hash = hash_messages(request)
         try:
             check_provider(request.provider, policy)
@@ -167,6 +173,8 @@ class PolicyModelGateway:
             )
             raise
 
+        if self.guardrails is not None:
+            response = await self._guard_output(invocation, response)
         record_usage(
             span,
             input_tokens=response.input_tokens,
@@ -188,3 +196,66 @@ class PolicyModelGateway:
             started=started,
         )
         return response
+
+    async def _guard_input(self, invocation: Invocation, request: ModelRequest) -> ModelRequest:
+        guardrails = self.guardrails
+        if guardrails is None:
+            return request
+        messages = []
+        for message in request.messages:
+            result = guardrails.check(message.content, direction="input")
+            if result.blocked_by is not None:
+                await self._emit_guardrail(
+                    invocation, "input", [result.blocked_by], True, message.content
+                )
+                raise ModelDenied(f"guardrail blocked input at {result.blocked_by}")
+            if result.redacted_by:
+                await self._emit_guardrail(
+                    invocation, "input", result.redacted_by, False, message.content
+                )
+            messages.append(message.model_copy(update={"content": result.text}))
+        return request.model_copy(update={"messages": messages})
+
+    async def _guard_output(self, invocation: Invocation, response: ModelResponse) -> ModelResponse:
+        guardrails = self.guardrails
+        if guardrails is None:
+            return response
+        result = guardrails.check(response.text, direction="output")
+        if result.blocked_by is not None:
+            await self._emit_guardrail(
+                invocation, "output", [result.blocked_by], True, response.text
+            )
+            raise ModelDenied(f"guardrail blocked output at {result.blocked_by}")
+        if result.redacted_by:
+            await self._emit_guardrail(
+                invocation, "output", result.redacted_by, False, response.text
+            )
+            return response.model_copy(update={"text": result.text})
+        return response
+
+    async def _emit_guardrail(
+        self,
+        invocation: Invocation,
+        direction: str,
+        rules: list[str],
+        blocked: bool,
+        text: str,
+    ) -> None:
+        if self.audit is None:
+            return
+        await self.audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=invocation.run_id,
+                trace_id=invocation.trace_id,
+                tenant=invocation.principal.tenant,
+                principal=invocation.principal,
+                agent_ref=invocation.agent_ref,
+                action=f"guardrail.{direction}",
+                target=",".join(rules),
+                args_hash=hash_text(text),
+                status="denied" if blocked else "ok",
+                error_code="guardrail_blocked" if blocked else None,
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
