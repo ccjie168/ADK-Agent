@@ -35,7 +35,7 @@
 - [x] CLI 写入指定文件 -> `::test_cli_pins_files`
 - [x] workflow 仅手动触发、仅 master、先门禁与扫描后推送 -> `::test_release_workflow_order`
 - [x] 本地 `python scripts/check.py --full` 全绿 -> 证据 gate 段
-- [ ] PR 的 `gate` 检查通过 -> 证据 ci 段
+- [x] PR 的 `gate` 检查通过 -> 证据 ci 段
 - [ ] 真实推送与回写 -> 由操作员在自建 registry 上执行，结果补进证据 release 段
 
 ## 反例（必须在实现前跑红）
