@@ -955,6 +955,12 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
 
+    p_gateway.add_argument(
+        "--guardrails",
+        default=None,
+        help="JSON guardrail config file (default: disabled)",
+    )
+
     p_tools = sub.add_parser(
         "serve-tool-gateway", help="serve the tool gateway as a standalone service"
     )
@@ -1601,8 +1607,15 @@ def main(argv: list[str] | None = None) -> None:
             for name, provider in providers.items()
         }
         sink = _audit_sink(args)
+        from .guardrails import GuardrailConfigError, build_guardrail_pipeline
+
+        try:
+            guardrails = build_guardrail_pipeline(args.guardrails)
+        except GuardrailConfigError as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(1) from None
         app = build_model_gateway_app(
-            PolicyModelGateway(providers, audit=sink),
+            PolicyModelGateway(providers, audit=sink, guardrails=guardrails),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
