@@ -199,6 +199,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-106 应用级状态 RLS 运维收口：四张表说明、`app_name` 前缀与旧数据影响、跨进程实测。已完成。
 - SLICE-107 密钥扫描加固：证据目录纳入扫描、tracked `.secrets.baseline`、接受风险按 `expired_at` 过滤。已完成。
 - SLICE-108 密钥基线只读：门禁不再给 detect-secrets 传 `--baseline`，改在内存抵扣已审命中。已完成。
+- SLICE-109 发布流水线与 digest 回写：手动 workflow 先门禁与扫描再推送，脚本校验并回写 digest。已完成。
 
 ## 完成定义
 

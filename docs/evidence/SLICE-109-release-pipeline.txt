@@ -1,0 +1,38 @@
+SLICE-109 release pipeline
+==========================
+
+red
+---
+tests/test_release_digest.py ran before the script and workflow existed:
+  FileNotFoundError for scripts/release_digest.py (5 tests)
+  FileNotFoundError for .github/workflows/release.yml (1 test)
+
+green
+-----
+$ pytest tests/test_release_digest.py -q
+6 passed
+- validate rejects a tag, a digest and a bare repository reference
+- rewrite pins every digest line, keeps CRLF and is idempotent
+- workflow is manual only, guarded to master, and runs the gate and Trivy
+  before docker push
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1180 passed, 69 skipped
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+ci
+--
+PR gate: pending.
+
+release
+-------
+Not run yet. Operator steps after this merges:
+  gh workflow run release.yml -f image=registry.local:5000/adk/adk-agent
+  # take image@digest from the release artifact or run summary
+  python scripts/release_digest.py --image <image> --digest <digest>
+  git add deploy/k8s/deployment.yaml deploy/k8s/multi-replica.yaml
+Required repository secrets: REGISTRY_USERNAME, REGISTRY_PASSWORD.

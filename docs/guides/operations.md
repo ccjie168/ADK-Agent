@@ -85,7 +85,9 @@
 - dev 锁用 `--allow-unsafe`，把 `pip` 与 `setuptools` 固定下来。`pip-tools` 依赖未固定的 `setuptools`，CI 用 `--require-hashes` 安装时必须有这个 pin。
 - 默认镜像包含 `litellm`，因为未设置 `ADK_AGENT_MODEL` 时模型默认回退到 LiteLLM 的 `deepseek/deepseek-v4-pro`。国内模型用 `litellm:deepseek/<model>`，凭据放在 Secret 的 `DEEPSEEK_API_KEY`（或 LiteLLM 对应的 provider 变量）。也可以继续用清单里的 Anthropic 兼容端点。
 - CI 按 `dev.lock` 安装后跑门禁，构建镜像，Trivy 扫描 `HIGH,CRITICAL` 可修复项，并上传 SBOM。扫描失败不得合入。
-- 发布时先推送镜像，取得 digest，再替换清单里的全零 digest。`image:` 只接受 `adk-agent@sha256:<digest>`，不接受 `:latest` 或可移动标签。取 digest 可用 `docker buildx imagetools inspect <image>` 或 `crane digest <image>`。
+- 发布走 `.github/workflows/release.yml`，手动触发，只在 `master` 上运行。输入 `image` 填自建 registry 的完整引用且不带 tag，例如 `registry.local:5000/adk/adk-agent`；自建 registry 只能内网访问时，`runner` 填能连到它的自托管 runner 标签。凭据用仓库 secret `REGISTRY_USERNAME` 与 `REGISTRY_PASSWORD`。workflow 先跑完整门禁与 Trivy，扫描通过才推送，digest 写进 `release.txt` 与 run summary。
+- 推送成功后本地执行 `python scripts/release_digest.py --image <image> --digest <digest>`，脚本只改两个清单里的 digest 行，再按正常 PR 评审合并。脚本拒绝带 tag、带 digest 或没有 registry 前缀的镜像引用，也拒绝格式不对的 digest。
+- `image:` 只接受 `<registry>/<path>@sha256:<digest>`，不接受 `:latest` 或可移动标签。自建 registry 建议用 HTTPS；用 HTTP 内网 registry 时，runner 的 Docker daemon 要显式把它加入 insecure registries。
 - 受限网络构建时可传 `--build-arg PIP_INDEX_URL=<mirror>` 与 `--build-arg APT_MIRROR=<debian mirror>`。这两个 arg 都不写进镜像；锁里的哈希仍然校验下载的包。
 - 镜像构建会把基础镜像里的 `zlib1g` 升到当前安全版本。基础镜像快照早于该更新，不升级就会被 Trivy 拦下。
 - 扫描的接受风险写在 `.trivyignore.yaml`，每条必须有 `statement` 与 `expired_at`。到期后 Trivy 会重新报出，必须修复或重新评审后延期。当前两条：`filelock` 受 litellm 与 ADK 的版本上限约束无法升级，`setuptools` 只存在于基础镜像被删除的层里，合并后的文件系统没有它。
