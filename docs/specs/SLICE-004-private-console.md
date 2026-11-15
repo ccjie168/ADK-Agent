@@ -1,6 +1,6 @@
 # SLICE-004 私有 Web 控制台（带鉴权）
 
-状态: planned
+状态: merged
 
 ## 意图（要什么，不写怎么写）
 
@@ -17,24 +17,24 @@
 
 ## 完成判据（可执行）
 
-- [ ] 判据 1：`build_console_app` 下 `/healthz` 与 `/` 无需 token 返回 200
+- [x] 判据 1：`build_console_app` 下 `/healthz` 与 `/` 无需 token 返回 200
       -> `tests/test_console.py::test_healthz_and_index_open`
-- [ ] 判据 2：`/api/agents`、`/api/chat` 无 token 返回 401
+- [x] 判据 2：`/api/agents`、`/api/chat` 无 token 返回 401
       -> `::test_api_requires_token`
-- [ ] 判据 3：带 token 的 `/api/agents` 返回 agent 列表（name + description）
+- [x] 判据 3：带 token 的 `/api/agents` 返回 agent 列表（name + description）
       -> `::test_agents_with_token`
-- [ ] 判据 4：`/api/chat` 对缺失 message / 未知 agent 返回 400
+- [x] 判据 4：`/api/chat` 对缺失 message / 未知 agent 返回 400
       -> `::test_chat_validates_input`
-- [ ] 判据 5：CLI 提供 `adk-agent console --agents <file>`
-- [ ] 判据 6：`docker compose config` 有效，且含 `adk-console` 服务
-- [ ] 判据 7：`check.py --fast` 与 `--full` 全绿
+- [x] 判据 5：CLI 提供 `adk-agent console --agents <file>`
+- [x] 判据 6：`docker compose config` 有效，且含 `adk-console` 服务
+- [x] 判据 7：`check.py --fast` 与 `--full` 全绿
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.console import build_console_app` -> `ImportError`
-- [ ] 反例 2：`/api/agents` 无 token -> 期望 401（实现后必须成立）
-- [ ] 反例 3：未知 agent 的 `/api/chat` -> 期望 400，而不是 500
-- [ ] 反例 4：`adk-agent console ...` -> argparse 不认识该子命令
+- [x] 反例 1：`from adk_agent.console import build_console_app` -> `ImportError`
+- [x] 反例 2：`/api/agents` 无 token -> 期望 401（实现后必须成立）
+- [x] 反例 3：未知 agent 的 `/api/chat` -> 期望 400，而不是 500
+- [x] 反例 4：`adk-agent console ...` -> argparse 不认识该子命令
 
 ## 契约（如涉及对外接口）
 

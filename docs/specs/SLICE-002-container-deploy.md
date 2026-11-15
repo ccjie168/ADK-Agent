@@ -1,6 +1,6 @@
 # SLICE-002 容器化与 Cloud Run 部署
 
-状态: planned
+状态: merged
 
 ## 意图（要什么，不写怎么写）
 
@@ -17,28 +17,28 @@
 
 ## 完成判据（可执行）
 
-- [ ] 判据 1：`resolve_port(None)` 在 `PORT=8080` 时返回 8080，未设置时返回 8000；
+- [x] 判据 1：`resolve_port(None)` 在 `PORT=8080` 时返回 8080，未设置时返回 8000；
       显式 port 优先；非法 `PORT` 抛 `ValueError`
       -> `tests/test_deploy.py::test_resolve_port`
-- [ ] 判据 2：`GET /healthz` 无鉴权返回 200 `{"status":"ok"}`；同一 app 上
+- [x] 判据 2：`GET /healthz` 无鉴权返回 200 `{"status":"ok"}`；同一 app 上
       `POST /mcp` 无 token 仍 401
       -> `tests/test_deploy.py::test_healthz_open_mcp_protected`
-- [ ] 判据 3：`/healthz` 响应只有 `status` 字段，不泄露内部信息
+- [x] 判据 3：`/healthz` 响应只有 `status` 字段，不泄露内部信息
       -> `tests/test_deploy.py::test_healthz_has_no_extra_fields`
-- [ ] 判据 4：`docker build` 成功；容器以非 root 用户运行
-- [ ] 判据 5：容器设 `PORT` 后监听该端口；`/healthz` 200；无 token `/mcp` 401；
+- [x] 判据 4：`docker build` 成功；容器以非 root 用户运行
+- [x] 判据 5：容器设 `PORT` 后监听该端口；`/healthz` 200；无 token `/mcp` 401；
       带 token `initialize` / `list_tools` 成功（容器端到端）
-- [ ] 判据 6：容器未设 `ADK_MCP_AUTH_TOKEN` 且未设 `ALLOW_UNAUTHENTICATED` 时
+- [x] 判据 6：容器未设 `ADK_MCP_AUTH_TOKEN` 且未设 `ALLOW_UNAUTHENTICATED` 时
       以非 0 退出码拒绝启动
-- [ ] 判据 7：提供 `deploy/cloudrun.md`（gcloud 命令 + Secret Manager 注入 token）
-- [ ] 判据 8：`check.py --fast` 与 `--full` 全绿
+- [x] 判据 7：提供 `deploy/cloudrun.md`（gcloud 命令 + Secret Manager 注入 token）
+- [x] 判据 8：`check.py --fast` 与 `--full` 全绿
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`GET /healthz` -> 当前 404（没有健康路由）
-- [ ] 反例 2：`PORT=8080` 时服务仍用 8000（当前 CLI 固定默认 8000，不读 `PORT`）
-- [ ] 反例 3：容器无 token 启动 -> 期望非 0 退出（实现后必须成立）
-- [ ] 反例 4：容器内 `/mcp` 无 token -> 期望 401（不是 200/非 401 的 4xx）
+- [x] 反例 1：`GET /healthz` -> 当前 404（没有健康路由）
+- [x] 反例 2：`PORT=8080` 时服务仍用 8000（当前 CLI 固定默认 8000，不读 `PORT`）
+- [x] 反例 3：容器无 token 启动 -> 期望非 0 退出（实现后必须成立）
+- [x] 反例 4：容器内 `/mcp` 无 token -> 期望 401（不是 200/非 401 的 4xx）
 
 ## 契约（如涉及对外接口）
 

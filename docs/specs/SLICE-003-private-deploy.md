@@ -1,6 +1,6 @@
 # SLICE-003 私有部署：Docker Compose + 会话持久化
 
-状态: planned
+状态: merged
 
 ## 意图（要什么，不写怎么写）
 
@@ -16,24 +16,24 @@
 
 ## 完成判据（可执行）
 
-- [ ] 判据 1：`build_runner(agent, None)` 返回 `None`（沿用内存默认）；
+- [x] 判据 1：`build_runner(agent, None)` 返回 `None`（沿用内存默认）；
       `build_runner(agent, path)` 返回带 `SqliteSessionService` 的 Runner，并创建父目录
       -> `tests/test_session_persist.py::test_build_runner`
-- [ ] 判据 2：SQLite 会话跨服务实例仍在（模拟重启）；内存会话会丢失（对照）
+- [x] 判据 2：SQLite 会话跨服务实例仍在（模拟重启）；内存会话会丢失（对照）
       -> `::test_sqlite_session_survives_restart` / `::test_in_memory_session_lost_on_restart`
-- [ ] 判据 3：CLI `serve` / `serve-many` 接受 `--session-db`，未给时读 `SESSION_DB`
-- [ ] 判据 4：容器设 `SESSION_DB=/data/sessions.db` 后 `/data` 可写；
+- [x] 判据 3：CLI `serve` / `serve-many` 接受 `--session-db`，未给时读 `SESSION_DB`
+- [x] 判据 4：容器设 `SESSION_DB=/data/sessions.db` 后 `/data` 可写；
       `healthz` 200、无 token 401、带 token `list_tools` 仍通过
-- [ ] 判据 5：提供 `docker-compose.yml`、`deploy/selfhosted.md`、`deploy/k8s/`
+- [x] 判据 5：提供 `docker-compose.yml`、`deploy/selfhosted.md`、`deploy/k8s/`
       （Deployment / Service / Secret 示例 / PVC）
-- [ ] 判据 6：`check.py --fast` 与 `--full` 全绿
+- [x] 判据 6：`check.py --fast` 与 `--full` 全绿
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`from adk_agent.factory import build_runner` -> `ImportError`（未实现）
-- [ ] 反例 2：默认内存会话在“重启”后 `get_session` 返回 `None`（证明必须持久化）
-- [ ] 反例 3：`adk-agent serve --session-db ...` -> argparse 不认识该参数
-- [ ] 反例 4：容器 `/data` 不可写（当前 Dockerfile 未创建并授权 `/data`）
+- [x] 反例 1：`from adk_agent.factory import build_runner` -> `ImportError`（未实现）
+- [x] 反例 2：默认内存会话在“重启”后 `get_session` 返回 `None`（证明必须持久化）
+- [x] 反例 3：`adk-agent serve --session-db ...` -> argparse 不认识该参数
+- [x] 反例 4：容器 `/data` 不可写（当前 Dockerfile 未创建并授权 `/data`）
 
 ## 契约（如涉及对外接口）
 
