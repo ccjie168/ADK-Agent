@@ -1,6 +1,6 @@
 # SLICE-001 MCP streamable-http + 强制鉴权
 
-状态: planned
+状态: merged
 
 ## 意图（要什么，不写怎么写）
 
@@ -11,23 +11,23 @@
 
 ## 完成判据（可执行）
 
-- [ ] 判据 1：`serve_agent(..., transport="streamable-http", auth_token=...)` 能启动；
+- [x] 判据 1：`serve_agent(..., transport="streamable-http", auth_token=...)` 能启动；
       客户端带 `Authorization: Bearer <token>` 可 `initialize` 并 `list_tools`
       -> `tests/test_http_auth.py::test_http_mcp_client_roundtrip`
-- [ ] 判据 2：无 `Authorization` 头的请求返回 401
+- [x] 判据 2：无 `Authorization` 头的请求返回 401
       -> `tests/test_http_auth.py::test_http_requires_bearer`
-- [ ] 判据 3：错误 token 返回 401
+- [x] 判据 3：错误 token 返回 401
       -> `tests/test_http_auth.py::test_http_rejects_wrong_token`
-- [ ] 判据 4：非 loopback host 且未提供 token 时，启动前抛 `ValueError`
+- [x] 判据 4：非 loopback host 且未提供 token 时，启动前抛 `ValueError`
       -> `tests/test_http_auth.py::test_http_rejects_unauthenticated_public_bind`
-- [ ] 判据 5：`check.py --fast` 与 `--full` 全绿
+- [x] 判据 5：`check.py --fast` 与 `--full` 全绿
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：无鉴权请求 -> 期望 401（当前实现：HTTP 端点无鉴权，返回非 401）
-- [ ] 反例 2：错误 token -> 期望 401
-- [ ] 反例 3：`host=0.0.0.0` 且无 token -> 期望启动前报错（当前：会直接启动）
-- [ ] 反例 4：`allow_unauthenticated=True` 但 `host=0.0.0.0` -> 期望报错
+- [x] 反例 1：无鉴权请求 -> 期望 401（当前实现：HTTP 端点无鉴权，返回非 401）
+- [x] 反例 2：错误 token -> 期望 401
+- [x] 反例 3：`host=0.0.0.0` 且无 token -> 期望启动前报错（当前：会直接启动）
+- [x] 反例 4：`allow_unauthenticated=True` 但 `host=0.0.0.0` -> 期望报错
       （免鉴权只能用于 loopback）
 
 ## 契约（如涉及对外接口）

@@ -42,7 +42,7 @@ ADR-0002 -> docs/contracts/ -> docs/specs/SLICE-xxx.md -> code -> docs/evidence/
 | SLICE-010 | 评审 P0 加固 | ADR-0002 第 5、6 条 | 无 |
 | SLICE-011 | 模型与配置契约收敛 | ADR-0002 第 2、3、8 条 | 008, 009 |
 
-M0 出口证据见 `docs/evidence/M0-milestone.txt`。
+M0 出口证据见 `docs/evidence/M0-milestone.txt`。SLICE-001 到 SLICE-004 是 M0 之前的早期切片，均已合并，spec 在 `docs/specs/`。
 
 M0 出口标准：
 
@@ -197,6 +197,8 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-104 会话 RLS 运维收口：启用顺序、角色要求、回滚与排障、跨进程实测。已完成。
 - SLICE-105 应用级状态租户 RLS（ADR-0020）：`app_states` 策略、`app_name` 租户前缀、四张表启用。已完成。
 - SLICE-106 应用级状态 RLS 运维收口：四张表说明、`app_name` 前缀与旧数据影响、跨进程实测。已完成。
+- SLICE-107 密钥扫描加固：证据目录纳入扫描、tracked `.secrets.baseline`、接受风险按 `expired_at` 过滤。已完成。
+- SLICE-108 密钥基线只读：门禁不再给 detect-secrets 传 `--baseline`，改在内存抵扣已审命中。已完成。
 
 ## 完成定义
 
