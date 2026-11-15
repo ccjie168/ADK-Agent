@@ -1,0 +1,60 @@
+SLICE-115 审批工作台
+
+环境
+- Windows 11 Pro, Python 3.14 venv, FastAPI TestClient
+- 浏览器: headless Edge 157 via DevTools Protocol
+- 控制台: 127.0.0.1:8085，--approval-dir 指向种入的请求，--approval-ttl 3600
+- 种子: 4 条可见请求（一条无自带截止时间，一条 8 分钟后到期，一条 3 小时后到期，一条其他租户），另有一条已过期请求
+
+一、反例红（实现前）
+python -m pytest tests/test_console_approvals_expiry.py
+  test_list_materializes_the_ttl_deadline FAILED
+    AttributeError: 'NoneType' object has no attribute 'replace'
+  1 failed, 4 passed in 2.48s
+其余两个新用例（显式截止时间保留、无 TTL 为 null）与原有用例本来就应通过。
+
+二、实现后绿
+tests/test_console_approvals_expiry.py
+  5 passed in 1.80s
+tests/test_console_approvals.py tests/test_console_approvals_expiry.py tests/test_console.py
+  22 passed in 2.39s
+
+三、API 有效截止时间
+GET /api/approvals（实现后）
+  explicit-1  expires_at=2026-11-15T14:14:35Z（请求自带，3h）
+  other-1     expires_at=2026-11-15T13:14:35Z（请求自带，2h）
+  soon-1      expires_at=2026-11-15T11:22:35Z（请求自带，8m）
+  ttl-1       expires_at=2026-11-15T12:09:35Z（requested_at + TTL 3600s）
+  expired-1   不返回
+实现前 ttl-1 的 expires_at 为 null。
+
+四、浏览器
+初始列表
+  4 行，expires 列: explicit-1 3h 0m left，other-1 2h 0m left，soon-1 8m left，ttl-1 55m left
+选中与摘要
+  摘要 8 个字段: request、run、trace、step、agent、tenant、requested、expires
+  expires 字段带剩余时间，例: 2026-11-15 14:14:35 (3h 0m left)
+过滤
+  输入 soon 后列表缩到 1 行
+决定
+  选中 soon-1，理由填 looks fine，Approve 后列表变为 3 行，消息 approved soon-1
+  soon-1.decision.json: approver=console_user, reason=looks fine
+  随后选中 ttl-1，理由 within policy，Approve 后列表 2 行，消息为绿色 approved ttl-1
+文本渲染
+  input 为 <img src=x onerror=window.__approval_xss=1> 时按字面显示，window.__approval_xss 未被设置
+窄屏
+  755px 下 document.scrollWidth 未超过 clientWidth
+截图（临时目录，未入库）
+- C:/Users/Jie/AppData/Local/Temp/adk-approvals.png
+- C:/Users/Jie/AppData/Local/Temp/adk-approvals-final.png
+
+五、门禁
+python scripts/check.py --fast
+  1228 passed, 70 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1228 passed, 70 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS
