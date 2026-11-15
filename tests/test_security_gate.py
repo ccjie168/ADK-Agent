@@ -54,6 +54,29 @@ def test_sbom_uses_accepted_vuln_ids():
     assert all(f"--ignore-vuln={cve}" in cmd for cve in gate._accepted_vuln_ids())
 
 
+def test_expired_risks_are_not_ignored(tmp_path, monkeypatch):
+    entries = (
+        "vulnerabilities:\n"
+        "  - id: CVE-OLD\n"
+        "    statement: old\n"
+        "    expired_at: 2020-01-01\n"
+        "  - id: CVE-FUTURE\n"
+        "    statement: future\n"
+        "    expired_at: 2099-01-01\n"
+    )
+    (tmp_path / ".trivyignore.yaml").write_text(entries, encoding="utf-8")
+    for name in ("check", "sbom"):
+        module = _load(name, f"{name}.py")
+        monkeypatch.setattr(module, "ROOT", tmp_path)
+        assert module._accepted_vuln_ids() == ["CVE-FUTURE"]
+
+
+def test_secrets_scan_uses_baseline():
+    text = (ROOT / "scripts" / "check.py").read_text(encoding="utf-8")
+    assert "--baseline" in text
+    assert (ROOT / ".secrets.baseline").is_file()
+
+
 def test_spec_without_threat_model_fails():
     specs = _load("check_specs", "check_specs.py")
     text = "状态: planned\n## 意图\n## 完成判据\n## 反例\n## 证据\n"

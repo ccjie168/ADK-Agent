@@ -13,6 +13,7 @@ import json
 import re
 import subprocess  # nosec B404  # runs the gate tools
 import sys
+from datetime import date
 from pathlib import Path
 
 PY = sys.executable
@@ -20,9 +21,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _accepted_vuln_ids() -> list[str]:
-    """IDs already accepted in .trivyignore.yaml, with statements and expiry."""
+    """Accepted IDs from .trivyignore.yaml that have not expired."""
     text = (ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
-    return re.findall(r"^\s*-\s*id:\s*(\S+)", text, flags=re.MULTILINE)
+    accepted: list[str] = []
+    for block in text.split("- id:")[1:]:
+        vuln = block.split()[0].strip()
+        expiry = re.search(r"expired_at:\s*(\d{4}-\d{2}-\d{2})", block)
+        if expiry is None or date.fromisoformat(expiry.group(1)) >= date.today():
+            accepted.append(vuln)
+    return accepted
 
 
 FAST_STEPS: list[tuple[str, str | None, list[str]]] = [
@@ -45,8 +52,8 @@ FULL_STEPS: list[tuple[str, str | None, list[str]]] = FAST_STEPS + [
 
 # detect-secrets has no exit-code signal; we parse its JSON and count hits.
 SECRET_EXCLUDES = (
-    r"(^|[\\/])(\.venv|\.git|\.mypy_cache|\.ruff_cache|__pycache__|"  # nosec B105  # path regex
-    r"\.pytest_cache|\.import_linter_cache|node_modules|docs[\\/]evidence)([\\/]|$)"
+    r"(^|[\\/])(\.venv|\.git|\.claude|\.agents|\.mypy_cache|\.ruff_cache|"  # nosec B105  # path regex
+    r"__pycache__|\.pytest_cache|\.import_linter_cache|node_modules|\.secrets\.baseline)([\\/]|$)"
 )
 
 
@@ -72,6 +79,8 @@ def _run_secrets() -> bool | None:
         "scan",
         "--all-files",
         "--force-use-all-plugins",
+        "--baseline",
+        ".secrets.baseline",
         "--exclude-files",
         SECRET_EXCLUDES,
         ".",
