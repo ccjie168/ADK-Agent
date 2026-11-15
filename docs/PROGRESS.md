@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-15
 分支: master
-最新提交: `6462a6d` security: harden secret scanning and accepted-risk expiry (SLICE-107) (#1)
+最新提交: `9510594` security: keep the secrets baseline read-only (SLICE-108) (#3)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 一句话
@@ -107,7 +107,7 @@
 | SLICE-105 | 应用级状态租户 RLS | `f6863ca` |
 | SLICE-106 | 应用级状态 RLS 运维收口 | `358c12c` |
 | SLICE-107 | 密钥扫描加固与风险到期 | `6462a6d` |
-| SLICE-108 | 密钥基线只读 | 本 PR |
+| SLICE-108 | 密钥基线只读 | `9510594` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
