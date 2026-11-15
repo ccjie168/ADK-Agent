@@ -1,0 +1,48 @@
+SLICE-110 OTel tracing
+======================
+
+red
+---
+$ pytest tests/test_otel_spans.py -q
+tests/test_otel_spans.py:14: in <module>
+    from adk_agent.observability import (
+E   ModuleNotFoundError: No module named 'adk_agent.observability'
+1 error in 1.59s
+
+green
+-----
+$ pytest tests/test_otel_spans.py -q
+8 passed
+- span hierarchy: agent.run root with model.call, tool.call and a2a.call children
+- attributes: tenant, run, agent, model, token usage and cost
+- no prompt, completion or tool argument text by default
+- no endpoint: configure_otel returns False
+- invalid endpoint: configure_otel returns False
+- exporter failure is soft
+- audit trace_id equals the OTel trace id
+- tenants do not mix
+
+dependencies
+------------
+opentelemetry-api and opentelemetry-sdk were already locked at 1.45.2 via
+google-adk. The only new package is
+opentelemetry-exporter-otlp-proto-http==1.45.2, now in both locks.
+
+gate
+----
+$ ./.venv/Scripts/python.exe scripts/check.py --full
+1188 passed, 69 skipped
+[PASS] format [PASS] lint [PASS] types [PASS] layering [PASS] specs
+[PASS] test [PASS] sast [PASS] deps [PASS] secrets
+ALL PASS
+
+ci
+--
+PR gate: pending.
+
+notes
+-----
+- configure_otel runs once in cli.main. No endpoint means no provider.
+- Spans are wired at AuditedRunner, PolicyModelGateway, ToolGuard and
+  AuditTransport.
+- The audit chain remains the authoritative record; OTel is best effort.

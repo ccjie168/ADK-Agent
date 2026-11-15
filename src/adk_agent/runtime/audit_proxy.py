@@ -27,6 +27,7 @@ from ..core import (
 )
 from ..core.context import reset_invocation, set_invocation
 from ..metrics import MetricsRegistry
+from ..observability import run_span
 from .execution import dev_agent_ref
 
 __all__ = ["AuditedRunner", "wrap_runner"]
@@ -110,6 +111,7 @@ class AuditedRunner:
         )
 
         stack = AsyncExitStack()
+        stack.enter_context(run_span(invocation, invocation.agent_ref))
         token = set_invocation(invocation)
         try:
             if self._quota is not None and quota_policy is not None:

@@ -1400,6 +1400,10 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
+    from .observability import configure_otel
+
+    configure_otel()
+
     if args.cmd == "serve":
         rate_limit = _rate_limit(args)
         session_rls = _session_rls(args)
