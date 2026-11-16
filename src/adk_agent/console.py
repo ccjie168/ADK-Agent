@@ -42,6 +42,12 @@ from .core import (
     ConnectorStore,
     ConnectorStoreError,
     ConnectorStoreUnavailable,
+    CredentialBinding,
+    CredentialConflict,
+    CredentialNotFound,
+    CredentialStore,
+    CredentialStoreError,
+    CredentialStoreUnavailable,
     EvalReportStore,
     GrantRequestConflict,
     GrantRequestExpired,
@@ -69,6 +75,7 @@ from .core import (
     SecretProvider,
     ToolGrantRequest,
     ToolGrantStore,
+    parse_credential_ref,
 )
 from .identity import OidcLogin, OidcLoginError
 from .logsafe import install_log_sanitizer
@@ -341,6 +348,7 @@ _INDEX_HTML = r"""<!doctype html>
       <button id="tab-registry" class="tab" data-tab="registry" data-capability="registry.read">Registry</button>
       <button id="tab-tools" class="tab" data-tab="tools" data-capability="tools.read">Tools</button>
       <button id="tab-connectors" class="tab" data-tab="connectors" data-capability="connectors.read">Connectors</button>
+      <button id="tab-credentials" class="tab" data-tab="credentials" data-capability="connectors.read">Credentials</button>
       <button id="tab-peers" class="tab" data-tab="peers" data-capability="peers.read">Peers</button>
     </div>
     <div class="nav-group">
@@ -432,6 +440,28 @@ _INDEX_HTML = r"""<!doctype html>
     <button id="connector-check" data-capability="connectors.manage">Check selected</button>
   </div>
   <div id="connector-health" class="panel-msg"></div>
+</section>
+
+<section id="credentials" class="panel" data-capability="connectors.read">
+  <div class="row">
+    <button id="refresh-credentials">Refresh</button>
+    <input id="credential-tenant" placeholder="tenant filter (blank = current)" autocomplete="off">
+  </div>
+  <div id="credentials-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>id</th><th>tenant</th><th>secret ref</th><th>description</th><th>status</th></tr></thead>
+    <tbody id="credentials-body"></tbody>
+  </table>
+  <h3>Register</h3>
+  <div class="row">
+    <input id="credential-id" placeholder="credential id" autocomplete="off">
+    <input id="credential-ref" placeholder="secret://tenant/name" autocomplete="off">
+    <input id="credential-description" placeholder="description (optional)" autocomplete="off">
+  </div>
+  <div class="row">
+    <button id="credential-register" data-capability="connectors.manage">Register</button>
+    <button id="credential-disable" data-capability="connectors.manage">Disable selected</button>
+  </div>
 </section>
 
 <section id="peers" class="panel" data-capability="peers.read">
@@ -581,7 +611,7 @@ _INDEX_HTML = r"""<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["chat", "registry", "tools", "connectors", "peers", "runs", "sessions", "approvals", "grants", "plans", "policy"];
+const TABS = ["chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "policy"];
 let sessionId = null;
 let capabilities = null;
 let approvalsData = [];
@@ -589,6 +619,7 @@ let selectedApproval = null;
 let selectedRegistry = null;
 let selectedGrant = null;
 let selectedConnector = null;
+let selectedCredential = null;
 let selectedPeer = null;
 const token = () => $("token").value.trim();
 $("token").value = sessionStorage.getItem("adk_token") || "";
@@ -1057,6 +1088,68 @@ async function checkConnector() {
   const health = result.data;
   $("connector-health").textContent =
     health.status + " status=" + health.status_code + " latency=" + health.latency_ms + "ms";
+}
+
+async function loadCredentials() {
+  const tenant = $("tenant").value;
+  $("credentials-msg").textContent = "";
+  const body = $("credentials-body");
+  body.innerHTML = "";
+  if (!tenant) return;
+  const filter = $("credential-tenant").value.trim() || tenant;
+  const result = await getJson("/api/credentials?tenant=" + encodeURIComponent(filter));
+  if (!result.ok) {
+    $("credentials-msg").textContent = "credentials unavailable (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  for (const binding of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(binding.credential_id));
+    row.appendChild(cell(binding.tenant));
+    row.appendChild(cell(binding.secret_ref));
+    row.appendChild(cell(binding.description));
+    row.appendChild(cell(binding.enabled ? "enabled" : "disabled"));
+    row.addEventListener("click", () => { selectedCredential = binding; });
+    body.appendChild(row);
+  }
+}
+
+async function registerCredential() {
+  $("credentials-msg").textContent = "";
+  const tenant = $("credential-tenant").value.trim() || $("tenant").value;
+  const body = {
+    credential_id: $("credential-id").value.trim(),
+    tenant: tenant,
+    secret_ref: $("credential-ref").value.trim(),
+    description: $("credential-description").value.trim(),
+  };
+  const result = await postJson("/api/credentials", body);
+  if (!result.ok) {
+    $("credentials-msg").textContent = "register failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("credentials-msg").textContent = "registered " + result.data.credential_id;
+  await loadCredentials();
+}
+
+async function disableCredential() {
+  if (!selectedCredential) {
+    $("credentials-msg").textContent = "select a credential first";
+    return;
+  }
+  const result = await postJson(
+    "/api/credentials/" + encodeURIComponent(selectedCredential.credential_id) +
+      "/disable?tenant=" + encodeURIComponent(selectedCredential.tenant), {});
+  if (!result.ok) {
+    $("credentials-msg").textContent = "disable failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  $("credentials-msg").textContent = "disabled " + result.data.credential_id;
+  selectedCredential = result.data;
+  await loadCredentials();
 }
 
 function peerGrantsText(grants) {
@@ -1582,6 +1675,7 @@ async function connect() {
   if (can("runs.read")) await loadPlans();
   if (can("tools.read")) await loadTools();
   if (can("connectors.read")) await loadConnectors();
+  if (can("connectors.read")) await loadCredentials();
   if (can("grants.read")) await loadGrants();
   if (can("chat.run")) loadAudit();
   applyHashTab();
@@ -2008,6 +2102,7 @@ $("tenant").addEventListener("change", () => {
   if (can("registry.read")) loadRegistry();
   if (can("tools.read")) loadTools();
   if (can("connectors.read")) loadConnectors();
+  if (can("connectors.read")) loadCredentials();
   if (can("grants.read")) loadGrants();
 });
 $("session-agent").addEventListener("change", loadSessions);
@@ -2022,6 +2117,10 @@ $("refresh-connectors").addEventListener("click", loadConnectors);
 $("connector-register").addEventListener("click", registerConnector);
 $("connector-disable").addEventListener("click", disableConnector);
 $("connector-check").addEventListener("click", checkConnector);
+$("refresh-credentials").addEventListener("click", loadCredentials);
+$("credential-tenant").addEventListener("input", loadCredentials);
+$("credential-register").addEventListener("click", registerCredential);
+$("credential-disable").addEventListener("click", disableCredential);
 $("refresh-peers").addEventListener("click", loadPeers);
 $("peer-register").addEventListener("click", registerPeer);
 $("peer-disable").addEventListener("click", disablePeer);
@@ -2332,6 +2431,7 @@ def build_console_app(
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
     connectors: ConnectorStore | None = None,
+    credentials: CredentialStore | None = None,
     peers: PeerStore | None = None,
     peer_grants: PeerGrantStore | None = None,
     remote_agents: RemoteAgentStore | None = None,
@@ -2951,6 +3051,23 @@ def build_console_app(
             spec = ConnectorSpec.model_validate(body)
         except ValidationError:
             return JSONResponse({"error": "invalid_connector"}, status_code=400)
+        if credentials is not None and spec.auth_ref is not None:
+            try:
+                ref_tenant, _ = parse_credential_ref(spec.auth_ref)
+            except ValueError:
+                ref_tenant = None
+            if ref_tenant is not None:
+                if spec.tenant is None or spec.tenant != ref_tenant:
+                    return JSONResponse({"error": "credential_unbound"}, status_code=400)
+                try:
+                    bindings = await credentials.list(spec.tenant)
+                except CredentialStoreError:
+                    logger.exception("credential list failed: tenant=%s", spec.tenant)
+                    return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
+                if not any(
+                    binding.enabled and binding.secret_ref == spec.auth_ref for binding in bindings
+                ):
+                    return JSONResponse({"error": "credential_unbound"}, status_code=400)
         try:
             stored = await connectors.add(spec)
         except ConnectorConflict:
@@ -3041,6 +3158,125 @@ def build_console_app(
             return JSONResponse({"error": "forbidden"}, status_code=403)
         health = await check_connector(spec)
         return JSONResponse(health.model_dump(mode="json"))
+
+    @app.get("/api/credentials")
+    async def list_credentials(request: Request, tenant: str | None = None) -> Any:
+        if credentials is None:
+            return JSONResponse({"error": "credentials_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        target = tenant or caller.tenant
+        if tenant and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        try:
+            records = await credentials.list(target)
+        except CredentialStoreError:
+            logger.exception("credential list failed: tenant=%s", target)
+            return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
+        return [record.model_dump(mode="json") for record in records]
+
+    @app.post("/api/credentials")
+    async def register_credential(request: Request) -> Any:
+        caller = _principal_for(request)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if credentials is None:
+            return JSONResponse({"error": "credentials_not_configured"}, status_code=404)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        body["created_by"] = caller.subject
+        body["created_at"] = datetime.now(timezone.utc)
+        try:
+            binding = CredentialBinding.model_validate(body)
+        except ValidationError:
+            return JSONResponse({"error": "invalid_credential"}, status_code=400)
+        try:
+            stored = await credentials.add(binding)
+        except CredentialConflict:
+            return JSONResponse({"error": "credential_conflict"}, status_code=409)
+        except CredentialStoreUnavailable:
+            logger.exception(
+                "credential register failed: id=%s/%s",
+                binding.tenant,
+                binding.credential_id,
+            )
+            return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
+        except CredentialStoreError:
+            logger.exception(
+                "credential register failed: id=%s/%s",
+                binding.tenant,
+                binding.credential_id,
+            )
+            return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=uuid.uuid4().hex,
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(
+                    id=binding.credential_id,
+                    version="credential",
+                    digest=f"sha256:{hash_text(binding.model_dump_json())}",
+                ),
+                action="credential.register",
+                target=f"{binding.tenant}/{binding.credential_id}",
+                args_hash=hash_text(stored.model_dump_json()),
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse(stored.model_dump(mode="json"), status_code=201)
+
+    @app.post("/api/credentials/{credential_id}/disable")
+    async def disable_credential(
+        request: Request, credential_id: str, tenant: str | None = None
+    ) -> Any:
+        caller = _principal_for(request)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if credentials is None:
+            return JSONResponse({"error": "credentials_not_configured"}, status_code=404)
+        target = tenant or caller.tenant
+        try:
+            existing = await credentials.get(target, credential_id)
+        except CredentialStoreError:
+            logger.exception("credential read failed: id=%s/%s", target, credential_id)
+            return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
+        if existing is None:
+            return JSONResponse({"error": "credential_not_found"}, status_code=404)
+        try:
+            disabled = await credentials.disable(target, credential_id, by=caller.subject)
+        except CredentialNotFound:
+            return JSONResponse({"error": "credential_not_found"}, status_code=404)
+        except CredentialStoreError:
+            logger.exception("credential disable failed: id=%s/%s", target, credential_id)
+            return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
+        if existing.enabled:
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=uuid.uuid4().hex,
+                    tenant=caller.tenant,
+                    principal=caller,
+                    agent_ref=AgentRef(
+                        id=existing.credential_id,
+                        version="credential",
+                        digest=f"sha256:{hash_text(existing.model_dump_json())}",
+                    ),
+                    action="credential.disable",
+                    target=f"{existing.tenant}/{credential_id}",
+                    args_hash=hash_text("enabled->disabled"),
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse(disabled.model_dump(mode="json"))
 
     @app.get("/api/peers")
     async def list_peers(request: Request, tenant: str | None = None) -> Any:
@@ -4073,6 +4309,7 @@ def run_console(
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
     connectors: ConnectorStore | None = None,
+    credentials: CredentialStore | None = None,
     peers: PeerStore | None = None,
     peer_grants: PeerGrantStore | None = None,
     remote_agents: RemoteAgentStore | None = None,
@@ -4110,6 +4347,7 @@ def run_console(
         lifecycle=lifecycle,
         tool_grants=tool_grants,
         connectors=connectors,
+        credentials=credentials,
         peers=peers,
         peer_grants=peer_grants,
         remote_agents=remote_agents,

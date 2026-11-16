@@ -96,8 +96,7 @@
 `serve-tool-gateway` 可以把已注册的连接器暴露为工具。
 
 - `--connectors-dir DIR` 或 `$CONNECTOR_URL` 选择连接器存储，二选一；都不给时只加载 `--tools`。
-- `--connector-tenant TENANT` 决定加载哪些连接器（全局 + 该租户），默认 `local`。
-- `--credentials-dir DIR` 或 `--credential-db URL` 配置凭据引用清单。两段引用在取用时按 `--connector-tenant` 校验租户，不符按 `secret_unavailable` 拒绝；单段全局引用不受影响。
+- `--connector-tenant TENANT` 决定加载哪些连接器（全局 + 该租户），默认 `local`。两段租户引用在取用时按该租户校验，不符按 `secret_unavailable` 拒绝；单段全局引用不受影响。
 - 每个启用的连接器生成一个工具，工具 id 是 `connector_id`，参数是 `path`、`method`、`query`、`json_body`。
 - 出站只允许 `methods` 与 `path_prefixes` 覆盖的请求，host/scheme 固定，禁止重定向；超时与响应大小按连接器配置。
 - 凭据用 `secret://a/b` 引用，映射到环境变量 `ADK_SECRET_A_B`；缺失时调用拒绝，错误码 `secret_unavailable`。

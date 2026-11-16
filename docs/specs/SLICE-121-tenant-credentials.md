@@ -56,26 +56,26 @@
 
 ## 完成判据（可执行）
 
-- [ ] 引用的租户段与记录租户不一致时模型拒绝 -> `tests/test_credentials.py::test_binding_rejects_foreign_tenant_ref`
-- [ ] 文件 store 往返、按租户隔离 -> `::test_file_store_roundtrip_and_tenant_isolation`
-- [ ] 同 id 不同定义冲突，停用幂等 -> `::test_file_store_conflict_and_disable`
-- [ ] Postgres store 往返与隔离 -> `tests/test_credentials_postgres.py::test_postgres_roundtrip_and_isolation`（无 `TEST_POSTGRES_URL` 跳过）
-- [ ] 引用映射到租户前缀环境变量 -> `::test_tenant_provider_maps_prefixed_env`
-- [ ] 跨租户引用在作用域提供者处失败 -> `::test_tenant_scoped_provider_rejects_cross_tenant_ref`
-- [ ] 单段全局引用保持可用 -> `::test_tenant_scoped_provider_allows_global_ref`
-- [ ] 控制台登记、列出、停用与租户过滤 -> `tests/test_console_credentials.py`
-- [ ] CLI 登记、列出、停用 -> `tests/test_cli_credentials.py`
-- [ ] 连接器登记拒绝无绑定或绑定已停用的租户引用 -> `::test_connector_registration_requires_enabled_binding`
-- [ ] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
+- [x] 引用的租户段与记录租户不一致时模型拒绝 -> `tests/test_credentials.py::test_binding_rejects_foreign_tenant_ref`
+- [x] 文件 store 往返、按租户隔离 -> `::test_file_store_roundtrip_and_tenant_isolation`
+- [x] 同 id 不同定义冲突，停用幂等 -> `::test_file_store_conflict_and_disable`
+- [x] Postgres store 往返与隔离 -> `tests/test_credentials_postgres.py::test_postgres_roundtrip_and_isolation`（无 `TEST_POSTGRES_URL` 跳过）
+- [x] 引用映射到租户前缀环境变量 -> `::test_tenant_provider_maps_prefixed_env`
+- [x] 跨租户引用在作用域提供者处失败 -> `::test_tenant_scoped_provider_rejects_cross_tenant_ref`
+- [x] 单段全局引用保持可用 -> `::test_tenant_scoped_provider_allows_global_ref`
+- [x] 控制台登记、列出、停用与租户过滤 -> `tests/test_console_credentials.py`
+- [x] CLI 登记、列出、停用 -> `tests/test_cli_credentials.py`
+- [x] 连接器登记拒绝无绑定或绑定已停用的租户引用 -> `::test_connector_registration_requires_enabled_binding`
+- [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：绑定允许把 `secret://other/token` 记在租户 `acme` 名下 -> 期望 `::test_binding_rejects_foreign_tenant_ref` 失败
-- [ ] 反例 2：文件 store 的 `list("acme")` 返回其他租户记录 -> 期望 `::test_file_store_roundtrip_and_tenant_isolation` 失败
-- [ ] 反例 3：作用域提供者放行跨租户引用 -> 期望 `::test_tenant_scoped_provider_rejects_cross_tenant_ref` 失败
-- [ ] 反例 4：连接器登记接受没有启用绑定的租户引用 -> 期望 `::test_connector_registration_requires_enabled_binding` 失败
+- [x] 反例 1：绑定允许把 `secret://other/token` 记在租户 `acme` 名下 -> 期望 `::test_binding_rejects_foreign_tenant_ref` 失败
+- [x] 反例 2：文件 store 的 `list("acme")` 返回其他租户记录 -> 期望 `::test_file_store_roundtrip_and_tenant_isolation` 失败
+- [x] 反例 3：作用域提供者放行跨租户引用 -> 期望 `::test_tenant_scoped_provider_rejects_cross_tenant_ref` 失败
+- [x] 反例 4：连接器登记接受没有启用绑定的租户引用 -> 期望 `::test_connector_registration_requires_enabled_binding` 失败
 
-红态记录: 待补，实现前运行。
+红态记录: 实现前四个测试文件在收集阶段报 3 个 ImportError，分别缺少 `CredentialBinding` 与 `FileCredentialStore`。
 
 ## 5 问威胁建模（10 分钟）
 

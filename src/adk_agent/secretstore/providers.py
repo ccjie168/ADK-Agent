@@ -7,7 +7,7 @@ import re
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
-from ..core import SecretProvider
+from ..core import SecretProvider, credential_env_name, parse_credential_ref
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
@@ -60,6 +60,37 @@ class PrefixedEnvSecretProvider:
         if value is None:
             raise SecretNotFound(f"secret {reference!r} is not set")
         return _checked(reference, value)
+
+
+class TenantSecretProvider:
+    """Resolve only two-segment ``secret://tenant/name`` references locally."""
+
+    async def resolve(self, reference: str) -> str:
+        try:
+            name = credential_env_name(reference)
+        except ValueError:
+            raise SecretNotFound(f"invalid secret reference {reference!r}") from None
+        value = os.environ.get(name)
+        if value is None:
+            raise SecretNotFound(f"secret {reference!r} is not set")
+        return _checked(reference, value)
+
+
+class TenantScopedSecretProvider:
+    """Reject two-segment references owned by another tenant before delegating."""
+
+    def __init__(self, inner: SecretProvider, tenant: str) -> None:
+        self._inner = inner
+        self._tenant = tenant
+
+    async def resolve(self, reference: str) -> str:
+        try:
+            tenant, _ = parse_credential_ref(reference)
+        except ValueError:
+            return await self._inner.resolve(reference)
+        if tenant != self._tenant:
+            raise SecretNotFound(f"secret {reference!r} belongs to another tenant")
+        return await self._inner.resolve(reference)
 
 
 class MappingSecretProvider:

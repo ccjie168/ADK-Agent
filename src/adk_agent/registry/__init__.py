@@ -26,6 +26,8 @@ from .connector_health import ConnectorHealth, check_connector
 from .connectors import FileConnectorStore
 from .connectors_client import HttpConnectorStore
 from .connectors_postgres import PostgresConnectorStore
+from .credentials import FileCredentialStore
+from .credentials_postgres import PostgresCredentialStore
 from .file import FileAgentRegistry, RegistryConflict, RegistryError, RegistryIntegrityError
 from .lifecycle import FileAgentLifecycleStore
 from .lifecycle_postgres import PostgresAgentLifecycleStore
@@ -58,6 +60,7 @@ __all__ = [
     "ConnectorNotFound",
     "FileAgentLifecycleStore",
     "FileConnectorStore",
+    "FileCredentialStore",
     "FileArtifactStore",
     "FilePeerGrantStore",
     "FilePeerStore",
@@ -74,6 +77,7 @@ __all__ = [
     "PostgresAgentLifecycleStore",
     "PostgresAgentRegistry",
     "PostgresConnectorStore",
+    "PostgresCredentialStore",
     "PostgresEvalReportStore",
     "PostgresPeerGrantStore",
     "PostgresPeerStore",

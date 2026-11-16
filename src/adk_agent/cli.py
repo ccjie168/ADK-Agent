@@ -146,6 +146,48 @@ def _connector_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _credential_store(args: argparse.Namespace) -> Any:
+    """Build the credential store from ``--credentials-dir`` or ``--credential-db``."""
+    from .registry import FileCredentialStore, PostgresCredentialStore
+
+    directory = getattr(args, "credentials_dir", None)
+    url = getattr(args, "credential_db", None)
+    env_url = os.environ.get("CREDENTIAL_DATABASE_URL")
+    if directory and url:
+        print("set exactly one of --credentials-dir or --credential-db", file=sys.stderr)
+        raise SystemExit(2)
+    if directory and env_url:
+        print(
+            "--credentials-dir conflicts with CREDENTIAL_DATABASE_URL",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if directory:
+        return FileCredentialStore(directory)
+    if url:
+        return PostgresCredentialStore(url)
+    if env_url:
+        return PostgresCredentialStore(env_url)
+    return None
+
+
+async def _require_credential_binding(store: Any, spec: Any) -> None:
+    """Reject a connector whose tenant reference has no enabled binding."""
+    from .core import parse_credential_ref
+
+    if spec.auth_ref is None:
+        return
+    try:
+        ref_tenant, _ = parse_credential_ref(spec.auth_ref)
+    except ValueError:
+        return
+    if spec.tenant is None or spec.tenant != ref_tenant:
+        raise ValueError("credential_unbound")
+    bindings = await store.list(spec.tenant)
+    if not any(binding.enabled and binding.secret_ref == spec.auth_ref for binding in bindings):
+        raise ValueError("credential_unbound")
+
+
 def _peer_stores(args: argparse.Namespace) -> tuple[Any, Any]:
     from .registry import (
         FilePeerGrantStore,
@@ -368,6 +410,17 @@ def _auth_token(args: argparse.Namespace) -> str | None:
 def _add_peer_store_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--peer-dir", default=None, help="peer and grant file store root")
     parser.add_argument("--peer-db", default=None, help="Postgres URL for peers and grants")
+
+
+def _add_credential_store_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--credentials-dir", default=None, help="file store root for credential bindings"
+    )
+    parser.add_argument(
+        "--credential-db",
+        default=None,
+        help="Postgres URL for credential bindings (defaults to $CREDENTIAL_DATABASE_URL)",
+    )
 
 
 def _add_registry_client_args(parser: argparse.ArgumentParser) -> None:
@@ -1089,6 +1142,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="connector store directory for the Connectors panel (falls back to --registry-url)",
     )
+    _add_credential_store_args(p_console)
     _add_peer_store_args(p_console)
     p_console.add_argument(
         "--tool-catalog",
@@ -1215,6 +1269,7 @@ def main(argv: list[str] | None = None) -> None:
 
     p_cl_register = connectors_sub.add_parser("register", help="register a connector")
     p_cl_register.add_argument("--connectors-dir", default=None)
+    _add_credential_store_args(p_cl_register)
     p_cl_register.add_argument("--tenant", default=None)
     p_cl_register.add_argument("--id", required=True)
     p_cl_register.add_argument("--kind", required=True, choices=["http", "openapi", "mcp"])
@@ -1236,6 +1291,27 @@ def main(argv: list[str] | None = None) -> None:
     p_cl_check.add_argument("--connectors-dir", default=None)
     p_cl_check.add_argument("--id", required=True)
     _add_registry_client_args(p_cl_check)
+
+    p_credentials = sub.add_parser(
+        "credentials", help="manage tenant credential reference bindings"
+    )
+    credentials_sub = p_credentials.add_subparsers(dest="credentials_cmd", required=True)
+
+    p_cr_list = credentials_sub.add_parser("list", help="list credential bindings")
+    p_cr_list.add_argument("--tenant", required=True)
+    _add_credential_store_args(p_cr_list)
+
+    p_cr_register = credentials_sub.add_parser("register", help="register a binding")
+    p_cr_register.add_argument("--tenant", required=True)
+    p_cr_register.add_argument("--id", required=True)
+    p_cr_register.add_argument("--secret-ref", dest="secret_ref", required=True)
+    p_cr_register.add_argument("--description", default="")
+    _add_credential_store_args(p_cr_register)
+
+    p_cr_disable = credentials_sub.add_parser("disable", help="disable a binding")
+    p_cr_disable.add_argument("--tenant", required=True)
+    p_cr_disable.add_argument("--id", required=True)
+    _add_credential_store_args(p_cr_disable)
 
     p_peers = sub.add_parser("peers", help="manage A2A peers and their action grants")
     peers_sub = p_peers.add_subparsers(dest="peers_cmd", required=True)
@@ -1640,7 +1716,7 @@ def main(argv: list[str] | None = None) -> None:
         from .mcp.http import resolve_port
         from .registry import FileConnectorStore
         from .registry.connectors_postgres import PostgresConnectorStore
-        from .secretstore import PrefixedEnvSecretProvider
+        from .secretstore import PrefixedEnvSecretProvider, TenantScopedSecretProvider
         from .tools import FunctionRegistry, FunctionToolGateway
         from .tools.connectors import build_connector_tools
         from .tools.service import build_tool_gateway_app
@@ -1663,7 +1739,12 @@ def main(argv: list[str] | None = None) -> None:
             )
             connector_specs = asyncio.run(connector_store.list(args.connector_tenant))
             specs.extend(
-                build_connector_tools(connector_specs, secrets=PrefixedEnvSecretProvider())
+                build_connector_tools(
+                    connector_specs,
+                    secrets=TenantScopedSecretProvider(
+                        PrefixedEnvSecretProvider(), args.connector_tenant
+                    ),
+                )
             )
             try:
                 tool_registry = FunctionRegistry(specs)
@@ -1908,6 +1989,7 @@ def main(argv: list[str] | None = None) -> None:
             )
         else:
             console_connectors = None
+        console_credentials: Any = _credential_store(args)
         console_peers: Any = None
         console_peer_grants: Any = None
         console_remote_agents: Any = None
@@ -1930,6 +2012,7 @@ def main(argv: list[str] | None = None) -> None:
             lifecycle=console_lifecycle,
             tool_grants=tool_grants,
             connectors=console_connectors,
+            credentials=console_credentials,
             peers=console_peers,
             peer_grants=console_peer_grants,
             remote_agents=console_remote_agents,
@@ -1966,6 +2049,12 @@ def main(argv: list[str] | None = None) -> None:
             # Same cross-loop caveat as the audit query above.
             with contextlib.suppress(Exception):
                 asyncio.run(approvals.aclose())
+        from .registry.credentials_postgres import PostgresCredentialStore
+
+        if isinstance(console_credentials, PostgresCredentialStore):
+            # Same cross-loop caveat as the audit query above.
+            with contextlib.suppress(Exception):
+                asyncio.run(console_credentials.aclose())
     elif args.cmd == "approvals":
         backend = _approval_backend(args.dir, args.db, dir_flag="--dir", db_flag="--db")
         if backend is None:
@@ -2282,13 +2371,20 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "connectors":
         from pydantic import ValidationError
 
-        from .core import ConnectorSpec, ConnectorStoreError, DataClass, HttpMethod
+        from .core import (
+            ConnectorSpec,
+            ConnectorStoreError,
+            CredentialStoreError,
+            DataClass,
+            HttpMethod,
+        )
         from .registry import ConnectorForbidden, ConnectorNotFound
 
         store = _connector_store(args)
         if store is None:
             print("set --connectors-dir or --registry-url", file=sys.stderr)
             raise SystemExit(1)
+        credential_store = _credential_store(args) if args.connectors_cmd == "register" else None
 
         def _split(value: str) -> list[str]:
             return [item.strip() for item in value.split(",") if item.strip()]
@@ -2320,11 +2416,17 @@ def main(argv: list[str] | None = None) -> None:
                     timeout_seconds=args.timeout_seconds,
                     max_response_bytes=args.max_response_bytes,
                 )
+                if credential_store is not None:
+                    await _require_credential_binding(credential_store, spec)
                 return await store.add(spec)
             finally:
                 close = getattr(store, "aclose", None)
                 if close is not None:
                     await close()
+                if credential_store is not None:
+                    cred_close = getattr(credential_store, "aclose", None)
+                    if cred_close is not None:
+                        await cred_close()
 
         try:
             result = asyncio.run(run_connectors())
@@ -2332,6 +2434,7 @@ def main(argv: list[str] | None = None) -> None:
             ConnectorStoreError,
             ConnectorForbidden,
             ConnectorNotFound,
+            CredentialStoreError,
             ValidationError,
             ValueError,
         ) as exc:
@@ -2339,6 +2442,46 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
 
         if args.connectors_cmd == "list":
+            print(json.dumps([record.model_dump(mode="json") for record in result]))
+        else:
+            print(json.dumps(result.model_dump(mode="json")))
+    elif args.cmd == "credentials":
+        from pydantic import ValidationError
+
+        from .core import CredentialBinding, CredentialStoreError
+
+        store = _credential_store(args)
+        if store is None:
+            print("set --credentials-dir or --credential-db", file=sys.stderr)
+            raise SystemExit(1)
+
+        async def run_credentials() -> Any:
+            try:
+                if args.credentials_cmd == "list":
+                    return await store.list(args.tenant)
+                if args.credentials_cmd == "disable":
+                    return await store.disable(args.tenant, args.id, by="cli")
+                binding = CredentialBinding(
+                    credential_id=args.id,
+                    tenant=args.tenant,
+                    secret_ref=args.secret_ref,
+                    description=args.description,
+                    created_by="cli",
+                    created_at=datetime.now(timezone.utc),
+                )
+                return await store.add(binding)
+            finally:
+                close = getattr(store, "aclose", None)
+                if close is not None:
+                    await close()
+
+        try:
+            result = asyncio.run(run_credentials())
+        except (CredentialStoreError, ValidationError, ValueError) as exc:
+            print(f"credentials failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        if args.credentials_cmd == "list":
             print(json.dumps([record.model_dump(mode="json") for record in result]))
         else:
             print(json.dumps(result.model_dump(mode="json")))

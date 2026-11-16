@@ -384,9 +384,10 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 成功 201，写 `credential.register` 审计，`target` 是 `<tenant>/<credential_id>`。
 - 未配置存储 404 `credentials_not_configured`；存储不可达 503 `credential_store_unavailable`。
 
-## `POST /api/credentials/{credential_id}/disable` -> `CredentialBinding`
+## `POST /api/credentials/{credential_id}/disable?tenant=<name>` -> `CredentialBinding`
 
 - 只有 `admin` 能停用，非 admin 403 `forbidden`。
+- `tenant` 缺失时用当前 principal 的租户；给了其他租户按该租户定位。
 - 不存在 404 `credential_not_found`。
 - 成功 200，重复停用幂等，写 `credential.disable` 审计。
 - 未配置存储 404 `credentials_not_configured`；存储不可达 503 `credential_store_unavailable`。
