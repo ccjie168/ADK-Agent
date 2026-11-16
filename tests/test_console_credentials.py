@@ -51,6 +51,17 @@ def _app(tmp_path, *, roles=None, connectors=True, credentials=True, audit=None)
     )
 
 
+def test_panel_is_rendered(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        page = client.get("/")
+
+    assert page.status_code == 200
+    assert 'id="tab-credentials"' in page.text
+    assert 'id="credentials"' in page.text
+    assert 'id="credential-ref"' in page.text
+    assert "secret://tenant/name" in page.text
+
+
 def test_register_lists_and_audits(tmp_path):
     sink = ListAuditSink()
     with TestClient(_app(tmp_path, audit=sink)) as client:

@@ -8,8 +8,8 @@
 {
   "credential_id": "crm",
   "tenant": "acme",
-  "secret_ref": "secret://acme/crm_token",
-  "description": "CRM outbound token",
+  "secret_ref": "secret://acme/crm",
+  "description": "CRM outbound credential",
   "created_by": "admin",
   "created_at": "2026-11-16T08:00:00Z",
   "enabled": true
@@ -23,7 +23,7 @@
 
 ## 引用到环境变量
 
-`secret://<tenant>/<name>` 映射到 `ADK_SECRET_<TENANT>_<NAME>`。两段各自大写，非字母数字转下划线。例如 `secret://acme/crm-token` 读 `ADK_SECRET_ACME_CRM_TOKEN`。
+`secret://<tenant>/<name>` 映射到 `ADK_SECRET_<TENANT>_<NAME>`。两段各自大写，非字母数字转下划线。例如 `secret://acme/crm-prod` 读 `ADK_SECRET_ACME_CRM_PROD`。
 
 单段引用 `secret://name` 仍是现有的全局映射 `ADK_SECRET_NAME`，语义不变。
 
