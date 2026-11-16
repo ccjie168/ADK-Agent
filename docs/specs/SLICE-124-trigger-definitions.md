@@ -59,24 +59,24 @@
 
 ## 完成判据（可执行）
 
-- [ ] schedule 缺 `every_seconds` 或小于 60 时拒绝 -> `tests/test_triggers.py::test_schedule_requires_interval`
-- [ ] webhook 缺令牌哈希时拒绝，schedule 带哈希也拒绝 -> `::test_webhook_requires_token_hash`
-- [ ] 非法 digest、过短令牌、过长输入被拒绝 -> `::test_invalid_fields_are_rejected`
-- [ ] 令牌哈希确定，且存储内容不含明文令牌 -> `::test_token_is_hashed_and_not_stored`
-- [ ] 文件 store 往返、租户隔离、冲突与停用 -> `::test_file_store_roundtrip_and_disable`
-- [ ] Postgres store 往返与隔离 -> `tests/test_triggers_postgres.py::test_postgres_roundtrip_and_isolation`（无 `TEST_POSTGRES_URL` 跳过）
-- [ ] CLI 从环境变量读令牌登记、列出、停用，输出不含明文 -> `tests/test_cli_triggers.py::test_cli_register_list_disable`
-- [ ] CLI 令牌环境变量缺失或过短退出 1 -> `::test_cli_token_errors`
-- [ ] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
+- [x] schedule 缺 `every_seconds` 或小于 60 时拒绝 -> `tests/test_triggers.py::test_schedule_requires_interval`
+- [x] webhook 缺令牌哈希时拒绝，schedule 带哈希也拒绝 -> `::test_webhook_requires_token_hash`
+- [x] 非法 digest、过短令牌、过长输入被拒绝 -> `::test_invalid_fields_are_rejected`
+- [x] 令牌哈希确定，且存储内容不含明文令牌 -> `::test_token_is_hashed_and_not_stored`
+- [x] 文件 store 往返、租户隔离、冲突与停用 -> `::test_file_store_roundtrip_and_disable`
+- [x] Postgres store 往返与隔离 -> `tests/test_triggers_postgres.py::test_postgres_roundtrip_and_isolation`（无 `TEST_POSTGRES_URL` 跳过）
+- [x] CLI 从环境变量读令牌登记、列出、停用，输出不含明文 -> `tests/test_cli_triggers.py::test_cli_register_list_disable`
+- [x] CLI 令牌环境变量缺失或过短退出 1 -> `::test_cli_token_errors`
+- [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：schedule 接受缺失或过短的间隔 -> 期望 `::test_schedule_requires_interval` 失败
-- [ ] 反例 2：webhook 接受空令牌或把明文写入记录 -> 期望 `::test_token_is_hashed_and_not_stored` 失败
-- [ ] 反例 3：文件 store 的 `list` 返回其他租户记录 -> 期望 `::test_file_store_roundtrip_and_disable` 失败
-- [ ] 反例 4：CLI 把令牌回显到 stdout -> 期望 `::test_cli_register_list_disable` 失败
+- [x] 反例 1：schedule 接受缺失或过短的间隔 -> 期望 `::test_schedule_requires_interval` 失败
+- [x] 反例 2：webhook 接受空令牌或把明文写入记录 -> 期望 `::test_token_is_hashed_and_not_stored` 失败
+- [x] 反例 3：文件 store 的 `list` 返回其他租户记录 -> 期望 `::test_file_store_roundtrip_and_disable` 失败
+- [x] 反例 4：CLI 把令牌回显到 stdout -> 期望 `::test_cli_register_list_disable` 失败
 
-红态记录: 待补，实现前运行。
+红态记录: 实现前 2 个模块报 `cannot import name 'AgentTrigger'`，CLI 报 `invalid choice: 'triggers'`。
 
 ## 5 问威胁建模（10 分钟）
 

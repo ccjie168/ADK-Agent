@@ -1,0 +1,42 @@
+SLICE-124 触发定义与存储
+
+环境
+- Windows 11 Pro, Python 3.14 venv, pytest
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_triggers.py tests/test_triggers_postgres.py tests/test_cli_triggers.py -q
+    2 errors during collection
+  ImportError: cannot import name 'AgentTrigger' from 'adk_agent.core'
+  $ ... tests/test_cli_triggers.py -q
+    2 failed
+  adk-agent: error: argument cmd: invalid choice: 'triggers'
+
+二、实现后绿
+  $ ... tests/test_triggers.py tests/test_triggers_postgres.py tests/test_cli_triggers.py -q
+    7 passed, 1 skipped
+  跳过的是 Postgres 用例，本机未设 TEST_POSTGRES_URL。
+
+三、行为
+- AgentTrigger 把 schedule 与 webhook 两种形状编码进模型校验。schedule 必须有 every_seconds >= 60 且不能带令牌哈希；webhook 必须有 64 hex 哈希且不能带间隔。
+- digest 必须是 sha256:<64 hex>；输入固定文本最长 8000；不做模板展开。
+- hash_webhook_token 要求令牌至少 16 字符，返回 SHA-256 hex。
+- CLI 只从命名环境变量读取 webhook 令牌，缺失或过短退出 1 且不写存储。输出只有哈希，明文不进入记录、stdout 或 stderr。
+- 文件存储 <root>/<tenant>/<trigger_id>.json，重复相同内容幂等，不同内容冲突，停用幂等。
+- Postgres 表 adk_triggers 以 (tenant, trigger_id) 为主键，语义与文件一致，包含 aclose。
+- CLI 提供 triggers list|register|disable，后端为 --dir、--db 或 TRIGGER_DATABASE_URL。
+
+四、边界
+- 本切片不含执行服务、webhook 端点、调度循环、重试与幂等（SLICE-125）。
+- 不做 cron 表达式、时区、通知与控制台面板。
+- 触发记录不可变，改定义用新 id。
+
+五、门禁
+python scripts/check.py --fast
+  1313 passed, 78 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1313 passed, 78 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

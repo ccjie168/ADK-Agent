@@ -171,6 +171,28 @@ def _credential_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _trigger_store(args: argparse.Namespace) -> Any:
+    """Build the trigger store from ``--dir``, ``--db``, or ``$TRIGGER_DATABASE_URL``."""
+    from .registry import FileTriggerStore, PostgresTriggerStore
+
+    directory = getattr(args, "dir", None)
+    url = getattr(args, "db", None)
+    env_url = os.environ.get("TRIGGER_DATABASE_URL")
+    if directory and url:
+        print("set exactly one of --dir or --db", file=sys.stderr)
+        raise SystemExit(2)
+    if directory and env_url:
+        print("--dir conflicts with TRIGGER_DATABASE_URL", file=sys.stderr)
+        raise SystemExit(2)
+    if directory:
+        return FileTriggerStore(directory)
+    if url:
+        return PostgresTriggerStore(url)
+    if env_url:
+        return PostgresTriggerStore(env_url)
+    return None
+
+
 async def _require_credential_binding(store: Any, spec: Any) -> None:
     """Reject a connector whose tenant reference has no enabled binding."""
     from .registry import credential_is_bound
@@ -443,6 +465,15 @@ def _add_credential_store_args(parser: argparse.ArgumentParser) -> None:
         "--credential-db",
         default=None,
         help="Postgres URL for credential bindings (defaults to $CREDENTIAL_DATABASE_URL)",
+    )
+
+
+def _add_trigger_store_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--dir", default=None, help="file store root for triggers")
+    parser.add_argument(
+        "--db",
+        default=None,
+        help="Postgres URL for triggers (defaults to $TRIGGER_DATABASE_URL)",
     )
 
 
@@ -1354,6 +1385,30 @@ def main(argv: list[str] | None = None) -> None:
     p_cr_disable.add_argument("--tenant", required=True)
     p_cr_disable.add_argument("--id", required=True)
     _add_credential_store_args(p_cr_disable)
+
+    p_triggers = sub.add_parser("triggers", help="manage scheduled and webhook trigger definitions")
+    triggers_sub = p_triggers.add_subparsers(dest="triggers_cmd", required=True)
+
+    p_tr_list = triggers_sub.add_parser("list", help="list trigger definitions")
+    p_tr_list.add_argument("--tenant", required=True)
+    _add_trigger_store_args(p_tr_list)
+
+    p_tr_register = triggers_sub.add_parser("register", help="register a trigger definition")
+    p_tr_register.add_argument("--tenant", required=True)
+    p_tr_register.add_argument("--id", required=True)
+    p_tr_register.add_argument("--agent-id", required=True)
+    p_tr_register.add_argument("--version", required=True)
+    p_tr_register.add_argument("--digest", required=True)
+    trigger_kind = p_tr_register.add_mutually_exclusive_group(required=True)
+    trigger_kind.add_argument("--every-seconds", type=int, default=None)
+    trigger_kind.add_argument("--webhook-token-env", default=None)
+    p_tr_register.add_argument("--input", default="")
+    _add_trigger_store_args(p_tr_register)
+
+    p_tr_disable = triggers_sub.add_parser("disable", help="disable a trigger")
+    p_tr_disable.add_argument("--tenant", required=True)
+    p_tr_disable.add_argument("--id", required=True)
+    _add_trigger_store_args(p_tr_disable)
 
     p_connector_requests = sub.add_parser(
         "connector-requests", help="request and decide connector registrations"
@@ -2599,6 +2654,59 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
 
         if args.credentials_cmd == "list":
+            print(json.dumps([record.model_dump(mode="json") for record in result]))
+        else:
+            print(json.dumps(result.model_dump(mode="json")))
+    elif args.cmd == "triggers":
+        from pydantic import ValidationError
+
+        from .core import AgentTrigger, TriggerError, hash_webhook_token
+
+        store = _trigger_store(args)
+        if store is None:
+            print("set --dir, --db, or TRIGGER_DATABASE_URL", file=sys.stderr)
+            raise SystemExit(1)
+
+        async def run_triggers() -> Any:
+            try:
+                if args.triggers_cmd == "list":
+                    return await store.list(args.tenant)
+                if args.triggers_cmd == "disable":
+                    return await store.disable(args.tenant, args.id, by="cli")
+                token_hash = None
+                if args.webhook_token_env is not None:
+                    token = os.environ.get(args.webhook_token_env)
+                    if token is None:
+                        raise ValueError(
+                            f"webhook token env var {args.webhook_token_env} is not set"
+                        )
+                    token_hash = hash_webhook_token(token)
+                trigger = AgentTrigger(
+                    trigger_id=args.id,
+                    tenant=args.tenant,
+                    agent_id=args.agent_id,
+                    version=args.version,
+                    digest=args.digest,
+                    kind="webhook" if token_hash is not None else "schedule",
+                    every_seconds=None if token_hash is not None else args.every_seconds,
+                    webhook_token_hash=token_hash,
+                    input=args.input,
+                    created_by="cli",
+                    created_at=datetime.now(timezone.utc),
+                )
+                return await store.add(trigger)
+            finally:
+                close = getattr(store, "aclose", None)
+                if close is not None:
+                    await close()
+
+        try:
+            result = asyncio.run(run_triggers())
+        except (TriggerError, ValidationError, ValueError) as exc:
+            print(f"triggers failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        if args.triggers_cmd == "list":
             print(json.dumps([record.model_dump(mode="json") for record in result]))
         else:
             print(json.dumps(result.model_dump(mode="json")))

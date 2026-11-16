@@ -120,6 +120,15 @@ from .tool_grants import (
     effective_status,
     is_active,
 )
+from .triggers import (
+    AgentTrigger,
+    TriggerConflict,
+    TriggerError,
+    TriggerKind,
+    TriggerNotFound,
+    TriggerStoreUnavailable,
+    hash_webhook_token,
+)
 
 __all__ = [
     "ConnectorConflict",
@@ -145,6 +154,7 @@ __all__ = [
     "AgentManifest",
     "AgentRef",
     "AgentRegistry",
+    "AgentTrigger",
     "ArtifactLoader",
     "ArtifactStore",
     "ApprovalDecision",
@@ -230,8 +240,15 @@ __all__ = [
     "ToolGrantStore",
     "ToolRequest",
     "ToolResponse",
+    "TriggerConflict",
+    "TriggerError",
+    "TriggerKind",
+    "TriggerNotFound",
+    "TriggerStore",
+    "TriggerStoreUnavailable",
     "credential_env_name",
     "effective_status",
+    "hash_webhook_token",
     "is_active",
     "manifest_digest",
     "parse_credential_ref",
