@@ -13,7 +13,6 @@
     "tenant": "acme",
     "kind": "http",
     "base_url": "https://crm.example.com",
-    "auth_ref": "secret://acme/crm",
     "methods": ["GET"],
     "path_prefixes": ["/v1/crm/"],
     "data_classes": ["internal"]
@@ -30,6 +29,7 @@
 ```
 
 - `spec.tenant` 必须等于 `tenant`。全局连接器只能由管理员直接登记，不能走申请。
+- 示例省略了可选的 `auth_ref`，它只接受 `secret://` 引用，形状见 `credentials.md`。
 - `status` 取 `pending`、`approved`、`denied`。终态不可再变。
 - pending 时决定字段为空；approved 必须有 `decided_by`、`decided_at` 与 `registered_connector`。
 - `reason` 是 1 到 2000 字符。
