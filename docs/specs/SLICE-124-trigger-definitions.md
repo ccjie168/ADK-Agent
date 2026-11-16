@@ -67,6 +67,7 @@
 - [x] Postgres store 往返与隔离 -> `tests/test_triggers_postgres.py::test_postgres_roundtrip_and_isolation`（无 `TEST_POSTGRES_URL` 跳过）
 - [x] CLI 从环境变量读令牌登记、列出、停用，输出不含明文 -> `tests/test_cli_triggers.py::test_cli_register_list_disable`
 - [x] CLI 令牌环境变量缺失或过短退出 1 -> `::test_cli_token_errors`
+- [x] CLI 重跑相同登记幂等，返回原记录 -> `tests/test_cli_triggers.py::test_cli_register_is_idempotent`
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）

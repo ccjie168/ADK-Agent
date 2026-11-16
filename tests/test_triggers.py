@@ -100,6 +100,21 @@ def test_token_is_hashed_and_not_stored(tmp_path):
     assert first in text
 
 
+def test_repeated_registration_is_idempotent(tmp_path):
+    store = FileTriggerStore(tmp_path)
+    first = _schedule()
+    assert asyncio.run(store.add(first)) == first
+
+    again = _schedule(
+        created_at=datetime(2026, 11, 17, 9, 0, tzinfo=timezone.utc),
+        created_by="ops",
+    )
+    stored = asyncio.run(store.add(again))
+
+    assert stored == first
+    assert asyncio.run(store.list("acme")) == [first]
+
+
 def test_file_store_roundtrip_and_disable(tmp_path):
     store = FileTriggerStore(tmp_path)
     acme = _schedule()

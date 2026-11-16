@@ -21,7 +21,8 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
 def _definition(trigger: AgentTrigger) -> dict:
     payload = trigger.model_dump(mode="json")
-    payload.pop("enabled", None)
+    for field in ("enabled", "created_at", "created_by"):
+        payload.pop(field, None)
     return payload
 
 

@@ -13,7 +13,7 @@ SLICE-124 触发定义与存储
 
 二、实现后绿
   $ ... tests/test_triggers.py tests/test_triggers_postgres.py tests/test_cli_triggers.py -q
-    7 passed, 1 skipped
+    9 passed, 1 skipped
   跳过的是 Postgres 用例，本机未设 TEST_POSTGRES_URL。
 
 三、行为
@@ -21,22 +21,27 @@ SLICE-124 触发定义与存储
 - digest 必须是 sha256:<64 hex>；输入固定文本最长 8000；不做模板展开。
 - hash_webhook_token 要求令牌至少 16 字符，返回 SHA-256 hex。
 - CLI 只从命名环境变量读取 webhook 令牌，缺失或过短退出 1 且不写存储。输出只有哈希，明文不进入记录、stdout 或 stderr。
-- 文件存储 <root>/<tenant>/<trigger_id>.json，重复相同内容幂等，不同内容冲突，停用幂等。
+- 文件存储 <root>/<tenant>/<trigger_id>.json，重复相同内容幂等，不同内容冲突，停用幂等。定义比较排除 enabled、created_at 与 created_by，CLI 重跑同一命令返回原记录。
 - Postgres 表 adk_triggers 以 (tenant, trigger_id) 为主键，语义与文件一致，包含 aclose。
 - CLI 提供 triggers list|register|disable，后端为 --dir、--db 或 TRIGGER_DATABASE_URL。
 
-四、边界
+四、独立验证
+- 合并前由只读验证代理对照 spec、契约、diff 与证据复核，并自己跑 `--full`，结论 MERGE。
+- 验证发现两处先修后合：CLI 重跑相同登记因 created_at 不同被判冲突（已改为定义比较排除溯源字段，并加 CLI 与 store 回归用例）；`TriggerStore` 在 `core.__all__` 中但未导入（已补）。
+- 剩余低优先项记录不修：畸形 JSON 在库层 `list_all` 会抛原始 ValidationError，与同级 store 一致；`disable(by=...)` 未落库，契约未要求。
+
+五、边界
 - 本切片不含执行服务、webhook 端点、调度循环、重试与幂等（SLICE-125）。
 - 不做 cron 表达式、时区、通知与控制台面板。
 - 触发记录不可变，改定义用新 id。
 
-五、门禁
+六、门禁
 python scripts/check.py --fast
-  1313 passed, 78 skipped
+  1315 passed, 78 skipped
   [PASS] format / lint / types / layering / specs / test / secrets
   ALL PASS
 
 python scripts/check.py --full
-  1313 passed, 78 skipped
+  1315 passed, 78 skipped
   [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
   ALL PASS

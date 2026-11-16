@@ -83,6 +83,36 @@ def test_cli_register_list_disable(tmp_path, monkeypatch, capsys):
     assert disabled["enabled"] is False
 
 
+def test_cli_register_is_idempotent(tmp_path, capsys):
+    args = [
+        "triggers",
+        "register",
+        "--dir",
+        str(tmp_path / "triggers"),
+        "--tenant",
+        "acme",
+        "--id",
+        "nightly",
+        "--agent-id",
+        "assistant",
+        "--version",
+        "1.0.0",
+        "--digest",
+        _DIGEST,
+        "--every-seconds",
+        "3600",
+        "--input",
+        "Summarize yesterday.",
+    ]
+
+    cli.main(args)
+    first = json.loads(capsys.readouterr().out)
+    cli.main(args)
+    second = json.loads(capsys.readouterr().out)
+
+    assert second == first
+
+
 def test_cli_token_errors(tmp_path, monkeypatch, capsys):
     root = tmp_path / "triggers"
     monkeypatch.delenv("ADK_MISSING_TOKEN", raising=False)
