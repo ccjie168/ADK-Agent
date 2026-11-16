@@ -23,10 +23,12 @@ from .client import (
     RegistryServiceUnavailable,
 )
 from .connector_health import ConnectorHealth, check_connector
+from .connector_requests import FileConnectorRequestStore
+from .connector_requests_postgres import PostgresConnectorRequestStore
 from .connectors import FileConnectorStore
 from .connectors_client import HttpConnectorStore
 from .connectors_postgres import PostgresConnectorStore
-from .credentials import FileCredentialStore
+from .credentials import FileCredentialStore, credential_is_bound
 from .credentials_postgres import PostgresCredentialStore
 from .file import FileAgentRegistry, RegistryConflict, RegistryError, RegistryIntegrityError
 from .lifecycle import FileAgentLifecycleStore
@@ -59,6 +61,7 @@ __all__ = [
     "ConnectorHealth",
     "ConnectorNotFound",
     "FileAgentLifecycleStore",
+    "FileConnectorRequestStore",
     "FileConnectorStore",
     "FileCredentialStore",
     "FileArtifactStore",
@@ -76,6 +79,7 @@ __all__ = [
     "PackagingError",
     "PostgresAgentLifecycleStore",
     "PostgresAgentRegistry",
+    "PostgresConnectorRequestStore",
     "PostgresConnectorStore",
     "PostgresCredentialStore",
     "PostgresEvalReportStore",
@@ -101,6 +105,7 @@ __all__ = [
     "TrustStore",
     "artifact_digest",
     "check_connector",
+    "credential_is_bound",
     "fetch_agent_card",
     "load_agent",
     "load_manifest",

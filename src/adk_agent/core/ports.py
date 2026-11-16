@@ -11,6 +11,7 @@ from typing import Any, Literal, Protocol
 from .approval import ApprovalDecision, ApprovalRequest
 from .artifact import AgentArtifact
 from .audit import AuditEvent
+from .connector_requests import ConnectorRequest, ConnectorRequestStatus
 from .credentials import CredentialBinding
 from .eval import EvalReport
 from .identity import Principal
@@ -102,6 +103,29 @@ class CredentialStore(Protocol):
     async def list(self, tenant: str) -> builtins.list[CredentialBinding]: ...
 
     async def disable(self, tenant: str, credential_id: str, *, by: str) -> CredentialBinding: ...
+
+
+class ConnectorRequestStore(Protocol):
+    async def add(self, record: ConnectorRequest) -> ConnectorRequest: ...
+
+    async def get(self, request_id: str) -> ConnectorRequest | None: ...
+
+    async def list(
+        self,
+        tenant: str,
+        *,
+        status: ConnectorRequestStatus | None = None,
+    ) -> builtins.list[ConnectorRequest]: ...
+
+    async def decide(
+        self,
+        request_id: str,
+        *,
+        approved: bool,
+        decided_by: str,
+        reason: str,
+        registered_connector: str | None = None,
+    ) -> ConnectorRequest: ...
 
 
 class EvalReportStore(Protocol):
@@ -206,6 +230,7 @@ __all__ = [
     "AgentRegistry",
     "ApprovalGate",
     "AuditSink",
+    "ConnectorRequestStore",
     "CredentialStore",
     "EvalReportStore",
     "IdentityProvider",

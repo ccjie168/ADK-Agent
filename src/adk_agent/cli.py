@@ -173,19 +173,42 @@ def _credential_store(args: argparse.Namespace) -> Any:
 
 async def _require_credential_binding(store: Any, spec: Any) -> None:
     """Reject a connector whose tenant reference has no enabled binding."""
-    from .core import parse_credential_ref
+    from .registry import credential_is_bound
 
-    if spec.auth_ref is None:
-        return
-    try:
-        ref_tenant, _ = parse_credential_ref(spec.auth_ref)
-    except ValueError:
-        return
-    if spec.tenant is None or spec.tenant != ref_tenant:
+    if not await credential_is_bound(store, spec):
         raise ValueError("credential_unbound")
-    bindings = await store.list(spec.tenant)
-    if not any(binding.enabled and binding.secret_ref == spec.auth_ref for binding in bindings):
-        raise ValueError("credential_unbound")
+
+
+def _connector_request_store(args: argparse.Namespace) -> Any:
+    """Build the connector request store from the file dir or Postgres URL."""
+    from .registry import FileConnectorRequestStore, PostgresConnectorRequestStore
+
+    directory = getattr(args, "connector_requests_dir", None)
+    if directory is None:
+        directory = getattr(args, "dir", None)
+    url = getattr(args, "connector_request_db", None)
+    if url is None:
+        url = getattr(args, "db", None)
+    env_url = os.environ.get("CONNECTOR_REQUEST_DATABASE_URL")
+    if directory and url:
+        print(
+            "set exactly one of --connector-requests-dir or --connector-request-db",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if directory and env_url:
+        print(
+            "--connector-requests-dir conflicts with CONNECTOR_REQUEST_DATABASE_URL",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if directory:
+        return FileConnectorRequestStore(directory)
+    if url:
+        return PostgresConnectorRequestStore(url)
+    if env_url:
+        return PostgresConnectorRequestStore(env_url)
+    return None
 
 
 def _peer_stores(args: argparse.Namespace) -> tuple[Any, Any]:
@@ -420,6 +443,15 @@ def _add_credential_store_args(parser: argparse.ArgumentParser) -> None:
         "--credential-db",
         default=None,
         help="Postgres URL for credential bindings (defaults to $CREDENTIAL_DATABASE_URL)",
+    )
+
+
+def _add_connector_request_store_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--dir", default=None, help="file store root for connector requests")
+    parser.add_argument(
+        "--db",
+        default=None,
+        help="Postgres URL for connector requests (defaults to $CONNECTOR_REQUEST_DATABASE_URL)",
     )
 
 
@@ -1142,6 +1174,16 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="connector store directory for the Connectors panel (falls back to --registry-url)",
     )
+    p_console.add_argument(
+        "--connector-requests-dir",
+        default=None,
+        help="connector request store directory (or set CONNECTOR_REQUEST_DATABASE_URL)",
+    )
+    p_console.add_argument(
+        "--connector-request-db",
+        default=None,
+        help="Postgres URL for connector requests (defaults to $CONNECTOR_REQUEST_DATABASE_URL)",
+    )
     _add_credential_store_args(p_console)
     _add_peer_store_args(p_console)
     p_console.add_argument(
@@ -1312,6 +1354,45 @@ def main(argv: list[str] | None = None) -> None:
     p_cr_disable.add_argument("--tenant", required=True)
     p_cr_disable.add_argument("--id", required=True)
     _add_credential_store_args(p_cr_disable)
+
+    p_connector_requests = sub.add_parser(
+        "connector-requests", help="request and decide connector registrations"
+    )
+    connector_requests_sub = p_connector_requests.add_subparsers(
+        dest="connector_requests_cmd", required=True
+    )
+
+    p_cor_list = connector_requests_sub.add_parser("list", help="list connector requests")
+    p_cor_list.add_argument("--tenant", required=True)
+    p_cor_list.add_argument("--status", default=None)
+    _add_connector_request_store_args(p_cor_list)
+
+    p_cor_request = connector_requests_sub.add_parser(
+        "request", help="request a connector registration"
+    )
+    p_cor_request.add_argument("--tenant", required=True)
+    p_cor_request.add_argument("--id", required=True)
+    p_cor_request.add_argument("--kind", required=True, choices=["http", "openapi", "mcp"])
+    p_cor_request.add_argument("--base-url", required=True)
+    p_cor_request.add_argument("--auth-ref", default=None)
+    p_cor_request.add_argument("--methods", default="GET")
+    p_cor_request.add_argument("--path-prefixes", default="/")
+    p_cor_request.add_argument("--data-classes", default="")
+    p_cor_request.add_argument("--reason", required=True)
+    _add_connector_request_store_args(p_cor_request)
+
+    p_cor_decide = connector_requests_sub.add_parser(
+        "decide", help="approve or deny a connector request"
+    )
+    p_cor_decide.add_argument("request_id")
+    decision = p_cor_decide.add_mutually_exclusive_group(required=True)
+    decision.add_argument("--approve", action="store_true")
+    decision.add_argument("--deny", action="store_true")
+    p_cor_decide.add_argument("--reason", default="")
+    p_cor_decide.add_argument("--connectors-dir", default=None)
+    _add_registry_client_args(p_cor_decide)
+    _add_credential_store_args(p_cor_decide)
+    _add_connector_request_store_args(p_cor_decide)
 
     p_peers = sub.add_parser("peers", help="manage A2A peers and their action grants")
     peers_sub = p_peers.add_subparsers(dest="peers_cmd", required=True)
@@ -1990,6 +2071,7 @@ def main(argv: list[str] | None = None) -> None:
         else:
             console_connectors = None
         console_credentials: Any = _credential_store(args)
+        console_connector_requests: Any = _connector_request_store(args)
         console_peers: Any = None
         console_peer_grants: Any = None
         console_remote_agents: Any = None
@@ -2012,6 +2094,7 @@ def main(argv: list[str] | None = None) -> None:
             lifecycle=console_lifecycle,
             tool_grants=tool_grants,
             connectors=console_connectors,
+            connector_requests=console_connector_requests,
             credentials=console_credentials,
             peers=console_peers,
             peer_grants=console_peer_grants,
@@ -2055,6 +2138,12 @@ def main(argv: list[str] | None = None) -> None:
             # Same cross-loop caveat as the audit query above.
             with contextlib.suppress(Exception):
                 asyncio.run(console_credentials.aclose())
+        from .registry.connector_requests_postgres import PostgresConnectorRequestStore
+
+        if isinstance(console_connector_requests, PostgresConnectorRequestStore):
+            # Same cross-loop caveat as the audit query above.
+            with contextlib.suppress(Exception):
+                asyncio.run(console_connector_requests.aclose())
     elif args.cmd == "approvals":
         backend = _approval_backend(args.dir, args.db, dir_flag="--dir", db_flag="--db")
         if backend is None:
@@ -2482,6 +2571,153 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
 
         if args.credentials_cmd == "list":
+            print(json.dumps([record.model_dump(mode="json") for record in result]))
+        else:
+            print(json.dumps(result.model_dump(mode="json")))
+    elif args.cmd == "connector-requests":
+        from pydantic import ValidationError
+
+        from .core import (
+            ConnectorRequest,
+            ConnectorRequestConflict,
+            ConnectorRequestError,
+            ConnectorRequestNotFound,
+            ConnectorRequestStatus,
+            ConnectorSpec,
+            ConnectorStoreError,
+            CredentialStoreError,
+            DataClass,
+            HttpMethod,
+            parse_credential_ref,
+        )
+        from .registry import (
+            ConnectorForbidden,
+            ConnectorNotFound,
+            credential_is_bound,
+        )
+
+        def _split(value: str) -> list[str]:
+            return [item.strip() for item in value.split(",") if item.strip()]
+
+        if args.connector_requests_cmd == "list" and args.status not in {
+            None,
+            "pending",
+            "approved",
+            "denied",
+        }:
+            print(f"invalid status: {args.status!r}", file=sys.stderr)
+            raise SystemExit(1)
+
+        store = _connector_request_store(args)
+        if store is None:
+            print(
+                "set --dir or --db (or CONNECTOR_REQUEST_DATABASE_URL)",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        approve_connector_store: Any = None
+        approve_credential_store: Any = None
+        if args.connector_requests_cmd == "decide" and args.approve:
+            approve_connector_store = _connector_store(args)
+            if approve_connector_store is None:
+                print(
+                    "set --connectors-dir or --registry-url to approve",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            approve_credential_store = _credential_store(args)
+
+        async def run_connector_requests() -> Any:
+            try:
+                if args.connector_requests_cmd == "list":
+                    return await store.list(
+                        args.tenant, status=cast("ConnectorRequestStatus", args.status)
+                    )
+                if args.connector_requests_cmd == "request":
+                    spec = ConnectorSpec(
+                        connector_id=args.id,
+                        tenant=args.tenant,
+                        kind=args.kind,
+                        base_url=args.base_url,
+                        auth_ref=args.auth_ref or None,
+                        methods=cast(
+                            "list[HttpMethod]",
+                            [item.upper() for item in _split(args.methods)],
+                        ),
+                        path_prefixes=_split(args.path_prefixes),
+                        data_classes=cast("list[DataClass]", _split(args.data_classes)),
+                    )
+                    if spec.auth_ref is not None:
+                        try:
+                            ref_tenant, _ = parse_credential_ref(spec.auth_ref)
+                        except ValueError:
+                            ref_tenant = None
+                        if ref_tenant is not None and ref_tenant != args.tenant:
+                            raise ConnectorRequestError(
+                                "credential_unbound: auth_ref tenant must match --tenant"
+                            )
+                    record = ConnectorRequest(
+                        request_id=uuid.uuid4().hex,
+                        tenant=args.tenant,
+                        spec=spec,
+                        reason=args.reason,
+                        requested_by="cli",
+                        requested_at=datetime.now(timezone.utc),
+                    )
+                    return await store.add(record)
+                record = await store.get(args.request_id)
+                if record is None:
+                    raise ConnectorRequestNotFound(
+                        f"connector request {args.request_id!r} not found"
+                    )
+                if record.status != "pending":
+                    raise ConnectorRequestConflict(
+                        f"connector request {args.request_id!r} is {record.status}"
+                    )
+                if args.deny:
+                    return await store.decide(
+                        args.request_id,
+                        approved=False,
+                        decided_by="cli",
+                        reason=args.reason,
+                    )
+                if approve_credential_store is not None and not await credential_is_bound(
+                    approve_credential_store, record.spec
+                ):
+                    raise ValueError("credential_unbound")
+                await approve_connector_store.add(record.spec)
+                return await store.decide(
+                    args.request_id,
+                    approved=True,
+                    decided_by="cli",
+                    reason=args.reason,
+                    registered_connector=record.spec.connector_id,
+                )
+            finally:
+                for candidate in (
+                    store,
+                    approve_connector_store,
+                    approve_credential_store,
+                ):
+                    close = getattr(candidate, "aclose", None)
+                    if close is not None:
+                        await close()
+
+        try:
+            result = asyncio.run(run_connector_requests())
+        except (
+            ConnectorRequestError,
+            ConnectorStoreError,
+            ConnectorForbidden,
+            ConnectorNotFound,
+            CredentialStoreError,
+            ValidationError,
+            ValueError,
+        ) as exc:
+            print(f"connector request failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        if args.connector_requests_cmd == "list":
             print(json.dumps([record.model_dump(mode="json") for record in result]))
         else:
             print(json.dumps(result.model_dump(mode="json")))

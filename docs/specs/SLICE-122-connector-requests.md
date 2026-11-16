@@ -56,24 +56,24 @@
 
 ## 完成判据（可执行）
 
-- [ ] 申请的租户与 spec 租户不一致时模型拒绝 -> `tests/test_connector_requests.py::test_request_rejects_foreign_tenant_spec`
-- [ ] 文件 store 往返、列表过滤与决定状态机 -> `::test_file_store_roundtrip_and_decisions`
-- [ ] 决定并发只生效一次 -> `tests/test_connector_requests_postgres.py::test_postgres_decide_is_single_winner`（无 `TEST_POSTGRES_URL` 跳过）
-- [ ] 控制台申请、列出、批准并登记连接器 -> `tests/test_console_connector_requests.py::test_request_and_approve_registers_connector`
-- [ ] 批准时凭据未绑定返回 400，申请保持 pending -> `::test_approve_requires_enabled_binding`
-- [ ] 拒绝不改连接器存储 -> `::test_deny_does_not_register`
-- [ ] 非管理员不能决定 -> `::test_decide_requires_admin`
-- [ ] CLI 申请、列出、批准 -> `tests/test_cli_connector_requests.py`
-- [ ] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
+- [x] 申请的租户与 spec 租户不一致时模型拒绝 -> `tests/test_connector_requests.py::test_request_rejects_foreign_tenant_spec`
+- [x] 文件 store 往返、列表过滤与决定状态机 -> `::test_file_store_roundtrip_and_decisions`
+- [x] 决定并发只生效一次 -> `tests/test_connector_requests_postgres.py::test_postgres_decide_is_single_winner`（无 `TEST_POSTGRES_URL` 跳过）
+- [x] 控制台申请、列出、批准并登记连接器 -> `tests/test_console_connector_requests.py::test_request_and_approve_registers_connector`
+- [x] 批准时凭据未绑定返回 400，申请保持 pending -> `::test_approve_requires_enabled_binding`
+- [x] 拒绝不改连接器存储 -> `::test_deny_does_not_register`
+- [x] 非管理员不能决定 -> `::test_decide_requires_admin`
+- [x] CLI 申请、列出、批准 -> `tests/test_cli_connector_requests.py`
+- [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：申请允许把 spec 租户写成别的租户 -> 期望 `::test_request_rejects_foreign_tenant_spec` 失败
-- [ ] 反例 2：已决定的申请还能再决定 -> 期望 `::test_file_store_roundtrip_and_decisions` 失败
-- [ ] 反例 3：批准未绑定凭据的连接器 -> 期望 `::test_approve_requires_enabled_binding` 失败
-- [ ] 反例 4：拒绝也写连接器存储 -> 期望 `::test_deny_does_not_register` 失败
+- [x] 反例 1：申请允许把 spec 租户写成别的租户 -> 期望 `::test_request_rejects_foreign_tenant_spec` 失败
+- [x] 反例 2：已决定的申请还能再决定 -> 期望 `::test_file_store_roundtrip_and_decisions` 失败
+- [x] 反例 3：批准未绑定凭据的连接器 -> 期望 `::test_approve_requires_enabled_binding` 失败
+- [x] 反例 4：拒绝也写连接器存储 -> 期望 `::test_deny_does_not_register` 失败
 
-红态记录: 待补，实现前运行。
+红态记录: 实现前四个测试文件在收集阶段报 3 个 ImportError，缺少 `ConnectorRequest`。
 
 ## 5 问威胁建模（10 分钟）
 
