@@ -1150,6 +1150,40 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
 
+    p_serve_triggers = sub.add_parser(
+        "serve-triggers", help="serve the webhook trigger execution service"
+    )
+    p_serve_triggers.add_argument(
+        "--triggers-dir", default=None, help="file store root for trigger definitions and fires"
+    )
+    p_serve_triggers.add_argument(
+        "--trigger-db",
+        default=None,
+        help="Postgres URL for triggers and fires (defaults to $TRIGGER_DATABASE_URL)",
+    )
+    p_serve_triggers.add_argument("--registry", default=None, help="registry directory")
+    _add_registry_client_args(p_serve_triggers)
+    p_serve_triggers.add_argument(
+        "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
+    )
+    p_serve_triggers.add_argument(
+        "--artifact-keys",
+        default=None,
+        help="JSON file mapping key id to a 64 hex Ed25519 public key",
+    )
+    _add_tool_grant_args(p_serve_triggers)
+    _add_audit_args(p_serve_triggers)
+    p_serve_triggers.add_argument("--session-db", default=None, help="SQLite session database path")
+    p_serve_triggers.add_argument("--quota-config", default=None, help="JSON QuotaConfig file")
+    _add_rate_limit_args(p_serve_triggers)
+    p_serve_triggers.add_argument("--host", default="127.0.0.1", help="HTTP bind host")
+    p_serve_triggers.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="HTTP bind port (defaults to $PORT, then 8000)",
+    )
+
     p_registry = sub.add_parser("serve-registry", help="serve the agent registry control plane")
     p_registry.add_argument(
         "--database-url",
@@ -1985,6 +2019,94 @@ def main(argv: list[str] | None = None) -> None:
         import uvicorn
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+    elif args.cmd == "serve-triggers":
+        rate_limit = _rate_limit(args)
+        from google.adk.sessions import InMemorySessionService
+
+        from .mcp.http import resolve_port
+        from .registry import (
+            FileTriggerFireStore,
+            FileTriggerStore,
+            InProcessArtifactLoader,
+            PostgresTriggerFireStore,
+            PostgresTriggerStore,
+        )
+        from .runtime.sessions import configured_session_service
+        from .triggers_service import build_triggers_app
+
+        env_db = os.environ.get("TRIGGER_DATABASE_URL")
+        if args.triggers_dir and args.trigger_db:
+            print("set exactly one of --triggers-dir or --trigger-db", file=sys.stderr)
+            raise SystemExit(1)
+        if args.triggers_dir and env_db:
+            print("--triggers-dir conflicts with TRIGGER_DATABASE_URL", file=sys.stderr)
+            raise SystemExit(1)
+        database_url = args.trigger_db or env_db
+        if not args.triggers_dir and not database_url:
+            print(
+                "trigger store is required: provide --triggers-dir, --trigger-db, "
+                "or set TRIGGER_DATABASE_URL",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        triggers: Any
+        if args.triggers_dir:
+            triggers = FileTriggerStore(args.triggers_dir)
+            fire_store: Any = FileTriggerFireStore(args.triggers_dir)
+        else:
+            triggers = PostgresTriggerStore(cast("str", database_url))
+            fire_store = PostgresTriggerFireStore(cast("str", database_url))
+
+        if not args.registry and not args.registry_url:
+            print(
+                "registry is required: provide --registry DIR or --registry-url URL",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        registry = _agent_registry(args)
+        artifact_store = _artifact_store(args)
+        if artifact_store is None:
+            print(
+                "artifact store is required: provide --artifact-dir or set ARTIFACT_URL",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        trust = _artifact_trust(args)
+        if trust is None:
+            print(
+                "artifact trust keys are required: provide --artifact-keys "
+                "or set ADK_ARTIFACT_KEYS",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+
+        quota, quota_config = _quota_settings(args)
+        app = build_triggers_app(
+            triggers=triggers,
+            registry=registry,
+            artifact_store=artifact_store,
+            trust=trust,
+            loader=InProcessArtifactLoader(),
+            lifecycle=_lifecycle_source(args, registry),
+            tool_grants=_tool_grant_store(args),
+            audit=_audit_sink(args),
+            quota=quota,
+            quota_config=quota_config,
+            session_service=configured_session_service(args.session_db) or InMemorySessionService(),
+            rate_limit=rate_limit,
+            fire_store=fire_store,
+        )
+
+        import uvicorn
+
+        uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+
+        for backend in (triggers, fire_store):
+            close = getattr(backend, "aclose", None)
+            if close is not None:
+                # The pool may have opened in uvicorn's loop, which is now closed.
+                with contextlib.suppress(Exception):
+                    asyncio.run(close())
     elif args.cmd == "serve-registry":
         rate_limit = _rate_limit(args)
         from .mcp.http import resolve_port

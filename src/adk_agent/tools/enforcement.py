@@ -33,20 +33,25 @@ def declared_tool_ids(agent: Any) -> set[str]:
 
 
 def install_declared_guards(
-    agent: Any, audit: AuditSink | None, *, overlay: ToolGrantStore | None = None
+    agent: Any,
+    audit: AuditSink | None,
+    *,
+    overlay: ToolGrantStore | None = None,
+    grants: list[ToolGrant] | None = None,
 ) -> None:
     """Allow the agent's manifest grants, or its declared tools, and deny the rest.
 
     Non-ADK stand-ins are left untouched so a caller that only forwards the
     agent can pass a stub. A tool grant store, when given, is consulted for
-    approved temporary grants outside the manifest.
+    approved temporary grants outside the manifest. ``grants`` lets a caller
+    that loaded an artifact directly supply the published manifest grants.
     """
     if not isinstance(agent, BaseAgent):
         return
-    published = getattr(agent, "_adk_tool_grants", None)
+    published = grants if grants is not None else getattr(agent, "_adk_tool_grants", None)
     if published is not None:
-        grants = list(published)
+        allowed = list(published)
     else:
-        grants = [ToolGrant(tool_id=tool_id) for tool_id in sorted(declared_tool_ids(agent))]
-    engine = GrantPolicyEngine(grants, overlay=overlay)
+        allowed = [ToolGrant(tool_id=tool_id) for tool_id in sorted(declared_tool_ids(agent))]
+    engine = GrantPolicyEngine(allowed, overlay=overlay)
     install_tool_guard(agent, ToolGuard(engine, audit=audit))

@@ -25,6 +25,7 @@ from .quota import QuotaPolicy
 from .remote_agents import RemoteAgent
 from .tool import ToolRequest, ToolResponse
 from .tool_grants import GrantStatus, ToolGrantRequest
+from .trigger_runs import TriggerFire, TriggerFireStatus
 from .triggers import AgentTrigger
 
 
@@ -116,6 +117,25 @@ class TriggerStore(Protocol):
     async def list_all(self) -> builtins.list[AgentTrigger]: ...
 
     async def disable(self, tenant: str, trigger_id: str, *, by: str) -> AgentTrigger: ...
+
+
+class TriggerFireStore(Protocol):
+    async def claim(self, fire: TriggerFire) -> TriggerFire: ...
+
+    async def finish(
+        self,
+        tenant: str,
+        trigger_id: str,
+        idempotency_key: str,
+        *,
+        status: TriggerFireStatus,
+        error_code: str | None = None,
+        finished_at: datetime | None = None,
+    ) -> TriggerFire: ...
+
+    async def get(
+        self, tenant: str, trigger_id: str, idempotency_key: str
+    ) -> TriggerFire | None: ...
 
 
 class ConnectorRequestStore(Protocol):
@@ -258,6 +278,7 @@ __all__ = [
     "TemplateSource",
     "ToolGateway",
     "ToolGrantStore",
+    "TriggerFireStore",
     "TriggerStore",
 ]
 

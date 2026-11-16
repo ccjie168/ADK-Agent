@@ -49,6 +49,8 @@ from .reports_postgres import PostgresEvalReportStore
 from .signing import PublishUnavailable, load_private_key, sign_digest, verify_digest
 from .tool_grants import FileToolGrantStore
 from .tool_grants_postgres import PostgresToolGrantStore
+from .trigger_runs import FileTriggerFireStore
+from .trigger_runs_postgres import PostgresTriggerFireStore
 from .triggers import FileTriggerStore
 from .triggers_postgres import PostgresTriggerStore
 from .trust import ArtifactTrustError, TrustStore
@@ -71,6 +73,7 @@ __all__ = [
     "FilePeerStore",
     "FileRemoteAgentStore",
     "FileToolGrantStore",
+    "FileTriggerFireStore",
     "FileTriggerStore",
     "GrantRequestConflict",
     "GrantRequestError",
@@ -90,6 +93,7 @@ __all__ = [
     "PostgresPeerStore",
     "PostgresRemoteAgentStore",
     "PostgresToolGrantStore",
+    "PostgresTriggerFireStore",
     "PostgresTriggerStore",
     "PublishUnavailable",
     "FileAgentRegistry",
