@@ -56,6 +56,18 @@
 - 工具守卫按 manifest 授权安装；声明了 `requires_approval` 的授权直接拒绝运行。
 - 版本按触发记录的 `agent_id`、`version`、`digest` 固定，不使用 latest。
 
+## 调度
+
+`serve-triggers` 默认启动调度循环，`--no-scheduler` 关闭。
+
+- 每个 tick 读取所有启用的 `schedule` 触发，按 `every_seconds` 计算当前 slot，`slot = floor(now.timestamp() / every_seconds)`。
+- 幂等键是 `slot-<slot>`。运行时先 claim 一条 fire 记录；多副本共享 Postgres 或文件 store 时只有一个赢家。
+- 只跑当前 slot。停机错过的 slot 不补跑。
+- 运行的校验、验签、配额、审计与审批拒绝与 webhook 完全相同。
+- 预运行失败（注册表、验签、加载）最多尝试 `--trigger-attempts` 次；agent 开始运行后失败不再自动重试。
+- 应用关闭时取消循环并等待当前 tick 结束。
+- 时钟回拨可能跳过或重复 slot；重复由 claim 挡住，跳过记录在日志。
+
 ## `GET /healthz`
 
 开放，返回 `{"status": "ok"}`。
