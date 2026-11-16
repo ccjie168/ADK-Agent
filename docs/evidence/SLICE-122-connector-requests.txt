@@ -35,7 +35,14 @@ SLICE-122 连接器自助申请与审批
 - 批准与拒绝并发时，批准路径可能先登记连接器再遇到决定冲突；登记幂等，管理员可停用连接器。未做跨存储事务。
 - CLI 决定不写审计，与现有管理命令一致。
 
-五、门禁
+五、CodeQL 与密钥扫描
+- PR #30 首次扫描新增 6 条：3 条 py/path-injection 在 registry/connector_requests.py，3 条 py/log-injection 在 console.py 新审批路由。
+- path-injection 与 ADR-0022 的既有模式相同，请求 id 先过 _REQUEST_ID 全匹配再拼路径；按误报 dismiss。
+- log-injection 记的是已校验标识符，且 SLICE-120 的中央清洗器转义 CR/LF；按误报 dismiss。
+- 复核后开放告警 0。
+- 契约示例里的 auth_ref 赋值会在 CI 密钥扫描下命中，示例改为省略可选字段。
+
+六、门禁
 python scripts/check.py --fast
   1292 passed, 77 skipped
   [PASS] format / lint / types / layering / specs / test / secrets
