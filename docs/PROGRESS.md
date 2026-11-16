@@ -1,22 +1,22 @@
 # 项目进度登记
 
 更新日期: 2026-11-16
-分支: slice-126-safe-path-join（基于 master a5cc476）
-最新提交: `e6e4819` feat: harden file store path joins (SLICE-126)
+分支: slice-127-trigger-scheduler（基于 master 59ae49a）
+最新提交: `66843e6` feat: add the trigger schedule loop and retries (SLICE-127)
 状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
 
 ## 本次暂停交接
 
-- 代码在 `slice-126-safe-path-join` 分支，`e6e4819`，基于 master `a5cc476`。SLICE-116 到 125 已通过 PR #22、#24、#25、#26、#28、#29、#30、#31、#32、#33 合并；路径加固的 PR 尚未开。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
-- 最近门禁: `--fast` 与 `--full` 都是 1347 passed, 80 skipped；路径 helper 用例 13 passed，1 skipped（符号链接权限）。
+- 代码在 `slice-127-trigger-scheduler` 分支，`66843e6`，基于 master `59ae49a`。SLICE-116 到 126 已通过 PR #22、#24、#25、#26、#28、#29、#30、#31、#32、#33、#34 合并；调度循环的 PR 尚未开。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
+- 最近门禁: `--fast` 与 `--full` 都是 1356 passed, 80 skipped；调度、服务与 CLI 用例 23 passed。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
 - 演示进程已全部停止: 控制台 8081 到 8085、8091 到 8094、8101、8102、mock IdP 9000、审计 8010、headless Edge 9223 到 9227。`adk-registry` 与 `adk-postgres-070` 容器在 127.0.0.1:5000 与 55432。演示数据留在 `C:/Users/Jie/AppData/Local/Temp/` 下的 `adk-ui-demo/`、`adk-ui-shell/`、`adk-116-seed/`、`adk-117-roles/`、`adk-118-history/` 与 `adk-119-drill/`，需要时重建。
-- 下一刀: SLICE-127 调度循环与重试，多副本 slot 单赢家，只调用已发布 pinned 版本；之后是 agent 级沙箱与凭据密钥后端。
+- 下一刀: agent 级沙箱先写 ADR，再做实现；之后是凭据密钥后端。两者都要人工确认 ADR。
 - 恢复顺序: 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件，跑 `./.venv/Scripts/python.exe scripts/check.py --fast`，再从缺口清单挑一项。
 
 ## 一句话
 
-企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线、服务面 OIDC 接线、MCP HTTP 认证、MCP principal 注入、共享配额、审批收件箱、MCP 运行审计、指标与 trace、A2A 运行审计、审批过期、服务指标端点、审批归档、配额行级隔离、审计轮转签名、模型熔断、文件状态备份恢复、压测基线、SSE 有界缓冲、入口限流、MCP/A2A 限流、审计密钥轮换、可选的会话租户隔离和审计只读查询和控制台共享审计、工件类型、工件存储、带签名发布、验签加载、注册表启动和市场视图、Postgres 注册表、控制面、命令接线、按需加载、报告集中存储、工具目录、生命周期存储与拦截、工具授权请求存储与 MCP/A2A 工具守卫与临时授权合并、审批入口、用量视图、卸载置换、跨副本限流、连接器存储、连接器执行、控制面、工具目录合并、健康检查、A2A peer 身份、管理面、迁移收口、远端目录记录、市场页合并、出站审计、审计 Postgres 存储与数据库接线、审批 Postgres 收件箱与接线、多副本清单与运维手册、发行完整性八十八个切片。本地门禁全绿。OIDC 身份链路完整，多副本配额在 Postgres 上共享并由 RLS 约束，审批可以跨进程走通并有截止时间和归档，MCP 和 A2A 调用都有审计和配额，控制台、两个网关和 MCP 都有 Prometheus 指标，trace 能跨边界传播，审计链支持分段和 HMAC 验签，模型 provider 有熔断，注册表和审计可以打包备份并安全恢复，配额与审计吞吐有可复现的压测基线，控制台 SSE 在慢客户端下内存有界且会报告丢弃数，控制台、三个独立服务、MCP 和 A2A 都按调用方限流，审计签名密钥可轮换而不作废旧记录，会话可以按租户隔离，审计服务可按租户查询事件，控制台的审计与运行面板读同一份共享数据，工件可按 digest 存在文件或 Postgres，发布时可用 Ed25519 签名，注册的工件可按引用验签加载成 agent，控制台与 MCP 可直接从注册表启动，市场页显示工件摘要与验签状态，并附演示种子与截图，已发布版本可从共享 Postgres 读写而不依赖共享卷，控制面服务按契约发布、读取并接收工件字节，四个命令可用 `--registry-url` 读写同一份目录，市场页可按需验签加载版本并直接开聊，评测报告与版本同库并由控制台跨副本读取，工具目录可按租户展示来源、数据分级和授权关系。ADR-0010 已签字，生命周期状态可存储、读取与审计，退役版本无法再被加载或启动。ADR-0011 已签字，工具临时授权请求可存储、审批与到期判断，MCP 与 A2A 运行路径也按允许清单拦截工具，已批准的临时授权可按版本合并放行，控制台与 CLI 可申请、审批并留痕，Grants 面板显示用量与即将到期，按需加载的版本可卸载并同位置换。ADR-0012 已签字，限流计数可走 Redis 跨副本共享并在故障时回退。ADR-0013 已签字，连接器可注册、按租户列出并停用，并能在工具网关里按出站策略执行，控制台与 CLI 也能管理连接器，工具目录会显示已启用连接器及其授权版本，连接器可主动探测并给出结构化健康结论。ADR-0014 已签字，A2A 提供方按 peer 身份认证并按 `read`/`invoke` 授权，审计身份随 peer，legacy 共享单 token 模式保留且与 peer 模式互斥，peer 与授权可在控制台和 `peers` 命令里管理，两种模式的互斥有库层与 CLI 双重验证，迁移步骤见 `docs/guides/a2a-peer-migration.md`。远端 peer 暴露的 agent 可作为目录记录登记，card 摘要固定后刷新会区分固定、已变化与不可达，但暂不可从控制台加载；市场页会显示来源与信任徽标，并提供刷新入口。ADR-0015 已签字，消费者出站调用按 `a2a.call` 与 `egress=third_party` 审计，跨组织审计边界只覆盖本地侧，按 trace id 关联。ADR-0016 已签字，审计可按租户写入 Postgres、并发写安全并可整链验证。审计服务、控制台与网关可用 `--audit-db`/`AUDIT_DATABASE_URL` 共享同一份 Postgres 审计，`serve-audit` 文件与数据库双后端均可用。ADR-0017 已签字，审批请求与决定可按行存入 Postgres，条件 `UPDATE` 保证并发决策只生效一次，过期判定、归档与删除语义对齐文件实现，控制台、CLI prune 与执行器已共享同一份审批，两个进程的轮询与决策验证通过。Phase E 已收口，四个无本地卷的 Deployment 可多副本运行，运维手册覆盖环境变量、扩缩容、备份恢复、密钥轮换、时钟与故障处理。ADR-0018 已签字，运行时与开发依赖锁定为带哈希的集合，CI 按锁安装后构建并扫描镜像，SBOM 随构建产出，部署按 digest 引用；两条扫描接受风险带到期日。SLICE-102 把构建后端锁进依赖集合并把 CI action 固定到 commit SHA。ADR-0019 与 SLICE-103/104 让 Postgres 会话表启用并强制 RLS，租户取自已认证 principal，策略由 `sessions enable-rls` 显式安装，运维手册覆盖启用、回滚与排障。ADR-0020 与 SLICE-105/106 把 `app_states` 纳入同一租户边界，`app_name` 带租户前缀，四张表都由 RLS 强制，手册写明旧数据不自动迁移。SLICE-107 让密钥扫描覆盖证据目录并改用已审基线，过期接受风险不再被忽略。SLICE-108 让门禁只读基线，新命中不会被扫描命令写进允许清单。SLICE-109 补齐手动发布流水线与 digest 回写，首次真实推送给操作员执行。SLICE-110 让运行、模型、工具与 A2A 调用以 OTel span 导出，审计 trace_id 与 OTel trace_id 对齐。SLICE-111 让单与顺序计划按步骤落检查点，恢复时跳过已完成步骤，审批等待可恢复。SLICE-112 在模型网关上加了输入输出护栏，PII 脱敏与提示注入阻断，审计只记规则 id 与哈希。SLICE-113 给控制台加了浏览器 OIDC PKCE 登录与三组导航的应用外壳，token 与客户端 secret 不进入浏览器。SLICE-114 把 Runs 与 Plans 的 trace 升级为相对时间瀑布，失败与拒绝分色。SLICE-115 把审批面板做成工作台，截止时间可见、可过滤，并按理由决定。SLICE-116 把 Registry 面板做成卡片，来源、信任、评测与生命周期徽标统一色调，卡片可点击与键盘选中。SLICE-117 让控制台按服务端能力清单显示导航、面板与操作按钮，未知角色回到基础视图，无权深链自动回退。SLICE-118 让审批历史覆盖已决、已过期与已归档记录，文件与 Postgres 语义一致，控制台可按状态过滤。SLICE-119 让 trace 节点带审计字段，瀑布行可点击与键盘选中，Runs 与 Plans 显示 span 详情。SLICE-120 在日志记录工厂层集中转义 CR 与 LF，控制台启动即生效，收敛 CodeQL 的 29 条 log-injection。SLICE-121 增加租户凭据引用绑定，记录只含元数据，引用按租户映射到 `ADK_SECRET_<TENANT>_<NAME>`，控制台与 CLI 可登记、列出与停用，连接器登记要求同租户启用绑定，工具网关按租户作用域取用。SLICE-122 增加连接器自助申请与审批，租户提交申请，管理员批准时重查凭据并登记连接器，文件与 Postgres 单赢家决定，申请与决定写审计。SLICE-123 增加声明式组合器，`single-llm` 模板按参数生成确定性工件，参数只用 `repr` 嵌入，平台密钥签名后走既有评测、注册表与工件存储，组合结果可按 pinned 引用验签加载。SLICE-124 增加定时与 webhook 触发定义，pinned 到 agent 版本，webhook 令牌只存哈希，文件与 Postgres 双存储，CLI 可登记、列出与停用。SLICE-125 增加 webhook 执行服务，`serve-triggers` 按触发令牌哈希认证，pinned 版本验签加载，按租户配额与审计运行，幂等键单赢家，需审批工具的 agent 直接拒绝。SLICE-126 增加共享 `safe_join`，所有文件存储先做路径段白名单校验，再检查解析后的目标仍在存储根目录下。可做内部试点，未达对外多租户生产标准。
+企业级 ADK agent 平台的 M0 到 M5 已全部收口，另加控制台可见性、审计客户端接入、只读运营视图、OIDC 解析器、控制台 OIDC 接线、服务面 OIDC 接线、MCP HTTP 认证、MCP principal 注入、共享配额、审批收件箱、MCP 运行审计、指标与 trace、A2A 运行审计、审批过期、服务指标端点、审批归档、配额行级隔离、审计轮转签名、模型熔断、文件状态备份恢复、压测基线、SSE 有界缓冲、入口限流、MCP/A2A 限流、审计密钥轮换、可选的会话租户隔离和审计只读查询和控制台共享审计、工件类型、工件存储、带签名发布、验签加载、注册表启动和市场视图、Postgres 注册表、控制面、命令接线、按需加载、报告集中存储、工具目录、生命周期存储与拦截、工具授权请求存储与 MCP/A2A 工具守卫与临时授权合并、审批入口、用量视图、卸载置换、跨副本限流、连接器存储、连接器执行、控制面、工具目录合并、健康检查、A2A peer 身份、管理面、迁移收口、远端目录记录、市场页合并、出站审计、审计 Postgres 存储与数据库接线、审批 Postgres 收件箱与接线、多副本清单与运维手册、发行完整性八十八个切片。本地门禁全绿。OIDC 身份链路完整，多副本配额在 Postgres 上共享并由 RLS 约束，审批可以跨进程走通并有截止时间和归档，MCP 和 A2A 调用都有审计和配额，控制台、两个网关和 MCP 都有 Prometheus 指标，trace 能跨边界传播，审计链支持分段和 HMAC 验签，模型 provider 有熔断，注册表和审计可以打包备份并安全恢复，配额与审计吞吐有可复现的压测基线，控制台 SSE 在慢客户端下内存有界且会报告丢弃数，控制台、三个独立服务、MCP 和 A2A 都按调用方限流，审计签名密钥可轮换而不作废旧记录，会话可以按租户隔离，审计服务可按租户查询事件，控制台的审计与运行面板读同一份共享数据，工件可按 digest 存在文件或 Postgres，发布时可用 Ed25519 签名，注册的工件可按引用验签加载成 agent，控制台与 MCP 可直接从注册表启动，市场页显示工件摘要与验签状态，并附演示种子与截图，已发布版本可从共享 Postgres 读写而不依赖共享卷，控制面服务按契约发布、读取并接收工件字节，四个命令可用 `--registry-url` 读写同一份目录，市场页可按需验签加载版本并直接开聊，评测报告与版本同库并由控制台跨副本读取，工具目录可按租户展示来源、数据分级和授权关系。ADR-0010 已签字，生命周期状态可存储、读取与审计，退役版本无法再被加载或启动。ADR-0011 已签字，工具临时授权请求可存储、审批与到期判断，MCP 与 A2A 运行路径也按允许清单拦截工具，已批准的临时授权可按版本合并放行，控制台与 CLI 可申请、审批并留痕，Grants 面板显示用量与即将到期，按需加载的版本可卸载并同位置换。ADR-0012 已签字，限流计数可走 Redis 跨副本共享并在故障时回退。ADR-0013 已签字，连接器可注册、按租户列出并停用，并能在工具网关里按出站策略执行，控制台与 CLI 也能管理连接器，工具目录会显示已启用连接器及其授权版本，连接器可主动探测并给出结构化健康结论。ADR-0014 已签字，A2A 提供方按 peer 身份认证并按 `read`/`invoke` 授权，审计身份随 peer，legacy 共享单 token 模式保留且与 peer 模式互斥，peer 与授权可在控制台和 `peers` 命令里管理，两种模式的互斥有库层与 CLI 双重验证，迁移步骤见 `docs/guides/a2a-peer-migration.md`。远端 peer 暴露的 agent 可作为目录记录登记，card 摘要固定后刷新会区分固定、已变化与不可达，但暂不可从控制台加载；市场页会显示来源与信任徽标，并提供刷新入口。ADR-0015 已签字，消费者出站调用按 `a2a.call` 与 `egress=third_party` 审计，跨组织审计边界只覆盖本地侧，按 trace id 关联。ADR-0016 已签字，审计可按租户写入 Postgres、并发写安全并可整链验证。审计服务、控制台与网关可用 `--audit-db`/`AUDIT_DATABASE_URL` 共享同一份 Postgres 审计，`serve-audit` 文件与数据库双后端均可用。ADR-0017 已签字，审批请求与决定可按行存入 Postgres，条件 `UPDATE` 保证并发决策只生效一次，过期判定、归档与删除语义对齐文件实现，控制台、CLI prune 与执行器已共享同一份审批，两个进程的轮询与决策验证通过。Phase E 已收口，四个无本地卷的 Deployment 可多副本运行，运维手册覆盖环境变量、扩缩容、备份恢复、密钥轮换、时钟与故障处理。ADR-0018 已签字，运行时与开发依赖锁定为带哈希的集合，CI 按锁安装后构建并扫描镜像，SBOM 随构建产出，部署按 digest 引用；两条扫描接受风险带到期日。SLICE-102 把构建后端锁进依赖集合并把 CI action 固定到 commit SHA。ADR-0019 与 SLICE-103/104 让 Postgres 会话表启用并强制 RLS，租户取自已认证 principal，策略由 `sessions enable-rls` 显式安装，运维手册覆盖启用、回滚与排障。ADR-0020 与 SLICE-105/106 把 `app_states` 纳入同一租户边界，`app_name` 带租户前缀，四张表都由 RLS 强制，手册写明旧数据不自动迁移。SLICE-107 让密钥扫描覆盖证据目录并改用已审基线，过期接受风险不再被忽略。SLICE-108 让门禁只读基线，新命中不会被扫描命令写进允许清单。SLICE-109 补齐手动发布流水线与 digest 回写，首次真实推送给操作员执行。SLICE-110 让运行、模型、工具与 A2A 调用以 OTel span 导出，审计 trace_id 与 OTel trace_id 对齐。SLICE-111 让单与顺序计划按步骤落检查点，恢复时跳过已完成步骤，审批等待可恢复。SLICE-112 在模型网关上加了输入输出护栏，PII 脱敏与提示注入阻断，审计只记规则 id 与哈希。SLICE-113 给控制台加了浏览器 OIDC PKCE 登录与三组导航的应用外壳，token 与客户端 secret 不进入浏览器。SLICE-114 把 Runs 与 Plans 的 trace 升级为相对时间瀑布，失败与拒绝分色。SLICE-115 把审批面板做成工作台，截止时间可见、可过滤，并按理由决定。SLICE-116 把 Registry 面板做成卡片，来源、信任、评测与生命周期徽标统一色调，卡片可点击与键盘选中。SLICE-117 让控制台按服务端能力清单显示导航、面板与操作按钮，未知角色回到基础视图，无权深链自动回退。SLICE-118 让审批历史覆盖已决、已过期与已归档记录，文件与 Postgres 语义一致，控制台可按状态过滤。SLICE-119 让 trace 节点带审计字段，瀑布行可点击与键盘选中，Runs 与 Plans 显示 span 详情。SLICE-120 在日志记录工厂层集中转义 CR 与 LF，控制台启动即生效，收敛 CodeQL 的 29 条 log-injection。SLICE-121 增加租户凭据引用绑定，记录只含元数据，引用按租户映射到 `ADK_SECRET_<TENANT>_<NAME>`，控制台与 CLI 可登记、列出与停用，连接器登记要求同租户启用绑定，工具网关按租户作用域取用。SLICE-122 增加连接器自助申请与审批，租户提交申请，管理员批准时重查凭据并登记连接器，文件与 Postgres 单赢家决定，申请与决定写审计。SLICE-123 增加声明式组合器，`single-llm` 模板按参数生成确定性工件，参数只用 `repr` 嵌入，平台密钥签名后走既有评测、注册表与工件存储，组合结果可按 pinned 引用验签加载。SLICE-124 增加定时与 webhook 触发定义，pinned 到 agent 版本，webhook 令牌只存哈希，文件与 Postgres 双存储，CLI 可登记、列出与停用。SLICE-125 增加 webhook 执行服务，`serve-triggers` 按触发令牌哈希认证，pinned 版本验签加载，按租户配额与审计运行，幂等键单赢家，需审批工具的 agent 直接拒绝。SLICE-126 增加共享 `safe_join`，所有文件存储先做路径段白名单校验，再检查解析后的目标仍在存储根目录下。SLICE-127 增加调度循环与重试，schedule 触发按 slot 幂等键单赢家，webhook 与调度共用执行路径，预运行加载失败按次数退避重试，agent 启动后不重试。可做内部试点，未达对外多租户生产标准。
 
 ## 里程碑
 
@@ -135,6 +135,7 @@
 | SLICE-124 | 触发定义与存储 | `dea13e3` |
 | SLICE-125 | webhook 触发执行服务 | `36b9810` |
 | SLICE-126 | 文件存储路径加固 | `e6e4819` |
+| SLICE-127 | 调度循环与重试 | `66843e6` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
@@ -142,8 +143,8 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1347 passed, 80 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1347 passed, 80 skipped（`docs/evidence/SLICE-126-safe-path-join.txt`）
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1356 passed, 80 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1356 passed, 80 skipped（`docs/evidence/SLICE-127-trigger-scheduler.txt`）
 - 设置 `TEST_POSTGRES_URL` 后 Postgres 用例可跑；本切片的审批历史用例 4 passed（`docs/evidence/SLICE-118-approval-history.txt`）。完整套件的旧记录为 1236 passed, 1 skipped（`docs/evidence/SLICE-105-app-state-rls.txt`）。
 - CI 已在 PR #19 上全绿（run 43708394988），包含锁安装、`--no-build-isolation`、完整门禁、镜像构建、Trivy 扫描与 SBOM 上传。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
@@ -263,8 +264,8 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 1. 发行完整性只剩首次真实发布。release workflow 与回写脚本已合入；操作员设置 registry 凭据、在 `master` 上手动触发，再把 digest 回写 PR。见 `docs/evidence/SLICE-109-release-pipeline.txt`。
 2. 密钥扫描不做历史扫描（gitleaks/trufflehog 延后）。GitHub 自定义 pattern 与 validity checks 需要付费套餐，当前关闭。
 3. legacy 无前缀 `user_id` 与 plain `app_name` 在 `--session-rls` 开启后不可见，不自动迁移；需要迁移时单独评审。
-4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行与路径加固也已收口（SLICE-113 到 126）。下一步做 SLICE-127 调度循环与重试，再往后是 agent 级沙箱与凭据密钥后端，编号进入时分配。SLICE-110 到 SLICE-126 已完成。
-5. 租户凭据只存引用，不存值。密钥后端、KMS、轮换与控制面 `/v1/credentials` 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行只有 webhook 路径，调度循环、多副本 slot 与重试留给 SLICE-127。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。这些按 ADR-0022 的顺序另行切片。
+4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固与调度循环也已收口（SLICE-113 到 127）。下一步先为 agent 级沙箱写 ADR 再实现，之后是凭据密钥后端，编号进入时分配。SLICE-110 到 SLICE-127 已完成。
+5. 租户凭据只存引用，不存值。密钥后端、KMS、轮换与控制面 `/v1/credentials` 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。这些按 ADR-0022 的顺序另行切片。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
