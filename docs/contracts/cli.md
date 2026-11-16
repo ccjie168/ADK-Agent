@@ -182,6 +182,17 @@
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 
+## `adk-agent connector-requests list|request|decide`
+
+租户提交连接器登记申请，管理员批准或拒绝（ADR-0022 决定 5）。批准时才写连接器存储。
+
+- 申请存储：`--dir DIR`（文件）或 `--db URL`（Postgres）。都未显式给出时读 `CONNECTOR_REQUEST_DATABASE_URL`。显式文件与数据库同时给出，或显式参数与环境变量冲突，退出 2。
+- `list --tenant TENANT [--status STATUS]` 输出 JSON 数组，按申请时间倒序。
+- `request` 接受 `--tenant`、`--id`、`--kind`（http/openapi/mcp）、`--base-url`、可选 `--auth-ref`、`--methods`、`--path-prefixes`、`--data-classes`、必填 `--reason`。`requested_by` 是 `cli`，`request_id` 随机生成。`--tenant` 与 spec 租户不一致退出 1。
+- `decide REQUEST_ID --approve|--deny [--reason TEXT]` 用 `--connectors-dir` 或 `--registry-url` 找到连接器存储；批准时还需要与直接登记相同的凭据绑定检查（`--credentials-dir` 或 `--credential-db`）。拒绝不写连接器存储。
+- 成功输出记录 JSON；失败 stderr 输出原因并退出 1。
+- CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
+
 ## `adk-agent peers list|register|disable|grant|revoke`
 
 管理 A2A peer 与其动作授权（ADR-0014）。
