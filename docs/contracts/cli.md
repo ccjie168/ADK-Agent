@@ -190,7 +190,8 @@
 - 注册表与工件：`--registry DIR` 或 `--registry-url URL`；`--artifact-dir DIR` 或 `ARTIFACT_URL`；`--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`。
 - 授权与审计：`--tool-grants-dir DIR` 或 `GRANT_URL`；`--audit-file`、`--audit-url` 或 `--audit-db`。
 - 会话、配额与限流：`--session-db URL`；`--quota-config FILE`；`--rate-limit N --rate-limit-window SECONDS`。
-- 监听：`--host`、`--port`。缺少必要后端时退出 1。
+- 调度：`--schedule-tick SECONDS`（默认 15，最小 5）；`--trigger-attempts N`（默认 3，最小 1）；`--no-scheduler` 只开 webhook。
+- 监听：`--host`、`--port`。缺少必要后端或参数越界时退出 1。
 
 ## `adk-agent triggers list|register|disable`
 

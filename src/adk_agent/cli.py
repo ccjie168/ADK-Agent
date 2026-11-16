@@ -1176,6 +1176,18 @@ def main(argv: list[str] | None = None) -> None:
     p_serve_triggers.add_argument("--session-db", default=None, help="SQLite session database path")
     p_serve_triggers.add_argument("--quota-config", default=None, help="JSON QuotaConfig file")
     _add_rate_limit_args(p_serve_triggers)
+    p_serve_triggers.add_argument(
+        "--schedule-tick", type=float, default=15.0, help="seconds between schedule ticks (min 5)"
+    )
+    p_serve_triggers.add_argument(
+        "--trigger-attempts",
+        type=int,
+        default=3,
+        help="pre-run load attempts per schedule fire (min 1)",
+    )
+    p_serve_triggers.add_argument(
+        "--no-scheduler", action="store_true", help="serve webhooks without the schedule loop"
+    )
     p_serve_triggers.add_argument("--host", default="127.0.0.1", help="HTTP bind host")
     p_serve_triggers.add_argument(
         "--port",
@@ -2020,6 +2032,12 @@ def main(argv: list[str] | None = None) -> None:
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "serve-triggers":
+        if args.schedule_tick < 5:
+            print("--schedule-tick must be at least 5 seconds", file=sys.stderr)
+            raise SystemExit(1)
+        if args.trigger_attempts < 1:
+            print("--trigger-attempts must be at least 1", file=sys.stderr)
+            raise SystemExit(1)
         rate_limit = _rate_limit(args)
         from google.adk.sessions import InMemorySessionService
 
@@ -2095,6 +2113,9 @@ def main(argv: list[str] | None = None) -> None:
             session_service=configured_session_service(args.session_db) or InMemorySessionService(),
             rate_limit=rate_limit,
             fire_store=fire_store,
+            scheduler=not args.no_scheduler,
+            schedule_tick=args.schedule_tick,
+            trigger_attempts=args.trigger_attempts,
         )
 
         import uvicorn

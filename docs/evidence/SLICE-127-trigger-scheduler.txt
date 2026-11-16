@@ -1,0 +1,45 @@
+SLICE-127 调度循环与重试
+
+环境
+- Windows 11 Pro, Python 3.14 venv, pytest
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_trigger_scheduler.py -q
+    1 error during collection
+  ImportError: cannot import name 'TriggerExecution' from 'adk_agent.triggers_service'
+  $ ... tests/test_cli_triggers_service.py -q
+    3 failed
+  argparse: unrecognized arguments: --schedule-tick / --trigger-attempts / --no-scheduler
+
+二、实现后绿
+  $ ... tests/test_trigger_scheduler.py tests/test_triggers_service.py tests/test_cli_triggers_service.py -q
+    25 passed
+
+三、行为
+- 执行路径抽成共享 execute，webhook 与调度都走同一套注册表校验、digest 规范化、生命周期、审批拒绝、验签加载、配额、审计与 finish。
+- 调度 tick 读取所有启用的 schedule 触发，slot = floor(now / every_seconds)，幂等键 slot-<n>。
+- fire store claim 保证同一 slot 只有一个赢家，多副本共享文件或 Postgres 存储时成立。
+- 只跑当前 slot，停机错过的 slot 不补跑。
+- 预运行注册表或生命周期读取异常、验签与加载失败最多尝试 trigger_attempts 次，按尝试次数线性退避；确定性拒绝不重试；agent 开始运行后失败不再重试。
+- 空运行输入记 invalid_request；webhook 在请求层已拒绝空输入，schedule 在共享执行层拒绝。
+- 注册表读取异常的触发会按次数重试，耗尽后 finish 为 error 并写 trigger.fire，不会把 slot 永久停在 running；webhook 与 schedule 都有回归用例。
+- FastAPI lifespan 启动并取消调度任务；--no-scheduler 只开 webhook。
+- CLI 校验 schedule-tick 最小 5 秒、trigger-attempts 最小 1。
+- 关闭时取消调度任务并等待其结束。
+
+四、边界
+- 不支持 cron、时区与错过 slot 的补跑。
+- 不做领导者选举；唯一性由 fire store 保证。
+- agent 运行失败与 webhook 都不自动重试；由下一次 slot 或调用方幂等重试。
+- 并发 claim 的 in-progress 只由 store 层测试覆盖。
+
+五、门禁
+python scripts/check.py --fast
+  1356 passed, 80 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1356 passed, 80 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS
