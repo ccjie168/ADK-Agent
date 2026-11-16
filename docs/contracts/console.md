@@ -335,6 +335,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 请求体不是 JSON 或不是对象 400 `invalid_request`；`ConnectorSpec` 校验失败 400 `invalid_connector`。
 - 同 id 同定义重发 201，幂等；不同定义 409 `connector_conflict`。
 - 成功 201，写 `connector.register` 审计，`target` 是 `<tenant>/<id>` 或 `global/<id>`。
+- 配置了凭据存储时，`auth_ref` 是两段租户引用且没有同租户启用绑定时 400 `credential_unbound`；全局连接器不得使用两段租户引用，同样返回 400 `credential_unbound`。
 - 未配置存储 404 `connectors_not_configured`；存储不可达 503 `connector_store_unavailable`。
 
 ## `POST /api/connectors/{connector_id}/disable` -> `ConnectorSpec`
@@ -365,6 +366,30 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 探测从控制台进程发出，`GET` 连接器的第一个路径前缀，不带凭据，不跟随重定向，超时取连接器配置与 5 秒的较小值，不读取响应体。
 - `status` 取 `healthy`、`unauthorized`、`not_found`、`redirect`、`server_error`、`unexpected_status`、`unreachable`。`reason` 只在 `unreachable` 时取 `timeout` 或 `connect_error`。
 - 不写审计，不改连接器记录。
+
+## `GET /api/credentials?tenant=<name>` -> `[CredentialBinding]`
+
+只读凭据引用清单，按 `credential_id` 排序。记录只含元数据，没有密钥值。形状与存储见 `credentials.md`。
+
+- 由 `console --credentials-dir DIR` 或 `--credential-db URL`（都未给时读 `CREDENTIAL_DATABASE_URL`）提供；未配置返回 404 `credentials_not_configured`。
+- `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
+- 存储不可达返回 503 `credential_store_unavailable`。
+
+## `POST /api/credentials` -> `CredentialBinding`
+
+- 只有 `admin` 能登记，非 admin 403 `forbidden`。
+- 请求体不是 JSON 或不是对象 400 `invalid_request`；`CredentialBinding` 校验失败（含跨租户引用）400 `invalid_credential`。
+- `created_by` 与 `created_at` 由服务端覆盖为调用主体与当前时间。
+- 同键同定义重发 201，幂等；不同定义 409 `credential_conflict`。
+- 成功 201，写 `credential.register` 审计，`target` 是 `<tenant>/<credential_id>`。
+- 未配置存储 404 `credentials_not_configured`；存储不可达 503 `credential_store_unavailable`。
+
+## `POST /api/credentials/{credential_id}/disable` -> `CredentialBinding`
+
+- 只有 `admin` 能停用，非 admin 403 `forbidden`。
+- 不存在 404 `credential_not_found`。
+- 成功 200，重复停用幂等，写 `credential.disable` 审计。
+- 未配置存储 404 `credentials_not_configured`；存储不可达 503 `credential_store_unavailable`。
 
 ## `GET /api/peers?tenant=<name>` -> `[{"peer": PeerIdentity, "grants": [PeerGrant]}]`
 

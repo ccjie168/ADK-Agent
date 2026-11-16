@@ -27,6 +27,7 @@
 - `quota_config.schema.json`：`QuotaConfig`，按租户配置配额策略。
 - `approval_request.schema.json`：`ApprovalRequest`，待人工审批的计划步骤。
 - `approval_decision.schema.json`：`ApprovalDecision`，审批人的决定。
+- `credentials.md`：租户凭据引用，只存元数据，引用映射到环境变量。
 - `tracing.md`：入站 trace 头和出站 `X-Trace-Id` 的传播规则。
 - `metrics.md`：各服务的 `/metrics` 端点、指标名和聚合边界。
 
