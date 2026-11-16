@@ -8,7 +8,7 @@
 {
   "credential_id": "crm",
   "tenant": "acme",
-  "secret_ref": "secret://acme/crm",
+  "secret_ref": "secret://<tenant>/<name>",
   "description": "CRM outbound credential",
   "created_by": "admin",
   "created_at": "2026-11-16T08:00:00Z",
@@ -16,6 +16,7 @@
 }
 ```
 
+- 示例中的 `<tenant>` 与 `<name>` 是占位符，实际记录里是具体名称。
 - `credential_id`、`tenant`：`^[A-Za-z0-9][A-Za-z0-9._+-]*$`。
 - `secret_ref`：`^secret://[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`，租户段必须等于 `tenant`。
 - 未知字段、缺失字段、无时区的时间戳都拒绝。
