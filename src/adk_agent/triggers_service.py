@@ -60,6 +60,7 @@ _ERROR_STATUS = {
     "approval_required": 409,
     "agent_load_failed": 502,
     "quota_exceeded": 429,
+    "invalid_request": 400,
 }
 
 
@@ -188,6 +189,8 @@ def build_triggers_app(
         raise ValueError("schedule_tick must be at least 5 seconds")
     if trigger_attempts < 1:
         raise ValueError("trigger_attempts must be at least 1")
+    if scheduler and fire_store is None:
+        raise ValueError("scheduler requires a fire store")
 
     metrics = metrics if metrics is not None else MetricsRegistry()
 
@@ -259,43 +262,53 @@ def build_triggers_app(
                 )
             )
 
-        try:
-            published = await registry.get(ref, tenant)
-            if published is None:
-                records = await registry.list(tenant)
-                registered = next(
-                    (
-                        record
-                        for record in records
-                        if record.manifest.id == trigger.agent_id
-                        and record.manifest.version == trigger.version
-                    ),
-                    None,
-                )
-                code = (
-                    "digest_mismatch"
-                    if registered is not None and registered.digest != expected_digest
-                    else "trigger_not_found"
-                )
-                await finish("error", code)
-                await emit("error", code, run_id, trace_id)
-                return TriggerExecution("error", code, run_id, trace_id)
-            if published.digest != expected_digest:
-                await finish("error", "digest_mismatch")
-                await emit("error", "digest_mismatch", run_id, trace_id)
-                return TriggerExecution("error", "digest_mismatch", run_id, trace_id)
-            if lifecycle is not None:
-                state = await lifecycle.get(tenant, trigger.agent_id, trigger.version)
-                if state.status == "retired":
-                    await finish("error", "version_retired")
-                    await emit("error", "version_retired", run_id, trace_id)
-                    return TriggerExecution("error", "version_retired", run_id, trace_id)
-        except Exception as exc:  # noqa: BLE001
-            code = type(exc).__name__
-            logger.exception("trigger %s/%s registry read failed", tenant, trigger_id)
-            await finish("error", code)
-            await emit("error", code, run_id, trace_id)
-            return TriggerExecution("error", code, run_id, trace_id)
+        if not input_text:
+            await finish("error", "invalid_request")
+            await emit("error", "invalid_request", run_id, trace_id)
+            return TriggerExecution("error", "invalid_request", run_id, trace_id)
+
+        published: Any = None
+        for attempt in range(1, attempts + 1):
+            try:
+                published = await registry.get(ref, tenant)
+                if published is None:
+                    records = await registry.list(tenant)
+                    registered = next(
+                        (
+                            record
+                            for record in records
+                            if record.manifest.id == trigger.agent_id
+                            and record.manifest.version == trigger.version
+                        ),
+                        None,
+                    )
+                    code = (
+                        "digest_mismatch"
+                        if registered is not None and registered.digest != expected_digest
+                        else "trigger_not_found"
+                    )
+                    await finish("error", code)
+                    await emit("error", code, run_id, trace_id)
+                    return TriggerExecution("error", code, run_id, trace_id)
+                if published.digest != expected_digest:
+                    await finish("error", "digest_mismatch")
+                    await emit("error", "digest_mismatch", run_id, trace_id)
+                    return TriggerExecution("error", "digest_mismatch", run_id, trace_id)
+                if lifecycle is not None:
+                    state = await lifecycle.get(tenant, trigger.agent_id, trigger.version)
+                    if state.status == "retired":
+                        await finish("error", "version_retired")
+                        await emit("error", "version_retired", run_id, trace_id)
+                        return TriggerExecution("error", "version_retired", run_id, trace_id)
+                break
+            except Exception as exc:  # noqa: BLE001
+                if attempt == attempts:
+                    code = type(exc).__name__
+                    logger.exception("trigger %s/%s registry read failed", tenant, trigger_id)
+                    await finish("error", code)
+                    await emit("error", code, run_id, trace_id)
+                    return TriggerExecution("error", code, run_id, trace_id)
+                await asyncio.sleep(0.2 * attempt)
 
         if any(grant.requires_approval for grant in published.manifest.tool_grants):
             await finish("denied", "approval_required")

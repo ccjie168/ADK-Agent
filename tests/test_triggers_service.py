@@ -83,6 +83,19 @@ class FakeRegistry:
         return [self.published]
 
 
+class FlakyRegistry(FakeRegistry):
+    def __init__(self, published, failures: int) -> None:
+        super().__init__(published)
+        self.failures = failures
+        self.calls = 0
+
+    async def get(self, ref, tenant: str):
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise RuntimeError("registry down")
+        return await super().get(ref, tenant)
+
+
 class FakeTrust:
     def __init__(self) -> None:
         self.verified: list[AgentArtifact] = []
@@ -384,6 +397,31 @@ def test_in_progress_idempotency_key_is_rejected(tmp_path):
 
     assert response.status_code == 409
     assert response.json() == {"error": "fire_in_progress"}
+    assert runner.calls == 0
+
+
+def test_registry_failures_are_retried():
+    registry = FlakyRegistry(_PUBLISHED, failures=2)
+    client, runner, _, _ = _client([_webhook()], registry=registry)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 200
+    assert registry.calls == 3
+    assert runner.calls == 1
+
+
+def test_registry_failure_exhausts_attempts():
+    registry = FlakyRegistry(_PUBLISHED, failures=99)
+    client, runner, _, _ = _client([_webhook()], registry=registry)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": "run_failed"}
+    assert registry.calls == 3
     assert runner.calls == 0
 
 

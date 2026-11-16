@@ -64,7 +64,7 @@
 - 幂等键是 `slot-<slot>`。运行时先 claim 一条 fire 记录；多副本共享 Postgres 或文件 store 时只有一个赢家。
 - 只跑当前 slot。停机错过的 slot 不补跑。
 - 运行的校验、验签、配额、审计与审批拒绝与 webhook 完全相同。
-- 预运行失败（注册表、验签、加载）最多尝试 `--trigger-attempts` 次；agent 开始运行后失败不再自动重试。
+- 预运行失败（注册表或生命周期读取异常、验签、加载）最多尝试 `--trigger-attempts` 次；确定性拒绝不重试；agent 开始运行后失败不再自动重试。空的运行输入记 `invalid_request`。
 - 应用关闭时取消循环并等待当前 tick 结束。
 - 时钟回拨可能跳过或重复 slot；重复由 claim 挡住，跳过记录在日志。
 

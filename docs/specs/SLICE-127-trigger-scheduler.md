@@ -9,9 +9,9 @@
 
 - slot 键是 `slot-<unix_slot>`，其中 `unix_slot = floor(now.timestamp() / every_seconds)`。
 - 只跑当前 slot。停机错过的 slot 不补跑，避免恢复时的突发。
-- 运行路径与 webhook 共用同一套校验、验签、配额、审计与审批拒绝。
+- 运行路径与 webhook 共用同一套校验、验签、配额、审计与审批拒绝。空的运行输入会被拒绝并记 `invalid_request`。
 - webhook 与 schedule 都复用同一个执行函数，避免两条路径漂移。
-- 预运行失败（注册表读取、工件验签或加载）最多尝试 `--trigger-attempts` 次，按尝试次数线性退避。agent 已经开始运行后不再自动重试，避免重复副作用。
+- 预运行失败（注册表或生命周期读取异常、工件验签或加载异常）最多尝试 `--trigger-attempts` 次，按尝试次数线性退避。确定性的 404、digest 不符、退役与需审批拒绝不重试。agent 已经开始运行后不再自动重试，避免重复副作用。
 - 调度循环随应用启动，随关闭优雅停止；`--no-scheduler` 可只开 webhook。
 - 循环只读触发与注册表，不修改触发定义。
 
