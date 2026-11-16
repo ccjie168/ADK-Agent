@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..core import AgentLifecycle, LifecycleStatus, transition_lifecycle
 from .file import _SAFE_NAME
+from .paths import safe_join
 
 
 class FileAgentLifecycleStore:
@@ -17,10 +18,13 @@ class FileAgentLifecycleStore:
         self.root = Path(root)
 
     def _path(self, tenant: str, agent_id: str, version: str) -> Path:
-        for value in (tenant, agent_id, version):
-            if not _SAFE_NAME.fullmatch(value):
-                raise ValueError(f"unsafe lifecycle path component {value!r}")
-        return self.root / tenant / agent_id / f"{version}.lifecycle.json"
+        return safe_join(
+            self.root,
+            tenant,
+            agent_id,
+            f"{version}.lifecycle.json",
+            pattern=_SAFE_NAME.pattern,
+        )
 
     async def get(self, tenant: str, agent_id: str, version: str) -> AgentLifecycle:
         path = self._path(tenant, agent_id, version)

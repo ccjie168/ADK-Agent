@@ -9,8 +9,10 @@ import uuid
 from pathlib import Path
 
 from ..core import AgentArtifact
+from .paths import safe_join
 
 _DIGEST = re.compile(r"^sha256:([0-9a-f]{64})$")
+_HEX = r"^[0-9a-f]{64}$"
 
 
 class ArtifactStoreError(RuntimeError):
@@ -44,7 +46,8 @@ class FileArtifactStore:
         self.root = Path(root)
 
     def _path(self, hexdigest: str) -> Path:
-        return self.root / "sha256" / hexdigest
+        directory = safe_join(self.root, "sha256")
+        return safe_join(directory, hexdigest, pattern=_HEX)
 
     async def put(self, artifact: AgentArtifact, data: bytes) -> None:
         hexdigest = _verified_digest(artifact, data)

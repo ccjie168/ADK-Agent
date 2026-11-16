@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..core import TriggerFire, TriggerFireConflict, TriggerFireError, TriggerFireStatus
+from .paths import safe_join
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 _TRIGGER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -30,14 +31,12 @@ class FileTriggerFireStore:
         self._lock = threading.Lock()
 
     def _path(self, tenant: str, trigger_id: str, idempotency_key: str) -> Path:
-        if not _NAME.fullmatch(tenant):
-            raise ValueError(f"unsafe tenant {tenant!r}")
-        if not _TRIGGER_ID.fullmatch(trigger_id):
-            raise ValueError(f"unsafe trigger id {trigger_id!r}")
         if not _IDEMPOTENCY_KEY.fullmatch(idempotency_key):
             raise ValueError(f"unsafe idempotency key {idempotency_key!r}")
         digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
-        return self.root / tenant / trigger_id / f"{digest}.json"
+        tenant_dir = safe_join(self.root, tenant, pattern=_NAME.pattern)
+        trigger_dir = safe_join(tenant_dir, trigger_id, pattern=_TRIGGER_ID.pattern)
+        return safe_join(trigger_dir, f"{digest}.json")
 
     async def claim(self, fire: TriggerFire) -> TriggerFire:
         path = self._path(fire.tenant, fire.trigger_id, fire.idempotency_key)

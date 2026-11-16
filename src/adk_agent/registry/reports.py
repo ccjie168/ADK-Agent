@@ -9,6 +9,7 @@ from pathlib import Path
 
 from ..core import EvalReport
 from .file import _SAFE_NAME
+from .paths import safe_join
 
 
 class EvalReportConflict(Exception):
@@ -22,10 +23,13 @@ class FileEvalReportStore:
         self.root = Path(root)
 
     def _path(self, tenant: str, agent_id: str, version: str) -> Path:
-        for value in (tenant, agent_id, version):
-            if not _SAFE_NAME.fullmatch(value):
-                raise ValueError(f"unsafe eval report path component {value!r}")
-        return self.root / tenant / agent_id / f"{version}.eval.json"
+        return safe_join(
+            self.root,
+            tenant,
+            agent_id,
+            f"{version}.eval.json",
+            pattern=_SAFE_NAME.pattern,
+        )
 
     async def put(self, tenant: str, agent_id: str, version: str, report: EvalReport) -> EvalReport:
         path = self._path(tenant, agent_id, version)

@@ -15,6 +15,7 @@ from ..core import (
     TriggerConflict,
     TriggerNotFound,
 )
+from .paths import safe_join
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -34,11 +35,7 @@ class FileTriggerStore:
         self._lock = threading.Lock()
 
     def _path(self, tenant: str, trigger_id: str) -> Path:
-        if not _NAME.fullmatch(tenant):
-            raise ValueError(f"unsafe tenant {tenant!r}")
-        if not _NAME.fullmatch(trigger_id):
-            raise ValueError(f"unsafe trigger id {trigger_id!r}")
-        return self.root / tenant / f"{trigger_id}.json"
+        return safe_join(self.root, tenant, f"{trigger_id}.json", pattern=_NAME.pattern)
 
     async def add(self, trigger: AgentTrigger) -> AgentTrigger:
         path = self._path(trigger.tenant, trigger.trigger_id)
@@ -69,9 +66,7 @@ class FileTriggerStore:
         return AgentTrigger.model_validate_json(path.read_text(encoding="utf-8"))
 
     async def list(self, tenant: str) -> list[AgentTrigger]:
-        if not _NAME.fullmatch(tenant):
-            raise ValueError(f"unsafe tenant {tenant!r}")
-        directory = self.root / tenant
+        directory = safe_join(self.root, tenant, pattern=_NAME.pattern)
         if not directory.is_dir():
             return []
         triggers = [

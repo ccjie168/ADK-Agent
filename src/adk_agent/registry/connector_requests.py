@@ -17,8 +17,10 @@ from ..core import (
     ConnectorRequestNotFound,
     ConnectorRequestStatus,
 )
+from .paths import safe_join
 
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_REQUEST_FILE = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.json$"
 
 
 def _now(now: datetime | None) -> datetime:
@@ -35,7 +37,7 @@ class FileConnectorRequestStore:
     def _path(self, request_id: str) -> Path:
         if not _REQUEST_ID.fullmatch(request_id):
             raise ValueError(f"unsafe connector request id {request_id!r}")
-        return self.root / f"{request_id}.json"
+        return safe_join(self.root, f"{request_id}.json", pattern=_REQUEST_FILE)
 
     async def add(self, record: ConnectorRequest) -> ConnectorRequest:
         path = self._path(record.request_id)

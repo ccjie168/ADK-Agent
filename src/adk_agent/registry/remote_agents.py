@@ -15,6 +15,7 @@ from ..core import (
     RemoteAgentError,
     RemoteAgentFetchError,
 )
+from .paths import safe_join
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -26,12 +27,10 @@ class FileRemoteAgentStore:
         self.root = Path(root)
 
     def _dir(self) -> Path:
-        return self.root / "remote-agents"
+        return safe_join(self.root, "remote-agents")
 
     def _path(self, remote_id: str) -> Path:
-        if not _SAFE_NAME.fullmatch(remote_id):
-            raise ValueError(f"unsafe remote id {remote_id!r}")
-        return self._dir() / f"{remote_id}.json"
+        return safe_join(self._dir(), f"{remote_id}.json", pattern=_SAFE_NAME.pattern)
 
     async def get(self, remote_id: str) -> RemoteAgent | None:
         path = self._path(remote_id)

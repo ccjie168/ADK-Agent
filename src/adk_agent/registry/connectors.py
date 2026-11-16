@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 
 from ..core import ConnectorConflict, ConnectorNotFound, ConnectorSpec
+from .paths import safe_join
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -29,9 +30,7 @@ class FileConnectorStore:
         self._lock = threading.Lock()
 
     def _path(self, connector_id: str) -> Path:
-        if not _NAME.fullmatch(connector_id):
-            raise ValueError(f"unsafe connector id {connector_id!r}")
-        return self.root / f"{connector_id}.json"
+        return safe_join(self.root, f"{connector_id}.json", pattern=_NAME.pattern)
 
     async def add(self, spec: ConnectorSpec) -> ConnectorSpec:
         path = self._path(spec.connector_id)

@@ -17,6 +17,7 @@ from ..core import (
     CredentialStore,
     parse_credential_ref,
 )
+from .paths import safe_join
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -35,11 +36,7 @@ class FileCredentialStore:
         self._lock = threading.Lock()
 
     def _path(self, tenant: str, credential_id: str) -> Path:
-        if not _NAME.fullmatch(tenant):
-            raise ValueError(f"unsafe tenant {tenant!r}")
-        if not _NAME.fullmatch(credential_id):
-            raise ValueError(f"unsafe credential id {credential_id!r}")
-        return self.root / tenant / f"{credential_id}.json"
+        return safe_join(self.root, tenant, f"{credential_id}.json", pattern=_NAME.pattern)
 
     async def add(self, binding: CredentialBinding) -> CredentialBinding:
         path = self._path(binding.tenant, binding.credential_id)
@@ -70,9 +67,7 @@ class FileCredentialStore:
         return CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
 
     async def list(self, tenant: str) -> list[CredentialBinding]:
-        if not _NAME.fullmatch(tenant):
-            raise ValueError(f"unsafe tenant {tenant!r}")
-        directory = self.root / tenant
+        directory = safe_join(self.root, tenant, pattern=_NAME.pattern)
         if not directory.is_dir():
             return []
         bindings = [

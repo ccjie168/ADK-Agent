@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from ..core import AgentRef, PublishedAgent, manifest_digest
+from .paths import safe_join
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -33,10 +34,7 @@ class FileAgentRegistry:
         self.root = Path(root)
 
     def _path(self, tenant: str, agent_id: str, version: str) -> Path:
-        for value in (tenant, agent_id, version):
-            if not _SAFE_NAME.fullmatch(value):
-                raise ValueError(f"unsafe registry path component {value!r}")
-        return self.root / tenant / agent_id / f"{version}.json"
+        return safe_join(self.root, tenant, agent_id, f"{version}.json", pattern=_SAFE_NAME.pattern)
 
     async def get(self, ref: AgentRef, tenant: str) -> PublishedAgent | None:
         path = self._path(tenant, ref.id, ref.version)
@@ -53,9 +51,7 @@ class FileAgentRegistry:
         return published
 
     async def list(self, tenant: str) -> builtins.list[PublishedAgent]:
-        if not _SAFE_NAME.fullmatch(tenant):
-            raise ValueError(f"unsafe registry path component {tenant!r}")
-        tenant_dir = self.root / tenant
+        tenant_dir = safe_join(self.root, tenant, pattern=_SAFE_NAME.pattern)
         if not tenant_dir.is_dir():
             return []
 
