@@ -94,6 +94,7 @@ from .ports import (
     TemplateSource,
     ToolGateway,
     ToolGrantStore,
+    TriggerFireStore,
     TriggerStore,
 )
 from .progress import ProgressEvent, ProgressKind
@@ -120,6 +121,13 @@ from .tool_grants import (
     ToolGrantRequest,
     effective_status,
     is_active,
+)
+from .trigger_runs import (
+    TriggerFire,
+    TriggerFireConflict,
+    TriggerFireError,
+    TriggerFireStatus,
+    TriggerFireStoreUnavailable,
 )
 from .triggers import (
     AgentTrigger,
@@ -243,6 +251,12 @@ __all__ = [
     "ToolResponse",
     "TriggerConflict",
     "TriggerError",
+    "TriggerFire",
+    "TriggerFireConflict",
+    "TriggerFireError",
+    "TriggerFireStatus",
+    "TriggerFireStore",
+    "TriggerFireStoreUnavailable",
     "TriggerKind",
     "TriggerNotFound",
     "TriggerStore",

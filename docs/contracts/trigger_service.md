@@ -26,7 +26,7 @@
 {"run_id": "...", "trace_id": "...", "status": "ok", "duplicate": false, "text": "..."}
 ```
 
-- 重复幂等键且原运行已结束：200，`duplicate: true`，返回原 `run_id`、`trace_id`、`status` 与 `text`（error 时 `text` 为空并带 `error_code`）。
+- 重复幂等键且原运行已结束：200，`duplicate: true`，返回原 `run_id`、`trace_id`、`status` 与 `error_code`。不重放输出文本，`text` 为空字符串。
 - 重复幂等键且原运行仍在进行：409 `fire_in_progress`。
 - 无幂等键时每次请求都运行。
 

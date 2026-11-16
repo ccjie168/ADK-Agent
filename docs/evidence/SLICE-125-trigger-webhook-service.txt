@@ -1,0 +1,55 @@
+SLICE-125 webhook 触发执行服务
+
+环境
+- Windows 11 Pro, Python 3.14 venv, pytest
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_trigger_runs.py tests/test_trigger_runs_postgres.py tests/test_triggers_service.py tests/test_cli_triggers_service.py -q
+    3 errors during collection
+  ImportError: cannot import name 'TriggerFire' from 'adk_agent.core'
+  FileTriggerFireStore 不存在
+  $ ... tests/test_cli_triggers_service.py -q
+    5 failed
+  argument cmd: invalid choice: 'serve-triggers'
+
+二、实现后绿
+  $ ... 四个新测试文件 -q
+    17 passed, 1 skipped
+  $ ... 加上 SLICE-124 触发用例
+    26 passed, 1 skipped
+  $ ... tests/test_triggers_service.py -q
+    8 passed
+
+跳过的是 Postgres live 用例，本机未设 TEST_POSTGRES_URL。
+
+三、行为
+- POST /v1/tenants/{tenant}/triggers/{trigger_id}/fire 只接受 webhook 触发。
+- 令牌只比对 SHA-256 哈希，使用 hmac.compare_digest；缺失或不匹配 401，不写审计。
+- 触发停用 409，schedule 记录 409。
+- 注册表 digest 必须与触发记录一致；退役版本 409。
+- manifest 里任一工具授权 requires_approval 时拒绝运行，409 approval_required，并写 denied 审计。
+- 工件先验签再通过 loader 加载；失败 502。
+- 输入取请求体 input 或触发固定输入，1 到 8000 字符。
+- 每次运行按租户配额；超限 429，写 denied 审计。
+- AgentRuntime 写 agent.run，source=trigger；服务另写 trigger.fire，只记输入与结果哈希。
+- Idempotency-Key 可选。file store 用临时文件加 os.link，Postgres 用 INSERT ON CONFLICT DO NOTHING；同键只有一个运行。
+- 运行中重复 409 fire_in_progress；已完成重复返回 200 duplicate=true 与原 run_id、trace_id、status、error_code，不重放文本。
+- GET /healthz 开放；可选 RateLimitMiddleware。
+- CLI serve-triggers 解析触发存储、注册表、工件、信任、授权、审计、配额、会话与限流参数，缺少必要后端时退出 1。
+
+四、边界
+- 调度循环、多副本 slot 与重试留给 SLICE-126。
+- 没有控制台管理界面、通知与失败告警。
+- 需审批工具直接拒绝，不做触发级审批工作流。
+- Postgres live 路径未在本机连接，按既有 skip 模式覆盖。
+
+五、门禁
+python scripts/check.py --fast
+  1333 passed, 79 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1333 passed, 79 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

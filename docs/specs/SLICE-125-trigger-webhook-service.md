@@ -16,7 +16,7 @@
 - 运行输入取请求体 `{"input": ...}`；缺省用触发记录的固定输入；最长 8000。
 - 每次运行按租户配额，使用现有 `QuotaConfig` 与配额后端；超限 429。
 - 每次运行写 `agent.run` 审计（`AgentRuntime` 负责）与一条 `trigger.fire` 审计，`source="trigger"`。
-- 可选 `Idempotency-Key` 请求头，`^[A-Za-z0-9._-]{1,128}$`。同一键并发时只有一个运行，另一个返回 409 `fire_in_progress`；已完成后重复请求返回 200 与 `duplicate: true` 和原结果。
+- 可选 `Idempotency-Key` 请求头，`^[A-Za-z0-9._-]{1,128}$`。同一键并发时只有一个运行，另一个返回 409 `fire_in_progress`；已完成后重复请求返回 200 与 `duplicate: true`、原 `run_id`、`trace_id`、`status` 与 `error_code`，不重放输出文本。
 - 运行身份是 `tenant` 下 `trigger:<trigger_id>` 的服务主体。
 - 服务只读触发与注册表，不写触发定义。
 
@@ -93,26 +93,27 @@
 
 ## 完成判据（可执行）
 
-- [ ] 触发 fire store 的 claim 单赢家、终态校验与幂等回读 -> `tests/test_trigger_runs.py`
-- [ ] Postgres fire store 往返 -> `tests/test_trigger_runs_postgres.py`（无 `TEST_POSTGRES_URL` 跳过）
-- [ ] 正确令牌运行一次，输入、审计与响应正确 -> `tests/test_triggers_service.py::test_fire_runs_the_pinned_agent`
-- [ ] 错误令牌 401 且不写审计 -> `::test_wrong_token_is_unauthorized`
-- [ ] 停用与 schedule 触发被拒 -> `::test_disabled_and_schedule_triggers_are_rejected`
-- [ ] digest 不一致与退役版本被拒 -> `::test_digest_and_lifecycle_are_enforced`
-- [ ] 需审批工具拒绝运行 -> `::test_approval_required_is_refused`
-- [ ] 幂等键重复只运行一次 -> `::test_idempotency_key_runs_once`
-- [ ] 配额超限 429 -> `::test_quota_exceeded`
-- [ ] `serve-triggers` 参数与构建 -> `tests/test_cli_triggers_service.py`
-- [ ] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
+- [x] 触发 fire store 的 claim 单赢家、终态校验与幂等回读 -> `tests/test_trigger_runs.py`
+- [x] Postgres fire store 往返 -> `tests/test_trigger_runs_postgres.py`（无 `TEST_POSTGRES_URL` 跳过）
+- [x] 正确令牌运行一次，输入、审计与响应正确 -> `tests/test_triggers_service.py::test_fire_runs_the_pinned_agent`
+- [x] 错误令牌 401 且不写审计 -> `::test_wrong_token_is_unauthorized`
+- [x] 停用与 schedule 触发被拒 -> `::test_disabled_and_schedule_triggers_are_rejected`
+- [x] digest 不一致与退役版本被拒 -> `::test_digest_and_lifecycle_are_enforced`
+- [x] 需审批工具拒绝运行 -> `::test_approval_required_is_refused`
+- [x] 幂等键重复只运行一次 -> `::test_idempotency_key_runs_once`
+- [x] 运行中幂等键返回 409 -> `::test_in_progress_idempotency_key_is_rejected`
+- [x] 配额超限 429 -> `::test_quota_exceeded`
+- [x] `serve-triggers` 参数与构建 -> `tests/test_cli_triggers_service.py`
+- [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：错误令牌也能触发 -> 期望 `::test_wrong_token_is_unauthorized` 失败
-- [ ] 反例 2：同一幂等键运行两次 -> 期望 `::test_idempotency_key_runs_once` 失败
-- [ ] 反例 3：需审批工具的 agent 仍被运行 -> 期望 `::test_approval_required_is_refused` 失败
-- [ ] 反例 4：digest 不一致仍加载 -> 期望 `::test_digest_and_lifecycle_are_enforced` 失败
+- [x] 反例 1：错误令牌也能触发 -> 期望 `::test_wrong_token_is_unauthorized` 失败
+- [x] 反例 2：同一幂等键运行两次 -> 期望 `::test_idempotency_key_runs_once` 失败
+- [x] 反例 3：需审批工具的 agent 仍被运行 -> 期望 `::test_approval_required_is_refused` 失败
+- [x] 反例 4：digest 不一致仍加载 -> 期望 `::test_digest_and_lifecycle_are_enforced` 失败
 
-红态记录: 待补，实现前运行。
+红态记录: 实现前 3 个模块报 `cannot import name 'TriggerFire'`，CLI 报 `invalid choice: 'serve-triggers'`。
 
 ## 5 问威胁建模（10 分钟）
 
