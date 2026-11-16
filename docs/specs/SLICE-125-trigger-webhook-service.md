@@ -77,7 +77,7 @@
 - `audit: AuditSink | None`
 - `quota: QuotaManager | None`、`quota_config: QuotaConfig | None`
 - `session_service: Any | None`（缺省 `InMemorySessionService`）
-- `runner_factory: Callable[[Any], Any] | None`（测试注入；缺省 `build_runner`）
+- `runner_factory: Callable[[Any], Any] | None`（测试注入；缺省用注入的 session service 构建 ADK `Runner`）
 - `rate_limit: RateLimit | None`
 - `metrics: MetricsRegistry | None`
 

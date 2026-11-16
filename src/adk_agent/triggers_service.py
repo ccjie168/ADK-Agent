@@ -128,11 +128,24 @@ def build_triggers_app(
         if input_text is None:
             return _error("invalid_request", 400)
 
-        ref = AgentRef(id=trigger.agent_id, version=trigger.version, digest=trigger.digest)
+        expected_digest = trigger.digest.removeprefix("sha256:")
+        ref = AgentRef(id=trigger.agent_id, version=trigger.version, digest=expected_digest)
         published = await registry.get(ref, tenant)
         if published is None:
+            records = await registry.list(tenant)
+            registered = next(
+                (
+                    record
+                    for record in records
+                    if record.manifest.id == trigger.agent_id
+                    and record.manifest.version == trigger.version
+                ),
+                None,
+            )
+            if registered is not None and registered.digest != expected_digest:
+                return _error("digest_mismatch", 409)
             return _error("trigger_not_found", 404)
-        if published.digest != trigger.digest:
+        if published.digest != expected_digest:
             return _error("digest_mismatch", 409)
 
         if lifecycle is not None:
@@ -198,18 +211,18 @@ def build_triggers_app(
                 status="running",
                 created_at=datetime.now(timezone.utc),
             )
-            existing = await fire_store.claim(fire)
-            if existing.run_id != fire.run_id:
-                if existing.status == "running":
+            previous = await fire_store.claim(fire)
+            if previous.run_id != fire.run_id:
+                if previous.status == "running":
                     return _error("fire_in_progress", 409)
                 return JSONResponse(
                     {
-                        "run_id": existing.run_id,
-                        "trace_id": existing.trace_id,
-                        "status": existing.status,
+                        "run_id": previous.run_id,
+                        "trace_id": previous.trace_id,
+                        "status": previous.status,
                         "duplicate": True,
                         "text": "",
-                        "error_code": existing.error_code,
+                        "error_code": previous.error_code,
                     }
                 )
             claimed = fire
@@ -224,7 +237,12 @@ def build_triggers_app(
             await emit("error", "agent_load_failed", run_id, trace_id)
             return _error("agent_load_failed", 502)
 
-        install_declared_guards(agent, audit, overlay=tool_grants)
+        install_declared_guards(
+            agent,
+            audit,
+            overlay=tool_grants,
+            grants=list(published.manifest.tool_grants),
+        )
 
         invocation = Invocation(
             run_id=run_id,
@@ -243,9 +261,7 @@ def build_triggers_app(
 
                 return Runner(app_name=built.name, agent=built, session_service=service)
 
-            session = await service.create_session(
-                app_name=trigger.agent_id, user_id=principal.subject
-            )
+            session = await service.create_session(app_name=agent.name, user_id=principal.subject)
             runner = (runner_factory or default_runner)(agent)
             runtime = AgentRuntime(runner, audit=audit, metrics=metrics, source="trigger")
             result = await runtime.run(

@@ -8,7 +8,7 @@
 ## 本次暂停交接
 
 - 代码在 `slice-125-trigger-webhook-service` 分支，`36b9810`，基于 master `970b238`。SLICE-116 到 124 已通过 PR #22、#24、#25、#26、#28、#29、#30、#31、#32 合并；触发执行服务的 PR 尚未开。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
-- 最近门禁: `--fast` 与 `--full` 都是 1333 passed, 79 skipped；触发相关套件 26 passed，1 skipped（Postgres 用例缺 `TEST_POSTGRES_URL`）。
+- 最近门禁: `--fast` 与 `--full` 都是 1334 passed, 79 skipped；触发相关套件 26 passed，1 skipped（Postgres 用例缺 `TEST_POSTGRES_URL`）。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
 - 演示进程已全部停止: 控制台 8081 到 8085、8091 到 8094、8101、8102、mock IdP 9000、审计 8010、headless Edge 9223 到 9227。`adk-registry` 与 `adk-postgres-070` 容器在 127.0.0.1:5000 与 55432。演示数据留在 `C:/Users/Jie/AppData/Local/Temp/` 下的 `adk-ui-demo/`、`adk-ui-shell/`、`adk-116-seed/`、`adk-117-roles/`、`adk-118-history/` 与 `adk-119-drill/`，需要时重建。
 - 下一刀: SLICE-126 调度循环与重试，多副本 slot 单赢家，只调用已发布 pinned 版本；之后是 agent 级沙箱与凭据密钥后端。
@@ -141,8 +141,8 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1333 passed, 79 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1333 passed, 79 skipped（`docs/evidence/SLICE-125-trigger-webhook-service.txt`）
+- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1334 passed, 79 skipped，7 步全 PASS
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1334 passed, 79 skipped（`docs/evidence/SLICE-125-trigger-webhook-service.txt`）
 - 设置 `TEST_POSTGRES_URL` 后 Postgres 用例可跑；本切片的审批历史用例 4 passed（`docs/evidence/SLICE-118-approval-history.txt`）。完整套件的旧记录为 1236 passed, 1 skipped（`docs/evidence/SLICE-105-app-state-rls.txt`）。
 - CI 已在 PR #19 上全绿（run 43708394988），包含锁安装、`--no-build-isolation`、完整门禁、镜像构建、Trivy 扫描与 SBOM 上传。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 

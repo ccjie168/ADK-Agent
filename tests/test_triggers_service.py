@@ -28,7 +28,6 @@ from adk_agent.runtime.quota import InMemoryQuotaManager
 from adk_agent.triggers_service import build_triggers_app
 
 _TOKEN = "webhook-token-0123456789"
-_DIGEST = "sha256:" + "a" * 64
 _OTHER_DIGEST = "sha256:" + "b" * 64
 AUTH = {"Authorization": f"Bearer {_TOKEN}"}
 
@@ -78,7 +77,10 @@ class FakeRegistry:
         self.published = published
 
     async def get(self, ref, tenant: str):
-        return self.published
+        return self.published if self.published.digest == ref.digest else None
+
+    async def list(self, tenant: str):
+        return [self.published]
 
 
 class FakeTrust:
@@ -107,7 +109,7 @@ class FakeLifecycle:
         return AgentLifecycle(status=self.status)
 
 
-def _published(*, digest: str = _DIGEST, grants: list[ToolGrant] | None = None):
+def _published(*, grants: list[ToolGrant] | None = None):
     manifest = AgentManifest(
         id="assistant",
         version="1.0.0",
@@ -117,7 +119,11 @@ def _published(*, digest: str = _DIGEST, grants: list[ToolGrant] | None = None):
         tool_grants=grants or [],
     )
     artifact = AgentArtifact(digest="sha256:" + "d" * 64, size=1)
-    return published_from(manifest, artifact=artifact).model_copy(update={"digest": digest})
+    return published_from(manifest, artifact=artifact)
+
+
+_PUBLISHED = _published()
+_DIGEST = f"sha256:{_PUBLISHED.digest}"
 
 
 def _webhook(
@@ -164,6 +170,7 @@ def _client(
     triggers: list[AgentTrigger],
     *,
     published=None,
+    registry=None,
     lifecycle=None,
     tool_grants=None,
     audit=None,
@@ -176,7 +183,7 @@ def _client(
     loader = FakeLoader(_agent())
     app = build_triggers_app(
         triggers=FakeTriggerStore(triggers),
-        registry=FakeRegistry(published or _published()),
+        registry=registry or FakeRegistry(published or _PUBLISHED),
         artifact_store=object(),
         trust=trust,
         loader=loader,
@@ -275,7 +282,7 @@ def test_disabled_and_schedule_triggers_are_rejected():
 
 
 def test_digest_and_lifecycle_are_enforced():
-    mismatch, runner, _, _ = _client([_webhook()], published=_published(digest=_OTHER_DIGEST))
+    mismatch, runner, _, _ = _client([_webhook(digest=_OTHER_DIGEST)])
     with mismatch:
         response = _fire(mismatch, json={"input": "hello"})
 
@@ -283,9 +290,7 @@ def test_digest_and_lifecycle_are_enforced():
     assert response.json() == {"error": "digest_mismatch"}
     assert runner.calls == 0
 
-    retired, runner, _, _ = _client(
-        [_webhook()], lifecycle=FakeLifecycle("retired"), published=_published()
-    )
+    retired, runner, _, _ = _client([_webhook()], lifecycle=FakeLifecycle("retired"))
     with retired:
         response = _fire(retired, json={"input": "hello"})
 
@@ -294,11 +299,30 @@ def test_digest_and_lifecycle_are_enforced():
     assert runner.calls == 0
 
 
+def test_fire_uses_the_real_registry_digest(tmp_path):
+    from adk_agent.registry import FileAgentRegistry
+
+    registry = FileAgentRegistry(tmp_path / "registry")
+    asyncio.run(registry.publish(_PUBLISHED))
+    trigger = _webhook(digest=f"sha256:{_PUBLISHED.digest}")
+    client, runner, _, _ = _client([trigger], registry=registry)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert runner.calls == 1
+
+
 def test_approval_required_is_refused():
     audit = ListAuditSink()
     grants = [ToolGrant(tool_id="payments", requires_approval=True)]
+    published = _published(grants=grants)
     client, runner, _, loader = _client(
-        [_webhook()], published=_published(grants=grants), audit=audit
+        [_webhook(digest=f"sha256:{published.digest}")],
+        published=published,
+        audit=audit,
     )
 
     with client:
