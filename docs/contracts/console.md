@@ -392,6 +392,20 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 成功 200，重复停用幂等，写 `credential.disable` 审计。
 - 未配置存储 404 `credentials_not_configured`；存储不可达 503 `credential_store_unavailable`。
 
+## 连接器申请
+
+形状与存储见 `connector_requests.md`。
+
+`GET /api/connector-requests?tenant=<name>&status=<status>` -> `[ConnectorRequest]`：按 `requested_at` 倒序。`tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`；`status` 不在 `pending`、`approved`、`denied` 中 400 `invalid_status`。由 `console --connector-requests-dir DIR` 或 `--connector-request-db URL`（都未给时读 `CONNECTOR_REQUEST_DATABASE_URL`）提供；未配置 404 `connector_requests_not_configured`；存储失败 503 `connector_request_store_unavailable`。
+
+`POST /api/connector-requests` -> `ConnectorRequest`：请求 `{spec, reason}`，任何已认证主体可提交。服务端取调用主体作为 `tenant` 与 `requested_by`，生成 `request_id`；`spec.tenant` 必须等于调用方租户，否则 400 `invalid_connector_request`。成功 201，写 `connector.request` 审计。
+
+`POST /api/connector-requests/{request_id}/decide` -> `ConnectorRequest`：仅 `admin`。请求 `{approved, reason}`。
+
+- 拒绝把状态改为 denied，不写连接器存储，写 `connector.request.decide` 审计，状态 `denied`。
+- 批准先查凭据绑定，未绑定 400 `credential_unbound`；再登记连接器，冲突 409 `connector_conflict`；登记成功后标记 approved，写 `registered_connector`，并写 `connector.register` 与 `connector.request.decide` 审计。
+- 不存在 404 `connector_request_not_found`；已决定 409 `connector_request_already_decided`。
+
 ## `GET /api/peers?tenant=<name>` -> `[{"peer": PeerIdentity, "grants": [PeerGrant]}]`
 
 只读 peer 与其授权。按 `peer_id` 排序。

@@ -9,7 +9,14 @@ import tempfile
 import threading
 from pathlib import Path
 
-from ..core import CredentialBinding, CredentialConflict, CredentialNotFound
+from ..core import (
+    ConnectorSpec,
+    CredentialBinding,
+    CredentialConflict,
+    CredentialNotFound,
+    CredentialStore,
+    parse_credential_ref,
+)
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -107,4 +114,22 @@ class FileCredentialStore:
         return existing
 
 
-__all__ = ["FileCredentialStore"]
+async def credential_is_bound(store: CredentialStore | None, spec: ConnectorSpec) -> bool:
+    """Whether a connector's ``auth_ref`` resolves to an enabled binding.
+
+    Single-segment references are global and carry no tenant binding, so they
+    are always considered bound.
+    """
+    if store is None or spec.auth_ref is None:
+        return True
+    try:
+        ref_tenant, _ = parse_credential_ref(spec.auth_ref)
+    except ValueError:
+        return True
+    if spec.tenant is None or spec.tenant != ref_tenant:
+        return False
+    bindings = await store.list(spec.tenant)
+    return any(binding.enabled and binding.secret_ref == spec.auth_ref for binding in bindings)
+
+
+__all__ = ["FileCredentialStore", "credential_is_bound"]

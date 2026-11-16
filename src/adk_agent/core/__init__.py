@@ -6,6 +6,14 @@ from .approval import ApprovalDecision, ApprovalRequest
 from .artifact import MAX_ARTIFACT_BYTES, MEDIA_TYPE, AgentArtifact
 from .audit import AuditEvent, AuditRecord
 from .canary import CanaryPolicy
+from .connector_requests import (
+    ConnectorRequest,
+    ConnectorRequestConflict,
+    ConnectorRequestError,
+    ConnectorRequestNotFound,
+    ConnectorRequestStatus,
+    ConnectorRequestStoreUnavailable,
+)
 from .connectors import (
     ConnectorConflict,
     ConnectorForbidden,
@@ -70,6 +78,7 @@ from .ports import (
     ArtifactLoader,
     ArtifactStore,
     AuditSink,
+    ConnectorRequestStore,
     ConnectorStore,
     CredentialStore,
     EvalReportStore,
@@ -117,6 +126,13 @@ __all__ = [
     "ConnectorForbidden",
     "ConnectorKind",
     "ConnectorNotFound",
+    "ConnectorRequest",
+    "ConnectorRequestConflict",
+    "ConnectorRequestError",
+    "ConnectorRequestNotFound",
+    "ConnectorRequestStatus",
+    "ConnectorRequestStore",
+    "ConnectorRequestStoreUnavailable",
     "ConnectorSpec",
     "ConnectorStore",
     "ConnectorStoreError",

@@ -38,6 +38,12 @@ from .core import (
     AuditEvent,
     AuditSink,
     ConnectorConflict,
+    ConnectorRequest,
+    ConnectorRequestConflict,
+    ConnectorRequestError,
+    ConnectorRequestNotFound,
+    ConnectorRequestStatus,
+    ConnectorRequestStore,
     ConnectorSpec,
     ConnectorStore,
     ConnectorStoreError,
@@ -75,7 +81,6 @@ from .core import (
     SecretProvider,
     ToolGrantRequest,
     ToolGrantStore,
-    parse_credential_ref,
 )
 from .identity import OidcLogin, OidcLoginError
 from .logsafe import install_log_sanitizer
@@ -92,6 +97,7 @@ from .registry import (
     RegistryIntegrityError,
     TrustStore,
     check_connector,
+    credential_is_bound,
     fetch_agent_card,
 )
 from .runtime import AgentRuntime, dev_agent_ref
@@ -115,6 +121,7 @@ _OPEN_PATHS = frozenset({"/", "/healthz", "/auth/config", "/auth/token", "/auth/
 _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 _GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})
+_CONNECTOR_REQUEST_STATUSES = frozenset({"pending", "approved", "denied"})
 
 _CAPABILITIES_ALL = frozenset(
     {
@@ -440,6 +447,43 @@ _INDEX_HTML = r"""<!doctype html>
     <button id="connector-check" data-capability="connectors.manage">Check selected</button>
   </div>
   <div id="connector-health" class="panel-msg"></div>
+  <h3>Requests</h3>
+  <div class="row">
+    <button id="refresh-connector-requests">Refresh</button>
+    <select id="connector-request-status">
+      <option value="">all statuses</option>
+      <option value="pending">pending</option>
+      <option value="approved">approved</option>
+      <option value="denied">denied</option>
+    </select>
+  </div>
+  <div id="connector-requests-msg" class="panel-msg"></div>
+  <table>
+    <thead><tr><th>id</th><th>tenant</th><th>connector</th><th>status</th><th>requested by</th><th>reason</th></tr></thead>
+    <tbody id="connector-requests-body"></tbody>
+  </table>
+  <h3>Request a connector</h3>
+  <div class="row">
+    <input id="connector-request-id" placeholder="connector id" autocomplete="off">
+    <select id="connector-request-kind">
+      <option value="http">http</option>
+      <option value="openapi">openapi</option>
+      <option value="mcp">mcp</option>
+    </select>
+    <input id="connector-request-base-url" placeholder="https://api.example.com" autocomplete="off">
+  </div>
+  <div class="row">
+    <input id="connector-request-auth-ref" placeholder="secret://name/token (optional)" autocomplete="off">
+    <input id="connector-request-methods" placeholder="methods: GET,POST" autocomplete="off">
+    <input id="connector-request-prefixes" placeholder="path prefixes: /v1/" autocomplete="off">
+    <input id="connector-request-data-classes" placeholder="data classes: internal" autocomplete="off">
+  </div>
+  <div class="row">
+    <input id="connector-request-reason" placeholder="reason" autocomplete="off">
+    <button id="connector-request-submit">Request</button>
+    <button id="connector-request-approve" data-capability="connectors.manage">Approve selected</button>
+    <button id="connector-request-deny" data-capability="connectors.manage">Deny selected</button>
+  </div>
 </section>
 
 <section id="credentials" class="panel" data-capability="connectors.read">
@@ -619,6 +663,7 @@ let selectedApproval = null;
 let selectedRegistry = null;
 let selectedGrant = null;
 let selectedConnector = null;
+let selectedConnectorRequest = null;
 let selectedCredential = null;
 let selectedPeer = null;
 const token = () => $("token").value.trim();
@@ -1088,6 +1133,86 @@ async function checkConnector() {
   const health = result.data;
   $("connector-health").textContent =
     health.status + " status=" + health.status_code + " latency=" + health.latency_ms + "ms";
+}
+
+async function loadConnectorRequests() {
+  const tenant = $("tenant").value;
+  $("connector-requests-msg").textContent = "";
+  const body = $("connector-requests-body");
+  body.innerHTML = "";
+  selectedConnectorRequest = null;
+  if (!tenant) return;
+  let url = "/api/connector-requests?tenant=" + encodeURIComponent(tenant);
+  const status = $("connector-request-status").value;
+  if (status) url += "&status=" + encodeURIComponent(status);
+  const result = await getJson(url);
+  if (!result.ok) {
+    $("connector-requests-msg").textContent =
+      "requests unavailable (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  for (const item of result.data || []) {
+    const row = document.createElement("tr");
+    row.appendChild(cell(item.request_id));
+    row.appendChild(cell(item.tenant));
+    row.appendChild(cell(item.spec && item.spec.connector_id));
+    row.appendChild(cell(item.status));
+    row.appendChild(cell(item.requested_by));
+    row.appendChild(cell(item.reason));
+    row.addEventListener("click", () => {
+      selectedConnectorRequest = item;
+      $("connector-requests-msg").textContent = "selected " + item.request_id;
+    });
+    body.appendChild(row);
+  }
+}
+
+async function requestConnector() {
+  $("connector-requests-msg").textContent = "";
+  const methods = listValue("connector-request-methods");
+  const prefixes = listValue("connector-request-prefixes");
+  const spec = {
+    connector_id: $("connector-request-id").value.trim(),
+    tenant: $("tenant").value,
+    kind: $("connector-request-kind").value,
+    base_url: $("connector-request-base-url").value.trim(),
+    methods: methods.length ? methods : ["GET"],
+    path_prefixes: prefixes.length ? prefixes : ["/"],
+    data_classes: listValue("connector-request-data-classes"),
+  };
+  const authRef = $("connector-request-auth-ref").value.trim();
+  if (authRef) spec.auth_ref = authRef;
+  const result = await postJson("/api/connector-requests", {
+    spec: spec,
+    reason: $("connector-request-reason").value.trim(),
+  });
+  if (!result.ok) {
+    $("connector-requests-msg").textContent = "request failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  await loadConnectorRequests();
+  $("connector-requests-msg").textContent = "requested " + result.data.request_id;
+}
+
+async function decideConnectorRequest(approved) {
+  if (!selectedConnectorRequest) {
+    $("connector-requests-msg").textContent = "select a request first";
+    return;
+  }
+  const result = await postJson(
+    "/api/connector-requests/" + encodeURIComponent(selectedConnectorRequest.request_id) +
+      "/decide", { approved: approved });
+  if (!result.ok) {
+    $("connector-requests-msg").textContent = "decision failed (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  selectedConnectorRequest = null;
+  await loadConnectorRequests();
+  await loadConnectors();
+  $("connector-requests-msg").textContent = "decided " + result.data.request_id;
 }
 
 async function loadCredentials() {
@@ -1675,6 +1800,7 @@ async function connect() {
   if (can("runs.read")) await loadPlans();
   if (can("tools.read")) await loadTools();
   if (can("connectors.read")) await loadConnectors();
+  if (can("connectors.read")) await loadConnectorRequests();
   if (can("connectors.read")) await loadCredentials();
   if (can("grants.read")) await loadGrants();
   if (can("chat.run")) loadAudit();
@@ -2102,6 +2228,7 @@ $("tenant").addEventListener("change", () => {
   if (can("registry.read")) loadRegistry();
   if (can("tools.read")) loadTools();
   if (can("connectors.read")) loadConnectors();
+  if (can("connectors.read")) loadConnectorRequests();
   if (can("connectors.read")) loadCredentials();
   if (can("grants.read")) loadGrants();
 });
@@ -2117,6 +2244,11 @@ $("refresh-connectors").addEventListener("click", loadConnectors);
 $("connector-register").addEventListener("click", registerConnector);
 $("connector-disable").addEventListener("click", disableConnector);
 $("connector-check").addEventListener("click", checkConnector);
+$("refresh-connector-requests").addEventListener("click", loadConnectorRequests);
+$("connector-request-status").addEventListener("change", loadConnectorRequests);
+$("connector-request-submit").addEventListener("click", requestConnector);
+$("connector-request-approve").addEventListener("click", () => decideConnectorRequest(true));
+$("connector-request-deny").addEventListener("click", () => decideConnectorRequest(false));
 $("refresh-credentials").addEventListener("click", loadCredentials);
 $("credential-tenant").addEventListener("input", loadCredentials);
 $("credential-register").addEventListener("click", registerCredential);
@@ -2431,6 +2563,7 @@ def build_console_app(
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
     connectors: ConnectorStore | None = None,
+    connector_requests: ConnectorRequestStore | None = None,
     credentials: CredentialStore | None = None,
     peers: PeerStore | None = None,
     peer_grants: PeerGrantStore | None = None,
@@ -3051,23 +3184,14 @@ def build_console_app(
             spec = ConnectorSpec.model_validate(body)
         except ValidationError:
             return JSONResponse({"error": "invalid_connector"}, status_code=400)
-        if credentials is not None and spec.auth_ref is not None:
+        if credentials is not None:
             try:
-                ref_tenant, _ = parse_credential_ref(spec.auth_ref)
-            except ValueError:
-                ref_tenant = None
-            if ref_tenant is not None:
-                if spec.tenant is None or spec.tenant != ref_tenant:
-                    return JSONResponse({"error": "credential_unbound"}, status_code=400)
-                try:
-                    bindings = await credentials.list(spec.tenant)
-                except CredentialStoreError:
-                    logger.exception("credential list failed: tenant=%s", spec.tenant)
-                    return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
-                if not any(
-                    binding.enabled and binding.secret_ref == spec.auth_ref for binding in bindings
-                ):
-                    return JSONResponse({"error": "credential_unbound"}, status_code=400)
+                bound = await credential_is_bound(credentials, spec)
+            except CredentialStoreError:
+                logger.exception("credential list failed: tenant=%s", spec.tenant)
+                return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
+            if not bound:
+                return JSONResponse({"error": "credential_unbound"}, status_code=400)
         try:
             stored = await connectors.add(spec)
         except ConnectorConflict:
@@ -3158,6 +3282,197 @@ def build_console_app(
             return JSONResponse({"error": "forbidden"}, status_code=403)
         health = await check_connector(spec)
         return JSONResponse(health.model_dump(mode="json"))
+
+    @app.get("/api/connector-requests")
+    async def list_connector_requests(
+        request: Request, tenant: str | None = None, status: str | None = None
+    ) -> Any:
+        if connector_requests is None:
+            return JSONResponse({"error": "connector_requests_not_configured"}, status_code=404)
+        request_status: ConnectorRequestStatus | None = None
+        if status is not None:
+            if status not in _CONNECTOR_REQUEST_STATUSES:
+                return JSONResponse({"error": "invalid_status"}, status_code=400)
+            request_status = cast(ConnectorRequestStatus, status)
+        caller = _principal_for(request)
+        target = tenant or caller.tenant
+        if tenant and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        try:
+            records = await connector_requests.list(target, status=request_status)
+        except ConnectorRequestError:
+            logger.exception("connector request list failed: tenant=%s", target)
+            return JSONResponse({"error": "connector_request_store_unavailable"}, status_code=503)
+        records.sort(key=lambda record: (record.requested_at, record.request_id), reverse=True)
+        return [record.model_dump(mode="json") for record in records]
+
+    @app.post("/api/connector-requests")
+    async def create_connector_request(request: Request) -> Any:
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body.get("spec"), dict):
+            return JSONResponse({"error": "invalid_connector_request"}, status_code=400)
+        reason = body.get("reason")
+        if not isinstance(reason, str):
+            return JSONResponse({"error": "invalid_connector_request"}, status_code=400)
+        try:
+            spec = ConnectorSpec.model_validate(body["spec"])
+        except ValidationError:
+            return JSONResponse({"error": "invalid_connector_request"}, status_code=400)
+
+        caller = _principal_for(request)
+        if spec.tenant is None or spec.tenant != caller.tenant:
+            return JSONResponse({"error": "invalid_connector_request"}, status_code=400)
+        if connector_requests is None:
+            return JSONResponse({"error": "connector_requests_not_configured"}, status_code=404)
+        try:
+            record = ConnectorRequest(
+                request_id=uuid.uuid4().hex,
+                tenant=caller.tenant,
+                spec=spec,
+                reason=reason,
+                requested_by=caller.subject,
+                requested_at=datetime.now(timezone.utc),
+            )
+        except ValidationError:
+            return JSONResponse({"error": "invalid_connector_request"}, status_code=400)
+        try:
+            created = await connector_requests.add(record)
+        except ConnectorRequestError:
+            logger.exception(
+                "connector request add failed: tenant=%s connector=%s",
+                caller.tenant,
+                spec.connector_id,
+            )
+            return JSONResponse({"error": "connector_request_store_unavailable"}, status_code=503)
+
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(
+                    id=spec.connector_id,
+                    version="connector",
+                    digest=f"sha256:{hash_text(spec.model_dump_json())}",
+                ),
+                action="connector.request",
+                target=f"{caller.tenant}/{spec.connector_id}",
+                args_hash=hash_text(created.model_dump_json()),
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse(created.model_dump(mode="json"), status_code=201)
+
+    @app.post("/api/connector-requests/{request_id}/decide")
+    async def decide_connector_request(request: Request, request_id: str) -> Any:
+        caller = _principal_for(request)
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict) or not isinstance(body.get("approved"), bool):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        reason = body.get("reason", "")
+        if not isinstance(reason, str):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if connector_requests is None:
+            return JSONResponse({"error": "connector_requests_not_configured"}, status_code=404)
+        try:
+            record = await connector_requests.get(request_id)
+        except ConnectorRequestError:
+            logger.exception("connector request read failed: %s", request_id)
+            return JSONResponse({"error": "connector_request_store_unavailable"}, status_code=503)
+        if record is None:
+            return JSONResponse({"error": "connector_request_not_found"}, status_code=404)
+
+        approved = body["approved"]
+        registered: ConnectorSpec | None = None
+        if approved:
+            if record.status != "pending":
+                return JSONResponse({"error": "connector_request_already_decided"}, status_code=409)
+            if connectors is None:
+                return JSONResponse({"error": "connectors_not_configured"}, status_code=404)
+            if credentials is not None:
+                try:
+                    bound = await credential_is_bound(credentials, record.spec)
+                except CredentialStoreError:
+                    logger.exception("credential list failed: tenant=%s", record.spec.tenant)
+                    return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
+                if not bound:
+                    return JSONResponse({"error": "credential_unbound"}, status_code=400)
+            try:
+                registered = await connectors.add(record.spec)
+            except ConnectorConflict:
+                return JSONResponse({"error": "connector_conflict"}, status_code=409)
+            except ConnectorStoreError:
+                logger.exception("connector register failed: id=%s", record.spec.connector_id)
+                return JSONResponse({"error": "connector_store_unavailable"}, status_code=503)
+
+        try:
+            decided = await connector_requests.decide(
+                request_id,
+                approved=approved,
+                decided_by=caller.subject,
+                reason=reason,
+                registered_connector=record.spec.connector_id if approved else None,
+            )
+        except ConnectorRequestNotFound:
+            return JSONResponse({"error": "connector_request_not_found"}, status_code=404)
+        except ConnectorRequestConflict:
+            return JSONResponse({"error": "connector_request_already_decided"}, status_code=409)
+        except ConnectorRequestError:
+            logger.exception("connector request decide failed: %s", request_id)
+            return JSONResponse({"error": "connector_request_store_unavailable"}, status_code=503)
+
+        if registered is not None:
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=_trace_id(request),
+                    tenant=caller.tenant,
+                    principal=caller,
+                    agent_ref=AgentRef(
+                        id=registered.connector_id,
+                        version="connector",
+                        digest=f"sha256:{hash_text(registered.model_dump_json())}",
+                    ),
+                    action="connector.register",
+                    target=f"{registered.tenant or 'global'}/{registered.connector_id}",
+                    args_hash=hash_text(registered.model_dump_json()),
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(
+                    id=record.spec.connector_id,
+                    version="connector",
+                    digest=f"sha256:{hash_text(record.spec.model_dump_json())}",
+                ),
+                action="connector.request.decide",
+                target=request_id,
+                status="ok" if approved else "denied",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse(decided.model_dump(mode="json"))
 
     @app.get("/api/credentials")
     async def list_credentials(request: Request, tenant: str | None = None) -> Any:
@@ -4309,6 +4624,7 @@ def run_console(
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
     connectors: ConnectorStore | None = None,
+    connector_requests: ConnectorRequestStore | None = None,
     credentials: CredentialStore | None = None,
     peers: PeerStore | None = None,
     peer_grants: PeerGrantStore | None = None,
@@ -4347,6 +4663,7 @@ def run_console(
         lifecycle=lifecycle,
         tool_grants=tool_grants,
         connectors=connectors,
+        connector_requests=connector_requests,
         credentials=credentials,
         peers=peers,
         peer_grants=peer_grants,

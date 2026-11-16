@@ -1,0 +1,54 @@
+SLICE-122 连接器自助申请与审批
+
+环境
+- Windows 11 Pro, Python 3.14 venv, pytest
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_connector_requests.py tests/test_connector_requests_postgres.py tests/test_console_connector_requests.py tests/test_cli_connector_requests.py -q
+    3 errors during collection
+  cannot import name 'ConnectorRequest' from 'adk_agent.core'
+
+二、实现后绿
+  $ ... tests/test_connector_requests.py tests/test_connector_requests_postgres.py tests/test_console_connector_requests.py tests/test_cli_connector_requests.py -q
+    14 passed, 2 skipped
+  $ ... 加上 credentials、console credentials、cli credentials
+    33 passed, 2 skipped
+  $ ... tests/test_console_connector_requests.py -q
+    7 passed
+
+跳过的是两个 Postgres 用例，本机未设 TEST_POSTGRES_URL。
+
+三、行为
+- 申请记录含提议的 ConnectorSpec、理由、申请人、状态与决定信息。spec.tenant 必须等于申请租户，全局连接器不能走申请。
+- 状态机是 pending 到 approved 或 denied，终态不可再变。pending 不能带决定字段，approved 必须有 registered_connector。
+- 文件存储 <root>/<request_id>.json，重复相同内容幂等，不同内容冲突；决定在同一把锁内只生效一次。
+- Postgres 用条件 UPDATE definition->>'status' = 'pending'，并发决定只有一个赢家。
+- 控制台 GET/POST /api/connector-requests 与决定路由。申请任何已认证主体可提交，租户取调用主体；决定仅 admin。
+- 批准先查启用凭据绑定，再登记连接器，登记成功后才标记 approved。拒绝不碰连接器存储。
+- 审计写 connector.request、connector.register 与 connector.request.decide。
+- CLI connector-requests list|request|decide 支持文件与 Postgres，批准时复用连接器存储与凭据检查。
+- 凭据绑定检查抽成 registry.credentials.credential_is_bound，控制台与 CLI 共用。
+
+四、边界
+- 申请无过期与清理。
+- 无控制面 /v1/connector-requests。
+- 批准与拒绝并发时，批准路径可能先登记连接器再遇到决定冲突；登记幂等，管理员可停用连接器。未做跨存储事务。
+- CLI 决定不写审计，与现有管理命令一致。
+
+五、CodeQL 与密钥扫描
+- PR #30 首次扫描新增 6 条：3 条 py/path-injection 在 registry/connector_requests.py，3 条 py/log-injection 在 console.py 新审批路由。
+- path-injection 与 ADR-0022 的既有模式相同，请求 id 先过 _REQUEST_ID 全匹配再拼路径；按误报 dismiss。
+- log-injection 记的是已校验标识符，且 SLICE-120 的中央清洗器转义 CR/LF；按误报 dismiss。
+- 复核后开放告警 0。
+- 契约示例里的 auth_ref 赋值会在 CI 密钥扫描下命中，示例改为省略可选字段。
+
+六、门禁
+python scripts/check.py --fast
+  1292 passed, 77 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1292 passed, 77 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS
