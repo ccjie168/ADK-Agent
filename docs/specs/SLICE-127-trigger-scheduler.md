@@ -42,24 +42,24 @@
 
 ## 完成判据（可执行）
 
-- [ ] 到期触发在一个 slot 内只运行一次 -> `tests/test_trigger_scheduler.py::test_slot_runs_once`
-- [ ] 停用与非 schedule 触发被跳过 -> `::test_disabled_and_webhook_triggers_are_skipped`
-- [ ] 多副本共享 fire store，同一 slot 只有一个赢家 -> `::test_slot_has_one_winner`
-- [ ] 预运行加载失败按次数重试，耗尽后记 error -> `::test_pre_run_failures_are_retried`
-- [ ] agent 运行失败不重试 -> `::test_agent_failures_are_not_retried`
-- [ ] webhook 与调度共用同一执行函数 -> `tests/test_triggers_service.py` 全部保持通过
-- [ ] 关闭时调度任务被取消 -> `::test_scheduler_stops_on_shutdown`
-- [ ] CLI 参数校验 -> `tests/test_cli_triggers_service.py` 新增用例
-- [ ] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
+- [x] 到期触发在一个 slot 内只运行一次 -> `tests/test_trigger_scheduler.py::test_slot_runs_once`
+- [x] 停用与非 schedule 触发被跳过 -> `::test_disabled_and_webhook_triggers_are_skipped`
+- [x] 多副本共享 fire store，同一 slot 只有一个赢家 -> `::test_slot_has_one_winner`
+- [x] 预运行加载失败按次数重试，耗尽后记 error -> `::test_pre_run_failures_are_retried`
+- [x] agent 运行失败不重试 -> `::test_agent_failures_are_not_retried`
+- [x] webhook 与调度共用同一执行函数 -> `tests/test_triggers_service.py` 全部保持通过
+- [x] 关闭时调度任务被取消 -> `::test_scheduler_stops_on_shutdown`
+- [x] CLI 参数校验 -> `tests/test_cli_triggers_service.py` 新增用例
+- [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：同一 slot 运行两次 -> 期望 `::test_slot_runs_once` 失败
-- [ ] 反例 2：加载失败无限重试 -> 期望 `::test_pre_run_failures_are_retried` 失败
-- [ ] 反例 3：agent 失败也重试，重复副作用 -> 期望 `::test_agent_failures_are_not_retried` 失败
-- [ ] 反例 4：调度跳过启用与类型过滤 -> 期望 `::test_disabled_and_webhook_triggers_are_skipped` 失败
+- [x] 反例 1：同一 slot 运行两次 -> 期望 `::test_slot_runs_once` 失败
+- [x] 反例 2：加载失败无限重试 -> 期望 `::test_pre_run_failures_are_retried` 失败
+- [x] 反例 3：agent 失败也重试，重复副作用 -> 期望 `::test_agent_failures_are_not_retried` 失败
+- [x] 反例 4：调度跳过启用与类型过滤 -> 期望 `::test_disabled_and_webhook_triggers_are_skipped` 失败
 
-红态记录: 待补，实现前运行。
+红态记录: 实现前调度测试报 `cannot import name 'TriggerExecution'`，CLI 报三个新参数无法识别。
 
 ## 5 问威胁建模（10 分钟）
 

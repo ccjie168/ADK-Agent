@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
+import logging
 import re
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -21,6 +25,7 @@ from .core import (
     AgentLifecycleStore,
     AgentRef,
     AgentRegistry,
+    AgentTrigger,
     ArtifactLoader,
     ArtifactStore,
     AuditEvent,
@@ -41,14 +46,55 @@ from .runtime.execution import AgentRuntime
 from .tools.enforcement import install_declared_guards
 from .tracing import resolve_trace_id
 
+logger = logging.getLogger(__name__)
+
 _MAX_INPUT = 8000
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 _TRIGGER_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
+_ERROR_STATUS = {
+    "trigger_not_found": 404,
+    "digest_mismatch": 409,
+    "version_retired": 409,
+    "approval_required": 409,
+    "agent_load_failed": 502,
+    "quota_exceeded": 429,
+}
+
+
+@dataclass(frozen=True)
+class TriggerExecution:
+    """Outcome of one trigger run, shared by the webhook and schedule paths."""
+
+    status: Literal["ok", "error", "denied"]
+    error_code: str | None
+    run_id: str
+    trace_id: str
+    text: str = ""
+
 
 def _error(code: str, status_code: int) -> JSONResponse:
     return JSONResponse({"error": code}, status_code=status_code)
+
+
+def _execution_response(execution: TriggerExecution) -> JSONResponse:
+    if execution.status == "ok":
+        return JSONResponse(
+            {
+                "run_id": execution.run_id,
+                "trace_id": execution.trace_id,
+                "status": "ok",
+                "duplicate": False,
+                "text": execution.text,
+            }
+        )
+    code = execution.error_code
+    if code is not None:
+        status_code = _ERROR_STATUS.get(code)
+        if status_code is not None:
+            return _error(code, status_code)
+    return _error("run_failed", 500)
 
 
 def _request_input(body: dict[str, Any], fallback: str) -> str | None:
@@ -57,6 +103,62 @@ def _request_input(body: dict[str, Any], fallback: str) -> str | None:
     if not isinstance(text, str) or not 1 <= len(text) <= _MAX_INPUT:
         return None
     return text
+
+
+async def run_schedule_tick(
+    *,
+    triggers: TriggerStore,
+    fire_store: TriggerFireStore,
+    execute: Callable[..., Awaitable[TriggerExecution]],
+    now: datetime,
+    attempts: int,
+) -> list[TriggerExecution]:
+    """Run every due schedule trigger for the current slot, at most once each."""
+    results: list[TriggerExecution] = []
+    for trigger in await triggers.list_all():
+        if not trigger.enabled or trigger.kind != "schedule":
+            continue
+        every_seconds = trigger.every_seconds
+        if not every_seconds:
+            continue
+        slot = int(now.timestamp() // every_seconds)
+        fire = TriggerFire(
+            tenant=trigger.tenant,
+            trigger_id=trigger.trigger_id,
+            idempotency_key=f"slot-{slot}",
+            run_id=uuid.uuid4().hex,
+            trace_id=uuid.uuid4().hex,
+            status="running",
+            created_at=now,
+        )
+        try:
+            claimed = await fire_store.claim(fire)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "trigger %s/%s slot %s claim failed", trigger.tenant, trigger.trigger_id, slot
+            )
+            continue
+        if claimed.run_id != fire.run_id:
+            continue
+        try:
+            results.append(
+                await execute(
+                    trigger,
+                    trigger.input,
+                    fire=fire,
+                    run_id=fire.run_id,
+                    trace_id=fire.trace_id,
+                    attempts=attempts,
+                )
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "trigger %s/%s slot %s execution failed",
+                trigger.tenant,
+                trigger.trigger_id,
+                slot,
+            )
+    return results
 
 
 def build_triggers_app(
@@ -76,10 +178,228 @@ def build_triggers_app(
     rate_limit: RateLimit | None = None,
     metrics: MetricsRegistry | None = None,
     fire_store: TriggerFireStore | None = None,
+    scheduler: bool = False,
+    schedule_tick: float = 15.0,
+    trigger_attempts: int = 3,
+    clock: Callable[[], datetime] | None = None,
 ) -> FastAPI:
     """Build the trigger service. Only ``/healthz`` is open."""
+    if schedule_tick < 5:
+        raise ValueError("schedule_tick must be at least 5 seconds")
+    if trigger_attempts < 1:
+        raise ValueError("trigger_attempts must be at least 1")
+
     metrics = metrics if metrics is not None else MetricsRegistry()
-    app = FastAPI(title="ADK Trigger Service", docs_url=None, redoc_url=None)
+
+    async def execute(
+        trigger: AgentTrigger,
+        input_text: str,
+        *,
+        fire: TriggerFire | None,
+        run_id: str,
+        trace_id: str,
+        attempts: int,
+    ) -> TriggerExecution:
+        started = time.perf_counter()
+        tenant = trigger.tenant
+        trigger_id = trigger.trigger_id
+
+        async def finish(
+            status: Literal["ok", "error", "denied"], error_code: str | None = None
+        ) -> None:
+            if fire is None or fire_store is None:
+                return
+            try:
+                await fire_store.finish(
+                    fire.tenant,
+                    fire.trigger_id,
+                    fire.idempotency_key,
+                    status=status,
+                    error_code=error_code,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "failed to finish trigger fire %s/%s/%s",
+                    fire.tenant,
+                    fire.trigger_id,
+                    fire.idempotency_key,
+                )
+
+        expected_digest = trigger.digest.removeprefix("sha256:")
+        ref = AgentRef(id=trigger.agent_id, version=trigger.version, digest=expected_digest)
+        principal = Principal(tenant=tenant, subject=f"trigger:{trigger_id}", kind="service")
+
+        async def emit(
+            status: Literal["ok", "error", "denied"],
+            error_code: str | None,
+            run_id: str,
+            trace: str,
+            result_text: str | None = None,
+        ) -> None:
+            if audit is None:
+                return
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=run_id,
+                    trace_id=trace,
+                    tenant=tenant,
+                    principal=principal,
+                    agent_ref=ref,
+                    action="trigger.fire",
+                    target=f"{tenant}/{trigger_id}",
+                    args_hash=hash_text(input_text),
+                    result_hash=hash_text(result_text) if result_text is not None else None,
+                    data_classes=[],
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    egress="none",
+                    status=status,
+                    error_code=error_code,
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+
+        try:
+            published = await registry.get(ref, tenant)
+            if published is None:
+                records = await registry.list(tenant)
+                registered = next(
+                    (
+                        record
+                        for record in records
+                        if record.manifest.id == trigger.agent_id
+                        and record.manifest.version == trigger.version
+                    ),
+                    None,
+                )
+                code = (
+                    "digest_mismatch"
+                    if registered is not None and registered.digest != expected_digest
+                    else "trigger_not_found"
+                )
+                await finish("error", code)
+                await emit("error", code, run_id, trace_id)
+                return TriggerExecution("error", code, run_id, trace_id)
+            if published.digest != expected_digest:
+                await finish("error", "digest_mismatch")
+                await emit("error", "digest_mismatch", run_id, trace_id)
+                return TriggerExecution("error", "digest_mismatch", run_id, trace_id)
+            if lifecycle is not None:
+                state = await lifecycle.get(tenant, trigger.agent_id, trigger.version)
+                if state.status == "retired":
+                    await finish("error", "version_retired")
+                    await emit("error", "version_retired", run_id, trace_id)
+                    return TriggerExecution("error", "version_retired", run_id, trace_id)
+        except Exception as exc:  # noqa: BLE001
+            code = type(exc).__name__
+            logger.exception("trigger %s/%s registry read failed", tenant, trigger_id)
+            await finish("error", code)
+            await emit("error", code, run_id, trace_id)
+            return TriggerExecution("error", code, run_id, trace_id)
+
+        if any(grant.requires_approval for grant in published.manifest.tool_grants):
+            await finish("denied", "approval_required")
+            await emit("denied", "approval_required", run_id, trace_id)
+            return TriggerExecution("denied", "approval_required", run_id, trace_id)
+
+        agent: Any = None
+        for attempt in range(1, attempts + 1):
+            try:
+                if published.artifact is None:
+                    raise ValueError("published agent has no artifact")
+                trust.verify(published.artifact)
+                agent = await loader.load(published.artifact, artifact_store)
+                break
+            except Exception:  # noqa: BLE001
+                if attempt < attempts:
+                    await asyncio.sleep(0.2 * attempt)
+        else:
+            logger.warning(
+                "trigger %s/%s agent load failed after %d attempts", tenant, trigger_id, attempts
+            )
+            await finish("error", "agent_load_failed")
+            await emit("error", "agent_load_failed", run_id, trace_id)
+            return TriggerExecution("error", "agent_load_failed", run_id, trace_id)
+
+        install_declared_guards(
+            agent,
+            audit,
+            overlay=tool_grants,
+            grants=list(published.manifest.tool_grants),
+        )
+
+        invocation = Invocation(
+            run_id=run_id,
+            trace_id=trace_id,
+            principal=principal,
+            agent_ref=ref,
+            input=input_text,
+        )
+        quota_policy = quota_config.tenants.get(tenant) if quota_config is not None else None
+
+        try:
+            service = session_service or InMemorySessionService()
+
+            def default_runner(built: Any) -> Any:
+                from google.adk.runners import Runner
+
+                return Runner(app_name=built.name, agent=built, session_service=service)
+
+            session = await service.create_session(app_name=agent.name, user_id=principal.subject)
+            runner = (runner_factory or default_runner)(agent)
+            runtime = AgentRuntime(runner, audit=audit, metrics=metrics, source="trigger")
+            result = await runtime.run(
+                invocation,
+                user_id=principal.subject,
+                session_id=str(session.id),
+                quota=quota,
+                quota_policy=quota_policy,
+            )
+        except QuotaExceeded:
+            await finish("denied", "quota_exceeded")
+            await emit("denied", "quota_exceeded", run_id, trace_id)
+            return TriggerExecution("denied", "quota_exceeded", run_id, trace_id)
+        except Exception as exc:  # noqa: BLE001
+            code = type(exc).__name__
+            await finish("error", code)
+            await emit("error", code, run_id, trace_id)
+            return TriggerExecution("error", code, run_id, trace_id)
+
+        await finish("ok")
+        await emit("ok", None, run_id, trace_id, result.text)
+        return TriggerExecution("ok", None, run_id, trace_id, result.text)
+
+    async def _schedule_loop() -> None:
+        store = cast("TriggerFireStore", fire_store)
+        while True:
+            try:
+                now = clock() if clock is not None else datetime.now(timezone.utc)
+                await run_schedule_tick(
+                    triggers=triggers,
+                    fire_store=store,
+                    execute=execute,
+                    now=now,
+                    attempts=trigger_attempts,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("trigger schedule tick failed")
+            await asyncio.sleep(schedule_tick)
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        task: asyncio.Task[None] | None = None
+        if scheduler:
+            task = asyncio.create_task(_schedule_loop())
+            application.state.scheduler_task = task
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+
+    app = FastAPI(title="ADK Trigger Service", docs_url=None, redoc_url=None, lifespan=lifespan)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
@@ -87,7 +407,6 @@ def build_triggers_app(
 
     @app.post("/v1/tenants/{tenant}/triggers/{trigger_id}/fire")
     async def fire(request: Request, tenant: str, trigger_id: str) -> JSONResponse:
-        started = time.perf_counter()
         if not _SAFE_NAME.fullmatch(tenant) or not _TRIGGER_ID.fullmatch(trigger_id):
             return _error("trigger_not_found", 404)
 
@@ -128,81 +447,10 @@ def build_triggers_app(
         if input_text is None:
             return _error("invalid_request", 400)
 
-        expected_digest = trigger.digest.removeprefix("sha256:")
-        ref = AgentRef(id=trigger.agent_id, version=trigger.version, digest=expected_digest)
-        published = await registry.get(ref, tenant)
-        if published is None:
-            records = await registry.list(tenant)
-            registered = next(
-                (
-                    record
-                    for record in records
-                    if record.manifest.id == trigger.agent_id
-                    and record.manifest.version == trigger.version
-                ),
-                None,
-            )
-            if registered is not None and registered.digest != expected_digest:
-                return _error("digest_mismatch", 409)
-            return _error("trigger_not_found", 404)
-        if published.digest != expected_digest:
-            return _error("digest_mismatch", 409)
-
-        if lifecycle is not None:
-            state = await lifecycle.get(tenant, trigger.agent_id, trigger.version)
-            if state.status == "retired":
-                return _error("version_retired", 409)
-
-        principal = Principal(tenant=tenant, subject=f"trigger:{trigger_id}", kind="service")
-
-        async def emit(
-            status: Literal["ok", "error", "denied"],
-            error_code: str | None,
-            run_id: str,
-            trace: str,
-            result_text: str | None = None,
-        ) -> None:
-            if audit is None:
-                return
-            await audit.emit(
-                AuditEvent(
-                    event_id=uuid.uuid4().hex,
-                    run_id=run_id,
-                    trace_id=trace,
-                    tenant=tenant,
-                    principal=principal,
-                    agent_ref=ref,
-                    action="trigger.fire",
-                    target=f"{tenant}/{trigger_id}",
-                    args_hash=hash_text(input_text),
-                    result_hash=hash_text(result_text) if result_text is not None else None,
-                    data_classes=[],
-                    latency_ms=int((time.perf_counter() - started) * 1000),
-                    egress="none",
-                    status=status,
-                    error_code=error_code,
-                    timestamp=datetime.now(timezone.utc),
-                )
-            )
-
-        if any(grant.requires_approval for grant in published.manifest.tool_grants):
-            await emit("denied", "approval_required", uuid.uuid4().hex, trace_id)
-            return _error("approval_required", 409)
-
         run_id = uuid.uuid4().hex
-        claimed: TriggerFire | None = None
-
-        async def finish_fire(
-            status: Literal["ok", "error", "denied"], error_code: str | None = None
-        ) -> None:
-            if claimed is None or fire_store is None or idempotency_key is None:
-                return
-            await fire_store.finish(
-                tenant, trigger_id, idempotency_key, status=status, error_code=error_code
-            )
-
+        fire_record: TriggerFire | None = None
         if idempotency_key is not None and fire_store is not None:
-            fire = TriggerFire(
+            candidate = TriggerFire(
                 tenant=tenant,
                 trigger_id=trigger_id,
                 idempotency_key=idempotency_key,
@@ -211,8 +459,8 @@ def build_triggers_app(
                 status="running",
                 created_at=datetime.now(timezone.utc),
             )
-            previous = await fire_store.claim(fire)
-            if previous.run_id != fire.run_id:
+            previous = await fire_store.claim(candidate)
+            if previous.run_id != candidate.run_id:
                 if previous.status == "running":
                     return _error("fire_in_progress", 409)
                 return JSONResponse(
@@ -225,73 +473,17 @@ def build_triggers_app(
                         "error_code": previous.error_code,
                     }
                 )
-            claimed = fire
+            fire_record = candidate
 
-        try:
-            if published.artifact is None:
-                raise ValueError("published agent has no artifact")
-            trust.verify(published.artifact)
-            agent = await loader.load(published.artifact, artifact_store)
-        except Exception:  # noqa: BLE001
-            await finish_fire("error", "agent_load_failed")
-            await emit("error", "agent_load_failed", run_id, trace_id)
-            return _error("agent_load_failed", 502)
-
-        install_declared_guards(
-            agent,
-            audit,
-            overlay=tool_grants,
-            grants=list(published.manifest.tool_grants),
-        )
-
-        invocation = Invocation(
+        execution = await execute(
+            trigger,
+            input_text,
+            fire=fire_record,
             run_id=run_id,
             trace_id=trace_id,
-            principal=principal,
-            agent_ref=ref,
-            input=input_text,
+            attempts=trigger_attempts,
         )
-        quota_policy = quota_config.tenants.get(tenant) if quota_config is not None else None
-
-        try:
-            service = session_service or InMemorySessionService()
-
-            def default_runner(built: Any) -> Any:
-                from google.adk.runners import Runner
-
-                return Runner(app_name=built.name, agent=built, session_service=service)
-
-            session = await service.create_session(app_name=agent.name, user_id=principal.subject)
-            runner = (runner_factory or default_runner)(agent)
-            runtime = AgentRuntime(runner, audit=audit, metrics=metrics, source="trigger")
-            result = await runtime.run(
-                invocation,
-                user_id=principal.subject,
-                session_id=str(session.id),
-                quota=quota,
-                quota_policy=quota_policy,
-            )
-        except QuotaExceeded:
-            await finish_fire("denied", "quota_exceeded")
-            await emit("denied", "quota_exceeded", run_id, trace_id)
-            return _error("quota_exceeded", 429)
-        except Exception as exc:  # noqa: BLE001
-            code = type(exc).__name__
-            await finish_fire("error", code)
-            await emit("error", code, run_id, trace_id)
-            return _error("run_failed", 500)
-
-        await finish_fire("ok")
-        await emit("ok", None, run_id, trace_id, result.text)
-        return JSONResponse(
-            {
-                "run_id": result.run_id,
-                "trace_id": result.trace_id,
-                "status": "ok",
-                "duplicate": False,
-                "text": result.text,
-            }
-        )
+        return _execution_response(execution)
 
     if rate_limit is not None:
         app.add_middleware(
@@ -304,4 +496,4 @@ def build_triggers_app(
     return app
 
 
-__all__ = ["build_triggers_app"]
+__all__ = ["TriggerExecution", "build_triggers_app", "run_schedule_tick"]

@@ -121,3 +121,33 @@ def test_builds_the_service(monkeypatch, tmp_path):
     assert "/v1/tenants/{tenant}/triggers/{trigger_id}/fire" in paths
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 8123
+
+
+def test_schedule_tick_below_five_exits_before_uvicorn(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: pytest.fail("uvicorn must not run"))
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_argv(tmp_path, "--schedule-tick", "4"))
+
+    assert exc.value.code == 1
+    assert "schedule-tick" in capsys.readouterr().err
+
+
+def test_zero_trigger_attempts_exits_before_uvicorn(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: pytest.fail("uvicorn must not run"))
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_argv(tmp_path, "--trigger-attempts", "0"))
+
+    assert exc.value.code == 1
+    assert "trigger-attempts" in capsys.readouterr().err
+
+
+def test_no_scheduler_parses_then_checks_backends(monkeypatch, capsys):
+    monkeypatch.delenv("TRIGGER_DATABASE_URL", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["serve-triggers", "--no-scheduler"])
+
+    assert exc.value.code == 1
+    assert "trigger store" in capsys.readouterr().err.lower()
