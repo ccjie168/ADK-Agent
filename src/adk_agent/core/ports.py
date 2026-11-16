@@ -11,6 +11,7 @@ from typing import Any, Literal, Protocol
 from .approval import ApprovalDecision, ApprovalRequest
 from .artifact import AgentArtifact
 from .audit import AuditEvent
+from .credentials import CredentialBinding
 from .eval import EvalReport
 from .identity import Principal
 from .invocation import Invocation
@@ -91,6 +92,16 @@ class ToolGrantStore(Protocol):
         tool_id: str,
         now: datetime | None = None,
     ) -> bool: ...
+
+
+class CredentialStore(Protocol):
+    async def add(self, binding: CredentialBinding) -> CredentialBinding: ...
+
+    async def get(self, tenant: str, credential_id: str) -> CredentialBinding | None: ...
+
+    async def list(self, tenant: str) -> builtins.list[CredentialBinding]: ...
+
+    async def disable(self, tenant: str, credential_id: str, *, by: str) -> CredentialBinding: ...
 
 
 class EvalReportStore(Protocol):
@@ -195,6 +206,7 @@ __all__ = [
     "AgentRegistry",
     "ApprovalGate",
     "AuditSink",
+    "CredentialStore",
     "EvalReportStore",
     "IdentityProvider",
     "ModelGateway",

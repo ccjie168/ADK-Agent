@@ -7,6 +7,8 @@ from .providers import (
     MappingSecretProvider,
     PrefixedEnvSecretProvider,
     SecretNotFound,
+    TenantScopedSecretProvider,
+    TenantSecretProvider,
     secret_header_provider,
 )
 
@@ -15,5 +17,7 @@ __all__ = [
     "MappingSecretProvider",
     "PrefixedEnvSecretProvider",
     "SecretNotFound",
+    "TenantScopedSecretProvider",
+    "TenantSecretProvider",
     "secret_header_provider",
 ]

@@ -96,7 +96,7 @@
 `serve-tool-gateway` 可以把已注册的连接器暴露为工具。
 
 - `--connectors-dir DIR` 或 `$CONNECTOR_URL` 选择连接器存储，二选一；都不给时只加载 `--tools`。
-- `--connector-tenant TENANT` 决定加载哪些连接器（全局 + 该租户），默认 `local`。
+- `--connector-tenant TENANT` 决定加载哪些连接器（全局 + 该租户），默认 `local`。两段租户引用在取用时按该租户校验，不符按 `secret_unavailable` 拒绝；单段全局引用不受影响。
 - 每个启用的连接器生成一个工具，工具 id 是 `connector_id`，参数是 `path`、`method`、`query`、`json_body`。
 - 出站只允许 `methods` 与 `path_prefixes` 覆盖的请求，host/scheme 固定，禁止重定向；超时与响应大小按连接器配置。
 - 凭据用 `secret://a/b` 引用，映射到环境变量 `ADK_SECRET_A_B`；缺失时调用拒绝，错误码 `secret_unavailable`。
@@ -166,9 +166,21 @@
 - `--connectors-dir DIR` 用文件存储；`--registry-url URL` 用控制面服务。二选一，必须提供一个。
 - `connectors list --tenant TENANT` 输出 JSON 数组，含全局与租户连接器。
 - `connectors register` 接受 `--id`、`--kind`（http/openapi/mcp）、`--base-url`、`--auth-ref`、`--methods`（逗号分隔）、`--path-prefixes`（逗号分隔）、`--data-classes`（逗号分隔）、`--timeout-seconds`、`--max-response-bytes`、可选 `--tenant`。输出已存记录的 JSON；同 id 不同定义退出 1。
+- 同时给了 `--credentials-dir` 或 `--credential-db` 时，两段租户引用必须有同租户的启用绑定，否则退出 1；全局连接器不得使用两段租户引用。
 - `connectors disable --id ID` 输出停用后的 JSON。未知 id 退出 1。
 - `connectors check --id ID` 输出 `ConnectorHealth` JSON，从 CLI 进程探测第一个路径前缀，不带凭据、不跟随重定向、超时不超过 5 秒。未知 id 退出 1；探测失败也输出结果并退出 0，因为结果本身就是检查结论。
 - 成功写 `connector.register` 或 `connector.disable` 审计；控制面模式下写端要求 admin。
+
+## `adk-agent credentials list|register|disable`
+
+管理租户凭据引用（ADR-0022 决定 5）。记录只含元数据，不存密钥值。
+
+- 后端二选一：`--credentials-dir DIR`（文件）或 `--credential-db URL`（Postgres）。都未显式给出时读 `CREDENTIAL_DATABASE_URL`。显式文件与数据库同时给出，或显式参数与环境变量冲突，退出 2。
+- `credentials list --tenant TENANT` 输出 JSON 数组。
+- `credentials register` 接受 `--tenant`、`--id`、`--secret-ref`、可选 `--description`。引用的租户段必须等于 `--tenant`，否则退出 1。重复相同内容幂等；不同内容退出 1。
+- `credentials disable --tenant TENANT --id ID` 输出停用后的 JSON。未知 id 退出 1，重复停用幂等。
+- 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
+- CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 
 ## `adk-agent peers list|register|disable|grant|revoke`
 

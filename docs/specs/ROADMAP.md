@@ -211,6 +211,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-118 审批历史：文件与 Postgres 后端列出已决、已过期与已归档审批，控制台 History 区支持状态过滤。已完成。
 - SLICE-119 运行详情下钻：trace 节点带审计字段，瀑布行可点击与键盘选中，Runs 与 Plans 显示 span 详情。已完成。
 - SLICE-120 日志注入过滤：记录工厂集中转义 CR 与 LF，控制台入口安装，收敛 CodeQL 的 29 条 log-injection。已完成。
+- SLICE-121 租户凭据引用绑定：绑定只存元数据，引用按租户映射到环境变量，控制台与 CLI 管理，连接器登记校验启用绑定。已完成。
 
 ## 完成定义
 

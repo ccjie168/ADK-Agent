@@ -16,6 +16,15 @@ from .connectors import (
     ConnectorStoreUnavailable,
     HttpMethod,
 )
+from .credentials import (
+    CredentialBinding,
+    CredentialConflict,
+    CredentialNotFound,
+    CredentialStoreError,
+    CredentialStoreUnavailable,
+    credential_env_name,
+    parse_credential_ref,
+)
 from .eval import EvalCase, EvalCaseResult, EvalReport, EvalSuiteSpec
 from .gateway import ModelGatewayRequest
 from .identity import Principal
@@ -62,6 +71,7 @@ from .ports import (
     ArtifactStore,
     AuditSink,
     ConnectorStore,
+    CredentialStore,
     EvalReportStore,
     IdentityProvider,
     ModelGateway,
@@ -128,6 +138,12 @@ __all__ = [
     "AuditRecord",
     "AuditSink",
     "CanaryPolicy",
+    "CredentialBinding",
+    "CredentialConflict",
+    "CredentialNotFound",
+    "CredentialStore",
+    "CredentialStoreError",
+    "CredentialStoreUnavailable",
     "DataClass",
     "EvalCase",
     "EvalCaseResult",
@@ -198,9 +214,11 @@ __all__ = [
     "ToolGrantStore",
     "ToolRequest",
     "ToolResponse",
+    "credential_env_name",
     "effective_status",
     "is_active",
     "manifest_digest",
+    "parse_credential_ref",
     "plan_digest",
     "plan_ref",
     "transition_lifecycle",
