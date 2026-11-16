@@ -210,6 +210,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-117 角色视图与能力清单：`GET /api/me` 返回服务端能力清单，控制台按能力显示导航、面板与操作按钮，无权深链回退，ADR-0022 第 1 条。已完成。
 - SLICE-118 审批历史：文件与 Postgres 后端列出已决、已过期与已归档审批，控制台 History 区支持状态过滤。已完成。
 - SLICE-119 运行详情下钻：trace 节点带审计字段，瀑布行可点击与键盘选中，Runs 与 Plans 显示 span 详情。已完成。
+- SLICE-120 日志注入过滤：记录工厂集中转义 CR 与 LF，控制台入口安装，收敛 CodeQL 的 29 条 log-injection。已完成。
 
 ## 完成定义
 

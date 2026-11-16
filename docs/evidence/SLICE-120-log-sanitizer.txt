@@ -1,0 +1,38 @@
+SLICE-120 日志注入过滤
+
+环境
+- Windows 11 Pro, Python 3.14 venv, pytest caplog
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_log_sanitizer.py -q
+    1 error
+  ModuleNotFoundError: No module named 'adk_agent.logsafe'
+
+二、实现后绿
+  $ ./.venv/Scripts/python.exe -m pytest tests/test_log_sanitizer.py tests/test_console.py -q
+    11 passed
+
+三、行为
+- 消息文本中的换行被转义成字面 \n。
+- %s 参数中的 \r\n 被转义成字面 \r\n。
+- dict 参数中的换行被转义。
+- 普通消息与 %d 数字参数保持不变。
+- 重复调用 install_log_sanitizer 只转义一次，不会二次转义。
+- build_console_app 入口即安装，控制台启动后所有 logger 生效。
+
+四、CodeQL
+- ADR-0022 审核中的 29 条 py/log-injection 已按 2027-01-31 接受。
+- 本切片在 logging 记录工厂层集中转义，覆盖所有 logger，不依赖逐个调用点。
+- PR #28 触发 CodeQL（run 43791887527，analyze 58s pass）。
+- 复核后开放告警 0；29 条 py/log-injection 仍为 dismissed。
+
+五、门禁
+python scripts/check.py --fast
+  1258 passed, 74 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1258 passed, 74 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS
