@@ -182,6 +182,16 @@
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 
+## `adk-agent triggers list|register|disable`
+
+管理定时与 webhook 触发定义（ADR-0022 决定 6）。记录只引用 pinned 版本，webhook 令牌只存哈希。形状见 `triggers.md`。
+
+- 后端：`--dir DIR` 或 `--db URL`，未显式给出时读 `TRIGGER_DATABASE_URL`。显式冲突退出 2。
+- `list --tenant TENANT` 输出 JSON 数组，按触发 id 排序。
+- `register` 接受 `--tenant`、`--id`、`--agent-id`、`--version`、`--digest`，以及二选一的 `--every-seconds N` 或 `--webhook-token-env VAR`，可选 `--input TEXT`。webhook 令牌从命名环境变量读取，缺失或短于 16 字符退出 1。输出不含明文令牌。
+- `disable --tenant TENANT --id ID` 输出停用后的 JSON。未知 id 退出 1，重复停用幂等。
+- 失败 stderr 输出原因并退出 1。
+
 ## `adk-agent templates`
 
 列出组合模板与参数，输出 `[TemplateInfo]` JSON。形状见 `compose.md`。
