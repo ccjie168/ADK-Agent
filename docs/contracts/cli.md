@@ -182,6 +182,16 @@
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 
+## `adk-agent serve-triggers`
+
+启动 webhook 触发执行服务。端点、幂等与错误码见 `trigger_service.md`。
+
+- 触发存储：`--triggers-dir DIR` 或 `--trigger-db URL`，未给时读 `TRIGGER_DATABASE_URL`。
+- 注册表与工件：`--registry DIR` 或 `--registry-url URL`；`--artifact-dir DIR` 或 `ARTIFACT_URL`；`--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`。
+- 授权与审计：`--tool-grants-dir DIR` 或 `GRANT_URL`；`--audit-file`、`--audit-url` 或 `--audit-db`。
+- 会话、配额与限流：`--session-db URL`；`--quota-config FILE`；`--rate-limit N --rate-limit-window SECONDS`。
+- 监听：`--host`、`--port`。缺少必要后端时退出 1。
+
 ## `adk-agent triggers list|register|disable`
 
 管理定时与 webhook 触发定义（ADR-0022 决定 6）。记录只引用 pinned 版本，webhook 令牌只存哈希。形状见 `triggers.md`。

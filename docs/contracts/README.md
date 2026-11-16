@@ -31,6 +31,7 @@
 - `connector_requests.md`：连接器自助申请与管理员审批。
 - `compose.md`：声明式模板组合，参数规则与 CLI。
 - `triggers.md`：定时与 webhook 触发定义，令牌只存哈希。
+- `trigger_service.md`：`serve-triggers` 的 webhook 执行端点、幂等与错误码。
 - `tracing.md`：入站 trace 头和出站 `X-Trace-Id` 的传播规则。
 - `metrics.md`：各服务的 `/metrics` 端点、指标名和聚合边界。
 
