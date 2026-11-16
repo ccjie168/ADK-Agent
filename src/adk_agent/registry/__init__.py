@@ -35,7 +35,7 @@ from .lifecycle import FileAgentLifecycleStore
 from .lifecycle_postgres import PostgresAgentLifecycleStore
 from .loader import ArtifactLoadError, InProcessArtifactLoader, load_agent
 from .manifest import load_manifest, published_from
-from .packaging import PackagingError, pack_agent, read_artifact_zip
+from .packaging import PackagingError, pack_agent, pack_files, read_artifact_zip
 from .peer_grants import FilePeerGrantStore
 from .peer_grants_postgres import PostgresPeerGrantStore
 from .peers import FilePeerStore
@@ -112,6 +112,7 @@ __all__ = [
     "load_private_key",
     "load_registry_agents",
     "pack_agent",
+    "pack_files",
     "parse_agent_ref",
     "published_from",
     "read_artifact_zip",

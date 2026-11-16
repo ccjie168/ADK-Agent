@@ -48,25 +48,25 @@ manifest 固定 `exposure="none"` 与 `model_policy.provider_allowlist=["litellm
 
 ## 完成判据（可执行）
 
-- [ ] 未知模板与未知参数被拒绝 -> `tests/compose/test_declarative.py::test_unknown_template_and_parameters_are_rejected`
-- [ ] 带连字符或其他非法字符的 name 被拒绝 -> `::test_agent_name_must_be_adk_safe`
-- [ ] 未声明的工具被拒绝 -> `::test_unknown_tool_is_rejected`
-- [ ] 同参数生成同 digest，改 instruction 改变 digest -> `::test_composition_is_deterministic`
-- [ ] instruction 中的引号与换行不能逃逸 -> `::test_instruction_cannot_escape_the_template`
-- [ ] 组合结果可验签、可加载并带所选工具 -> `tests/compose/test_compose_publish.py::test_composed_agent_loads`
-- [ ] 发布走评测门禁与注册表 -> `::test_compose_publishes_a_plain_version`
-- [ ] CLI compose 与 templates -> `tests/test_cli_compose.py::test_cli_compose_and_templates`
-- [ ] CLI 缺 key 或非法模板退出 1 -> `::test_cli_compose_errors`
-- [ ] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
+- [x] 未知模板与未知参数被拒绝 -> `tests/compose/test_declarative.py::test_unknown_template_and_parameters_are_rejected`
+- [x] 带连字符或其他非法字符的 name 被拒绝 -> `::test_agent_name_must_be_adk_safe`
+- [x] 未声明的工具被拒绝 -> `::test_unknown_tool_is_rejected`
+- [x] 同参数生成同 digest，改 instruction 改变 digest -> `::test_composition_is_deterministic`
+- [x] instruction 中的引号与换行不能逃逸 -> `::test_instruction_cannot_escape_the_template`
+- [x] 组合结果可验签、可加载并带所选工具 -> `tests/compose/test_compose_publish.py::test_composed_agent_loads`
+- [x] 发布走评测门禁与注册表 -> `::test_compose_publishes_a_plain_version`
+- [x] CLI compose 与 templates -> `tests/test_cli_compose.py::test_cli_compose_and_templates`
+- [x] CLI 缺 key 或非法模板退出 1 -> `::test_cli_compose_errors`
+- [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：模板接受带连字符的 name，加载时失败 -> 期望 `::test_agent_name_must_be_adk_safe` 失败
-- [ ] 反例 2：instruction 直接插值，含三引号时破坏源码 -> 期望 `::test_instruction_cannot_escape_the_template` 失败
-- [ ] 反例 3：字节不确定，重复组合 digest 不同 -> 期望 `::test_composition_is_deterministic` 失败
-- [ ] 反例 4：compose 绕过签名或注册表直接写文件 -> 期望 `::test_compose_publishes_a_plain_version` 失败
+- [x] 反例 1：模板接受带连字符的 name，加载时失败 -> 期望 `::test_agent_name_must_be_adk_safe` 失败
+- [x] 反例 2：instruction 直接插值，含三引号时破坏源码 -> 期望 `::test_instruction_cannot_escape_the_template` 失败
+- [x] 反例 3：字节不确定，重复组合 digest 不同 -> 期望 `::test_composition_is_deterministic` 失败
+- [x] 反例 4：compose 绕过签名或注册表直接写文件 -> 期望 `::test_compose_publishes_a_plain_version` 失败
 
-红态记录: 待补，实现前运行。
+红态记录: 实现前 `tests/compose` 报 2 个收集错误（缺少 `adk_agent.compose`），CLI 测试报 `invalid choice: 'compose'`。
 
 ## 5 问威胁建模（10 分钟）
 

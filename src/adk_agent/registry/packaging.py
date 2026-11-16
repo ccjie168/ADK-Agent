@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import io
 import zipfile
-from pathlib import Path
+from collections.abc import Mapping
+from pathlib import Path, PurePosixPath
 
 from ..core import MAX_ARTIFACT_BYTES, AgentManifest
 
@@ -25,6 +26,30 @@ def _read_manifest(source: Path) -> AgentManifest:
         raise PackagingError("artifact source has an invalid manifest.json") from exc
 
 
+def pack_files(files: Mapping[str, bytes]) -> bytes:
+    """Pack an explicit file mapping into a byte-identical zip."""
+    names = list(files)
+    if "manifest.json" not in names:
+        raise PackagingError("artifact has no manifest.json")
+    if len(names) < 2:
+        raise PackagingError("artifact has no entrypoint")
+    for name in names:
+        path = PurePosixPath(name)
+        if not name or "\\" in name or path.is_absolute() or ".." in path.parts:
+            raise PackagingError("artifact contains an unsafe path")
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as archive:
+        for name in sorted(names):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_STORED
+            info.external_attr = 0o644 << 16
+            archive.writestr(info, files[name])
+    data = buffer.getvalue()
+    if len(data) > MAX_ARTIFACT_BYTES:
+        raise PackagingError("artifact exceeds the 8 MiB limit")
+    return data
+
+
 def pack_agent(source: str | Path, *, entrypoint: str = "agent.py") -> bytes:
     """Pack a project directory into a byte-identical zip."""
     root = Path(source)
@@ -36,17 +61,7 @@ def pack_agent(source: str | Path, *, entrypoint: str = "agent.py") -> bytes:
     names = {"manifest.json", entrypoint}
     names.update(name for name in _OPTIONAL_FILES if (root / name).is_file())
     files = {name: (root / name).read_bytes() for name in sorted(names)}
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as archive:
-        for name in sorted(files):
-            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_STORED
-            info.external_attr = 0o644 << 16
-            archive.writestr(info, files[name])
-    data = buffer.getvalue()
-    if len(data) > MAX_ARTIFACT_BYTES:
-        raise PackagingError("artifact exceeds the 8 MiB limit")
-    return data
+    return pack_files(files)
 
 
 def read_artifact_zip(path: str | Path) -> tuple[bytes, AgentManifest]:
@@ -66,4 +81,4 @@ def read_artifact_zip(path: str | Path) -> tuple[bytes, AgentManifest]:
     return data, manifest
 
 
-__all__ = ["PackagingError", "pack_agent", "read_artifact_zip"]
+__all__ = ["PackagingError", "pack_agent", "pack_files", "read_artifact_zip"]

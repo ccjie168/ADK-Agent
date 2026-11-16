@@ -1556,6 +1556,34 @@ def main(argv: list[str] | None = None) -> None:
         help="content-addressed directory for artifact bytes",
     )
 
+    sub.add_parser("templates", help="list composition templates")
+
+    p_compose = sub.add_parser("compose", help="compose and publish an agent from a template")
+    p_compose.add_argument("--template", required=True, help="template id (see `templates`)")
+    p_compose.add_argument("--tenant", required=True, help="tenant the agent belongs to")
+    p_compose.add_argument("--id", dest="agent_id", required=True, help="agent id")
+    p_compose.add_argument("--version", required=True, help="agent version")
+    p_compose.add_argument("--instruction", required=True, help="system instruction")
+    p_compose.add_argument("--owner", default=None, help="owner label (defaults to the tenant)")
+    p_compose.add_argument("--description", default=None, help="agent description")
+    p_compose.add_argument("--tools", default="", help="comma-separated tools (subset of ping)")
+    p_compose.add_argument(
+        "--data-classes", dest="data_classes", default="", help="comma-separated data classes"
+    )
+    p_compose.add_argument("--key", default=None, help="PEM Ed25519 private key")
+    p_compose.add_argument("--key-id", dest="key_id", default=None, help="key id for the signature")
+    p_compose.add_argument(
+        "--registry",
+        default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
+        help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
+    )
+    _add_registry_client_args(p_compose)
+    p_compose.add_argument(
+        "--artifact-dir",
+        default=None,
+        help="content-addressed directory for artifact bytes",
+    )
+
     p_eval = sub.add_parser("eval", help="run an eval suite against agents")
     p_eval.add_argument("suite", help="path to an EvalSuiteSpec JSON file")
     p_eval.add_argument(
@@ -2833,6 +2861,99 @@ def main(argv: list[str] | None = None) -> None:
             print(json.dumps([record.model_dump(mode="json") for record in result]))
         else:
             print(json.dumps(result.model_dump(mode="json")))
+    elif args.cmd == "templates":
+        from .compose import list_templates
+
+        print(json.dumps([template.model_dump(mode="json") for template in list_templates()]))
+    elif args.cmd == "compose":
+        from .compose import ComposeError, compose_and_publish
+        from .eval import EvalGateFailed
+        from .registry import (
+            FileArtifactStore,
+            PackagingError,
+            PublishUnavailable,
+            RegistryError,
+            load_private_key,
+        )
+
+        if not args.key or not args.key_id:
+            print("compose failed: --key and --key-id are required", file=sys.stderr)
+            raise SystemExit(1)
+
+        registry = _agent_registry(args)
+        compose_store: Any = None
+        if args.registry_url:
+            if args.artifact_dir or os.environ.get("ARTIFACT_URL"):
+                print(
+                    "compose failed: --artifact-dir and ARTIFACT_URL cannot be used with "
+                    "--registry-url",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+        else:
+            url = os.environ.get("ARTIFACT_URL")
+            if bool(args.artifact_dir) == bool(url):
+                print(
+                    "compose failed: set exactly one of --artifact-dir or ARTIFACT_URL",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            if url:
+                from .registry.artifacts_postgres import PostgresArtifactStore
+
+                compose_store = PostgresArtifactStore(url)
+            else:
+                compose_store = FileArtifactStore(args.artifact_dir)
+
+        def _split(value: str) -> list[str]:
+            return [item.strip() for item in value.split(",") if item.strip()]
+
+        async def run_compose() -> Any:
+            try:
+                return await compose_and_publish(
+                    template_id=args.template,
+                    name=args.agent_id,
+                    version=args.version,
+                    tenant=args.tenant,
+                    owner=args.owner,
+                    description=args.description,
+                    instruction=args.instruction,
+                    tools=_split(args.tools),
+                    data_classes=_split(args.data_classes),
+                    registry=registry,
+                    artifact_store=compose_store,
+                    private_key=load_private_key(args.key),
+                    key_id=args.key_id,
+                )
+            finally:
+                if compose_store is not None:
+                    close = getattr(compose_store, "aclose", None)
+                    if close is not None:
+                        await close()
+                close = getattr(registry, "aclose", None)
+                if close is not None:
+                    await close()
+
+        try:
+            stored = asyncio.run(run_compose())
+        except (
+            ComposeError,
+            PublishUnavailable,
+            PackagingError,
+            EvalGateFailed,
+            RegistryError,
+            ValueError,
+            OSError,
+        ) as exc:
+            print(f"compose failed: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+
+        print(
+            f"composed {stored.manifest.tenant}/{stored.manifest.id}"
+            f"@{stored.manifest.version} sha256:{stored.digest}"
+        )
+        if stored.artifact is not None:
+            print(f"artifact {stored.artifact.digest}")
     elif args.cmd == "publish":
         from .core import EvalReport
         from .eval import enforce_eval_gate
