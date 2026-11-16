@@ -51,7 +51,12 @@ SLICE-125 webhook 触发执行服务
 - 需审批工具直接拒绝，不做触发级审批工作流。
 - Postgres live 路径未在本机连接，按既有 skip 模式覆盖。
 
-六、门禁
+六、CodeQL
+- PR #33 新增 6 条 py/path-injection：4 条在 registry/trigger_runs.py，2 条在 registry/lifecycle.py。
+- 路径段在拼接前都做安全名全匹配，fire 的幂等键还额外做 SHA-256。用户确认按误报关闭。
+- 复核后开放告警 0。下一刀用共享 safe_join 加固所有文件存储。
+
+七、门禁
 python scripts/check.py --fast
   1334 passed, 79 skipped
   [PASS] format / lint / types / layering / specs / test / secrets

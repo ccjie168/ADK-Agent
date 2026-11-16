@@ -263,7 +263,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 2. 密钥扫描不做历史扫描（gitleaks/trufflehog 延后）。GitHub 自定义 pattern 与 validity checks 需要付费套餐，当前关闭。
 3. legacy 无前缀 `user_id` 与 plain `app_name` 在 `--session-rls` 开启后不可见，不自动迁移；需要迁移时单独评审。
 4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义与 webhook 执行也已收口（SLICE-113 到 125）。下一步做 SLICE-126 调度循环与重试，再往后是 agent 级沙箱与凭据密钥后端，编号进入时分配。SLICE-110 到 SLICE-125 已完成。
-5. 租户凭据只存引用，不存值。密钥后端、KMS、轮换与控制面 `/v1/credentials` 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行只有 webhook 路径，调度循环、多副本 slot 与重试留给 SLICE-126。这些按 ADR-0022 的顺序另行切片。
+5. 租户凭据只存引用，不存值。密钥后端、KMS、轮换与控制面 `/v1/credentials` 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行只有 webhook 路径，调度循环、多副本 slot 与重试留给 SLICE-126；同一刀把共享 safe_join 加固落到所有文件存储。这些按 ADR-0022 的顺序另行切片。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
