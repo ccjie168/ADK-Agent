@@ -1,0 +1,52 @@
+SLICE-123 声明式组合器
+
+环境
+- Windows 11 Pro, Python 3.14 venv, pytest
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/compose tests/test_cli_compose.py -q
+    2 errors during collection
+  ModuleNotFoundError: No module named 'adk_agent.compose'
+  tests/test_cli_compose.py::test_cli_compose_and_templates -> SystemExit: 2
+  tests/test_cli_compose.py::test_cli_compose_errors -> assert 2 == 1
+  stderr: invalid choice: 'compose'
+
+二、实现后绿
+  $ ... tests/compose tests/test_cli_compose.py -q
+    14 passed
+  $ ... 加上 packaging、artifact loader、publish 回归
+    44 passed
+
+三、行为
+- 模板 single-llm 的参数固定为 name、version、tenant、owner、description、instruction、tools、data_classes。
+- name 只允许 ADK 安全的字母、数字与下划线；带连字符或空格时拒绝。
+- tools 只能是 ping，重复或未声明的工具拒绝。
+- 用户参数只用 repr 嵌入生成代码。三引号、换行与反斜杠不能逃逸，加载后的 instruction 与输入逐字一致。
+- manifest 固定 exposure=none、provider_allowlist=["litellm"]，选中 ping 时写 ToolGrant 与 data_scopes。
+- 同参数同模板得到同一工件 digest；改 instruction 即改变 digest。
+- 发布走 enforce_eval_gate、published_from、注册表 publish 与工件存储；HTTP 注册表用 upload_artifact。
+- 重复发布相同内容幂等；同版本不同工件抛 RegistryConflict。
+- 组合结果按 pinned 引用验签加载成 LlmAgent，名字与 instruction 保真，所选工具存在。
+- CLI 提供 templates 与 compose，成功输出 composed 与 artifact 两行。
+
+四、测试环境说明
+- 本机 venv 没有 google-adk 的 extensions extra，也没有 litellm。生成的 agent 使用 build_model()，测试在加载时设 ADK_AGENT_MODEL=gemini:gemini-2.5-pro。
+- 运行镜像包含 litellm，默认通道与 manifest 的 provider_allowlist 一致。换模型通道时需要扩展模板参数与 allowlist，本切片不做。
+
+五、边界
+- 没有控制台发布表单与 /api/compose；平台私钥不进入控制台进程。
+- 没有密钥托管、轮换与审计。
+- 只有一个模板，不做模板目录、热加载或用户自定义模板。
+- 模板没有 eval_suite，评测门禁按既有规则放行。
+- 不生成评测套件，不从组合结果直接启动或热替换。
+
+六、门禁
+python scripts/check.py --fast
+  1306 passed, 77 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1306 passed, 77 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

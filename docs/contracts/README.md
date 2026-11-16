@@ -29,6 +29,7 @@
 - `approval_decision.schema.json`：`ApprovalDecision`，审批人的决定。
 - `credentials.md`：租户凭据引用，只存元数据，引用映射到环境变量。
 - `connector_requests.md`：连接器自助申请与管理员审批。
+- `compose.md`：声明式模板组合，参数规则与 CLI。
 - `tracing.md`：入站 trace 头和出站 `X-Trace-Id` 的传播规则。
 - `metrics.md`：各服务的 `/metrics` 端点、指标名和聚合边界。
 

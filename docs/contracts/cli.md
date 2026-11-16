@@ -182,6 +182,20 @@
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 
+## `adk-agent templates`
+
+列出组合模板与参数，输出 `[TemplateInfo]` JSON。形状见 `compose.md`。
+
+## `adk-agent compose`
+
+从受控模板生成并发布签名工件。参数与错误语义见 `compose.md`。
+
+`adk-agent compose --template single-llm --tenant TENANT --id ID --version VERSION --instruction TEXT [--owner OWNER] [--description TEXT] [--tools LIST] [--data-classes LIST] --key FILE --key-id ID [--registry DIR] [--registry-url URL] [--artifact-dir DIR | ARTIFACT_URL]`
+
+- 成功输出 `composed tenant/id@version sha256:<digest>` 与 `artifact sha256:<hex>`，退出 0。
+- 未知模板、非法参数、非法 name、未声明工具、缺 key、冲突或存储不可达退出 1。
+- `--registry-url` 时字节由注册表上传；文件模式要求 `--artifact-dir` 或 `ARTIFACT_URL`，二选一。
+
 ## `adk-agent connector-requests list|request|decide`
 
 租户提交连接器登记申请，管理员批准或拒绝（ADR-0022 决定 5）。批准时才写连接器存储。
