@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from ..core import PeerGrant, PeerStoreError
+from .paths import safe_join
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -20,11 +21,9 @@ class FilePeerGrantStore:
         self.root = Path(root)
 
     def _path(self, peer_id: str, agent_id: str) -> Path:
-        if not _SAFE_NAME.fullmatch(peer_id):
-            raise ValueError(f"unsafe peer id {peer_id!r}")
-        if not _SAFE_NAME.fullmatch(agent_id):
-            raise ValueError(f"unsafe agent id {agent_id!r}")
-        return self.root / "grants" / peer_id / f"{agent_id}.json"
+        return safe_join(
+            self.root, "grants", peer_id, f"{agent_id}.json", pattern=_SAFE_NAME.pattern
+        )
 
     async def get(self, peer_id: str, agent_id: str) -> PeerGrant | None:
         path = self._path(peer_id, agent_id)
@@ -33,7 +32,7 @@ class FilePeerGrantStore:
         return self._load(path)
 
     async def list(self) -> list[PeerGrant]:
-        grants_dir = self.root / "grants"
+        grants_dir = safe_join(self.root, "grants")
         if not grants_dir.is_dir():
             return []
         records = [self._load(path) for path in grants_dir.glob("*/*.json")]

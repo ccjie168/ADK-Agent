@@ -1,0 +1,42 @@
+SLICE-126 文件存储路径加固
+
+环境
+- Windows 11 Pro, Python 3.14 venv, pytest
+
+一、反例红（实现前）
+  $ ./.venv/Scripts/python.exe -m pytest tests/registry/test_paths.py -q
+    1 error during collection
+  ImportError: cannot import name 'UnsafePath' from 'adk_agent.registry'
+
+二、实现后绿
+  $ ... tests/registry/test_paths.py -q
+    13 passed, 1 skipped
+  跳过的是符号链接用例，Windows 当前权限不允许普通用户创建符号链接。
+  $ ... 受影响的存储与审批套件
+    158 passed, 11 skipped
+  $ ... 连接器申请相关套件
+    28 passed, 1 skipped
+
+三、行为
+- 新增 registry.paths.safe_join：每个路径段先全匹配白名单正则，再对根与目标做 resolve，目标必须是根的子路径。
+- UnsafePath 继承 ValueError，现有调用方的异常语义不变。
+- 迁移所有名字拼路径的文件存储：registry 的 file、credentials、connectors、connector_requests、triggers、trigger_runs、lifecycle、tool_grants、peers、peer_grants、remote_agents、reports、artifacts，以及 approvals。
+- 每个存储保留自己的字符集与长度上限；trigger_runs 的幂等键仍先做 SHA-256；artifacts 的 sha256 目录与 hex 文件名分开校验。
+- 存储布局与文件名不变，既有测试全部保持通过。
+- 符号链接逃逸在解析后被包含性检查拒绝；没有可用符号链接权限时该用例跳过。
+
+四、边界
+- 只覆盖文件存储；Postgres 后端的路径语义不变。
+- 不引入外部路径库或新依赖。
+- 调度循环与重试留给 SLICE-127。
+
+五、门禁
+python scripts/check.py --fast
+  1347 passed, 80 skipped
+  [PASS] format / lint / types / layering / specs / test / secrets
+  ALL PASS
+
+python scripts/check.py --full
+  1347 passed, 80 skipped
+  [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+  ALL PASS

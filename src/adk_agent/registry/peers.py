@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 from ..core import PeerIdentity, PeerStoreError
+from .paths import safe_join
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
@@ -20,12 +21,10 @@ class FilePeerStore:
         self.root = Path(root)
 
     def _dir(self) -> Path:
-        return self.root / "peers"
+        return safe_join(self.root, "peers")
 
     def _path(self, peer_id: str) -> Path:
-        if not _SAFE_NAME.fullmatch(peer_id):
-            raise ValueError(f"unsafe peer id {peer_id!r}")
-        return self._dir() / f"{peer_id}.json"
+        return safe_join(self._dir(), f"{peer_id}.json", pattern=_SAFE_NAME.pattern)
 
     async def get(self, peer_id: str) -> PeerIdentity | None:
         path = self._path(peer_id)

@@ -27,7 +27,7 @@
 
 `src/adk_agent/registry/` 下所有用名字拼路径的文件存储，以及 `src/adk_agent/approvals.py`：
 
-- `file.py`、`credentials.py`、`connectors.py`、`triggers.py`、`trigger_runs.py`、`lifecycle.py`、`tool_grants.py`、`peers.py`、`peer_grants.py`、`remote_agents.py`、`reports.py`、`artifacts.py`、`approvals.py`。
+- `file.py`、`credentials.py`、`connectors.py`、`connector_requests.py`、`triggers.py`、`trigger_runs.py`、`lifecycle.py`、`tool_grants.py`、`peers.py`、`peer_grants.py`、`remote_agents.py`、`reports.py`、`artifacts.py`、`approvals.py`。
 - `artifacts.py` 的 digest 路径也走同一 helper，传入 digest 的 hex 部分。
 - 不改布局；迁移后现有文件名保持不变。
 
@@ -45,20 +45,20 @@
 
 ## 完成判据（可执行）
 
-- [ ] 合法段拼出原路径 -> `tests/registry/test_paths.py::test_valid_parts_join`
-- [ ] `..`、绝对路径、反斜杠、冒号、前导点、空段、超长段被拒 -> `::test_unsafe_parts_are_rejected`
-- [ ] 指向根目录外的符号链接被拒 -> `::test_symlink_escape_is_rejected`
-- [ ] 不存在的嵌套路径正常解析 -> `::test_missing_paths_resolve_under_root`
-- [ ] 迁移后现有存储测试全绿，文件名不变 -> 既有 registry、approvals 测试
-- [ ] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
+- [x] 合法段拼出原路径 -> `tests/registry/test_paths.py::test_valid_parts_join`
+- [x] `..`、绝对路径、反斜杠、冒号、前导点、空段、超长段被拒 -> `::test_unsafe_parts_are_rejected`
+- [x] 指向根目录外的符号链接被拒 -> `::test_symlink_escape_is_rejected`（无符号链接权限时跳过）
+- [x] 不存在的嵌套路径正常解析 -> `::test_missing_paths_resolve_under_root`
+- [x] 迁移后现有存储测试全绿，文件名不变 -> 既有 registry、approvals 测试
+- [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：`safe_join` 接受 `../escape` -> 期望 `::test_unsafe_parts_are_rejected` 失败
-- [ ] 反例 2：根目录内的符号链接指向外部仍放行 -> 期望 `::test_symlink_escape_is_rejected` 失败
-- [ ] 反例 3：迁移后文件名变化或旧测试失败 -> 期望既有存储测试失败
+- [x] 反例 1：`safe_join` 接受 `../escape` -> 期望 `::test_unsafe_parts_are_rejected` 失败
+- [x] 反例 2：根目录内的符号链接指向外部仍放行 -> 期望 `::test_symlink_escape_is_rejected` 失败
+- [x] 反例 3：迁移后文件名变化或旧测试失败 -> 期望既有存储测试失败
 
-红态记录: 待补，实现前运行。
+红态记录: 实现前 `tests/registry/test_paths.py` 报 `cannot import name 'UnsafePath'`。
 
 ## 5 问威胁建模（10 分钟）
 

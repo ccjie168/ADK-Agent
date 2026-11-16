@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import tempfile
 import threading
 from datetime import datetime, timezone
@@ -19,8 +18,9 @@ from ..core import (
     ToolGrantRequest,
     effective_status,
 )
+from .paths import safe_join
 
-_REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_REQUEST_FILE = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.json$"
 
 
 def _now(now: datetime | None) -> datetime:
@@ -35,9 +35,7 @@ class FileToolGrantStore:
         self._lock = threading.Lock()
 
     def _path(self, request_id: str) -> Path:
-        if not _REQUEST_ID.fullmatch(request_id):
-            raise ValueError(f"unsafe tool grant request id {request_id!r}")
-        return self.root / f"{request_id}.json"
+        return safe_join(self.root, f"{request_id}.json", pattern=_REQUEST_FILE)
 
     async def add(self, request: ToolGrantRequest) -> ToolGrantRequest:
         path = self._path(request.request_id)

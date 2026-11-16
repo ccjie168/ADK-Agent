@@ -21,10 +21,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .core import ApprovalDecision, ApprovalRequest
+from .registry.paths import safe_join
 
 _REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _REQUEST_SUFFIX = ".request.json"
 _DECISION_SUFFIX = ".decision.json"
+_REQUEST_FILE = r"^[A-Za-z0-9._-]{1,128}\.request\.json$"
+_DECISION_FILE = r"^[A-Za-z0-9._-]{1,128}\.decision\.json$"
 HISTORY_STATUSES = ("approved", "denied", "expired", "cancelled")
 
 _logger = logging.getLogger(__name__)
@@ -109,10 +112,10 @@ class FileApprovalInbox:
         self._on_submit = on_submit
 
     def _request_path(self, request_id: str) -> Path:
-        return self.root / f"{request_id}{_REQUEST_SUFFIX}"
+        return safe_join(self.root, f"{request_id}{_REQUEST_SUFFIX}", pattern=_REQUEST_FILE)
 
     def _decision_path(self, request_id: str) -> Path:
-        return self.root / f"{request_id}{_DECISION_SUFFIX}"
+        return safe_join(self.root, f"{request_id}{_DECISION_SUFFIX}", pattern=_DECISION_FILE)
 
     def expires_at(self, request: ApprovalRequest) -> datetime | None:
         if request.expires_at is not None:
@@ -226,7 +229,7 @@ class FileApprovalInbox:
             raise ValueError(f"unknown approval history status: {status!r}")
         limit = max(1, min(200, limit))
         found: list[ApprovalHistoryEntry] = []
-        for directory, archived in ((self.root, False), (self.root / "archive", True)):
+        for directory, archived in ((self.root, False), (safe_join(self.root, "archive"), True)):
             if not directory.is_dir():
                 continue
             for path in directory.glob(f"*{_REQUEST_SUFFIX}"):
@@ -289,7 +292,7 @@ class FileApprovalInbox:
             raise ValueError("max_age_seconds must be greater than 0")
         current = now if now is not None else self._clock()
         cutoff = current - timedelta(seconds=max_age_seconds)
-        archive_dir = self.root / "archive"
+        archive_dir = safe_join(self.root, "archive")
         archived = 0
         deleted = 0
         kept = 0
