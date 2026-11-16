@@ -23,7 +23,8 @@ SLICE-120 日志注入过滤
 四、CodeQL
 - ADR-0022 审核中的 29 条 py/log-injection 已按 2027-01-31 接受。
 - 本切片在 logging 记录工厂层集中转义，覆盖所有 logger，不依赖逐个调用点。
-- 分支推送后由 PR 触发 CodeQL 复核，开放告警数在 PR 检查中确认。
+- PR #28 触发 CodeQL（run 43791887527，analyze 58s pass）。
+- 复核后开放告警 0；29 条 py/log-injection 仍为 dismissed。
 
 五、门禁
 python scripts/check.py --fast
