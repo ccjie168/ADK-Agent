@@ -629,3 +629,29 @@ def test_sandboxed_quota_is_enforced():
     assert len(sandbox.calls) == 1
     run_events = [event for event in audit.recent(20) if event.action == "agent.run"]
     assert any(event.status == "denied" for event in run_events)
+
+
+class PickyAuditSink:
+    """Fails on agent.run but keeps trigger.fire, to exercise the finish order."""
+
+    def __init__(self) -> None:
+        self.events: list = []
+
+    async def emit(self, event) -> None:
+        if event.action == "agent.run":
+            raise RuntimeError("audit down")
+        self.events.append(event)
+
+
+def test_audit_failures_do_not_strand_the_fire(tmp_path):
+    sink = PickyAuditSink()
+    fire_store = FileTriggerFireStore(tmp_path)
+    client, _, _, _, _ = _sandboxed_client(FakeSandbox(), audit=sink, fire_store=fire_store)
+
+    with client:
+        response = _fire(client, headers={"Idempotency-Key": "audit-1"}, json={"input": "hello"})
+
+    assert response.status_code == 200
+    stored = asyncio.run(fire_store.get("acme", "nightly", "audit-1"))
+    assert stored is not None and stored.status == "ok"
+    assert any(event.action == "trigger.fire" for event in sink.events)
