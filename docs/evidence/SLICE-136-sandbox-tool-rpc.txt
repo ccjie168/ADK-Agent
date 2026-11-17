@@ -29,7 +29,7 @@ test_sandboxed_trigger_uses_the_backend（旧 `run` 不接收 manifest，records
 - `sandbox/agent_process.py`：`AgentSandboxLimits.max_tool_calls`（默认 100）；`ProcessAgentSandbox(tools=...)`
   与 `supports_tools`；`run(..., manifest=...)`；父进程按 frame 顺序做格式、上限、授权、执行器判断，
   执行器签名 `async (manifest, tool_id, args) -> Mapping`；结果必须是可 JSON 序列化的映射，
-  否则回 `tool_result_invalid`；上限按收到的帧计数。
+  否则回 `tool_result_invalid`；上限按格式校验通过的帧计数，畸形帧直接拒绝。
 - `sandbox/proxy.py`：代理保存 manifest 并在每次运行传入。
 - `registry/loader.py`：只有后端 `supports_tools` 时才允许带工具授权的 `sandboxed` 记录，否则维持
   `SandboxToolsUnavailable`。
@@ -40,7 +40,7 @@ test_sandboxed_trigger_uses_the_backend（旧 `run` 不接收 manifest，records
 
 $ pytest tests/sandbox/test_agent_tool_rpc.py tests/test_registry_startup.py \
     tests/test_triggers_service.py -q
-45 passed
+48 passed
 
 $ pytest -q（Windows）
 1477 passed, 87 skipped
@@ -59,7 +59,7 @@ ALL PASS
 
 五、第一轮独立验证（47 号 PR 首版）
 
-结论 DO NOT MERGE。四个阻塞/中等问题与修复：
+结论 DO NOT MERGE。六个问题与修复：
 
 1. 工件用内省/gc 摘除 `before_tool_callback` 后可让本地工具执行。进程内回调无法防同进程篡改，
    按 ADR-0024 第 9 条记为与 `ctypes` 同级的残余风险，契约与证据的绝对表述已改正。
@@ -68,5 +68,5 @@ ALL PASS
 3. 非 LlmAgent 的 agent 树在安装时崩溃（`SequentialAgent` 没有该字段）。安装改为只对具备字段的
    agent 执行并继续递归；新增合成树用例。
 4. 结果不可序列化时抛原始 `TypeError`。现在映射为 `tool_result_invalid`。
-5. `max_tool_calls` 改为按收到的帧计数，被拒与畸形帧也消耗预算。
+5. `max_tool_calls` 改为按收到的帧计数：被拒的合法帧消耗预算，畸形帧在计数前直接拒绝，契约已写明。
 6. 触发路径一律拒绝工具授权的表述已改正；spec 文件清单已改正。

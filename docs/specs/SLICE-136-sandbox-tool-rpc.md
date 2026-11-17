@@ -42,7 +42,7 @@
 - [x] 不可序列化的参数不发送 -> `test_unserializable_args_are_refused`
 - [x] 工具调用超过上限时终止运行 -> `test_tool_call_limit`
 - [x] 有执行器时声明工具授权的 `sandboxed` 记录可加载；无执行器仍拒绝 -> `test_loader_allows_tool_grants_with_executor`
-- [x] 触发路径传入 manifest -> `test_trigger_passes_manifest_to_sandbox`
+- [x] 触发路径传入 manifest -> `test_sandboxed_trigger_uses_the_backend`
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）

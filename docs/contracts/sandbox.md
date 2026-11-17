@@ -95,7 +95,7 @@ worker 给具备 `before_tool_callback` 字段的 agent 安装工具回调，子
   不可序列化时 worker 直接抛 `tool_args_invalid`，不发送。
 - 父进程回 `{"type": "tool_result", "id": ..., "result": ...}` 或
   `{"type": "tool_error", "id": ..., "code": "<code>", "message": "<短消息>"}`。
-- 判定顺序：帧格式 → 调用上限（`max_tool_calls`，默认 100，按收到的帧计数，超出终止运行并抛 `SandboxViolation`）→
+- 判定顺序：帧格式 → 调用上限（`max_tool_calls`，默认 100，按格式校验通过的帧计数（畸形帧直接拒绝、不计数），超出终止运行并抛 `SandboxViolation`）→
   `tool_id` 必须在本次运行的 manifest `tool_grants` 里，否则 `tool_not_granted` → 后端必须有工具执行器，
   否则 `tool_mediation_unavailable` → 执行器异常回 `tool_failed`，不回显内部错误。
 - 执行器结果必须是 `Mapping` 且可 JSON 序列化；`None`、非映射或不可序列化时回 `tool_result_invalid`，
