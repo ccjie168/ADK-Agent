@@ -29,7 +29,7 @@ $ pytest tests/test_cli_a2a_refs.py -q
 9 passed
 
 $ pytest -q（Windows）
-1464 passed, 87 skipped
+1468 passed, 87 skipped
 
 $ python scripts/check.py --full
 [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
