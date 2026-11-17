@@ -229,6 +229,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-136 沙箱工具调用中介协议：工具调用经 `tool` 帧回到父进程，按 manifest 授权与调用上限分派给注入的执行器；执行器实现留给接入片。已完成。
 - SLICE-137 工具执行器接入：工具网关客户端与执行器落地，运行主体经 contextvar 传入，CLI 增加 `--tool-gateway-url`，配置网关后带工具授权的 `sandboxed` 记录可加载。已完成。
 - SLICE-138 构建密钥与 publish 默认层级：`in_process` 工件要求平台构建签名，publish 缺省按 `sandboxed`，组合器与注册表服务接入 builder keyring。已完成。
+- SLICE-139 凭据信封加密与本地 KEK：`KeyBackend` 端口、AES-256-GCM 信封加密、密文字段、解析顺序与 CLI `--secret-stdin` 落地。已完成。
 
 ## 完成定义
 

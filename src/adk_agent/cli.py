@@ -1572,6 +1572,11 @@ def main(argv: list[str] | None = None) -> None:
     p_cr_register.add_argument("--id", required=True)
     p_cr_register.add_argument("--secret-ref", dest="secret_ref", required=True)
     p_cr_register.add_argument("--description", default="")
+    p_cr_register.add_argument(
+        "--secret-stdin",
+        action="store_true",
+        help="read the secret from stdin and store it encrypted (needs ADK_SECRET_KEKS)",
+    )
     _add_credential_store_args(p_cr_register)
 
     p_cr_disable = credentials_sub.add_parser("disable", help="disable a binding")
@@ -2984,6 +2989,7 @@ def main(argv: list[str] | None = None) -> None:
         from pydantic import ValidationError
 
         from .core import CredentialBinding, CredentialStoreError
+        from .secretstore.keys import KeyBackendError
 
         store = _credential_store(args)
         if store is None:
@@ -2996,6 +3002,25 @@ def main(argv: list[str] | None = None) -> None:
                     return await store.list(args.tenant)
                 if args.credentials_cmd == "disable":
                     return await store.disable(args.tenant, args.id, by="cli")
+                wrapped = None
+                key_id = None
+                version = None
+                if getattr(args, "secret_stdin", False):
+                    from .secretstore import LocalKeyBackend, credential_aad
+
+                    backend = LocalKeyBackend.from_env()
+                    if backend is None:
+                        raise ValueError("set ADK_SECRET_KEKS to store a secret")
+                    value = sys.stdin.read().rstrip("\r\n")
+                    if not value:
+                        raise ValueError("the secret on stdin is empty")
+                    if "\r" in value or "\n" in value:
+                        raise ValueError("the secret must be a single line")
+                    wrapped = backend.wrap(
+                        value.encode("utf-8"), credential_aad(args.tenant, args.id)
+                    )
+                    key_id = backend.current_key_id()
+                    version = 1
                 binding = CredentialBinding(
                     credential_id=args.id,
                     tenant=args.tenant,
@@ -3003,6 +3028,9 @@ def main(argv: list[str] | None = None) -> None:
                     description=args.description,
                     created_by="cli",
                     created_at=datetime.now(timezone.utc),
+                    wrapped_secret=wrapped,
+                    secret_key_id=key_id,
+                    secret_version=version,
                 )
                 return await store.add(binding)
             finally:
@@ -3012,14 +3040,21 @@ def main(argv: list[str] | None = None) -> None:
 
         try:
             result = asyncio.run(run_credentials())
-        except (CredentialStoreError, ValidationError, ValueError) as exc:
+        except (CredentialStoreError, ValidationError, ValueError, KeyBackendError) as exc:
             print(f"credentials failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
 
         if args.credentials_cmd == "list":
-            print(json.dumps([record.model_dump(mode="json") for record in result]))
+            print(
+                json.dumps(
+                    [
+                        record.model_dump(mode="json", exclude={"wrapped_secret"})
+                        for record in result
+                    ]
+                )
+            )
         else:
-            print(json.dumps(result.model_dump(mode="json")))
+            print(json.dumps(result.model_dump(mode="json", exclude={"wrapped_secret"})))
     elif args.cmd == "triggers":
         from pydantic import ValidationError
 
