@@ -159,3 +159,18 @@ def secret_header_provider(
 
 def credential_aad(tenant: str, credential_id: str) -> bytes:
     return _credential_aad(tenant, credential_id)
+
+
+class RoutingSecretProvider:
+    """Route two-segment references to the stored provider, single ones to the prefix."""
+
+    def __init__(self, tenant: Any, prefixed: Any) -> None:
+        self._tenant = tenant
+        self._prefixed = prefixed
+
+    async def resolve(self, reference: str) -> str:
+        try:
+            parse_credential_ref(reference)
+        except ValueError:
+            return await self._prefixed.resolve(reference)
+        return await self._tenant.resolve(reference)

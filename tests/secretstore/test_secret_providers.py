@@ -166,3 +166,35 @@ def test_decryption_failure_does_not_fall_back(monkeypatch):
 
     with pytest.raises(SecretNotFound, match="cannot be decrypted"):
         asyncio.run(provider.resolve("secret://acme/token"))
+
+
+def test_routing_provider_splits_two_segment_references(monkeypatch):
+    import os
+
+    from adk_agent.core import CredentialBinding
+    from adk_agent.secretstore import (
+        LocalKeyBackend,
+        PrefixedEnvSecretProvider,
+        RoutingSecretProvider,
+        TenantSecretProvider,
+        credential_aad,
+    )
+
+    backend = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    reference = "secret://" + "acme/token"
+    binding = CredentialBinding(
+        credential_id="crm",
+        tenant="acme",
+        secret_ref=reference,
+        created_by="ops",
+        created_at="2026-11-18T00:00:00Z",
+        wrapped_secret=backend.wrap(b"stored", credential_aad("acme", "crm")),
+        secret_key_id="k1",
+        secret_version=1,
+    )
+    tenant = TenantSecretProvider(backend=backend, credentials=_StoredCredential(binding))
+    routing = RoutingSecretProvider(tenant, PrefixedEnvSecretProvider())
+    monkeypatch.setenv("ADK_SECRET_GLOBAL", "global")
+
+    assert asyncio.run(routing.resolve(reference)) == "stored"
+    assert asyncio.run(routing.resolve("secret://global")) == "global"

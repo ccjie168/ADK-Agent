@@ -1233,6 +1233,7 @@ def main(argv: list[str] | None = None) -> None:
         default="local",
         help="tenant whose connectors are loaded (default: local)",
     )
+    _add_credential_store_args(p_tools)
     tools_audit = p_tools.add_mutually_exclusive_group()
     tools_audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
     tools_audit.add_argument(
@@ -2127,7 +2128,13 @@ def main(argv: list[str] | None = None) -> None:
         from .mcp.http import resolve_port
         from .registry import FileConnectorStore
         from .registry.connectors_postgres import PostgresConnectorStore
-        from .secretstore import PrefixedEnvSecretProvider, TenantScopedSecretProvider
+        from .secretstore import (
+            LocalKeyBackend,
+            PrefixedEnvSecretProvider,
+            RoutingSecretProvider,
+            TenantScopedSecretProvider,
+            TenantSecretProvider,
+        )
         from .tools import FunctionRegistry, FunctionToolGateway
         from .tools.connectors import build_connector_tools
         from .tools.service import build_tool_gateway_app
@@ -2149,12 +2156,17 @@ def main(argv: list[str] | None = None) -> None:
                 else FileConnectorStore(args.connectors_dir)
             )
             connector_specs = asyncio.run(connector_store.list(args.connector_tenant))
+            inner: Any = PrefixedEnvSecretProvider()
+            secret_backend = LocalKeyBackend.from_env()
+            credential_store = _credential_store(args)
+            if secret_backend is not None and credential_store is not None:
+                inner = RoutingSecretProvider(
+                    TenantSecretProvider(secret_backend, credential_store), inner
+                )
             specs.extend(
                 build_connector_tools(
                     connector_specs,
-                    secrets=TenantScopedSecretProvider(
-                        PrefixedEnvSecretProvider(), args.connector_tenant
-                    ),
+                    secrets=TenantScopedSecretProvider(inner, args.connector_tenant),
                 )
             )
             try:
