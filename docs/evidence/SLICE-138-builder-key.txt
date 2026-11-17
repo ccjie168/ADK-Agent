@@ -23,7 +23,7 @@ $ pytest tests/registry/test_builder_key.py tests/test_cli_publish_artifact.py \
 - `publish`：manifest 缺省 `execution_tier` 按 `sandboxed` 处理；`in_process` 带工件时要求
   `--builder-key`/`--builder-key-id` 签出构建签名，并用 `--builder-keys`/`ADK_BUILDER_KEYS` 验证；
   不带工件的 `in_process` 是元数据，不要求构建签名。
-- `compose`：新增 `--builder-key`/`--builder-key-id`，组合器输出带构建签名；缺省退出 1。
+- `compose`：新增 `--builder-key`/`--builder-key-id`，CLI 与库函数都要求构建密钥，组合器输出带构建签名；缺省退出 1。
 - `serve-registry`：新增 `--builder-keys`，`in_process` 工件发布时校验构建签名，
   未配置返回 503 `builder_key_unavailable`，验证失败返回 400 `artifact_untrusted`。
 - 契约：`cli.md`、`registry_service.md`、`agent_artifact.schema.json` 同步。
@@ -54,3 +54,16 @@ ALL PASS
 - 既有已发布的 `in_process` 记录不重签，按兼容策略读取。
 - 本地 `--agents` 文件仍属运维信任域，不要求构建签名。
 - `in_process` 且无工件的元数据记录不需要构建签名，因为它无法被加载执行。
+
+六、第一轮独立验证
+
+结论 DO NOT MERGE。Medium 问题与处理：
+
+1. 库函数 `compose_and_publish` 缺 builder key 仍能发布 `in_process` 工件。已改为缺省拒绝；
+   `tests/compose/test_compose_publish.py` 补构建密钥并断言签名非空。
+2. builder 签名只绑定 artifact digest，不绑定发布记录 manifest：拿平台工件换租户/id/授权元数据重放
+   仍可行。记为残余缺口，后续切片比较工件内 manifest 与记录 manifest（CLI 端已比较，HTTP 端未比较）。
+3. 契约与判据名不一致：`compose.md`、`contracts/README.md`、`registry_service.md` 错误表与 spec
+   测试名已改正；证据的 compose 描述已更新。
+4. `scripts/demo_seed.py` 属本地演示信任域，仍生成未签名 `in_process` 工件；已在 PROGRESS 标注。
+5. 补服务端两个用例：keyring 已配置但工件无构建签名返回 400，可信构建签名返回 201。

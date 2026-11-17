@@ -12,7 +12,7 @@
 
 ## 文件
 
-- `manifest.schema.json`：`AgentManifest`，agent 的注册单元。`execution_tier` 取 `in_process` 或 `sandboxed`，新发布必须显式声明；没有该字段的历史记录按 `in_process` 读取，digest 不含该键（ADR-0024）。
+- `manifest.schema.json`：`AgentManifest`，agent 的注册单元。`execution_tier` 取 `in_process` 或 `sandboxed`，新发布缺省按 `sandboxed`；`in_process` 工件需要平台构建签名；没有该字段的历史记录按 `in_process` 读取，digest 不含该键（ADR-0024）。
 - `agent_ref.schema.json`：`AgentRef`，运行的版本锚点；`artifact_digest` 是可选的工作工件锚点。
 - `agent_artifact.schema.json`：`AgentArtifact`，ADR-0008 的工件元数据（摘要、大小、入口、签名）。
 - `agent_lifecycle.schema.json`：`AgentLifecycle`，ADR-0010 的版本生命周期状态。

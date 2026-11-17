@@ -32,11 +32,11 @@
 
 ## 完成判据（可执行）
 
-- [x] `in_process` 工件缺 builder 签名时发布退出 1 -> `test_publish_in_process_requires_builder_signature`
-- [x] 用可信 builder 密钥签名的 `in_process` 工件可发布 -> `test_publish_in_process_with_builder_key`
+- [x] `in_process` 工件缺 builder 签名时发布退出 1 -> `test_publish_in_process_requires_a_builder_signature`
+- [x] 用可信 builder 密钥签名的 `in_process` 工件可发布 -> `test_publish_in_process_accepts_a_trusted_builder`
 - [x] 缺省 tier 按 `sandboxed` 处理 -> `test_publish_defaults_to_sandboxed`
-- [x] 组合器输出带 builder 签名且可发布 -> `tests/compose/test_compose.py`
-- [x] 注册表服务拒绝无 builder 签名的 `in_process` 发布 -> `test_registry_service_rejects_unsigned_in_process`
+- [x] 组合器输出带 builder 签名且可发布 -> `tests/compose/test_compose_publish.py`
+- [x] 注册表服务拒绝无 builder 签名的 `in_process` 发布 -> `test_publish_in_process_rejects_a_missing_builder_signature`
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（实现前跑红）

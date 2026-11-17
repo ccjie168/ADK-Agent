@@ -59,6 +59,8 @@ def _publish(tmp_path, key, *, instruction: str = "You are helpful.", tools=("pi
             artifact_store=store,
             private_key=key,
             key_id="publisher-1",
+            builder_key=key,
+            builder_key_id="builder-1",
         )
     )
     return published, registry, store

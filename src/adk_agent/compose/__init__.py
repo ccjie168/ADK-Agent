@@ -208,6 +208,8 @@ async def compose_and_publish(
         data_classes=data_classes,
     )
     enforce_eval_gate(manifest, None)
+    if builder_key is None or builder_key_id is None:
+        raise ComposeError("composed artifacts are in_process and require a builder key")
 
     digest = artifact_digest(data)
     artifact = AgentArtifact(

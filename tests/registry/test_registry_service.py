@@ -398,3 +398,46 @@ def test_publish_in_process_rejects_an_untrusted_builder():
 
     assert response.status_code == 400
     assert response.json() == {"error": "artifact_untrusted"}
+
+
+@needs_crypto
+def test_publish_in_process_rejects_a_missing_builder_signature():
+    key = _key()
+    artifact, _ = _artifact(key)
+    record = published_from(_manifest(), artifact=artifact)
+
+    with TestClient(
+        _app(
+            store=MemoryStore(),
+            trust=TrustStore({"k1": _raw(key)}),
+            builder_keys=TrustStore({"builder-1": _raw(key)}),
+        )
+    ) as client:
+        response = _post(client, record)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "artifact_untrusted"}
+
+
+@needs_crypto
+def test_publish_in_process_accepts_a_trusted_builder():
+    key = _key()
+    artifact, _ = _artifact(key)
+    signed = artifact.model_copy(
+        update={
+            "builder_signature": sign_digest(artifact.digest, key),
+            "builder_key_id": "builder-1",
+        }
+    )
+    record = published_from(_manifest(), artifact=signed)
+
+    with TestClient(
+        _app(
+            store=MemoryStore(),
+            trust=TrustStore({"k1": _raw(key)}),
+            builder_keys=TrustStore({"builder-1": _raw(key)}),
+        )
+    ) as client:
+        response = _post(client, record)
+
+    assert response.status_code == 201

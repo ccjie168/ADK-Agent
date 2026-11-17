@@ -280,3 +280,5 @@ MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和�
 1. 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件。
 2. 跑 `python scripts/check.py --fast` 确认基线。
 3. 从上面“下一刀建议”或 ROADMAP 候选里挑一个，先写 `docs/specs/SLICE-xxx.md`，先红后绿。
+
+7. SLICE-138 的构建签名只绑定工件 digest，不绑定发布记录 manifest；HTTP 注册表发布仍可把已有平台工件换成不同租户/id/工具授权的记录。CLI 端发布会比较工件内 manifest 与记录 manifest，HTTP 端没有。后续切片在 upload 或 load 处补齐比较。`scripts/demo_seed.py` 属本地演示信任域，仍生成未签名 `in_process` 工件。

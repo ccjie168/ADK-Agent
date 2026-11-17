@@ -160,6 +160,7 @@
 | 502 | `connector_store_failed` | 连接器存储不可达 |
 | 503 | `connector_store_unavailable` | 服务没有配置连接器存储 |
 | 503 | `artifact_trust_unavailable` | 发布带工件但服务没有可信公钥 |
+| 503 | `builder_key_unavailable` | `in_process` 工件发布但服务没有构建公钥 |
 
 `HttpConnectorStore` 实现 `ConnectorStore` 端口，接同一服务。409 映射为 `ConnectorConflict`，404 映射为 `ConnectorNotFound`，401 和 403 映射为 `ConnectorForbidden`，400 映射为 `ConnectorStoreError`，传输失败和 5xx 映射为 `ConnectorStoreUnavailable`。
 

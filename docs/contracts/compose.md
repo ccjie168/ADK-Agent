@@ -43,7 +43,7 @@
 
 `adk-agent templates` 输出 `[TemplateInfo]` JSON。
 
-`adk-agent compose --template single-llm --tenant TENANT --id ID --version VERSION --instruction TEXT [--owner OWNER] [--description TEXT] [--tools LIST] [--data-classes LIST] --key FILE --key-id ID [--registry DIR] [--registry-url URL] [--artifact-dir DIR | ARTIFACT_URL]`
+`adk-agent compose --template single-llm --tenant TENANT --id ID --version VERSION --instruction TEXT [--owner OWNER] [--description TEXT] [--tools LIST] [--data-classes LIST] --key FILE --key-id ID --builder-key FILE --builder-key-id ID [--registry DIR] [--registry-url URL] [--artifact-dir DIR | ARTIFACT_URL]`
 
 - `--key` 是 Ed25519 私钥 PEM 路径，`--key-id` 写进 `AgentArtifact.key_id`。平台不保存私钥。
 - 文件注册表配 `--artifact-dir` 或 `ARTIFACT_URL`，二选一；`--registry-url` 时通过注册表上传字节，不能再给工件存储参数。
