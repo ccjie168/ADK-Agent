@@ -15,9 +15,12 @@ $ pytest tests/test_registry_startup.py tests/test_console_on_demand.py \
     tests/test_cli_sandbox_adapters.py tests/registry/test_execution_tier_boundary.py -q
 11 failed, 35 passed
 
-失败的 11 个是新增的 4 个加载/代理用例、2 个控制台按需加载用例、6 个 CLI 用例，
+失败的 11 个是红态测量时已有的用例：加载器 2 个、控制台按需加载 2 个、CLI 6 个，
 以及改判据后的 test_load_agent_gates_sandboxed_records（旧断言要求
-loader.calls == 1，新判据要求 0）。新增用例 12 个、改判据的既有用例 1 个，基线全部失败。
+loader.calls == 1，新判据要求 0）。另有 test_agent_proxy.py 的 2 个在收集期报
+ModuleNotFoundError: adk_agent.sandbox.proxy。红态测量时新增用例 12 个、改判据的既有用例 1 个；
+修第一轮验证意见时又补了 test_cli_refuses_sandboxed_record_with_tool_grants（第 13 个新增用例），
+它同样在基线失败。
 
 二、实现
 
