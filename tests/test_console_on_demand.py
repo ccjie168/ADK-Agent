@@ -351,7 +351,7 @@ class _SandboxBackend:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    async def run(self, artifact, data, input_text, *, manifest=None):
+    async def run(self, artifact, data, input_text, *, manifest=None, invocation=None):
         from adk_agent.sandbox.agent import SandboxResult
 
         self.calls.append(input_text)

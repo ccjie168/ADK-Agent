@@ -19,7 +19,9 @@ def test_install_registers_process_backend(monkeypatch):
     from adk_agent.sandbox import agent_process
 
     monkeypatch.setattr(agent_process, "agent_sandbox_supported", lambda: True)
-    monkeypatch.setattr(agent_process, "ProcessAgentSandbox", lambda model: _Backend())
+    monkeypatch.setattr(
+        agent_process, "ProcessAgentSandbox", lambda model=None, tools=None: _Backend()
+    )
     monkeypatch.setattr("adk_agent.models.build_model", lambda: "model")
 
     cli._install_agent_sandbox(argparse.Namespace(agent_sandbox=True, allow_unsandboxed=False))
@@ -45,7 +47,9 @@ def test_install_allows_override_without_posix(monkeypatch, capsys):
     from adk_agent.sandbox import agent_process
 
     monkeypatch.setattr(agent_process, "agent_sandbox_supported", lambda: False)
-    monkeypatch.setattr(agent_process, "ProcessAgentSandbox", lambda model: _Backend())
+    monkeypatch.setattr(
+        agent_process, "ProcessAgentSandbox", lambda model=None, tools=None: _Backend()
+    )
     monkeypatch.setattr("adk_agent.models.build_model", lambda: "model")
 
     cli._install_agent_sandbox(argparse.Namespace(agent_sandbox=True, allow_unsandboxed=True))
@@ -98,3 +102,29 @@ def test_serve_accepts_agent_sandbox(monkeypatch):
     cli.main(["serve", "--agent", "x.py", "--agent-sandbox"])
 
     assert captured["flag"] is True
+
+
+def test_install_builds_a_gateway_executor(monkeypatch):
+    from adk_agent.sandbox import agent_process
+
+    captured: dict = {}
+    monkeypatch.setattr(agent_process, "agent_sandbox_supported", lambda: True)
+    monkeypatch.setattr(
+        agent_process,
+        "ProcessAgentSandbox",
+        lambda model=None, tools=None: captured.update(tools=tools) or _Backend(),
+    )
+    monkeypatch.setattr("adk_agent.models.build_model", lambda: "model")
+
+    cli._install_agent_sandbox(
+        argparse.Namespace(
+            agent_sandbox=True,
+            allow_unsandboxed=False,
+            tool_gateway_url="http://gateway",
+            tool_gateway_token_env="ADK_TOOL_GATEWAY_TOKEN",
+        )
+    )
+    try:
+        assert captured["tools"] is not None
+    finally:
+        sandbox_agent.set_agent_sandbox_backend(None)

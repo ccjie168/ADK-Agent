@@ -502,6 +502,19 @@ def _add_agent_sandbox_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_tool_gateway_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--tool-gateway-url",
+        default=None,
+        help="tool gateway URL for sandboxed tool calls (enables tool grants)",
+    )
+    parser.add_argument(
+        "--tool-gateway-token-env",
+        default="ADK_TOOL_GATEWAY_TOKEN",
+        help="env var holding the tool gateway bearer token",
+    )
+
+
 def _install_agent_sandbox(args: argparse.Namespace) -> None:
     """Register the process sandbox backend before registry agents load."""
     if not getattr(args, "agent_sandbox", False):
@@ -522,7 +535,22 @@ def _install_agent_sandbox(args: argparse.Namespace) -> None:
             "warning: the agent sandbox runs without process limits",
             file=sys.stderr,
         )
-    set_agent_sandbox_backend(ProcessAgentSandbox(model=build_model()))
+    tools: Any = None
+    url = getattr(args, "tool_gateway_url", None)
+    if url:
+        from .tools.client import ToolGatewayClient
+        from .tools.executor import gateway_executor
+
+        token_env = getattr(args, "tool_gateway_token_env", "ADK_TOOL_GATEWAY_TOKEN")
+        token = os.environ.get(token_env) if token_env else None
+        if not token:
+            print(
+                f"warning: {token_env or '(unset)'} is not set; "
+                "tool gateway calls will be unauthenticated",
+                file=sys.stderr,
+            )
+        tools = gateway_executor(ToolGatewayClient(str(url), token=token))
+    set_agent_sandbox_backend(ProcessAgentSandbox(model=build_model(), tools=tools))
 
 
 def _add_registry_client_args(parser: argparse.ArgumentParser) -> None:
@@ -966,6 +994,7 @@ def main(argv: list[str] | None = None) -> None:
     _add_tool_grant_args(p_serve)
     _add_rate_limit_args(p_serve)
     _add_agent_sandbox_args(p_serve)
+    _add_tool_gateway_args(p_serve)
     p_serve.add_argument(
         "--metrics",
         action="store_true",
@@ -1029,6 +1058,7 @@ def main(argv: list[str] | None = None) -> None:
     _add_tool_grant_args(p_many)
     _add_rate_limit_args(p_many)
     _add_agent_sandbox_args(p_many)
+    _add_tool_gateway_args(p_many)
     p_many.add_argument(
         "--metrics",
         action="store_true",
@@ -1069,6 +1099,7 @@ def main(argv: list[str] | None = None) -> None:
         help="JSON file mapping key id to a 64 hex Ed25519 public key",
     )
     _add_agent_sandbox_args(p_a2a)
+    _add_tool_gateway_args(p_a2a)
     p_a2a.add_argument(
         "--rpc-path",
         default="",
@@ -1415,6 +1446,7 @@ def main(argv: list[str] | None = None) -> None:
     _add_runtime_args(p_console)
     _add_tool_grant_args(p_console)
     _add_agent_sandbox_args(p_console)
+    _add_tool_gateway_args(p_console)
 
     p_approvals = sub.add_parser("approvals", help="manage approval records")
     approvals_sub = p_approvals.add_subparsers(dest="approvals_cmd", required=True)

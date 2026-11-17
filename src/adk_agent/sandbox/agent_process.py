@@ -19,7 +19,7 @@ from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_request import LlmRequest
 
 from ..core import AgentArtifact, AgentManifest
-from .agent import SandboxResult
+from .agent import SandboxResult, SandboxToolError
 from .errors import SandboxCrashed, SandboxTimeout, SandboxViolation
 from .frames import FrameError, read_frame_async, write_frame_async
 
@@ -171,6 +171,7 @@ class ProcessAgentSandbox:
         input_text: str,
         *,
         manifest: AgentManifest | None = None,
+        invocation: Any | None = None,
     ) -> SandboxResult:
         request = {
             "type": "run",
@@ -251,7 +252,9 @@ class ProcessAgentSandbox:
                         await self._serve_model(frame, proc, deadline, model_calls)
                         continue
                     if kind == "tool":
-                        await self._serve_tool(frame, proc, deadline, tool_calls, granted, manifest)
+                        await self._serve_tool(
+                            frame, proc, deadline, tool_calls, granted, manifest, invocation
+                        )
                         continue
                     if kind == "final":
                         if proc.stdin is not None:
@@ -328,6 +331,7 @@ class ProcessAgentSandbox:
         calls: list[int],
         granted: frozenset[str],
         manifest: AgentManifest | None,
+        invocation: Any | None,
     ) -> None:
         call_id = frame.get("id")
         if not isinstance(call_id, int) or proc.stdin is None:
@@ -375,9 +379,23 @@ class ProcessAgentSandbox:
             return
         try:
             remaining = max(deadline - asyncio.get_running_loop().time(), 0.001)
-            result = await asyncio.wait_for(self.tools(manifest, tool_id, args), timeout=remaining)
+            result = await asyncio.wait_for(
+                self.tools(manifest, tool_id, args, invocation), timeout=remaining
+            )
         except asyncio.TimeoutError:
             raise
+        except SandboxToolError as exc:
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": exc.code,
+                    "message": str(exc),
+                },
+                deadline,
+            )
+            return
         except Exception:  # noqa: BLE001
             await self._reply(
                 proc,

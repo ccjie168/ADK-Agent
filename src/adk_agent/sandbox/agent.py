@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ..core import AgentArtifact, AgentManifest
 
@@ -45,6 +45,7 @@ class AgentSandboxBackend(Protocol):
         input_text: str,
         *,
         manifest: AgentManifest | None = None,
+        invocation: Any | None = None,
     ) -> SandboxResult: ...
 
 
