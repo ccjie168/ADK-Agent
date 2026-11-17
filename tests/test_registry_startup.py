@@ -270,7 +270,7 @@ class _SandboxBackend:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    async def run(self, artifact, data, input_text):
+    async def run(self, artifact, data, input_text, *, manifest=None):
         from adk_agent.sandbox.agent import SandboxResult
 
         self.calls.append(input_text)
@@ -374,3 +374,38 @@ def test_cli_refuses_sandboxed_record_with_tool_grants(tmp_path, monkeypatch, ca
 
     assert exc.value.code == 1
     assert "tool grants" in capsys.readouterr().err
+
+
+class _ToolBackend(_SandboxBackend):
+    supports_tools = True
+
+    async def run(self, artifact, data, input_text, *, manifest=None):
+        return await super().run(artifact, data, input_text)
+
+
+@needs_crypto
+def test_loader_allows_tool_grants_with_executor(tmp_path):
+    from adk_agent.sandbox.agent import set_agent_sandbox_backend
+
+    key = _key()
+    store, registry = _published(
+        tmp_path,
+        key,
+        execution_tier="sandboxed",
+        tool_grants=[{"tool_id": "crm.read", "data_classes": ["internal"]}],
+    )
+    set_agent_sandbox_backend(_ToolBackend())
+    try:
+        agents = asyncio.run(
+            load_registry_agents(
+                ["acme/bot@1.0.0"],
+                registry=registry,
+                store=store,
+                trust=TrustStore({"k1": bytes.fromhex(_raw_hex(key))}),
+                loader=_ExplodingLoader(),
+            )
+        )
+    finally:
+        set_agent_sandbox_backend(None)
+
+    assert type(agents["bot"]).__name__ == "SandboxAgent"

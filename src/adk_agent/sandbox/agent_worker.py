@@ -141,12 +141,13 @@ def main() -> int:
         artifact = AgentArtifact.model_validate(request["artifact"])
         data = base64.b64decode(str(request["data"]), validate=True)
         input_text = str(request.get("input", ""))
-        from .agent_channel import SandboxChannel, set_channel
+        from .agent_channel import SandboxChannel, install_tool_proxy, set_channel
 
         sandbox_channel = SandboxChannel(sys.stdin.buffer, out)
         set_channel(sandbox_channel)
         _install_model_proxy()
         agent = load_artifact_agent(artifact, data)
+        install_tool_proxy(agent, sandbox_channel)
         phase = "run"
         text = loop.run_until_complete(_run(agent, input_text, sandbox_channel))
         loop.close()

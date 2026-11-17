@@ -86,6 +86,21 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 - `os.system`、`os.popen`、`os.startfile`、`os.fork`/`forkpty`/`exec*`/`spawn*`、`subprocess.Popen`、
   `subprocess._fork_exec`、`_posixsubprocess.fork_exec`、`_winapi.CreateProcess`。
 
+## 工具中介帧
+
+worker 给 agent 树安装工具回调：任何工具调用都发帧到父进程，工件内的工具函数不执行。
+
+- 子进程发 `{"type": "tool", "id": <int>, "tool_id": "<name>", "args": {...}}`；参数必须是 JSON 对象，
+  不可序列化时 worker 直接抛 `tool_args_invalid`，不发送。
+- 父进程回 `{"type": "tool_result", "id": ..., "result": ...}` 或
+  `{"type": "tool_error", "id": ..., "code": "<code>", "message": "<短消息>"}`。
+- 判定顺序：帧格式 → 调用上限（`max_tool_calls`，默认 100，超出终止运行并抛 `SandboxViolation`）→
+  `tool_id` 必须在本次运行的 manifest `tool_grants` 里，否则 `tool_not_granted` → 后端必须有工具执行器，
+  否则 `tool_mediation_unavailable` → 执行器异常回 `tool_failed`，不回显内部错误。
+- 执行器由接入方注入，签名是 `async (manifest, tool_id, args) -> Mapping`；审批、租户与 `tool.call`
+  审计属于执行器的实现，不在协议层。
+- 没有传入 manifest 时授权集合为空，一切工具调用被拒。
+
 残余风险：工件仍可通过 `socket.socket.__bases__[0]` 等内省拿到原始 C 类型，或用 `ctypes` 直接调用 libc，绕过 Python 层守卫。这与 ADR-0024 第 9 条一致：v1 不是内核级隔离，开放给不受信网络调用方之前必须有容器或虚拟机层级。工件仍可读写宿主文件系统中服务账号有权限的路径；一次性 cwd 只堵导入路径投放，不是命名空间。
 
 ## 执行接入
@@ -97,5 +112,8 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
   （`sandbox/proxy.py`）：每次调用起一个新的 worker 子进程，取本次用户文本，
   经模型中介拿结果，产出一个模型事件。工件字节不在控制台或 MCP 进程内执行。
 - 沙箱代理没有会话记忆：每次调用独立，ADK 会话只保存控制台侧消息。
-- 声明了工具授权的 `sandboxed` 记录拒绝加载或执行，直到工具网关 RPC 落地。
-- 未注册后端时 `sandboxed` 在加载处被拒；`serve-a2a` 仍只接受 `--agent` 文件。
+- 声明了工具授权的 `sandboxed` 记录只有在后端带工具执行器（`supports_tools`）时才加载；否则拒绝加载，
+  控制台按需加载返回 409 `tool_mediation_unavailable`。
+- 触发路径目前没有工具执行器，声明工具授权的 `sandboxed` 触发仍以 `tool_mediation_unavailable` 失败；
+  触发 `run` 会传入发布 manifest。
+- 未注册后端时 `sandboxed` 在加载处被拒；`serve-a2a` 支持 `--agent-ref`，规则与 `serve` 相同。

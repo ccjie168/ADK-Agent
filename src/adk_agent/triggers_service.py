@@ -412,9 +412,13 @@ def build_triggers_app(
             try:
                 if quota is not None and policy is not None:
                     async with quota.reserve(tenant, policy):
-                        sandbox_result = await active_sandbox.run(artifact, data, input_text)
+                        sandbox_result = await active_sandbox.run(
+                            artifact, data, input_text, manifest=published.manifest
+                        )
                 else:
-                    sandbox_result = await active_sandbox.run(artifact, data, input_text)
+                    sandbox_result = await active_sandbox.run(
+                        artifact, data, input_text, manifest=published.manifest
+                    )
             except QuotaExceeded as exc:
                 metrics.inc("adk_agent_quota_denials_total", {"tenant": tenant, "limit": exc.limit})
                 await finish("denied", "quota_exceeded")

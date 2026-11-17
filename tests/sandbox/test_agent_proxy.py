@@ -17,7 +17,9 @@ class _Backend:
     def __init__(self) -> None:
         self.calls: list[tuple[str, bytes, str]] = []
 
-    async def run(self, artifact: AgentArtifact, data: bytes, input_text: str) -> SandboxResult:
+    async def run(
+        self, artifact: AgentArtifact, data: bytes, input_text: str, *, manifest=None
+    ) -> SandboxResult:
         self.calls.append((artifact.digest, data, input_text))
         return SandboxResult(text="hello from the sandbox")
 
@@ -72,6 +74,10 @@ def test_sandbox_agent_keeps_no_state_between_runs():
     backend = _Backend()
     agent = build_sandbox_agent(_manifest(), _artifact(), b"zip!", backend)
 
-    assert asyncio.run(agent.backend.run(agent.artifact, agent.data, "one")).text
-    assert asyncio.run(agent.backend.run(agent.artifact, agent.data, "two")).text
+    assert asyncio.run(
+        agent.backend.run(agent.artifact, agent.data, "one", manifest=agent.manifest)
+    ).text
+    assert asyncio.run(
+        agent.backend.run(agent.artifact, agent.data, "two", manifest=agent.manifest)
+    ).text
     assert [call[2] for call in backend.calls] == ["one", "two"]
