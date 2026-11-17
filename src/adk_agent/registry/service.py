@@ -142,6 +142,7 @@ def build_registry_service_app(
     connectors: ConnectorStore | None = None,
     audit: AuditSink | None = None,
     trust: TrustStore | None = None,
+    builder_keys: TrustStore | None = None,
     host: str = "127.0.0.1",
     auth_token: str | None = None,
     allow_unauthenticated: bool = False,
@@ -513,6 +514,16 @@ def build_registry_service_app(
                 return _error("artifact_trust_unavailable", 503)
             if artifact_store is None:
                 return _error("artifact_store_unavailable", 503)
+
+        if tier == "in_process" and artifact is not None:
+            if builder_keys is None:
+                return _error("builder_key_unavailable", 503)
+            try:
+                builder_keys.verify_builder(artifact)
+            except ArtifactTrustError:
+                return _error("artifact_untrusted", 400)
+            except PublishUnavailable:
+                return _error("builder_key_unavailable", 503)
 
         try:
             stored = await registry.publish(record)

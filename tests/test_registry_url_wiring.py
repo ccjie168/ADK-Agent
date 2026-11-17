@@ -211,13 +211,25 @@ def test_publish_uploads_artifact(tmp_path, fake_registry, capsys):
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+    key = Ed25519PrivateKey.generate()
     key_path = tmp_path / "publisher.pem"
     key_path.write_bytes(
-        Ed25519PrivateKey.generate().private_bytes(
+        key.private_bytes(
             serialization.Encoding.PEM,
             serialization.PrivateFormat.PKCS8,
             serialization.NoEncryption(),
         )
+    )
+    builders = tmp_path / "builders.json"
+    builders.write_text(
+        json.dumps(
+            {
+                "builder-1": key.public_key()
+                .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+                .hex()
+            }
+        ),
+        encoding="utf-8",
     )
 
     cli.main(
@@ -232,6 +244,12 @@ def test_publish_uploads_artifact(tmp_path, fake_registry, capsys):
             str(key_path),
             "--key-id",
             "publisher-1",
+            "--builder-key",
+            str(key_path),
+            "--builder-key-id",
+            "builder-1",
+            "--builder-keys",
+            str(builders),
         ]
     )
 

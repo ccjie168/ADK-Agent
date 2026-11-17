@@ -228,6 +228,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-135 A2A 的注册表启动：`serve-a2a --agent-ref` 复用注册表加载与沙箱代理，peer 模式校验 agent 名与 manifest id 一致。已完成。
 - SLICE-136 沙箱工具调用中介协议：工具调用经 `tool` 帧回到父进程，按 manifest 授权与调用上限分派给注入的执行器；执行器实现留给接入片。已完成。
 - SLICE-137 工具执行器接入：工具网关客户端与执行器落地，运行主体经 contextvar 传入，CLI 增加 `--tool-gateway-url`，配置网关后带工具授权的 `sandboxed` 记录可加载。已完成。
+- SLICE-138 构建密钥与 publish 默认层级：`in_process` 工件要求平台构建签名，publish 缺省按 `sandboxed`，组合器与注册表服务接入 builder keyring。已完成。
 
 ## 完成定义
 

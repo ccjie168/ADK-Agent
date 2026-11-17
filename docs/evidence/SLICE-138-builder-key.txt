@@ -1,0 +1,56 @@
+SLICE-138 构建密钥与 publish 默认层级
+日期: 2026-11-18
+依据: ADR-0024 第 1 条
+基线: 1409e80
+
+一、红态（实现前）
+
+把 `src/` 换回基线 1409e80 后：
+
+$ pytest tests/registry/test_builder_key.py tests/test_cli_publish_artifact.py \
+    tests/registry/test_registry_service.py tests/test_cli_publish_tier.py \
+    tests/test_registry_cli.py tests/test_cli_compose.py tests/test_registry_url_wiring.py -q
+31 failed, 18 passed
+
+失败包括：builder 信任用例（基线没有 `verify_builder` 与 builder 字段）、
+`test_publish_in_process_requires_a_builder_signature`、两个注册表服务 builder 用例、
+`test_publish_defaults_to_sandboxed`，以及更新后需要新增 flag 的 publish/compose 夹具。
+
+二、实现
+
+- `AgentArtifact` 增加 `builder_signature`/`builder_key_id`，契约 schema 重新导出。
+- `TrustStore.verify_builder(artifact)` 用同一个 keyring 校验构建签名。
+- `publish`：manifest 缺省 `execution_tier` 按 `sandboxed` 处理；`in_process` 带工件时要求
+  `--builder-key`/`--builder-key-id` 签出构建签名，并用 `--builder-keys`/`ADK_BUILDER_KEYS` 验证；
+  不带工件的 `in_process` 是元数据，不要求构建签名。
+- `compose`：新增 `--builder-key`/`--builder-key-id`，组合器输出带构建签名；缺省退出 1。
+- `serve-registry`：新增 `--builder-keys`，`in_process` 工件发布时校验构建签名，
+  未配置返回 503 `builder_key_unavailable`，验证失败返回 400 `artifact_untrusted`。
+- 契约：`cli.md`、`registry_service.md`、`agent_artifact.schema.json` 同步。
+
+三、测试判据变更（随本切片行为变更）
+
+- `tests/test_cli_publish_tier.py::test_publish_requires_a_declared_tier` 改为
+  `test_publish_defaults_to_sandboxed`：缺省 tier 现在按 `sandboxed` 处理，断言从
+  “要求声明”改为“默认 sandboxed 且无后端时拒绝”。
+- 既有 publish/compose 测试补 `--builder-key`/`--builder-key-id`/`--builder-keys` 与对应工件；
+  断言不变。
+
+四、绿态
+
+$ pytest <上面 7 个文件> -q
+49 passed
+
+$ pytest -q（Windows）
+1499 passed, 87 skipped
+
+$ python scripts/check.py --full
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
+
+五、范围与已知缺口
+
+- builder 密钥的轮换、吊销与 HSM/KMS 托管不在本切片。
+- 既有已发布的 `in_process` 记录不重签，按兼容策略读取。
+- 本地 `--agents` 文件仍属运维信任域，不要求构建签名。
+- `in_process` 且无工件的元数据记录不需要构建签名，因为它无法被加载执行。

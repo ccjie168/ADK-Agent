@@ -29,6 +29,8 @@
 
 - 校验：模型合法，`manifest_digest(manifest) == digest`，OIDC 模式下 manifest 的租户等于 token 租户（admin 例外）。
 - 记录带 `artifact` 时要求服务配置了可信公钥，且签名可验证；没配置返回 503 `artifact_trust_unavailable`，验证失败返回 400 `artifact_untrusted`。
+- `in_process` 记录带工件时还要求 `builder_signature`/`builder_key_id` 能被 `--builder-keys`/`ADK_BUILDER_KEYS` 验证；
+  没配置返回 503 `builder_key_unavailable`，验证失败返回 400 `artifact_untrusted`。不带工件的 `in_process` 记录是元数据，不要求构建签名。
 - 成功返回 201，正文是已存记录。同一版本同 digest 重发返回 201 和已有记录，幂等。
 - 同一版本不同 digest 返回 409 `{"error":"version_conflict"}`。
 - 请求体不是 JSON 返回 400 `invalid_json`；模型或摘要不符返回 400 `invalid_record`。

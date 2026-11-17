@@ -23,7 +23,16 @@ class TrustStore:
     def verify(self, artifact: AgentArtifact) -> None:
         if artifact.signature is None or artifact.key_id is None:
             raise ArtifactTrustError("artifact has no signature")
-        key_bytes = self._keys.get(artifact.key_id)
+        self._verify(artifact.digest, artifact.signature, artifact.key_id)
+
+    def verify_builder(self, artifact: AgentArtifact) -> None:
+        """Verify the platform build signature that allows ``in_process``."""
+        if artifact.builder_signature is None or artifact.builder_key_id is None:
+            raise ArtifactTrustError("artifact has no builder signature")
+        self._verify(artifact.digest, artifact.builder_signature, artifact.builder_key_id)
+
+    def _verify(self, digest: str, signature: str, key_id: str) -> None:
+        key_bytes = self._keys.get(key_id)
         if key_bytes is None:
             raise ArtifactTrustError("artifact key id is not trusted")
         try:
@@ -36,7 +45,7 @@ class TrustStore:
             raise PublishUnavailable("cryptography is not installed") from exc
         except Exception as exc:  # noqa: BLE001
             raise ArtifactTrustError("trusted key is not a valid Ed25519 public key") from exc
-        if not verify_digest(artifact.digest, artifact.signature, public_key):
+        if not verify_digest(digest, signature, public_key):
             raise ArtifactTrustError("artifact signature is invalid")
 
     @classmethod

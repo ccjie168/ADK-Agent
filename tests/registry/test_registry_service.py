@@ -120,11 +120,12 @@ def _artifact(key, data: bytes = b"zip-bytes"):
     )
 
 
-def _app(registry=None, *, store=None, trust=None, oidc=None):
+def _app(registry=None, *, store=None, trust=None, oidc=None, builder_keys=None):
     return build_registry_service_app(
         registry or MemoryRegistry(),
         artifact_store=store,
         trust=trust,
+        builder_keys=builder_keys,
         auth_token=None if oidc is not None else "secret",
         oidc=oidc,
     )
@@ -357,3 +358,43 @@ def test_upload_too_large():
 
     assert response.status_code == 413
     assert response.json() == {"error": "too_large"}
+
+
+@needs_crypto
+def test_publish_in_process_requires_a_builder_signature():
+    key = _key()
+    artifact, _ = _artifact(key)
+    record = published_from(_manifest(), artifact=artifact)
+
+    with TestClient(_app(store=MemoryStore(), trust=TrustStore({"k1": _raw(key)}))) as client:
+        response = _post(client, record)
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "builder_key_unavailable"}
+
+
+@needs_crypto
+def test_publish_in_process_rejects_an_untrusted_builder():
+    publisher, builder, other = _key(), _key(), _key()
+    digest = artifact_digest(b"zip-bytes")
+    artifact = AgentArtifact(
+        digest=digest,
+        size=len(b"zip-bytes"),
+        signature=sign_digest(digest, publisher),
+        key_id="k1",
+        builder_signature=sign_digest(digest, builder),
+        builder_key_id="builder-1",
+    )
+    record = published_from(_manifest(), artifact=artifact)
+
+    with TestClient(
+        _app(
+            store=MemoryStore(),
+            trust=TrustStore({"k1": _raw(publisher)}),
+            builder_keys=TrustStore({"builder-1": _raw(other)}),
+        )
+    ) as client:
+        response = _post(client, record)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "artifact_untrusted"}

@@ -71,6 +71,29 @@ def _load_agents(path: str) -> dict:
     raise SystemExit(f"no `agents` dict or `agent`/`root_agent` found in {path}")
 
 
+def _builder_trust(args: argparse.Namespace) -> TrustStore | None:
+    """Build a builder trust store from ``--builder-keys`` or ``$ADK_BUILDER_KEYS``."""
+    from .registry import ArtifactTrustError, TrustStore
+
+    keys_file = getattr(args, "builder_keys", None)
+    try:
+        keys_text = (
+            Path(keys_file).read_text(encoding="utf-8")
+            if keys_file
+            else os.environ.get("ADK_BUILDER_KEYS")
+        )
+    except OSError as exc:
+        print(f"cannot read builder keys: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    if not keys_text:
+        return None
+    try:
+        return TrustStore.from_json(keys_text)
+    except ArtifactTrustError as exc:
+        print(f"invalid builder keys: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def _artifact_trust(args: argparse.Namespace) -> TrustStore | None:
     """Build a trust store from ``--artifact-keys`` or ``$ADK_ARTIFACT_KEYS``."""
     from .registry import ArtifactTrustError, TrustStore
@@ -816,8 +839,16 @@ def _publish_artifact(args: argparse.Namespace, manifest: Any) -> tuple[Any, byt
     from .registry.artifacts_postgres import PostgresArtifactStore
 
     if args.artifact is None:
-        if args.key is not None or args.key_id is not None or args.artifact_dir is not None:
-            raise ValueError("--key, --key-id and --artifact-dir require --artifact")
+        if (
+            args.key is not None
+            or args.key_id is not None
+            or args.artifact_dir is not None
+            or getattr(args, "builder_key", None) is not None
+            or getattr(args, "builder_key_id", None) is not None
+        ):
+            raise ValueError(
+                "--key, --key-id, --artifact-dir and the builder key flags require --artifact"
+            )
         return None, None
     if not args.key or not args.key_id:
         raise ValueError("--artifact requires --key and --key-id")
@@ -837,11 +868,16 @@ def _publish_artifact(args: argparse.Namespace, manifest: Any) -> tuple[Any, byt
         raise ValueError("set exactly one of --artifact-dir or ARTIFACT_URL")
     key = load_private_key(args.key)
     digest = artifact_digest(data)
+    builder_key = load_private_key(args.builder_key) if args.builder_key else None
+    if (builder_key is None) != (args.builder_key_id is None):
+        raise ValueError("set both --builder-key and --builder-key-id or neither")
     artifact = AgentArtifact(
         digest=digest,
         size=len(data),
         signature=sign_digest(digest, key),
         key_id=args.key_id,
+        builder_signature=(sign_digest(digest, builder_key) if builder_key is not None else None),
+        builder_key_id=args.builder_key_id,
     )
     if args.registry_url:
         return artifact, data
@@ -1310,6 +1346,11 @@ def main(argv: list[str] | None = None) -> None:
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
     )
     p_registry.add_argument(
+        "--builder-keys",
+        default=None,
+        help="JSON file mapping builder key id to a 64 hex Ed25519 public key",
+    )
+    p_registry.add_argument(
         "--artifact-keys",
         default=None,
         help="JSON file mapping key id to a 64 hex Ed25519 public key",
@@ -1762,11 +1803,36 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="content-addressed directory for artifact bytes",
     )
+    p_publish.add_argument(
+        "--builder-keys",
+        default=None,
+        help="JSON file mapping builder key id to a 64 hex Ed25519 public key",
+    )
+    p_publish.add_argument(
+        "--builder-key",
+        default=None,
+        help="PEM Ed25519 private key that signs in_process artifacts",
+    )
+    p_publish.add_argument(
+        "--builder-key-id",
+        default=None,
+        help="builder key id recorded with the artifact",
+    )
 
     sub.add_parser("templates", help="list composition templates")
 
     p_compose = sub.add_parser("compose", help="compose and publish an agent from a template")
     p_compose.add_argument("--template", required=True, help="template id (see `templates`)")
+    p_compose.add_argument(
+        "--builder-key",
+        default=None,
+        help="PEM Ed25519 private key that signs in_process artifacts",
+    )
+    p_compose.add_argument(
+        "--builder-key-id",
+        default=None,
+        help="builder key id recorded with the artifact",
+    )
     p_compose.add_argument("--tenant", required=True, help="tenant the agent belongs to")
     p_compose.add_argument("--id", dest="agent_id", required=True, help="agent id")
     p_compose.add_argument("--version", required=True, help="agent version")
@@ -2333,6 +2399,7 @@ def main(argv: list[str] | None = None) -> None:
             connectors=connectors,
             audit=_audit_sink(args),
             trust=_artifact_trust(args),
+            builder_keys=_builder_trust(args),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
@@ -3283,6 +3350,12 @@ def main(argv: list[str] | None = None) -> None:
         if not args.key or not args.key_id:
             print("compose failed: --key and --key-id are required", file=sys.stderr)
             raise SystemExit(1)
+        if not args.builder_key or not args.builder_key_id:
+            print(
+                "compose failed: --builder-key and --builder-key-id are required",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
 
         registry = _agent_registry(args)
         compose_store: Any = None
@@ -3328,6 +3401,8 @@ def main(argv: list[str] | None = None) -> None:
                     artifact_store=compose_store,
                     private_key=load_private_key(args.key),
                     key_id=args.key_id,
+                    builder_key=load_private_key(args.builder_key),
+                    builder_key_id=args.builder_key_id,
                 )
             finally:
                 if compose_store is not None:
@@ -3370,6 +3445,7 @@ def main(argv: list[str] | None = None) -> None:
 
         try:
             data = json.loads(Path(args.path).read_text(encoding="utf-8"))
+            data.setdefault("execution_tier", "sandboxed")
             manifest = AgentManifest.model_validate(data)
             if declared_execution_tier(data) == "sandboxed" and not agent_sandbox_available():
                 raise ValueError("manifest requires the agent sandbox, which is not available")
@@ -3380,6 +3456,13 @@ def main(argv: list[str] | None = None) -> None:
             )
             enforce_eval_gate(manifest, report)
             artifact, artifact_bytes = _publish_artifact(args, manifest)
+            if manifest.execution_tier == "in_process" and artifact is not None:
+                builder_trust = _builder_trust(args)
+                if builder_trust is None:
+                    raise ValueError(
+                        "in_process publish requires --builder-keys or ADK_BUILDER_KEYS"
+                    )
+                builder_trust.verify_builder(artifact)
             registry = _agent_registry(args)
 
             async def publish_record():
