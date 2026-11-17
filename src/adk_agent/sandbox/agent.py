@@ -26,11 +26,26 @@ class SandboxToolsUnavailable(RuntimeError):
     """A sandboxed manifest declares tool grants the sandbox cannot mediate yet."""
 
 
+class SandboxToolError(RuntimeError):
+    """A tool call was refused or failed in the parent process."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(f"{code}: {message}")
+        self.code = code
+
+
 @runtime_checkable
 class AgentSandboxBackend(Protocol):
     """Execution seam for sandboxed artifacts."""
 
-    async def run(self, artifact: AgentArtifact, data: bytes, input_text: str) -> SandboxResult: ...
+    async def run(
+        self,
+        artifact: AgentArtifact,
+        data: bytes,
+        input_text: str,
+        *,
+        manifest: AgentManifest | None = None,
+    ) -> SandboxResult: ...
 
 
 _backend: AgentSandboxBackend | None = None

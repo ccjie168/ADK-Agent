@@ -324,7 +324,8 @@
 - agent 的名字取 manifest 的 `id`；同一批里重名退出 1。
 - `serve` 只接受一个 `--agent-ref`。
 - 记录声明 `sandboxed` 时需要 `--agent-sandbox`；加载结果是沙箱代理，每次调用起一个子进程，工件字节不在控制台或 MCP 进程内执行。未加该 flag 时退出 1。
-- 声明工具授权的 `sandboxed` 记录在加载时退出 1，直到工具网关 RPC 落地。
+- 声明工具授权的 `sandboxed` 记录只有在沙箱后端带工具执行器时才加载；当前 CLI 构造的 `ProcessAgentSandbox`
+  没有执行器，因此加载时退出 1。
 - `--agent-sandbox` 在非 POSIX 平台默认退出 1；`--allow-unsandboxed` 才允许本地开发并在 stderr 提示降级。
 
 ## `adk-agent serve` / `serve-many` 的 MCP HTTP 鉴权

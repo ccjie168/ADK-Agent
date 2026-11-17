@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, BinaryIO
 
 from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 
+from .agent import SandboxToolError
 from .frames import FrameError, read_frame, write_frame
 
 _channel: SandboxChannel | None = None
@@ -41,6 +43,31 @@ class SandboxChannel:
     def start(self) -> None:
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._read_loop())
+
+    async def call_tool(self, tool_id: str, args: dict[str, Any]) -> Any:
+        try:
+            json.dumps(args)
+        except (TypeError, ValueError) as exc:
+            raise SandboxToolError("tool_args_invalid", "tool arguments are not JSON") from exc
+        if self._task is None or self._task.done():
+            raise SandboxToolError("tool_channel_closed", "tool channel is not running")
+        self._next_id += 1
+        call_id = self._next_id
+        future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self._pending[call_id] = future
+        write_frame(self._writer, {"type": "tool", "id": call_id, "tool_id": tool_id, "args": args})
+        frame = await future
+        if frame.get("type") == "tool_error":
+            raise SandboxToolError(
+                str(frame.get("code", "tool_failed")),
+                str(frame.get("message", "tool call failed")),
+            )
+        if frame.get("type") != "tool_result":
+            raise SandboxToolError("tool_failed", "tool result is malformed")
+        result = frame.get("result")
+        if result is None:
+            raise SandboxToolError("tool_result_invalid", "tool returned no result")
+        return result
 
     async def call_model(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         if self._task is None or self._task.done():
@@ -100,3 +127,16 @@ class SandboxModel(BaseLlm):
         responses = await active.call_model(llm_request.model_dump(mode="json"))
         for item in responses:
             yield LlmResponse.model_validate(item)
+
+
+def install_tool_proxy(agent: Any, active: SandboxChannel) -> None:
+    """Route every tool call to the parent instead of executing artifact code."""
+
+    async def proxy(tool: Any, args: Any, tool_context: Any) -> Any:
+        return await active.call_tool(str(getattr(tool, "name", "")), dict(args or {}))
+
+    fields = getattr(type(agent), "model_fields", {})
+    if "before_tool_callback" in fields:
+        agent.before_tool_callback = proxy
+    for sub in getattr(agent, "sub_agents", None) or ():
+        install_tool_proxy(sub, active)

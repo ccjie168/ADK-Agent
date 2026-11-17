@@ -33,9 +33,12 @@ class SandboxAgent(BaseAgent):
     artifact: AgentArtifact
     data: bytes
     backend: Any
+    manifest: AgentManifest
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        result: SandboxResult = await self.backend.run(self.artifact, self.data, _user_text(ctx))
+        result: SandboxResult = await self.backend.run(
+            self.artifact, self.data, _user_text(ctx), manifest=self.manifest
+        )
         yield Event(
             author=self.name,
             invocation_id=ctx.invocation_id,
@@ -55,6 +58,7 @@ def build_sandbox_agent(
         artifact=artifact,
         data=data,
         backend=backend,
+        manifest=manifest,
     )
 
 

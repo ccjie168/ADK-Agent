@@ -106,13 +106,17 @@ async def load_sandbox_agent(published: Any, *, store: ArtifactStore) -> Any:
     """Return a sandbox proxy for a ``sandboxed`` record without executing it."""
     manifest = published.manifest
     require_execution_supported(manifest)
-    if manifest.execution_tier == "sandboxed" and manifest.tool_grants:
-        raise SandboxToolsUnavailable("sandboxed agents cannot use tool grants yet")
     if published.artifact is None:
         raise ArtifactLoadError("agent version has no artifact")
     backend = agent_sandbox_backend()
     if backend is None:
         raise ArtifactLoadError("agent sandbox backend is not registered")
+    if (
+        manifest.execution_tier == "sandboxed"
+        and manifest.tool_grants
+        and not getattr(backend, "supports_tools", False)
+    ):
+        raise SandboxToolsUnavailable("sandboxed agents cannot use tool grants yet")
     data = await store.get(published.artifact.digest)
     if data is None:
         raise ArtifactLoadError("artifact bytes not found")

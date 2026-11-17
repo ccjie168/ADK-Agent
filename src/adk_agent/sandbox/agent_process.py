@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 import shutil
 import signal
 import sys
 import tempfile
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
@@ -16,7 +18,7 @@ from typing import Any
 from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_request import LlmRequest
 
-from ..core import AgentArtifact
+from ..core import AgentArtifact, AgentManifest
 from .agent import SandboxResult
 from .errors import SandboxCrashed, SandboxTimeout, SandboxViolation
 from .frames import FrameError, read_frame_async, write_frame_async
@@ -34,6 +36,7 @@ class AgentSandboxLimits:
     file_bytes: int = 8 * 1024 * 1024
     processes: int | None = None
     max_model_calls: int = 100
+    max_tool_calls: int = 100
 
 
 async def _read_stderr(stream: asyncio.StreamReader | None) -> str:
@@ -148,9 +151,12 @@ class ProcessAgentSandbox:
         self,
         limits: AgentSandboxLimits | None = None,
         model: BaseLlm | None = None,
+        tools: Any = None,
     ) -> None:
         self.limits = limits or AgentSandboxLimits()
         self.model = model
+        self.tools = tools
+        self.supports_tools = tools is not None
 
     def _env(self) -> dict[str, str]:
         if os.name != "nt":
@@ -158,7 +164,14 @@ class ProcessAgentSandbox:
         names = ("SYSTEMROOT", "TEMP", "TMP")
         return {name: os.environ[name] for name in names if name in os.environ}
 
-    async def run(self, artifact: AgentArtifact, data: bytes, input_text: str) -> SandboxResult:
+    async def run(
+        self,
+        artifact: AgentArtifact,
+        data: bytes,
+        input_text: str,
+        *,
+        manifest: AgentManifest | None = None,
+    ) -> SandboxResult:
         request = {
             "type": "run",
             "artifact": artifact.model_dump(mode="json"),
@@ -207,6 +220,12 @@ class ProcessAgentSandbox:
                     raise SandboxCrashed(f"request does not fit in one frame: {exc}") from exc
                 applied: dict[str, int] = {}
                 model_calls = [0]
+                tool_calls = [0]
+                granted = (
+                    frozenset(grant.tool_id for grant in manifest.tool_grants)
+                    if manifest is not None
+                    else frozenset()
+                )
                 while True:
                     remaining = deadline - loop.time()
                     if remaining <= 0:
@@ -230,6 +249,9 @@ class ProcessAgentSandbox:
                         continue
                     if kind == "model":
                         await self._serve_model(frame, proc, deadline, model_calls)
+                        continue
+                    if kind == "tool":
+                        await self._serve_tool(frame, proc, deadline, tool_calls, granted, manifest)
                         continue
                     if kind == "final":
                         if proc.stdin is not None:
@@ -297,6 +319,108 @@ class ProcessAgentSandbox:
         request.service_tier = None
         _reject_file_references(request.contents)
         return request
+
+    async def _serve_tool(
+        self,
+        frame: dict[str, Any],
+        proc: asyncio.subprocess.Process,
+        deadline: float,
+        calls: list[int],
+        granted: frozenset[str],
+        manifest: AgentManifest | None,
+    ) -> None:
+        call_id = frame.get("id")
+        if not isinstance(call_id, int) or proc.stdin is None:
+            raise SandboxCrashed("worker sent an invalid tool frame")
+        tool_id = frame.get("tool_id")
+        args = frame.get("args")
+        if not isinstance(tool_id, str) or not isinstance(args, dict):
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": "tool_args_invalid",
+                    "message": "tool frame is malformed",
+                },
+                deadline,
+            )
+            return
+        calls[0] += 1
+        if calls[0] > self.limits.max_tool_calls:
+            raise SandboxViolation("tool call limit exceeded")
+        if tool_id not in granted:
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": "tool_not_granted",
+                    "message": "tool is not granted to this agent",
+                },
+                deadline,
+            )
+            return
+        if self.tools is None:
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": "tool_mediation_unavailable",
+                    "message": "tool mediation is not configured",
+                },
+                deadline,
+            )
+            return
+        try:
+            remaining = max(deadline - asyncio.get_running_loop().time(), 0.001)
+            result = await asyncio.wait_for(self.tools(manifest, tool_id, args), timeout=remaining)
+        except asyncio.TimeoutError:
+            raise
+        except Exception:  # noqa: BLE001
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": "tool_failed",
+                    "message": "tool execution failed",
+                },
+                deadline,
+            )
+            return
+        if not isinstance(result, Mapping):
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": "tool_result_invalid",
+                    "message": "tool result is not a mapping",
+                },
+                deadline,
+            )
+            return
+        try:
+            json.dumps(result)
+        except (TypeError, ValueError):
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": "tool_result_invalid",
+                    "message": "tool result is not JSON",
+                },
+                deadline,
+            )
+            return
+        await self._reply(
+            proc,
+            {"type": "tool_result", "id": call_id, "result": result},
+            deadline,
+        )
 
     async def _serve_model(
         self,

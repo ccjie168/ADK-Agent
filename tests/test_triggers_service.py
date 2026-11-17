@@ -480,9 +480,11 @@ class FakeSandbox:
         self.text = text
         self.error = error
         self.calls: list[tuple] = []
+        self.manifests: list = []
 
-    async def run(self, artifact, data: bytes, input_text: str):
+    async def run(self, artifact, data: bytes, input_text: str, *, manifest=None):
         self.calls.append((artifact, data, input_text))
+        self.manifests.append(manifest)
         if self.error is not None:
             raise self.error
         return SandboxResult(text=self.text)
@@ -523,6 +525,7 @@ def test_sandboxed_trigger_uses_the_backend(tmp_path):
     assert response.json()["text"] == "from sandbox"
     assert runner.calls == 0
     assert len(sandbox.calls) == 1
+    assert sandbox.manifests[0].execution_tier == "sandboxed"
     artifact, data, text = sandbox.calls[0]
     assert artifact.digest == published.artifact.digest
     assert data == b"zip-bytes"
