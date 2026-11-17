@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -59,6 +60,9 @@ class CredentialBinding(BaseModel):
     created_by: str = Field(min_length=1)
     created_at: datetime
     enabled: bool = True
+    wrapped_secret: dict[str, Any] | None = None
+    secret_key_id: str | None = None
+    secret_version: int | None = Field(default=None, ge=1)
 
     @field_validator("created_at")
     @classmethod

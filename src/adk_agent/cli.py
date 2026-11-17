@@ -1572,6 +1572,11 @@ def main(argv: list[str] | None = None) -> None:
     p_cr_register.add_argument("--id", required=True)
     p_cr_register.add_argument("--secret-ref", dest="secret_ref", required=True)
     p_cr_register.add_argument("--description", default="")
+    p_cr_register.add_argument(
+        "--secret-stdin",
+        action="store_true",
+        help="read the secret from stdin and store it encrypted (needs ADK_SECRET_KEKS)",
+    )
     _add_credential_store_args(p_cr_register)
 
     p_cr_disable = credentials_sub.add_parser("disable", help="disable a binding")
@@ -2996,6 +3001,23 @@ def main(argv: list[str] | None = None) -> None:
                     return await store.list(args.tenant)
                 if args.credentials_cmd == "disable":
                     return await store.disable(args.tenant, args.id, by="cli")
+                wrapped = None
+                key_id = None
+                version = None
+                if getattr(args, "secret_stdin", False):
+                    from .secretstore import LocalKeyBackend, credential_aad
+
+                    backend = LocalKeyBackend.from_env()
+                    if backend is None:
+                        raise ValueError("set ADK_SECRET_KEKS to store a secret")
+                    value = sys.stdin.read().strip()
+                    if not value:
+                        raise ValueError("the secret on stdin is empty")
+                    wrapped = backend.wrap(
+                        value.encode("utf-8"), credential_aad(args.tenant, args.id)
+                    )
+                    key_id = backend.current_key_id()
+                    version = 1
                 binding = CredentialBinding(
                     credential_id=args.id,
                     tenant=args.tenant,
@@ -3003,6 +3025,9 @@ def main(argv: list[str] | None = None) -> None:
                     description=args.description,
                     created_by="cli",
                     created_at=datetime.now(timezone.utc),
+                    wrapped_secret=wrapped,
+                    secret_key_id=key_id,
+                    secret_version=version,
                 )
                 return await store.add(binding)
             finally:

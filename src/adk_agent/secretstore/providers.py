@@ -63,17 +63,52 @@ class PrefixedEnvSecretProvider:
 
 
 class TenantSecretProvider:
-    """Resolve only two-segment ``secret://tenant/name`` references locally."""
+    """Resolve ``secret://tenant/name`` from stored ciphertext, then the environment."""
+
+    def __init__(self, backend: Any = None, credentials: Any = None) -> None:
+        self._backend = backend
+        self._credentials = credentials
+
+    async def _stored(self, tenant: str, reference: str) -> str | None:
+        if self._backend is None or self._credentials is None:
+            return None
+        bindings = await self._credentials.list(tenant)
+        binding = next(
+            (
+                item
+                for item in bindings
+                if item.secret_ref == reference and item.enabled and item.wrapped_secret is not None
+            ),
+            None,
+        )
+        if binding is None:
+            return None
+        aad = _credential_aad(binding.tenant, binding.credential_id)
+        try:
+            return self._backend.unwrap(binding.wrapped_secret, aad).decode("utf-8")
+        except Exception as exc:  # noqa: BLE001
+            raise SecretNotFound(f"secret {reference} cannot be decrypted") from exc
 
     async def resolve(self, reference: str) -> str:
         try:
-            name = credential_env_name(reference)
+            tenant, name = parse_credential_ref(reference)
         except ValueError:
             raise SecretNotFound(f"invalid secret reference {reference!r}") from None
-        value = os.environ.get(name)
+        stored = await self._stored(tenant, reference)
+        if stored is not None:
+            return _checked(reference, stored)
+        try:
+            env_name = credential_env_name(reference)
+        except ValueError:
+            raise SecretNotFound(f"invalid secret reference {reference!r}") from None
+        value = os.environ.get(env_name)
         if value is None:
             raise SecretNotFound(f"secret {reference!r} is not set")
         return _checked(reference, value)
+
+
+def _credential_aad(tenant: str, credential_id: str) -> bytes:
+    return f"adk-credential:{tenant}:{credential_id}".encode()
 
 
 class TenantScopedSecretProvider:
@@ -118,3 +153,7 @@ def secret_header_provider(
         return {header: await secrets.resolve(ref) for header, ref in header_refs.items()}
 
     return provide
+
+
+def credential_aad(tenant: str, credential_id: str) -> bytes:
+    return _credential_aad(tenant, credential_id)

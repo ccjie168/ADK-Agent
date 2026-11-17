@@ -65,3 +65,15 @@
 不满足返回 400 `credential_unbound`，不写连接器。连接器 `tenant` 为空时不得使用两段租户引用。未配置凭据存储的部署保持现有行为。
 
 工具网关按连接器租户包装提供者。两段引用在取用时再次校验租户，不符返回工具错误 `secret_unavailable`。单段全局引用不受影响。
+
+
+## 信封加密（ADR-0025）
+
+- 记录可带 `wrapped_secret`（对象）、`secret_key_id` 与 `secret_version`；密文用 AES-256-GCM，
+  数据密钥由 KEK 包裹，AAD 是 `adk-credential:<tenant>:<credential_id>`。
+- keyring 从 `ADK_SECRET_KEKS` 读取：`{"active": "<key id>", "keys": {"<key id>": "<base64 32 bytes>"}}`。
+- `TenantSecretProvider` 先按 `secret_ref` 找启用且带密文的记录并解密，失败抛不可用；没有密文时
+  回退 `ADK_SECRET_<TENANT>_<NAME>` 环境变量。
+- `credentials register --secret-stdin` 从标准输入读值并加密写入，缺 `ADK_SECRET_KEKS` 退出 1；
+  输出只含元数据，不含明文。
+- 轮换保留旧 key id 用于解密；keyring 缺失旧 key id 时拒绝解密。

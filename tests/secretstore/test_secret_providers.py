@@ -62,3 +62,44 @@ def test_secret_header_provider():
 def test_secret_header_provider_rejects_bad_name():
     with pytest.raises(ValueError):
         secret_header_provider(MappingSecretProvider({}), {"Bad Header": "DEMO_TOKEN"})
+
+
+class _StoredCredential:
+    def __init__(self, binding) -> None:
+        self.binding = binding
+
+    async def list(self, tenant):
+        return [self.binding] if tenant == self.binding.tenant else []
+
+
+def test_tenant_provider_prefers_stored_ciphertext(monkeypatch):
+    import os
+
+    from adk_agent.core import CredentialBinding
+    from adk_agent.secretstore import LocalKeyBackend, TenantSecretProvider, credential_aad
+
+    backend = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    aad = credential_aad("acme", "crm")
+    binding = CredentialBinding(
+        credential_id="crm",
+        tenant="acme",
+        secret_ref="secret://acme/token",
+        created_by="ops",
+        created_at="2026-11-18T00:00:00Z",
+        wrapped_secret=backend.wrap(b"from-store", aad),
+        secret_key_id="k1",
+        secret_version=1,
+    )
+    provider = TenantSecretProvider(backend=backend, credentials=_StoredCredential(binding))
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+
+    assert asyncio.run(provider.resolve("secret://acme/token")) == "from-store"
+
+
+def test_tenant_provider_falls_back_to_the_environment(monkeypatch):
+    from adk_agent.secretstore import TenantSecretProvider
+
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+    provider = TenantSecretProvider()
+
+    assert asyncio.run(provider.resolve("secret://acme/token")) == "from-env"
