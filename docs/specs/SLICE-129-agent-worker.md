@@ -24,8 +24,8 @@
 - `SandboxResult(text: str)`，frozen dataclass。
 - `AgentSandboxBackend`（`runtime_checkable` Protocol）：
   `async def run(artifact: AgentArtifact, data: bytes, input_text: str) -> SandboxResult`。
-- `set_agent_sandbox_backend(backend)`：`None` 或协议实例，否则 `TypeError`。
-- `agent_sandbox_available()`：`isinstance(_backend, AgentSandboxBackend)`。
+- `set_agent_sandbox_backend(backend)`：`None` 或带可调用、协程函数 `run` 的实现，否则 `TypeError`。
+- `agent_sandbox_available()`：`_backend is not None`，注册时已校验 `run`。
 - `require_execution_supported` 不变。
 
 `src/adk_agent/sandbox/frames.py`（新文件）：
@@ -38,9 +38,9 @@
 
 - `AgentSandboxLimits`：`wall_seconds=30`、`cpu_seconds=10`、`memory_mb=1024`、`open_files=256`、`file_bytes=8 MiB`、`processes=None`。
 - `ProcessAgentSandbox(limits=None)` 实现 `AgentSandboxBackend`。
-- 启动命令：`[sys.executable, "-E", "-s", "-m", "adk_agent.sandbox.agent_worker"]`；POSIX 传 `env={}`，Windows 传 `SYSTEMROOT/TEMP/TMP`。
-- 墙钟超时由父进程负责；超时后 `kill()` 并 `await wait()`。
-- stderr 并发读取，最多保留 8 KiB，只用于诊断，不进结果。
+- 启动命令：`[sys.executable, "-I", "-m", "adk_agent.sandbox.agent_worker"]`，cwd 是一次性临时目录；POSIX 传 `env={}`，Windows 传 `SYSTEMROOT/TEMP/TMP`。
+- 墙钟超时由父进程负责；超时后 `kill()` 并 `await wait()`；stderr 收尾最多再等 5 秒。
+- stderr 并发读取，读到 EOF，只保留前 8 KiB，只用于诊断，不进结果。
 
 `src/adk_agent/sandbox/agent_worker.py`（新文件）：
 
@@ -94,6 +94,7 @@
 - [x] 直接构造 `_socket.socket` 被拒 -> `::test_raw_socket_module_is_denied`
 - [x] `AF_UNIX` 套接字被拒（POSIX） -> `::test_unix_sockets_are_denied`
 - [x] 子进程创建被拒 -> `::test_process_creation_is_denied`
+- [x] 低层 `_fork_exec` 被拒（POSIX） -> `::test_low_level_fork_exec_is_denied`
 - [x] 工件伪造 `SandboxViolation` 仍归为崩溃 -> `::test_artifact_cannot_forge_a_violation`
 - [x] 运行目录是一次性临时目录且被删除 -> `::test_runs_in_a_removed_temp_directory`
 - [x] 畸形帧且子进程存活时有界失败 -> `::test_malformed_frame_does_not_hang`

@@ -44,8 +44,21 @@ async def _read_stderr(stream: asyncio.StreamReader | None) -> str:
     return kept.decode("utf-8", "replace")
 
 
+async def _stderr_text(task: asyncio.Task[str]) -> str:
+    """Collect stderr, bounded even if another process still holds the pipe."""
+    try:
+        return await asyncio.wait_for(task, timeout=_EXIT_GRACE)
+    except asyncio.TimeoutError:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        return ""
+
+
 def _applied_limits(frame: dict[str, Any]) -> dict[str, int]:
-    raw = frame.get("applied") or {}
+    raw = frame.get("applied")
+    if raw is None:
+        raw = {}
     if not isinstance(raw, dict):
         raise SandboxCrashed("worker sent an invalid limits frame")
     try:
@@ -90,68 +103,74 @@ class ProcessAgentSandbox:
             },
         }
         workdir = tempfile.mkdtemp(prefix="adk-agent-sandbox-")
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-I",
-            "-m",
-            "adk_agent.sandbox.agent_worker",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=self._env(),
-            cwd=workdir,
-        )
-        stderr_task = asyncio.create_task(_read_stderr(proc.stderr))
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + self.limits.wall_seconds
         try:
-            if proc.stdin is None or proc.stdout is None:
-                raise SandboxCrashed("worker pipes are unavailable")
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-I",
+                "-m",
+                "adk_agent.sandbox.agent_worker",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=self._env(),
+                cwd=workdir,
+            )
+            stderr_task = asyncio.create_task(_read_stderr(proc.stderr))
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + self.limits.wall_seconds
             try:
-                remaining = deadline - loop.time()
-                await asyncio.wait_for(write_frame_async(proc.stdin, request), timeout=remaining)
-            except (BrokenPipeError, ConnectionResetError) as exc:
-                raise SandboxCrashed("worker exited before reading the request") from exc
-            except FrameError as exc:
-                raise SandboxCrashed(f"request does not fit in one frame: {exc}") from exc
-            finally:
-                proc.stdin.close()
-
-            applied: dict[str, int] = {}
-            while True:
-                remaining = deadline - loop.time()
-                if remaining <= 0:
-                    raise asyncio.TimeoutError
+                if proc.stdin is None or proc.stdout is None:
+                    raise SandboxCrashed("worker pipes are unavailable")
                 try:
-                    frame = await asyncio.wait_for(read_frame_async(proc.stdout), timeout=remaining)
+                    remaining = deadline - loop.time()
+                    await asyncio.wait_for(
+                        write_frame_async(proc.stdin, request), timeout=remaining
+                    )
+                except (BrokenPipeError, ConnectionResetError) as exc:
+                    raise SandboxCrashed("worker exited before reading the request") from exc
                 except FrameError as exc:
-                    await self._reap(proc)
-                    stderr = await stderr_task
-                    detail = f": {stderr.strip()[:300]}" if stderr.strip() else ""
-                    raise SandboxCrashed(f"worker protocol error: {exc}{detail}") from exc
-                if not isinstance(frame, dict):
-                    raise SandboxCrashed("worker sent a non-object frame")
-                kind = frame.get("type")
-                if kind == "limits":
-                    applied = _applied_limits(frame)
-                    continue
-                if kind == "final":
-                    await self._reap(proc)
-                    return SandboxResult(text=str(frame.get("text", "")), limits=applied)
-                if kind == "error":
-                    await self._reap(proc)
-                    raise _error(frame, await stderr_task)
-                raise SandboxCrashed("worker sent an unknown frame")
-        except asyncio.TimeoutError:
-            raise SandboxTimeout(f"worker exceeded {self.limits.wall_seconds}s") from None
+                    raise SandboxCrashed(f"request does not fit in one frame: {exc}") from exc
+                finally:
+                    proc.stdin.close()
+
+                applied: dict[str, int] = {}
+                while True:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        raise asyncio.TimeoutError
+                    try:
+                        frame = await asyncio.wait_for(
+                            read_frame_async(proc.stdout), timeout=remaining
+                        )
+                    except FrameError as exc:
+                        await self._reap(proc)
+                        stderr = await _stderr_text(stderr_task)
+                        detail = f": {stderr.strip()[:300]}" if stderr.strip() else ""
+                        raise SandboxCrashed(f"worker protocol error: {exc}{detail}") from exc
+                    if not isinstance(frame, dict):
+                        raise SandboxCrashed("worker sent a non-object frame")
+                    kind = frame.get("type")
+                    if kind == "limits":
+                        applied = _applied_limits(frame)
+                        continue
+                    if kind == "final":
+                        await self._reap(proc)
+                        return SandboxResult(text=str(frame.get("text", "")), limits=applied)
+                    if kind == "error":
+                        await self._reap(proc)
+                        raise _error(frame, await _stderr_text(stderr_task))
+                    raise SandboxCrashed("worker sent an unknown frame")
+            except asyncio.TimeoutError:
+                raise SandboxTimeout(f"worker exceeded {self.limits.wall_seconds}s") from None
+            finally:
+                if proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
+                if not stderr_task.done():
+                    stderr_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await stderr_task
         finally:
-            if proc.returncode is None:
-                proc.kill()
-                await proc.wait()
-            if not stderr_task.done():
-                stderr_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await stderr_task
             shutil.rmtree(workdir, ignore_errors=True)
 
     @staticmethod

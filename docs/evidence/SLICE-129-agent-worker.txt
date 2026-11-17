@@ -56,7 +56,7 @@ $ python scripts/check.py --full
 验证结论 DO NOT MERGE，主要问题与处理：
 
 1. [P0] memory_mb 直接传给 RLIMIT_AS，单位是字节，Linux 上所有正常工件崩溃。
-   修复：乘 1024×1024；上报改为 getrlimit 读回值。WSL 上 43 个 sandbox 用例通过。
+   修复：乘 1024×1024；上报改为 getrlimit 读回值。WSL 上 sandbox 用例全部通过。
 2. [P0] 协议错误路径先 await stderr 再回收，工件写畸形帧并保持存活可让父进程无限挂起。
    修复：先 kill 并 wait，再读 stderr；stderr 继续读并丢弃前 8 KiB 之后的内容；墙钟覆盖写请求与帧循环。
    新增 POSIX 回归 tests/sandbox/test_agent_process.py::test_malformed_frame_does_not_hang。
@@ -78,7 +78,7 @@ $ python scripts/check.py --full
 七、Linux 验证（WSL Ubuntu 24.04，Python 3.12）
 
 $ pytest tests/sandbox -q
-43 passed
+46 passed
 
 $ pytest -q（整仓，缺 import-linter 与可选模型依赖）
 1384 passed, 90 skipped, 3 failed
@@ -87,6 +87,30 @@ $ pytest -q（整仓，缺 import-linter 与可选模型依赖）
 八、修复后的门禁（Windows，Python 3.14）
 
 $ python scripts/check.py --full
-1394 passed, 83 skipped
+1394 passed, 84 skipped
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
+
+九、第二轮独立验证（HEAD b052fab）
+
+结论 MERGE，七项 must-fix 的原始场景全部关闭。Medium 残余项处理如下：
+
+- `subprocess._fork_exec`、`_posixsubprocess.fork_exec`、`_winapi.CreateProcess`、`os.startfile` 纳入严格守卫；
+  新增 POSIX 回归 tests/sandbox/test_agent_process.py::test_low_level_fork_exec_is_denied。
+- 回收后读取 stderr 用 5 秒上限包住，另一个进程仍持有管道时也能有界失败；契约写明单次运行上界是 wall + 10 秒加启动开销。
+- 临时目录的创建移进 try，spawn 失败或取消也会删除。
+- limits 帧把 falsy 非 dict 当非法值；spec 的探针描述与启动命令同步为 callable+协程校验与 `-I`。
+- 契约补充：残余绕过仍包括 `socket.socket.__bases__[0]` 内省与 ctypes 直调 libc；这两项属于 ADR-0024 第 9 条，
+  接入切片必须用操作系统级隔离兜底。
+
+十、最终绿态
+
+$ pytest -q（Windows）
+1394 passed, 84 skipped
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+46 passed
+
+$ python scripts/check.py --full
 [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
 ALL PASS

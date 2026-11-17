@@ -13,7 +13,7 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 
 - 4 字节大端长度加 UTF-8 JSON；最大 32 MiB，超过、截断或非 JSON 都算协议错误。
 - 协议只走启动时的 stdout 句柄。子进程把 fd 1 重定向到 stderr，再单独保存一份原始 stdout 句柄写帧，所以工件的 `print` 不会污染协议。
-  该句柄与工件同进程，工件若找到它并写入畸形帧，父进程按协议错误处理：先 kill 并回收子进程，再读取 stderr，失败有界。
+  该句柄与工件同进程，工件若找到它并写入畸形帧，父进程按协议错误处理：先 kill 并回收子进程，再读取 stderr，stderr 收尾最多等 5 秒。
 - stderr 由父进程并发读取，保留前 8 KiB 后继续读并丢弃，避免管道写满阻塞子进程。stderr 只用于诊断，可能包含宿主路径，只对可信调用方展示。
 
 ## 请求
@@ -51,7 +51,7 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
   `RLIMIT_AS` 以字节为单位设置，`memory_mb` 先乘 1024×1024；上报值是 `getrlimit` 读回值除以 1024×1024。
   `RLIMIT_NPROC` 按 uid 计数，同一服务账号下的并发运行共享该额度，默认关闭。
 - Windows：不设置 `RLIMIT`，只保留脚本级网络守卫与环境清空。生产要求 POSIX，能力探测与启动参数在接入切片落地。
-- 墙钟超时由父进程负责：写请求、读每一帧与回收都在同一个 deadline 之内；超时后 `kill` 并 `wait`，抛 `SandboxTimeout`。
+- 墙钟超时由父进程负责：写请求与读每一帧共用一个 deadline；超时后 `kill` 并 `wait`，抛 `SandboxTimeout`。回收与 stderr 收尾各自最多再等 5 秒，所以单次运行的上界是 wall + 10 秒加进程启动开销。
 
 ## 网络与进程守卫
 
@@ -59,6 +59,7 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 
 - `socket.getaddrinfo`、`socket.socket.connect`、`connect_ex`；
 - `socket.socket` 构造 `AF_INET`、`AF_INET6`、`AF_UNIX`，以及 `_socket.socket` 按模块名直接构造；
-- `os.system`、`os.popen`、`os.fork`/`forkpty`/`exec*`/`spawn*`、`subprocess.Popen`。
+- `os.system`、`os.popen`、`os.startfile`、`os.fork`/`forkpty`/`exec*`/`spawn*`、`subprocess.Popen`、
+  `subprocess._fork_exec`、`_posixsubprocess.fork_exec`、`_winapi.CreateProcess`。
 
 残余风险：工件仍可通过 `socket.socket.__bases__[0]` 等内省拿到原始 C 类型，或用 `ctypes` 直接调用 libc，绕过 Python 层守卫。这与 ADR-0024 第 9 条一致：v1 不是内核级隔离，开放给不受信网络调用方之前必须有容器或虚拟机层级。工件仍可读写宿主文件系统中服务账号有权限的路径；一次性 cwd 只堵导入路径投放，不是命名空间。

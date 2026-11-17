@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import socket
 import subprocess  # nosec B404  # imported to patch Popen, not to run it
@@ -146,3 +147,16 @@ def install_network_guard(policy: SandboxPolicy, *, strict: bool = False) -> Non
         if hasattr(os, name):
             setattr(os, name, deny_process)
     subprocess.Popen.__init__ = deny_process  # type: ignore
+    if hasattr(subprocess, "_fork_exec"):
+        subprocess._fork_exec = deny_process  # type: ignore[attr-defined]
+    for module_name, attribute in (
+        ("_posixsubprocess", "fork_exec"),
+        ("_winapi", "CreateProcess"),
+    ):
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError:
+            continue
+        setattr(module, attribute, deny_process)
+    if hasattr(os, "startfile"):
+        os.startfile = deny_process  # type: ignore[attr-defined]

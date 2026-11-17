@@ -295,3 +295,15 @@ def test_invalid_limit_values_are_rejected():
     with pytest.raises(SandboxCrashed):
         _applied_limits({"applied": {"cpu_seconds": "many"}})
     assert _applied_limits({"applied": {"cpu_seconds": 10}}) == {"cpu_seconds": 10}
+
+
+@pytest.mark.skipif(os.name != "posix", reason="_fork_exec is POSIX only")
+def test_low_level_fork_exec_is_denied():
+    artifact, data = _artifact(
+        _source(
+            'import subprocess\n        subprocess._fork_exec(None, None)\n        text = "spawned"'
+        )
+    )
+
+    with pytest.raises(SandboxViolation):
+        _run(artifact, data)
