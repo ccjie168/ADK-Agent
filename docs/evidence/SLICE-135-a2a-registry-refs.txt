@@ -1,0 +1,52 @@
+SLICE-135 A2A 的注册表启动
+日期: 2026-11-18
+依据: ADR-0024 第 2、4 条与 ADR-0015
+基线: eb757d9
+
+一、红态（实现前）
+
+$ pytest tests/test_cli_a2a_refs.py -q
+5 failed
+
+失败形态是 argparse 报未知识别 `--agent-ref` 或缺少必填 `--agent`，退出码 2：
+test_serve_a2a_starts_from_ref、test_agent_and_ref_conflict、test_single_ref_only、
+test_peer_ref_name_mismatch、test_sandboxed_ref_uses_proxy 全部失败。
+
+二、实现
+
+- `serve-a2a`：`--agent` 改为可选，新增 `--agent-ref`（只接受一个）、`--registry`、
+  `--registry-url`/`--registry-token-env`、`--artifact-dir`、`--artifact-keys`、
+  `--agent-sandbox`/`--allow-unsandboxed`。
+- 启动分支先 `_install_agent_sandbox(args)`，再二选一加载：`--agent-ref` 走
+  `_registry_agents`，`--agent` 走原 `_load_agent`；两者都给或都不给退出 1，多个引用退出 1。
+- 沙箱代理跳过 `install_declared_guards`；其余 agent 行为不变。
+- peer 模式下用引用启动时，agent 名必须等于 `--manifest` 的 `id`，否则退出 1。
+- 契约：`docs/contracts/cli.md` 的 `serve-a2a` 签名与条目更新。
+
+三、绿态
+
+$ pytest tests/test_cli_a2a_refs.py -q
+9 passed
+
+$ pytest -q（Windows）
+1468 passed, 87 skipped
+
+$ python scripts/check.py --full
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
+
+四、范围与已知缺口
+
+- peer 模式仍要求本地 `--manifest`；从注册表记录派生 card 身份不在本切片。
+- `--agent` 的既有启动路径不变，既有 A2A 用例继续通过。
+- 工具网关 RPC 仍未实现，声明工具授权的 `sandboxed` 引用在加载处被拒。
+
+五、第一轮独立验证（86e399e）
+
+结论 MERGE，无高/中危问题。三条低风险意见：
+
+1. 互斥判断用真值比较，`--agent "" --agent-ref X` 不会按契约退出 1。已改为 `is not None` 判断，
+   并补 test_empty_agent_with_ref_is_a_conflict。
+2. 新测试没有真正带 `--agent-sandbox`，安装调用无回归覆盖。已补 test_sandbox_flag_reaches_installer，
+   另补“两者都不给”和“注册表返回空”两个兜底用例。
+3. `cli.md` 的 `--registry-url` 与“从注册表启动”两节未列 `serve-a2a`。已补。

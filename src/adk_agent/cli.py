@@ -1046,7 +1046,29 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     p_a2a = sub.add_parser("serve-a2a", help="serve an ADK agent over A2A (needs a2a-sdk)")
-    p_a2a.add_argument("--agent", required=True, help="path to a Python file defining `agent`")
+    p_a2a.add_argument("--agent", default=None, help="path to a Python file defining `agent`")
+    p_a2a.add_argument(
+        "--agent-ref",
+        action="append",
+        dest="agent_ref",
+        default=None,
+        help="registry reference TENANT/ID@VERSION (one for serve-a2a)",
+    )
+    p_a2a.add_argument(
+        "--registry",
+        default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
+        help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
+    )
+    _add_registry_client_args(p_a2a)
+    p_a2a.add_argument(
+        "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
+    )
+    p_a2a.add_argument(
+        "--artifact-keys",
+        default=None,
+        help="JSON file mapping key id to a 64 hex Ed25519 public key",
+    )
+    _add_agent_sandbox_args(p_a2a)
     p_a2a.add_argument(
         "--rpc-path",
         default="",
@@ -1894,16 +1916,34 @@ def main(argv: list[str] | None = None) -> None:
             tool_guard=True,
         )
     elif args.cmd == "serve-a2a":
+        _install_agent_sandbox(args)
         rate_limit = _rate_limit(args)
         from .a2a import A2aUnavailable, serve_a2a
-
-        agent = _load_agent(args.agent)
-        audit = _audit_sink(args)
+        from .sandbox.proxy import SandboxAgent
         from .tools import install_declared_guards
 
-        install_declared_guards(agent, audit)
+        if (args.agent is not None) == (args.agent_ref is not None):
+            print("provide exactly one of --agent or --agent-ref", file=sys.stderr)
+            raise SystemExit(1)
+        if args.agent_ref:
+            if len(args.agent_ref) != 1:
+                print("serve-a2a accepts exactly one --agent-ref", file=sys.stderr)
+                raise SystemExit(1)
+            loaded = _registry_agents(args) or {}
+            if not loaded:
+                print("registry load produced no agent", file=sys.stderr)
+                raise SystemExit(1)
+            agent = next(iter(loaded.values()))
+        else:
+            agent = _load_agent(args.agent)
+        audit = _audit_sink(args)
+        if not isinstance(agent, SandboxAgent):
+            install_declared_guards(agent, audit)
         quota, quota_config = _quota_settings(args)
         peer = _peer_a2a(args)
+        if peer is not None and args.agent_ref is not None and agent.name != peer["manifest"].id:
+            print("loaded agent name does not match --manifest id", file=sys.stderr)
+            raise SystemExit(1)
         try:
             serve_a2a(
                 agent=agent,
