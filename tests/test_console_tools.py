@@ -254,3 +254,26 @@ def test_catalog_file_roundtrip(tmp_path):
     catalog = load_tool_catalog(_catalog_file(tmp_path))
 
     assert catalog.tools[0].tool_id == "crm.read"
+
+
+def test_read_requires_capability(tmp_path):
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = _tools(client, tenant="local")
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_publisher_can_read_tools(tmp_path):
+    with TestClient(_app(tmp_path, roles=["publisher"])) as client:
+        response = _tools(client, tenant="local")
+
+    assert response.status_code == 200
+
+
+def test_operator_lacks_tools_capability(tmp_path):
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        response = _tools(client, tenant="local")
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}

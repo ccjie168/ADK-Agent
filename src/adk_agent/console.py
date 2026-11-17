@@ -186,6 +186,12 @@ def _capabilities_for(roles: Iterable[str]) -> list[str]:
     return sorted(granted or _CAPABILITIES_BASE)
 
 
+def _forbidden_if_missing(caller: Principal, capability: str) -> JSONResponse | None:
+    if capability in _capabilities_for(caller.roles):
+        return None
+    return JSONResponse({"error": "forbidden"}, status_code=403)
+
+
 _INDEX_HTML = r"""<!doctype html>
 <html lang="en">
 <head>
@@ -375,10 +381,12 @@ _INDEX_HTML = r"""<!doctype html>
   <h3>Run progress</h3>
   <div id="status"></div>
   <div id="timeline"></div>
-  <h3>Recent audit</h3>
-  <div id="audit"></div>
-  <div class="row">
-    <button id="refresh">Refresh audit</button>
+  <div data-capability="audit.read">
+    <h3>Recent audit</h3>
+    <div id="audit"></div>
+    <div class="row">
+      <button id="refresh">Refresh audit</button>
+    </div>
   </div>
 </section>
 
@@ -2055,6 +2063,7 @@ async function loadTrace(traceId, targetId) {
 }
 
 async function loadAudit() {
+  if (capabilities !== null && !capabilities.has("audit.read")) return;
   const r = await fetch("/api/audit?limit=20", { headers: { Authorization: "Bearer " + token() } });
   if (!r.ok) { append("system", "audit failed (" + r.status + ")"); return; }
   const rows = await r.json();
@@ -2822,9 +2831,13 @@ def build_console_app(
         ]
 
     @app.get("/api/audit")
-    async def list_audit(request: Request, limit: int = 50) -> list[dict]:
+    async def list_audit(request: Request, limit: int = 50) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "audit.read")
+        if denied is not None:
+            return denied
         limit = min(max(limit, 1), 200)
-        events = _visible_events(await _query_events(request), _principal_for(request))
+        events = _visible_events(await _query_events(request), caller)
         return [event.model_dump(mode="json") for event in events[-limit:]]
 
     @app.get("/api/tenants")
@@ -2847,6 +2860,9 @@ def build_console_app(
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
         if tenant is not None and not _SAFE_NAME.fullmatch(tenant):
             return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
+        denied = _forbidden_if_missing(caller, "registry.read")
+        if denied is not None:
+            return denied
 
         entries: list[dict[str, Any]] = []
         if registry is not None:
@@ -3065,6 +3081,9 @@ def build_console_app(
         caller = _principal_for(request)
         if tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "registry.read")
+        if denied is not None:
+            return denied
         if eval_reports is None:
             return JSONResponse({"error": "registry_not_configured"}, status_code=404)
         try:
@@ -3085,6 +3104,9 @@ def build_console_app(
         target = tenant or caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "tools.read")
+        if denied is not None:
+            return denied
         grants: dict[str, set[tuple[str, str]]] = {}
         if registry is not None:
             try:
@@ -3141,6 +3163,9 @@ def build_console_app(
         caller = _principal_for(request)
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "grants.read")
+        if denied is not None:
+            return denied
         events = _visible_events(await _query_events(request), caller)
         counts: dict[str, dict[str, Any]] = {}
         for event in events:
@@ -3165,6 +3190,9 @@ def build_console_app(
         target = tenant or caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "connectors.read")
+        if denied is not None:
+            return denied
         try:
             records = await connectors.list(target)
         except ConnectorStoreError:
@@ -3303,6 +3331,9 @@ def build_console_app(
         target = tenant or caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "connectors.read")
+        if denied is not None:
+            return denied
         try:
             records = await connector_requests.list(target, status=request_status)
         except ConnectorRequestError:
@@ -3487,6 +3518,9 @@ def build_console_app(
         target = tenant or caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "connectors.read")
+        if denied is not None:
+            return denied
         try:
             records = await credentials.list(target)
         except CredentialStoreError:
@@ -3605,6 +3639,9 @@ def build_console_app(
         caller = _principal_for(request)
         if tenant is not None and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "peers.read")
+        if denied is not None:
+            return denied
         try:
             identities = await peers.list()
             grants = await peer_grants.list()
@@ -3807,6 +3844,9 @@ def build_console_app(
         caller = _principal_for(request)
         if tenant is not None and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "peers.read")
+        if denied is not None:
+            return denied
         try:
             records = await remote_agents.list()
         except RemoteAgentError:
@@ -4005,6 +4045,9 @@ def build_console_app(
         target = tenant or caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        denied = _forbidden_if_missing(caller, "grants.read")
+        if denied is not None:
+            return denied
         try:
             records = await tool_grants.list(target, status=grant_status)
         except GrantStoreError:
@@ -4365,7 +4408,11 @@ def build_console_app(
     if policy_store is not None and policy_engine is not None:
 
         @app.get("/api/policy")
-        async def get_policy() -> dict:
+        async def get_policy(request: Request) -> Any:
+            caller = _principal_for(request)
+            denied = _forbidden_if_missing(caller, "policy.read")
+            if denied is not None:
+                return denied
             return policy_engine.policy.model_dump(mode="json")
 
         @app.put("/api/policy")

@@ -205,3 +205,18 @@ def test_deciding_twice_conflicts(tmp_path):
     assert first.status_code == 200
     assert second.status_code == 409
     assert second.json() == {"error": "connector_request_already_decided"}
+
+
+def test_read_requires_capability(tmp_path):
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = client.get("/api/connector-requests", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_operator_can_read_requests(tmp_path):
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        response = client.get("/api/connector-requests", headers=AUTH)
+
+    assert response.status_code == 200

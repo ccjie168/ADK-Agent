@@ -186,7 +186,7 @@ def test_registry_tenant_is_enforced(tmp_path):
         eval_reports=FileEvalReportStore(tmp_path),
     ) as client:
         foreign = client.get("/api/registry?tenant=team-a", headers=AUTH_GUEST)
-        own = client.get("/api/registry", headers=AUTH_GUEST)
+        own = client.get("/api/registry", headers=AUTH_OPS)
         guest_tenants = client.get("/api/tenants", headers=AUTH_GUEST)
         admin_tenants = client.get("/api/tenants", headers=AUTH_ADMIN)
 
@@ -237,12 +237,12 @@ def test_read_views_are_tenant_scoped():
     asyncio.run(sink.emit(_event("team-a", "r2", "tr2")))
 
     with _app(audit_sink=sink) as client:
-        guest_audit = client.get("/api/audit", headers=AUTH_GUEST)
+        ops_audit = client.get("/api/audit", headers=AUTH_OPS)
         guest_runs = client.get("/api/runs", headers=AUTH_GUEST)
         guest_foreign_trace = client.get("/api/traces/tr2", headers=AUTH_GUEST)
         admin_audit = client.get("/api/audit", headers=AUTH_ADMIN)
 
-    assert {event["tenant"] for event in guest_audit.json()} == {"acme"}
+    assert {event["tenant"] for event in ops_audit.json()} == {"acme"}
     assert {run["run_id"] for run in guest_runs.json()} == {"r1"}
     assert guest_foreign_trace.json()["error"] == "trace_not_found"
     assert {event["tenant"] for event in admin_audit.json()} == {"acme", "team-a"}

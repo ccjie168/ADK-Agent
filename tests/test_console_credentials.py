@@ -176,3 +176,18 @@ def test_connector_registration_requires_enabled_binding(tmp_path):
     for response in (disabled, missing, global_ref, mismatch):
         assert response.status_code == 400
         assert response.json() == {"error": "credential_unbound"}
+
+
+def test_read_requires_capability(tmp_path):
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = client.get("/api/credentials", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_operator_can_read_credentials(tmp_path):
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        response = client.get("/api/credentials", headers=AUTH)
+
+    assert response.status_code == 200

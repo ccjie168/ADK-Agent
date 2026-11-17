@@ -79,3 +79,10 @@ def test_index_has_management_panels():
     assert "Runs" in page.text
     assert "Approvals" in page.text
     assert "Plans" in page.text
+
+
+def test_audit_block_is_capability_gated():
+    with _client() as client:
+        page = client.get("/")
+
+    assert 'data-capability="audit.read"' in page.text

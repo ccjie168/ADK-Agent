@@ -68,13 +68,13 @@ def test_tenant_visibility(tmp_path):
     _seed(tmp_path, _identity(peer_id="peer-a", tenant="acme", subject="sub-a"))
     _seed(tmp_path, _identity(peer_id="local-p", tenant="local", subject="sub-l"))
 
-    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
-        viewer = client.get("/api/peers", headers=AUTH)
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        scoped = client.get("/api/peers", headers=AUTH)
     with TestClient(_app(tmp_path)) as client:
         everything = client.get("/api/peers", headers=AUTH)
         filtered = client.get("/api/peers?tenant=acme", headers=AUTH)
 
-    assert [row["peer"]["peer_id"] for row in viewer.json()] == ["local-p"]
+    assert [row["peer"]["peer_id"] for row in scoped.json()] == ["local-p"]
     assert [row["peer"]["peer_id"] for row in everything.json()] == ["local-p", "peer-a"]
     assert [row["peer"]["peer_id"] for row in filtered.json()] == ["peer-a"]
 
@@ -284,3 +284,20 @@ def test_peer_call_in_audit_view(tmp_path):
 
     assert response.status_code == 200
     assert [item["action"] for item in response.json()] == ["peer.call"]
+
+
+def test_read_requires_capability(tmp_path):
+    _seed(tmp_path)
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = client.get("/api/peers", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_operator_can_read_peers(tmp_path):
+    _seed(tmp_path)
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        response = client.get("/api/peers", headers=AUTH)
+
+    assert response.status_code == 200

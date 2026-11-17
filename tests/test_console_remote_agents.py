@@ -276,18 +276,18 @@ def test_admin_only_and_tenant(tmp_path, monkeypatch):
     )
     _patch_fetch(monkeypatch)
 
-    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
         registered = client.post(
             "/api/remote-agents",
             json=_register_body(tenant="local", peer_id="local-p"),
             headers=AUTH,
         )
-        viewer_list = client.get("/api/remote-agents", headers=AUTH)
+        operator_list = client.get("/api/remote-agents", headers=AUTH)
         cross_refresh = client.post("/api/remote-agents/crm-bot/refresh", headers=AUTH)
 
     assert registered.status_code == 403
     assert registered.json() == {"error": "forbidden"}
-    assert [row["remote_id"] for row in viewer_list.json()] == ["local-bot"]
+    assert [row["remote_id"] for row in operator_list.json()] == ["local-bot"]
     assert cross_refresh.status_code == 403
     assert cross_refresh.json() == {"error": "tenant_forbidden"}
 
@@ -321,3 +321,22 @@ def test_reregister_tenant_immutable(tmp_path, monkeypatch):
 
     assert response.status_code == 409
     assert response.json() == {"error": "remote_agent_tenant_immutable"}
+
+
+def test_read_requires_capability(tmp_path):
+    _seed_peer(tmp_path, _peer(peer_id="local-p", tenant="local"))
+    _seed_remote(tmp_path, _record(remote_id="local-bot", tenant="local", peer_id="local-p"))
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = client.get("/api/remote-agents", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_operator_can_read_remote_agents(tmp_path):
+    _seed_peer(tmp_path, _peer(peer_id="local-p", tenant="local"))
+    _seed_remote(tmp_path, _record(remote_id="local-bot", tenant="local", peer_id="local-p"))
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        response = client.get("/api/remote-agents", headers=AUTH)
+
+    assert response.status_code == 200
