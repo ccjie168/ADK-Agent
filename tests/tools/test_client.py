@@ -62,3 +62,24 @@ def test_unreachable_gateway_maps_to_gateway_error():
 
     with pytest.raises(ToolGatewayError):
         asyncio.run(client.invoke(_invocation(), "crm.read", {}))
+
+
+def test_redirect_is_refused():
+    client = _client(
+        lambda request: httpx.Response(302, headers={"location": "http://elsewhere/invoke"})
+    )
+
+    with pytest.raises(ToolGatewayError):
+        asyncio.run(client.invoke(_invocation(), "crm.read", {}))
+
+
+def test_missing_token_is_a_gateway_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "authorization" not in request.headers
+        return httpx.Response(401, json={"error": "unauthorized"})
+
+    transport = httpx.MockTransport(handler)
+    client = ToolGatewayClient("http://gateway", client=httpx.AsyncClient(transport=transport))
+
+    with pytest.raises(ToolGatewayError):
+        asyncio.run(client.invoke(_invocation(), "crm.read", {}))

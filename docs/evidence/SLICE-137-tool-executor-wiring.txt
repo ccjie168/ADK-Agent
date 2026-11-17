@@ -14,14 +14,14 @@ E   ModuleNotFoundError: No module named 'adk_agent.tools.client'
 
 $ pytest tests/runtime/test_execution.py tests/sandbox/test_agent_proxy.py \
     tests/test_cli_sandbox_adapters.py -q
-3 failed, 20 passed
+3 failed, 13 passed（另有 2 个 collection error：新增模块不存在）
 
 失败的是 test_run_sets_and_clears_the_invocation、test_sandbox_agent_passes_the_current_invocation
-与 test_install_builds_a_gateway_executor。新增用例合计 10 个，基线全部失败。
+与 test_install_builds_a_gateway_executor。新增用例合计 12 个，基线全部失败。
 
 二、实现
 
-- 新增 `runtime/context.py`：`current_invocation()` contextvar；`AgentRuntime.run` 设置并在 finally 重置。
+- 复用 `core.context` 的 `current_invocation()`：`AgentRuntime._run` 与 `AuditedRunner` 都会设置，控制台与 MCP/A2A 共用同一个 contextvar。
 - 新增 `tools/client.py`：`ToolGatewayClient.invoke(invocation, tool_id, args, grants)`，
   200 返回 `ToolResponse.output`，403 -> `ToolDenied`，5xx/非 200/网络错误 -> `ToolGatewayError`。
 - 新增 `tools/executor.py`：`gateway_executor(client)` 返回
@@ -38,10 +38,10 @@ $ pytest tests/runtime/test_execution.py tests/sandbox/test_agent_proxy.py \
 $ pytest tests/tools/test_client.py tests/tools/test_gateway_executor.py \
     tests/runtime/test_execution.py tests/sandbox/test_agent_proxy.py \
     tests/test_cli_sandbox_adapters.py -q
-10 passed
+27 passed
 
 $ pytest -q（Windows）
-1487 passed, 87 skipped
+1492 passed, 87 skipped
 
 $ python scripts/check.py --full
 [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
@@ -53,3 +53,17 @@ ALL PASS
 - 审批由网关既有 `approval_required` 处理，本切片不新增审批交互。
 - 网关 token 只从环境变量读取，不进入子进程。
 - `serve-a2a` 的 `--tool-gateway-url` 只在该命令使用 `--agent-sandbox` 时生效。
+
+五、第一轮独立验证（PR 48 首版）
+
+结论 DO NOT MERGE。关键问题：
+
+1. 高：首版新增了第二个 `runtime/context.py`，只有 `AgentRuntime` 写它，而 serve/serve-many/serve-a2a
+   走 `AuditedRunner`，写的是既有的 `core.context`，因此这三个命令的工具调用必然 `tool_principal_unavailable`。
+   已删除新模块，代理改读 `core.context`，并补经 `AuditedRunner` 的用例 `test_audited_runner_publishes_the_invocation`。
+2. 测试缺口：补执行器错误码穿透到子进程的用例、`ToolGatewayError -> tool_gateway_unavailable` 用例，
+   以及客户端 302 与无 token 的用例。
+3. 证据计数：定向实际 27 passed，红态 3 failed / 13 passed 加 2 个 collection error，已改正。
+4. 契约：`ToolGatewayClient.invoke` 返回值、`current_invocation` 来源、`run(invocation=...)`、
+   `SandboxToolError` 会回 code 与 message、CLI 默认无执行器的表述均已改正。
+5. 客户端显式 `follow_redirects=False` 与 `trust_env=False`；缺 token 时 CLI 在 stderr 告警。

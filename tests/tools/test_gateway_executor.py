@@ -66,3 +66,14 @@ def test_executor_maps_denials():
         asyncio.run(execute(_manifest(), "crm.read", {}, object()))
 
     assert exc.value.code == "tool_denied"
+
+
+def test_executor_maps_gateway_failures():
+    from adk_agent.tools.client import ToolGatewayError
+
+    execute = gateway_executor(_Client(error=ToolGatewayError("down")))
+
+    with pytest.raises(SandboxToolError) as exc:
+        asyncio.run(execute(_manifest(), "crm.read", {}, object()))
+
+    assert exc.value.code == "tool_gateway_unavailable"

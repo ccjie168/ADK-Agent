@@ -197,3 +197,18 @@ def test_synthetic_agent_tree_installs_on_llm_agents():
 
     assert result.text == "done"
     assert seen == ["ping"]
+
+
+def test_executor_error_code_reaches_the_child():
+    from adk_agent.sandbox.agent import SandboxToolError
+
+    artifact, data = _artifact()
+
+    async def tools(manifest, tool_id, args, invocation):
+        raise SandboxToolError("tool_denied", "denied by the gateway")
+
+    sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=30), tools=tools)
+    with pytest.raises(SandboxCrashed) as exc:
+        asyncio.run(sandbox.run(artifact, data, "hi", manifest=_manifest("ping")))
+
+    assert "tool_denied" in str(exc.value)

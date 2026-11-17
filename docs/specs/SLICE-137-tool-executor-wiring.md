@@ -15,9 +15,9 @@
 
 ## 数据形状
 
-- `ToolGatewayClient.invoke(invocation, tool_id, args, grants) -> ToolResult`；非 2xx 按 403/404/5xx 映射为 `ToolDenied`/`ToolUnavailable`。
-- contextvar `current_invocation()` 返回 `Invocation | None`，由 `AgentRuntime.run` 设置并在 `finally` 重置。
-- `AgentSandboxBackend.run` 增加可选关键字 `principal`；协议仍只按 manifest 授权。
+- `ToolGatewayClient.invoke(invocation, tool_id, args, grants) -> Any`；403 映射 `ToolDenied`，其余非 200、5xx、网络与坏响应映射 `ToolGatewayError`。
+- 复用 `core.context` 的 `current_invocation()`：`AgentRuntime._run` 与 `AuditedRunner` 都会设置，覆盖控制台与 MCP/A2A 路径。
+- `AgentSandboxBackend.run` 增加可选关键字 `invocation`；协议仍只按 manifest 授权。
 
 ## 契约（先改）
 

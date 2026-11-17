@@ -543,6 +543,12 @@ def _install_agent_sandbox(args: argparse.Namespace) -> None:
 
         token_env = getattr(args, "tool_gateway_token_env", "ADK_TOOL_GATEWAY_TOKEN")
         token = os.environ.get(token_env) if token_env else None
+        if not token:
+            print(
+                f"warning: {token_env or '(unset)'} is not set; "
+                "tool gateway calls will be unauthenticated",
+                file=sys.stderr,
+            )
         tools = gateway_executor(ToolGatewayClient(str(url), token=token))
     set_agent_sandbox_backend(ProcessAgentSandbox(model=build_model(), tools=tools))
 

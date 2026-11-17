@@ -36,7 +36,7 @@ class SandboxAgent(BaseAgent):
     manifest: AgentManifest
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        from ..runtime.context import current_invocation
+        from ..core.context import current_invocation
 
         result: SandboxResult = await self.backend.run(
             self.artifact,

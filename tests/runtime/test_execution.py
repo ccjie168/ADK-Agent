@@ -125,7 +125,7 @@ def test_run_uses_invocation_input():
 
 
 def test_run_sets_and_clears_the_invocation():
-    from adk_agent.runtime.context import current_invocation
+    from adk_agent.core.context import current_invocation
 
     class _Runner:
         def __init__(self) -> None:

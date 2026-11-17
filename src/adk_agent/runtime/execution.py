@@ -99,31 +99,6 @@ class AgentRuntime:
         quota_policy: QuotaPolicy | None = None,
         on_progress: ProgressCallback | None = None,
     ) -> InvocationResult:
-        from .context import reset_invocation, set_invocation
-
-        token = set_invocation(invocation)
-        try:
-            return await self._run_scoped(
-                invocation,
-                user_id=user_id,
-                session_id=session_id,
-                quota=quota,
-                quota_policy=quota_policy,
-                on_progress=on_progress,
-            )
-        finally:
-            reset_invocation(token)
-
-    async def _run_scoped(
-        self,
-        invocation: Invocation,
-        *,
-        user_id: str,
-        session_id: str,
-        quota: QuotaManager | None = None,
-        quota_policy: QuotaPolicy | None = None,
-        on_progress: ProgressCallback | None = None,
-    ) -> InvocationResult:
         started = time.perf_counter()
         progress = _Progress(on_progress, invocation, started)
         await progress.emit("run.started")

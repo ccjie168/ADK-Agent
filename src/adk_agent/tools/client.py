@@ -53,7 +53,9 @@ class ToolGatewayClient:
                     f"{self.url}/v1/invoke", json=body, headers=headers
                 )
             else:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with httpx.AsyncClient(
+                    timeout=self.timeout, follow_redirects=False, trust_env=False
+                ) as client:
                     response = await client.post(
                         f"{self.url}/v1/invoke", json=body, headers=headers
                     )

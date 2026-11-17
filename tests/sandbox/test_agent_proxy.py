@@ -93,7 +93,7 @@ def test_sandbox_agent_keeps_no_state_between_runs():
 
 def test_sandbox_agent_passes_the_current_invocation():
     from adk_agent.core import AgentRef, Invocation, Principal
-    from adk_agent.runtime.context import reset_invocation, set_invocation
+    from adk_agent.core.context import reset_invocation, set_invocation
 
     backend = _Backend()
     agent = build_sandbox_agent(_manifest(), _artifact(), b"zip!", backend)
@@ -125,3 +125,40 @@ def test_sandbox_agent_passes_the_current_invocation():
         reset_invocation(token)
 
     assert backend.invocations == [invocation]
+
+
+def test_audited_runner_publishes_the_invocation():
+    from adk_agent.core import Principal
+    from adk_agent.runtime.audit_proxy import AuditedRunner
+
+    seen: list = []
+
+    class _Inner:
+        async def run_async(self, **kwargs):
+            from adk_agent.core.context import current_invocation
+
+            seen.append(current_invocation())
+            if False:
+                yield
+
+    principal = Principal(tenant="acme", subject="alice", kind="human")
+    runner = AuditedRunner(
+        _Inner(),
+        agent_name="bot",
+        principal=principal,
+        audit=None,
+        quota=None,
+        quota_policy=None,
+    )
+
+    async def drain() -> None:
+        async for _ in runner.run_async(
+            user_id="u", session_id="s", new_message=None, state_delta=None
+        ):
+            pass
+
+    asyncio.run(drain())
+
+    assert len(seen) == 1
+    assert seen[0] is not None
+    assert seen[0].principal == principal
