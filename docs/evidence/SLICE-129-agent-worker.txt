@@ -131,3 +131,14 @@ stdout/stderr 的后代并保持存活时，子进程已被杀但 `_reap` 的第
 验证：
 - WSL Ubuntu 24.04 `pytest tests/sandbox -q`：48 passed。
 - Windows `scripts/check.py --full`：1394 passed, 86 skipped，9 步全 PASS。
+
+十二、第四轮复核（HEAD a73975f）
+
+结论 DO NOT MERGE，但不是代码缺陷：进程组回收有效，逃出会话的后代也让 run() 有界返回；
+问题是契约写 wall + 10 秒，实测最坏 teardown 是 15 秒（`_reap` 两次 5 秒加 stderr 5 秒），wall=6 时总耗时 18.47 秒。
+
+处理：
+- 契约改为 wall + 15 秒加启动开销，并说明两次 wait 与 stderr 的预算来源。
+- 新增 POSIX 回归 `test_escaped_descendant_is_still_bounded`：ctypes fork 的后代先 `setsid()` 逃出进程组，
+  再持管道睡 60 秒；断言 run() 在 30 秒内以 SandboxCrashed 结束。修复前会挂到后代退出（60 秒），因此该用例有判别力。
+  WSL 上实测 21.5 秒通过。

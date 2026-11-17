@@ -52,7 +52,8 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
   `RLIMIT_NPROC` 按 uid 计数，同一服务账号下的并发运行共享该额度，默认关闭。
 - Windows：不设置 `RLIMIT`，只保留脚本级网络守卫与环境清空。生产要求 POSIX，能力探测与启动参数在接入切片落地。
 - 墙钟超时由父进程负责：写请求与读每一帧共用一个 deadline；超时后 `kill` 并 `wait`，抛 `SandboxTimeout`。
-  POSIX 上子进程以独立会话启动（`start_new_session=True`），回收时用 `killpg` 杀掉整个进程组；回收与 stderr 收尾各自最多再等 5 秒，`wait()` 本身也带 5 秒上限，所以即使有后代持有管道或逃出会话，单次运行的上界仍是 wall + 10 秒加进程启动开销。
+  POSIX 上子进程以独立会话启动（`start_new_session=True`），回收时用 `killpg` 杀掉整个进程组。
+  回收是先等 5 秒、超时后 killpg 再等 5 秒，协议错误路径随后还要最多 5 秒收集 stderr，所以即使后代持有管道或用 `setsid` 逃出会话，单次运行的上界是 wall + 15 秒加进程启动开销。
 
 ## 网络与进程守卫
 
