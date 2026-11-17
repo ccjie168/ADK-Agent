@@ -1179,6 +1179,16 @@ def main(argv: list[str] | None = None) -> None:
     p_serve_triggers.add_argument("--quota-config", default=None, help="JSON QuotaConfig file")
     _add_rate_limit_args(p_serve_triggers)
     p_serve_triggers.add_argument(
+        "--agent-sandbox",
+        action="store_true",
+        help="run sandboxed agents in the agent sandbox instead of in-process",
+    )
+    p_serve_triggers.add_argument(
+        "--allow-unsandboxed",
+        action="store_true",
+        help="allow --agent-sandbox on a platform without process limits (development)",
+    )
+    p_serve_triggers.add_argument(
         "--schedule-tick", type=float, default=15.0, help="seconds between schedule ticks (min 5)"
     )
     p_serve_triggers.add_argument(
@@ -2034,6 +2044,21 @@ def main(argv: list[str] | None = None) -> None:
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "serve-triggers":
+        if args.agent_sandbox:
+            from .sandbox.agent_process import agent_sandbox_supported
+
+            if not agent_sandbox_supported() and not args.allow_unsandboxed:
+                print(
+                    "--agent-sandbox requires POSIX process limits; "
+                    "pass --allow-unsandboxed for local development",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            if not agent_sandbox_supported():
+                print(
+                    "warning: the agent sandbox runs without process limits",
+                    file=sys.stderr,
+                )
         if args.schedule_tick < 5:
             print("--schedule-tick must be at least 5 seconds", file=sys.stderr)
             raise SystemExit(1)
@@ -2101,6 +2126,12 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1)
 
         quota, quota_config = _quota_settings(args)
+        sandbox: Any = None
+        if args.agent_sandbox:
+            from .models import build_model
+            from .sandbox.agent_process import ProcessAgentSandbox
+
+            sandbox = ProcessAgentSandbox(model=build_model())
         app = build_triggers_app(
             triggers=triggers,
             registry=registry,
@@ -2115,6 +2146,7 @@ def main(argv: list[str] | None = None) -> None:
             session_service=configured_session_service(args.session_db) or InMemorySessionService(),
             rate_limit=rate_limit,
             fire_store=fire_store,
+            sandbox=sandbox,
             scheduler=not args.no_scheduler,
             schedule_tick=args.schedule_tick,
             trigger_attempts=args.trigger_attempts,

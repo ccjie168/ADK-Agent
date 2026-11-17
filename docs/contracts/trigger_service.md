@@ -42,9 +42,13 @@
 | 409 | `digest_mismatch` | 注册表记录的 digest 与触发不一致 |
 | 409 | `version_retired` | 注册表或生命周期显示已退役 |
 | 409 | `approval_required` | manifest 的工具授权声明了需要审批 |
-| 409 | `sandbox_unavailable` | 记录声明 `sandboxed` 而没有 agent 沙箱后端 |
+| 409 | `sandbox_unavailable` | 记录声明 `sandboxed` 而没有注入 agent 沙箱 |
+| 409 | `tool_mediation_unavailable` | `sandboxed` 记录声明了工具授权，工具中介尚未实现 |
 | 409 | `fire_in_progress` | 同幂等键的运行未结束 |
 | 429 | `quota_exceeded` | 租户配额超限 |
+| 500 | `sandbox_timeout` | 沙箱运行超过墙钟 |
+| 500 | `sandbox_crashed` | 沙箱加载或运行崩溃 |
+| 500 | `sandbox_violation` | 沙箱守卫拒绝 |
 | 502 | `agent_load_failed` | 工件验签或加载失败 |
 | 500 | `run_failed` | 运行失败 |
 
@@ -56,6 +60,9 @@
 - 401 与未进入运行的请求不写审计。
 - 工具守卫按 manifest 授权安装；声明了 `requires_approval` 的授权直接拒绝运行。
 - 版本按触发记录的 `agent_id`、`version`、`digest` 固定，不使用 latest。
+- `sandboxed` 记录：验签、取工件字节后调用注入的沙箱 `run`，不加载进程内 agent；配额用 `reserve` 包住整次运行；
+  写 `agent.run` 审计（`egress="third_party"`，成功、失败与配额拒绝都写）与运行指标。声明了 `tool_grants` 的 `sandboxed` 记录直接拒绝，
+  工具中介落地前不执行。
 
 ## 调度
 

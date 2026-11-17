@@ -136,6 +136,11 @@ def _reject_file_references(value: Any, depth: int = 0) -> None:
         _reject_file_references(dump(mode="json"), depth + 1)
 
 
+def agent_sandbox_supported() -> bool:
+    """Whether this host can enforce the worker's process limits."""
+    return os.name == "posix"
+
+
 class ProcessAgentSandbox:
     """Run one artifact in a fresh child process with limits and no network."""
 

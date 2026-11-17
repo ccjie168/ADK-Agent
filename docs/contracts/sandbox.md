@@ -87,3 +87,10 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
   `subprocess._fork_exec`、`_posixsubprocess.fork_exec`、`_winapi.CreateProcess`。
 
 残余风险：工件仍可通过 `socket.socket.__bases__[0]` 等内省拿到原始 C 类型，或用 `ctypes` 直接调用 libc，绕过 Python 层守卫。这与 ADR-0024 第 9 条一致：v1 不是内核级隔离，开放给不受信网络调用方之前必须有容器或虚拟机层级。工件仍可读写宿主文件系统中服务账号有权限的路径；一次性 cwd 只堵导入路径投放，不是命名空间。
+
+## 执行接入
+
+- `adk-agent serve-triggers --agent-sandbox` 注入 `ProcessAgentSandbox(model=build_model())`。
+- `sandboxed` 触发走 `run`，进程内加载路径不参与；`in_process` 触发行为不变。
+- 声明了工具授权的 `sandboxed` 记录拒绝执行，直到工具网关 RPC 落地。
+- 控制台、A2A 与 `--agent-ref` 仍拒绝 `sandboxed`，是否注册全局后端由后续适配决定。

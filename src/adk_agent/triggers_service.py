@@ -43,7 +43,8 @@ from .core import (
 from .metrics import MetricsRegistry
 from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .runtime.execution import AgentRuntime
-from .sandbox.agent import AgentSandboxUnavailable, require_execution_supported
+from .sandbox.agent import AgentSandboxBackend, AgentSandboxUnavailable, require_execution_supported
+from .sandbox.errors import SandboxCrashed, SandboxTimeout, SandboxViolation
 from .tools.enforcement import install_declared_guards
 from .tracing import resolve_trace_id
 
@@ -60,6 +61,10 @@ _ERROR_STATUS = {
     "version_retired": 409,
     "approval_required": 409,
     "sandbox_unavailable": 409,
+    "tool_mediation_unavailable": 409,
+    "sandbox_timeout": 500,
+    "sandbox_crashed": 500,
+    "sandbox_violation": 500,
     "agent_load_failed": 502,
     "quota_exceeded": 429,
     "invalid_request": 400,
@@ -181,6 +186,7 @@ def build_triggers_app(
     rate_limit: RateLimit | None = None,
     metrics: MetricsRegistry | None = None,
     fire_store: TriggerFireStore | None = None,
+    sandbox: AgentSandboxBackend | None = None,
     scheduler: bool = False,
     schedule_tick: float = 15.0,
     trigger_attempts: int = 3,
@@ -264,6 +270,54 @@ def build_triggers_app(
                 )
             )
 
+        async def record_agent_run(
+            status: Literal["ok", "error", "denied"],
+            error_code: str | None,
+            started_at: float,
+            result_text: str | None = None,
+        ) -> None:
+            """Record the agent dimension of a sandboxed run, never raising."""
+            elapsed = time.perf_counter() - started_at
+            metrics.inc(
+                "adk_agent_runs_total",
+                {
+                    "source": "trigger",
+                    "tenant": tenant,
+                    "agent": trigger.agent_id,
+                    "status": status,
+                },
+            )
+            metrics.observe(
+                "adk_agent_run_duration_seconds",
+                elapsed,
+                {"agent": trigger.agent_id, "tenant": tenant},
+            )
+            if audit is None:
+                return
+            try:
+                await audit.emit(
+                    AuditEvent(
+                        event_id=uuid.uuid4().hex,
+                        run_id=run_id,
+                        trace_id=trace_id,
+                        tenant=tenant,
+                        principal=principal,
+                        agent_ref=ref,
+                        action="agent.run",
+                        target=f"{trigger.agent_id}@{trigger.version}",
+                        args_hash=hash_text(input_text),
+                        result_hash=hash_text(result_text) if result_text is not None else None,
+                        data_classes=[],
+                        latency_ms=int(elapsed * 1000),
+                        egress="third_party",
+                        status=status,
+                        error_code=error_code,
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("trigger %s/%s agent.run audit failed", tenant, trigger_id)
+
         if not input_text:
             await finish("error", "invalid_request")
             await emit("error", "invalid_request", run_id, trace_id)
@@ -312,17 +366,87 @@ def build_triggers_app(
                     return TriggerExecution("error", code, run_id, trace_id)
                 await asyncio.sleep(0.2 * attempt)
 
-        try:
-            require_execution_supported(published.manifest)
-        except AgentSandboxUnavailable:
-            await finish("error", "sandbox_unavailable")
-            await emit("error", "sandbox_unavailable", run_id, trace_id)
-            return TriggerExecution("error", "sandbox_unavailable", run_id, trace_id)
+        is_sandboxed = published.manifest.execution_tier == "sandboxed"
+        if is_sandboxed:
+            if sandbox is None:
+                await finish("error", "sandbox_unavailable")
+                await emit("error", "sandbox_unavailable", run_id, trace_id)
+                return TriggerExecution("error", "sandbox_unavailable", run_id, trace_id)
+            if published.manifest.tool_grants:
+                await finish("error", "tool_mediation_unavailable")
+                await emit("error", "tool_mediation_unavailable", run_id, trace_id)
+                return TriggerExecution("error", "tool_mediation_unavailable", run_id, trace_id)
+            active_sandbox = sandbox
+        else:
+            try:
+                require_execution_supported(published.manifest)
+            except AgentSandboxUnavailable:
+                await finish("error", "sandbox_unavailable")
+                await emit("error", "sandbox_unavailable", run_id, trace_id)
+                return TriggerExecution("error", "sandbox_unavailable", run_id, trace_id)
 
         if any(grant.requires_approval for grant in published.manifest.tool_grants):
             await finish("denied", "approval_required")
             await emit("denied", "approval_required", run_id, trace_id)
             return TriggerExecution("denied", "approval_required", run_id, trace_id)
+
+        if is_sandboxed:
+            artifact = published.artifact
+            if artifact is None:
+                await finish("error", "agent_load_failed")
+                await emit("error", "agent_load_failed", run_id, trace_id)
+                return TriggerExecution("error", "agent_load_failed", run_id, trace_id)
+            try:
+                trust.verify(artifact)
+                data = await artifact_store.get(artifact.digest)
+            except Exception:  # noqa: BLE001
+                logger.exception("trigger %s/%s artifact fetch failed", tenant, trigger_id)
+                data = None
+            if data is None:
+                await finish("error", "agent_load_failed")
+                await emit("error", "agent_load_failed", run_id, trace_id)
+                return TriggerExecution("error", "agent_load_failed", run_id, trace_id)
+
+            started_at = time.perf_counter()
+            policy = quota_config.tenants.get(tenant) if quota_config is not None else None
+            try:
+                if quota is not None and policy is not None:
+                    async with quota.reserve(tenant, policy):
+                        sandbox_result = await active_sandbox.run(artifact, data, input_text)
+                else:
+                    sandbox_result = await active_sandbox.run(artifact, data, input_text)
+            except QuotaExceeded as exc:
+                metrics.inc("adk_agent_quota_denials_total", {"tenant": tenant, "limit": exc.limit})
+                await finish("denied", "quota_exceeded")
+                await record_agent_run("denied", "quota_exceeded", started_at)
+                await emit("denied", "quota_exceeded", run_id, trace_id)
+                return TriggerExecution("denied", "quota_exceeded", run_id, trace_id)
+            except SandboxTimeout:
+                await finish("error", "sandbox_timeout")
+                await record_agent_run("error", "sandbox_timeout", started_at)
+                await emit("error", "sandbox_timeout", run_id, trace_id)
+                return TriggerExecution("error", "sandbox_timeout", run_id, trace_id)
+            except SandboxViolation:
+                await finish("error", "sandbox_violation")
+                await record_agent_run("error", "sandbox_violation", started_at)
+                await emit("error", "sandbox_violation", run_id, trace_id)
+                return TriggerExecution("error", "sandbox_violation", run_id, trace_id)
+            except SandboxCrashed:
+                await finish("error", "sandbox_crashed")
+                await record_agent_run("error", "sandbox_crashed", started_at)
+                await emit("error", "sandbox_crashed", run_id, trace_id)
+                return TriggerExecution("error", "sandbox_crashed", run_id, trace_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("trigger %s/%s sandbox run failed", tenant, trigger_id)
+                await finish("error", "run_failed")
+                await record_agent_run("error", "run_failed", started_at)
+                await emit("error", "run_failed", run_id, trace_id)
+                return TriggerExecution("error", "run_failed", run_id, trace_id)
+
+            await finish("ok")
+            await record_agent_run("ok", None, started_at, sandbox_result.text)
+            await emit("ok", None, run_id, trace_id, sandbox_result.text)
+            return TriggerExecution("ok", None, run_id, trace_id, sandbox_result.text)
 
         agent: Any = None
         for attempt in range(1, attempts + 1):
