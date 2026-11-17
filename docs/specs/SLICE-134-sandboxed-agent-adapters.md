@@ -35,19 +35,19 @@
 
 ## 完成判据（可执行）
 
-- [ ] 注册后端时 `load_agent` 对 `sandboxed` 返回代理且不执行工件 -> `test_load_agent_returns_sandbox_proxy`
-- [ ] 代理调用后端并把返回文本作为模型事件 -> `test_sandbox_agent_runs_backend`
-- [ ] 未注册后端时 `load_agent` 仍抛 `AgentSandboxUnavailable` -> 既有用例
-- [ ] 声明工具授权的 `sandboxed` 记录被拒 -> `test_sandboxed_with_tool_grants_is_refused`
-- [ ] 控制台按需加载返回代理；带工具授权返回 409 `tool_mediation_unavailable` -> `tests/test_console_on_demand.py`
-- [ ] `console`/`serve`/`serve-many` 接受 `--agent-sandbox`，非 POSIX 未加覆盖退出 1 -> `tests/test_cli_sandbox_adapters.py`
-- [ ] 沙箱代理不调用 `InProcessArtifactLoader` / 不 `exec` 工件 -> 代理用例用会抛错的 loader 验证
-- [ ] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
+- [x] 注册后端时 `load_agent` 对 `sandboxed` 返回代理且不执行工件 -> `test_load_agent_returns_sandbox_proxy`
+- [x] 代理调用后端并把返回文本作为模型事件 -> `test_sandbox_agent_runs_backend`
+- [x] 未注册后端时 `load_agent` 仍抛 `AgentSandboxUnavailable` -> 既有用例
+- [x] 声明工具授权的 `sandboxed` 记录被拒 -> `test_sandboxed_with_tool_grants_is_refused`
+- [x] 控制台按需加载返回代理；带工具授权返回 409 `tool_mediation_unavailable` -> `tests/test_console_on_demand.py`
+- [x] `console`/`serve`/`serve-many` 接受 `--agent-sandbox`，非 POSIX 未加覆盖退出 1 -> `tests/test_cli_sandbox_adapters.py`
+- [x] 沙箱代理不调用 `InProcessArtifactLoader` / 不 `exec` 工件 -> 代理用例用会抛错的 loader 验证
+- [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）
 
-- [ ] 反例 1：注册后端后 `load_agent` 仍执行工件 -> 期望 `test_load_agent_returns_sandbox_proxy` 失败
-- [ ] 反例 2：控制台按需加载 `sandboxed` 记录仍调用进程内 loader -> 期望 `test_on_demand_sandboxed_uses_proxy` 失败
+- [x] 反例 1：注册后端后 `load_agent` 仍执行工件 -> 期望 `test_load_agent_returns_sandbox_proxy` 失败
+- [x] 反例 2：控制台按需加载 `sandboxed` 记录仍调用进程内 loader -> 期望 `test_on_demand_sandboxed_uses_proxy` 失败
 
 ## 5 问威胁建模（10 分钟）
 
