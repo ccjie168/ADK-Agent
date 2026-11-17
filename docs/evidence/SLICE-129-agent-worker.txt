@@ -1,0 +1,52 @@
+SLICE-129 agent 沙箱 worker 与协议
+日期: 2026-11-17
+依据: ADR-0024 第 2、3、4、6、8 条
+分支: slice-129-agent-worker，基线 c75142e
+
+一、红态（实现前）
+
+$ pytest tests/sandbox/test_agent_frames.py tests/sandbox/test_agent_process.py -q
+E   ModuleNotFoundError: No module named 'adk_agent.sandbox.frames'
+E   ImportError: cannot import name 'SandboxResult' from 'adk_agent.sandbox.agent'
+2 errors during collection
+
+二、实现
+
+- sandbox/frames.py：4 字节大端长度加 JSON，32 MiB 上限，同步与 asyncio 两套读写。
+- sandbox/agent.py：SandboxResult、AgentSandboxBackend 协议、注册校验（object() 抛 TypeError）。
+- sandbox/agent_process.py：ProcessAgentSandbox 起子进程、写请求帧、并发读 stderr、墙钟超时后 kill，
+  按 error 帧映射 SandboxViolation / SandboxCrashed，超时抛 SandboxTimeout。
+- sandbox/agent_worker.py：读请求、设 RLIMIT（POSIX）、建事件循环、装网络守卫、清空环境，
+  再走共享的 load_artifact_agent 与 ADK Runner 跑一轮，回 limits / final / error 帧。
+  帧写 os.dup(1) 保存的句柄，fd 1 重定向到 stderr，工件打印不污染协议。
+- registry/loader.py：抽出 load_artifact_agent，InProcessArtifactLoader 行为不变。
+- sandbox/errors.py：新增 SandboxCrashed。
+- 契约：docs/contracts/sandbox.md 与 README 索引。
+
+三、实现中的发现
+
+- 首次运行三个正常用例都报 SandboxViolation。原因在 Windows：asyncio 的事件循环创建时会用 socketpair，
+  而守卫已把 connect 拦掉。改为先建循环、再装守卫、用 loop.run_until_complete 跑，守卫仍然在工件加载之前生效。
+  这个顺序写进契约，POSIX 同样适用。
+- 错误帧的 message 从类名扩成「类名: 短消息」，便于区分工件自身的异常与守卫拒绝，截断到 200 字符。
+
+四、绿态
+
+$ pytest -q
+1386 passed, 81 skipped, 1 warning in 72.46s
+（多出的 skip 是 POSIX-only 的 RLIMIT 上报用例在 Windows 上跳过；CI 的 Linux runner 会执行。）
+
+$ python scripts/check.py --fast
+1386 passed, 81 skipped
+[PASS] format / lint / types / layering / specs / test / secrets
+ALL PASS
+
+$ python scripts/check.py --full
+（见提交前钩子输出，9 步全 PASS）
+
+五、范围与已知缺口
+
+- 本切片不注册后端，生产仍把 sandboxed 当作不可用；触发服务、控制台与模型出口中介在后续切片接入。
+- 工件仍可读宿主文件系统；v1 不做命名空间，见 ADR-0024 第 9 条。
+- RLIMIT_NPROC 按 uid 计数，默认关闭；契约写明并发运行共享额度。
+- Windows 不设 RLIMIT，只保证脚本级网络守卫与环境清空；生产平台门槛在接入切片落地。

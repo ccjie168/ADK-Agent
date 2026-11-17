@@ -34,5 +34,6 @@
 - `trigger_service.md`：`serve-triggers` 的 webhook 执行端点、幂等与错误码。
 - `tracing.md`：入站 trace 头和出站 `X-Trace-Id` 的传播规则。
 - `metrics.md`：各服务的 `/metrics` 端点、指标名和聚合边界。
+- `sandbox.md`：agent 沙箱 worker 的进程、帧协议、资源上限与错误映射（ADR-0024）。
 
 `PublishedAgent` 不是独立契约，它是注册表对 `AgentManifest` 加 digest、签名和发布时间的包装，可选携带 `AgentArtifact`。
