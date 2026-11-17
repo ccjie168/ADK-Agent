@@ -267,6 +267,8 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固、调度循环、执行层级、agent 沙箱 worker、模型出口中介、触发路径的沙箱接入与审批接口能力校验也已收口（SLICE-113 到 132）。ADR-0024 已确认，下一步是控制台与 A2A 的远程适配、工具网关 RPC、`in_process` 构建密钥校验与 publish 默认翻转，之后是凭据密钥后端，编号进入时分配。SLICE-110 到 SLICE-132 已完成。
 5. 租户凭据只存引用，不存值。密钥后端、KMS、轮换与控制面 `/v1/credentials` 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。执行层级已进 manifest：新发布必须显式声明，无沙箱后端时 `sandboxed` 在发布与加载两处被拒；历史记录缺字段按 `in_process` 读取且 digest 不变。组合器与脚手架当前明确写 `in_process`，手写 manifest 暂无法与平台产物区分；SLICE-129 已交付子进程 worker 与协议，但尚未注册后端，publish 仍默认不可用；接入切片把 publish 默认翻成 `sandboxed`，`in_process` 只接受平台构建密钥签名的工件。沙箱 worker 的残余风险：POSIX 上 RLIMIT_NPROC 按 uid 计数且默认关闭，工件仍可读宿主文件系统，Windows 只有脚本级守卫；网络守卫是 Python 层，内省拿原始 C 类型或用 ctypes 可绕过。模型调用已经经父进程中转，工具调用仍被守卫拒绝，工具网关 RPC 留给接入切片；接入切片还必须同时落地平台门槛（POSIX、降 uid、网络命名空间）、`sandboxed` 的执行路由与平台构建密钥校验，再允许注册后端。这些按 ADR-0022 与 ADR-0024 的顺序另行切片。
 
+6. 控制台还有一批接口只做认证加租户/admin 判断，没有按能力表授权：`/api/audit`、`/api/runs`、`/api/plans`、`/api/traces/{id}`、注册表 load/unload/eval、`/api/tools`、tool-grants 及 usage/decide、connectors、connector-requests、credentials、peers 与远程 agent、sessions、chat，以及 `GET /api/policy`（完全没有调用方检查）。SLICE-132 只收口了审批三个端点，能力审查可单开一片。审批历史查询参数 `limit` 由 FastAPI 在进入处理函数前转换，越权调用方带非整数 `limit` 会先得 422 而非 403；不泄露数据，记为已知小缺口。
+
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
 MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
