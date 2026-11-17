@@ -72,7 +72,7 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 - POSIX：`RLIMIT_CPU`、`RLIMIT_AS`、`RLIMIT_NOFILE`、`RLIMIT_FSIZE`；`processes` 非空时设 `RLIMIT_NPROC`。
   `RLIMIT_AS` 以字节为单位设置，`memory_mb` 先乘 1024×1024；上报值是 `getrlimit` 读回值除以 1024×1024。
   `RLIMIT_NPROC` 按 uid 计数，同一服务账号下的并发运行共享该额度，默认关闭。
-- Windows：不设置 `RLIMIT`，只保留脚本级网络守卫与环境清空。生产要求 POSIX，能力探测与启动参数在接入切片落地。
+- Windows：不设置 `RLIMIT`，只保留脚本级网络守卫与环境清空。生产要求 POSIX；`serve-triggers`、`console`、`serve` 与 `serve-many` 都有 `--agent-sandbox` 与 `--allow-unsandboxed`。
 - 墙钟超时由父进程负责：写请求与读每一帧共用一个 deadline；超时后 `kill` 并 `wait`，抛 `SandboxTimeout`。
   POSIX 上子进程以独立会话启动（`start_new_session=True`），回收时用 `killpg` 杀掉整个进程组。
   回收是先等 5 秒、超时后 killpg 再等 5 秒，协议错误路径随后还要最多 5 秒收集 stderr，所以即使后代持有管道或用 `setsid` 逃出会话，单次运行的上界是 wall + 15 秒加进程启动开销。
@@ -90,7 +90,12 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 
 ## 执行接入
 
-- `adk-agent serve-triggers --agent-sandbox` 注入 `ProcessAgentSandbox(model=build_model())`。
+- `serve-triggers`、`console`、`serve`、`serve-many` 的 `--agent-sandbox` 注入
+  `ProcessAgentSandbox(model=build_model())`。
 - `sandboxed` 触发走 `run`，进程内加载路径不参与；`in_process` 触发行为不变。
-- 声明了工具授权的 `sandboxed` 记录拒绝执行，直到工具网关 RPC 落地。
-- 控制台、A2A 与 `--agent-ref` 仍拒绝 `sandboxed`，是否注册全局后端由后续适配决定。
+- `--agent-ref` 与控制台按需加载遇到 `sandboxed` 记录时返回沙箱代理
+  （`sandbox/proxy.py`）：每次调用起一个新的 worker 子进程，取本次用户文本，
+  经模型中介拿结果，产出一个模型事件。工件字节不在控制台或 MCP 进程内执行。
+- 沙箱代理没有会话记忆：每次调用独立，ADK 会话只保存控制台侧消息。
+- 声明了工具授权的 `sandboxed` 记录拒绝加载或执行，直到工具网关 RPC 落地。
+- 未注册后端时 `sandboxed` 在加载处被拒；`serve-a2a` 仍只接受 `--agent` 文件。

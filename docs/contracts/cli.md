@@ -323,6 +323,9 @@
 - 解析顺序：按租户列出注册表，找 `id@version`，用记录摘要调 `load_agent`；工件必须存在，签名必须被信任，否则退出 1。
 - agent 的名字取 manifest 的 `id`；同一批里重名退出 1。
 - `serve` 只接受一个 `--agent-ref`。
+- 记录声明 `sandboxed` 时需要 `--agent-sandbox`；加载结果是沙箱代理，每次调用起一个子进程，工件字节不在控制台或 MCP 进程内执行。未加该 flag 时退出 1。
+- 声明工具授权的 `sandboxed` 记录在加载时退出 1，直到工具网关 RPC 落地。
+- `--agent-sandbox` 在非 POSIX 平台默认退出 1；`--allow-unsandboxed` 才允许本地开发并在 stderr 提示降级。
 
 ## `adk-agent serve` / `serve-many` 的 MCP HTTP 鉴权
 
@@ -414,6 +417,8 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - 配置文件缺失或非法退出 1。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
 - `--role` 可重复，设置控制台 principal 的角色。默认 `admin`。
+- `--agent-sandbox` 注册 `ProcessAgentSandbox(model=build_model())`，`--agent-ref` 与按需加载都可运行 `sandboxed` 记录；
+  非 POSIX 平台默认退出 1，`--allow-unsandboxed` 才降级并在 stderr 提示。
 - `GET /api/policy` 返回当前策略。`PUT /api/policy` 校验、原子落盘、热替换并写 `policy.update` 审计。
 - 聊天按 `agent.run:<agent>` 检查策略。拒绝返回 403 `policy_denied`，并写 `agent.run` `denied` 审计。
 - 没给 `--policy` 时控制台不做 RBAC，`/api/policy` 返回 404。

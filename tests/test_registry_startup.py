@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import importlib.util
 import json
@@ -45,7 +46,16 @@ def _raw_hex(key) -> str:
     )
 
 
-def _published(tmp_path, key, *, tenant="acme", name="bot", version="1.0.0"):
+def _published(
+    tmp_path,
+    key,
+    *,
+    tenant="acme",
+    name="bot",
+    version="1.0.0",
+    execution_tier=None,
+    tool_grants=None,
+):
     project = tmp_path / f"project-{tenant}-{version}"
     project.mkdir()
     manifest = {
@@ -55,6 +65,10 @@ def _published(tmp_path, key, *, tenant="acme", name="bot", version="1.0.0"):
         "owner": tenant,
         "model_policy": {"provider_allowlist": ["litellm"]},
     }
+    if execution_tier is not None:
+        manifest["execution_tier"] = execution_tier
+    if tool_grants is not None:
+        manifest["tool_grants"] = tool_grants
     (project / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (project / "agent.py").write_text(
         "from google.adk.agents import LlmAgent\n"
@@ -250,3 +264,113 @@ def test_cli_refuses_sandboxed_record_without_a_backend(tmp_path, monkeypatch, c
 
     assert exc.value.code == 1
     assert "sandbox" in capsys.readouterr().err
+
+
+class _SandboxBackend:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def run(self, artifact, data, input_text):
+        from adk_agent.sandbox.agent import SandboxResult
+
+        self.calls.append(input_text)
+        return SandboxResult(text="sandboxed")
+
+
+class _ExplodingLoader:
+    async def load(self, artifact, store):
+        raise AssertionError("in-process loader used for a sandboxed record")
+
+
+@needs_crypto
+def test_load_agent_returns_sandbox_proxy(tmp_path):
+    from adk_agent.sandbox.agent import set_agent_sandbox_backend
+
+    key = _key()
+    store, registry = _published(tmp_path, key, execution_tier="sandboxed")
+    set_agent_sandbox_backend(_SandboxBackend())
+    try:
+        agents = asyncio.run(
+            load_registry_agents(
+                ["acme/bot@1.0.0"],
+                registry=registry,
+                store=store,
+                trust=TrustStore({"k1": bytes.fromhex(_raw_hex(key))}),
+                loader=_ExplodingLoader(),
+            )
+        )
+    finally:
+        set_agent_sandbox_backend(None)
+
+    assert type(agents["bot"]).__name__ == "SandboxAgent"
+    assert agents["bot"].name == "bot"
+
+
+@needs_crypto
+def test_sandboxed_with_tool_grants_is_refused(tmp_path):
+    from adk_agent.sandbox.agent import SandboxToolsUnavailable, set_agent_sandbox_backend
+
+    key = _key()
+    store, registry = _published(
+        tmp_path,
+        key,
+        execution_tier="sandboxed",
+        tool_grants=[{"tool_id": "crm.read", "data_classes": ["internal"]}],
+    )
+    set_agent_sandbox_backend(_SandboxBackend())
+    try:
+        with pytest.raises(SandboxToolsUnavailable):
+            asyncio.run(
+                load_registry_agents(
+                    ["acme/bot@1.0.0"],
+                    registry=registry,
+                    store=store,
+                    trust=TrustStore({"k1": bytes.fromhex(_raw_hex(key))}),
+                    loader=_ExplodingLoader(),
+                )
+            )
+    finally:
+        set_agent_sandbox_backend(None)
+
+
+@needs_crypto
+def test_cli_refuses_sandboxed_record_with_tool_grants(tmp_path, monkeypatch, capsys):
+    from adk_agent.sandbox.agent import set_agent_sandbox_backend
+
+    key = _key()
+    _published(tmp_path, key)
+    manifest = AgentManifest(
+        id="bot",
+        version="3.0.0",
+        tenant="acme",
+        owner="acme",
+        model_policy={"provider_allowlist": ["litellm"]},
+        execution_tier="sandboxed",
+        tool_grants=[{"tool_id": "crm.read", "data_classes": ["internal"]}],
+    )
+    digest = "sha256:" + "a" * 64
+    artifact = AgentArtifact(digest=digest, size=1, signature=sign_digest(digest, key), key_id="k1")
+    asyncio.run(
+        FileAgentRegistry(tmp_path / "registry").publish(
+            published_from(manifest, artifact=artifact)
+        )
+    )
+    monkeypatch.setenv("ADK_ARTIFACT_KEYS", json.dumps({"k1": _raw_hex(key)}))
+    set_agent_sandbox_backend(_SandboxBackend())
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli._registry_agents(
+                argparse.Namespace(
+                    agent_ref=["acme/bot@3.0.0"],
+                    registry=str(tmp_path / "registry"),
+                    artifact_dir=str(tmp_path / "store"),
+                    artifact_keys=None,
+                    registry_url=None,
+                    registry_token_env="ADK_REGISTRY_AUTH_TOKEN",
+                )
+            )
+    finally:
+        set_agent_sandbox_backend(None)
+
+    assert exc.value.code == 1
+    assert "tool grants" in capsys.readouterr().err

@@ -274,7 +274,8 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `POST /api/registry/load` -> `{"name", "version", "loaded"}`
 
-按需把一个已发布版本加载成聊天目标。控制台进程内执行，不是沙箱。
+按需把一个已发布版本加载成聊天目标。`in_process` 记录在控制台进程内执行；
+`sandboxed` 记录返回沙箱代理，每次调用起一个子进程，见 `sandbox.md`。
 
 ```json
 {"tenant": "team-a", "id": "support-bot", "version": "1.0.0"}
@@ -288,6 +289,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 版本不存在返回 404 `not_found`。
 - 该版本没有工件返回 409 `artifact_missing`；签名缺失或不可信返回 409 `artifact_untrusted`。
 - 记录声明 `sandboxed` 而控制台没有 agent 沙箱后端时返回 409 `sandbox_unavailable`（ADR-0024）。
+- 记录声明 `sandboxed` 且声明了工具授权时返回 409 `tool_mediation_unavailable`，直到工具网关 RPC 落地。
 - 同名 agent 已按另一版本按需加载返回 409 `name_conflict`。
 - 版本已退役返回 409 `version_retired`；`deprecated` 版本仍可加载。
 - 已加载数量达到 `--max-loaded-agents` 返回 409 `load_limit`。

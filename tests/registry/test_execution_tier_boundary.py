@@ -130,6 +130,15 @@ class _Loader:
         return object()
 
 
+class _Store:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def get(self, digest: str) -> bytes:
+        self.calls += 1
+        return b"zip!"
+
+
 def _load(record: PublishedAgent, trust: _Trust, loader: _Loader) -> object:
     ref = AgentRef(id="bot", version="1.0.0", digest=record.digest)
     return asyncio.run(
@@ -137,7 +146,7 @@ def _load(record: PublishedAgent, trust: _Trust, loader: _Loader) -> object:
             registry=_Registry(record),
             ref=ref,
             tenant="acme",
-            store=object(),
+            store=_Store(),
             loader=loader,
             trust=trust,
         )
@@ -159,9 +168,10 @@ def test_load_agent_gates_sandboxed_records():
     assert loader.calls == 0
 
     set_agent_sandbox_backend(_Backend())
-    assert _load(record, trust, loader) is not None
+    loaded = _load(record, trust, loader)
+    assert type(loaded).__name__ == "SandboxAgent"
     assert trust.calls == 1
-    assert loader.calls == 1
+    assert loader.calls == 0
 
 
 def test_a_placeholder_backend_does_not_count():

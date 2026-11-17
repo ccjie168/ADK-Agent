@@ -1,0 +1,79 @@
+SLICE-134 控制台与 MCP 的沙箱执行适配
+日期: 2026-11-17
+依据: ADR-0024 第 2、4、5 条
+基线: 9d8176b
+
+一、红态（实现前）
+
+把 `src/` 换回基线 9d8176b 后：
+
+$ pytest tests/sandbox/test_agent_proxy.py -q
+ERROR tests/sandbox/test_agent_proxy.py
+E   ModuleNotFoundError: No module named 'adk_agent.sandbox.proxy'
+
+$ pytest tests/test_registry_startup.py tests/test_console_on_demand.py \
+    tests/test_cli_sandbox_adapters.py tests/registry/test_execution_tier_boundary.py -q
+11 failed, 35 passed
+
+失败的 11 个是红态测量时已有的用例：加载器 2 个、控制台按需加载 2 个、CLI 6 个，
+以及改判据后的 test_load_agent_gates_sandboxed_records（旧断言要求
+loader.calls == 1，新判据要求 0）。另有 test_agent_proxy.py 的 2 个在收集期报
+ModuleNotFoundError: adk_agent.sandbox.proxy。红态测量时新增用例 12 个、改判据的既有用例 1 个；
+修第一轮验证意见时又补了 test_cli_refuses_sandboxed_record_with_tool_grants（第 13 个新增用例），
+它同样在基线失败。
+
+二、实现
+
+- `sandbox/proxy.py`：`SandboxAgent(BaseAgent)` 取本次 `user_content` 的第一个文本 part，
+  调 `backend.run(artifact, data, text)`，产出一个模型事件；不持有跨调用状态。
+- `sandbox/agent.py`：新增 `SandboxToolsUnavailable`。
+- `registry/loader.py`：新增 `load_sandbox_agent`；`load_agent` 在信任校验后按
+  `manifest.execution_tier == "sandboxed"` 返回代理，进程内 loader 不参与。声明工具授权的
+  `sandboxed` 记录抛 `SandboxToolsUnavailable`。
+- `console.py`：按需加载走同一分支；`tool_mediation_unavailable` 映射 409。
+  `_register` 对代理跳过模型包装与工具守卫安装（代理没有进程内工具或模型）。
+- `cli.py`：新增 `_add_agent_sandbox_args` 与 `_install_agent_sandbox`；`console`、`serve`、
+  `serve-many` 接受 `--agent-sandbox`/`--allow-unsandboxed`，在加载注册表 agent 之前注册
+  `ProcessAgentSandbox(model=build_model())`；非 POSIX 默认退出 1。
+- 契约：`cli.md`、`sandbox.md`、`console.md` 同步。
+- CLI 把 `SandboxToolsUnavailable` 映射为 `registry load failed: ...` 并退出 1，`test_cli_refuses_sandboxed_record_with_tool_grants` 覆盖。
+
+三、测试判据变更（已获用户同意）
+
+`tests/registry/test_execution_tier_boundary.py::test_load_agent_gates_sandboxed_records`
+原先在注册后端后要求 `loader.calls == 1`，即进程内执行 sandboxed 记录。这正是本切片要消除的
+路径。按用户确认改为：store 使用返回字节的假存储，断言返回 `SandboxAgent` 且
+`loader.calls == 0`；信任调用次数与“无后端时拒绝”的断言不变。
+
+四、绿态
+
+$ pytest tests/sandbox/test_agent_proxy.py tests/test_registry_startup.py \
+    tests/test_console_on_demand.py tests/test_cli_sandbox_adapters.py \
+    tests/registry/test_execution_tier_boundary.py -q
+49 passed
+
+$ pytest -q（Windows）
+1459 passed, 87 skipped
+
+$ python scripts/check.py --full
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
+
+五、范围与已知缺口
+
+- 沙箱代理没有会话记忆：每次调用独立，控制台会话只保存消息。
+- 声明工具授权的 `sandboxed` 记录拒绝加载，直到工具网关 RPC 落地。
+- `serve-a2a` 仍只接受 `--agent` 文件，没有 `--agent-ref`，A2A 的注册表接入另立切片。
+- 平台构建密钥校验与 publish 默认层级翻转仍未做。
+- 未注册后端时 `sandboxed` 仍在加载处被拒绝，行为与 SLICE-128 一致。
+
+六、第一轮独立验证（f922027）
+
+结论 MERGE，无阻断项。四条低风险意见：
+
+1. CLI 启动路径未捕获 `SandboxToolsUnavailable`，会带 traceback 退出（退出码仍为 1）。
+   已加入 except 元组并补 `test_cli_refuses_sandboxed_record_with_tool_grants`。
+2. 父进程取字节后不复核 digest。子进程在 `compile` 前复核 size/digest，不匹配不会执行；
+   保留现状，错误表现为沙箱加载失败。
+3. `sandbox.md` 的平台说明过时、spec 测试路径写错、证据计数措辞不准。均已修正。
+4. manifest id 与 BaseAgent 名称约束的边角差异为既有行为，不在本切片处理。

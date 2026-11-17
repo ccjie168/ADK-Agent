@@ -22,6 +22,10 @@ class AgentSandboxUnavailable(RuntimeError):
     """A sandboxed manifest was used while no agent sandbox backend is registered."""
 
 
+class SandboxToolsUnavailable(RuntimeError):
+    """A sandboxed manifest declares tool grants the sandbox cannot mediate yet."""
+
+
 @runtime_checkable
 class AgentSandboxBackend(Protocol):
     """Execution seam for sandboxed artifacts."""

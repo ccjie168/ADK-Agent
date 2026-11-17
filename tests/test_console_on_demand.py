@@ -43,15 +43,26 @@ def _raw(key) -> bytes:
     return key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
 
 
-def _manifest(version: str = "1.0.0", tenant: str = "acme") -> AgentManifest:
-    return AgentManifest(
-        id="bot",
-        version=version,
-        tenant=tenant,
-        owner=tenant,
-        description="support bot",
-        model_policy={"provider_allowlist": ["litellm"]},
-    )
+def _manifest(
+    version: str = "1.0.0",
+    tenant: str = "acme",
+    *,
+    execution_tier: str | None = None,
+    tool_grants=None,
+) -> AgentManifest:
+    data = {
+        "id": "bot",
+        "version": version,
+        "tenant": tenant,
+        "owner": tenant,
+        "description": "support bot",
+        "model_policy": {"provider_allowlist": ["litellm"]},
+    }
+    if execution_tier is not None:
+        data["execution_tier"] = execution_tier
+    if tool_grants is not None:
+        data["tool_grants"] = tool_grants
+    return AgentManifest.model_validate(data)
 
 
 def _project(tmp_path, version: str = "1.0.0", body: str = "support bot"):
@@ -67,8 +78,18 @@ def _project(tmp_path, version: str = "1.0.0", body: str = "support bot"):
     return project
 
 
-def _publish(tmp_path, registry, key, *, version="1.0.0", artifact=True, data=None):
-    manifest = _manifest(version)
+def _publish(
+    tmp_path,
+    registry,
+    key,
+    *,
+    version="1.0.0",
+    artifact=True,
+    data=None,
+    execution_tier=None,
+    tool_grants=None,
+):
+    manifest = _manifest(version, execution_tier=execution_tier, tool_grants=tool_grants)
     if data is None:
         data = pack_agent(_project(tmp_path, version))
     digest = artifact_digest(data)
@@ -324,3 +345,63 @@ def test_sandboxed_record_is_refused(tmp_path):
 
     assert response.status_code == 409
     assert response.json() == {"error": "sandbox_unavailable"}
+
+
+class _SandboxBackend:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def run(self, artifact, data, input_text):
+        from adk_agent.sandbox.agent import SandboxResult
+
+        self.calls.append(input_text)
+        return SandboxResult(text="answer from sandbox")
+
+
+@needs_crypto
+def test_on_demand_sandboxed_uses_proxy(tmp_path):
+    from adk_agent.sandbox.agent import set_agent_sandbox_backend
+
+    key = _key()
+    registry = FileAgentRegistry(tmp_path / "registry")
+    _publish(tmp_path, registry, key, execution_tier="sandboxed")
+    backend = _SandboxBackend()
+    set_agent_sandbox_backend(backend)
+    try:
+        with TestClient(_app(tmp_path, trust_key=key)) as client:
+            loaded = _load(client)
+            assert loaded.status_code == 200
+            chat = client.post(
+                "/api/chat",
+                json={"agent": "bot", "message": "hello"},
+                headers=AUTH,
+            )
+    finally:
+        set_agent_sandbox_backend(None)
+
+    assert chat.status_code == 200
+    assert backend.calls == ["hello"]
+
+
+@needs_crypto
+def test_on_demand_sandboxed_tool_grants_refused(tmp_path):
+    from adk_agent.sandbox.agent import set_agent_sandbox_backend
+
+    key = _key()
+    registry = FileAgentRegistry(tmp_path / "registry")
+    _publish(
+        tmp_path,
+        registry,
+        key,
+        execution_tier="sandboxed",
+        tool_grants=[{"tool_id": "crm.read", "data_classes": ["internal"]}],
+    )
+    set_agent_sandbox_backend(_SandboxBackend())
+    try:
+        with TestClient(_app(tmp_path, trust_key=key)) as client:
+            loaded = _load(client)
+    finally:
+        set_agent_sandbox_backend(None)
+
+    assert loaded.status_code == 409
+    assert loaded.json() == {"error": "tool_mediation_unavailable"}

@@ -11,7 +11,12 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from ..core import MAX_ARTIFACT_BYTES, AgentArtifact, AgentManifest, ArtifactStore
-from ..sandbox.agent import require_execution_supported
+from ..sandbox.agent import (
+    SandboxToolsUnavailable,
+    agent_sandbox_backend,
+    require_execution_supported,
+)
+from ..sandbox.proxy import build_sandbox_agent
 from .trust import TrustStore
 
 _ALLOWED = frozenset({"manifest.json", "README.md", "requirements.txt"})
@@ -97,6 +102,23 @@ class InProcessArtifactLoader:
         return load_artifact_agent(artifact, data)
 
 
+async def load_sandbox_agent(published: Any, *, store: ArtifactStore) -> Any:
+    """Return a sandbox proxy for a ``sandboxed`` record without executing it."""
+    manifest = published.manifest
+    require_execution_supported(manifest)
+    if manifest.execution_tier == "sandboxed" and manifest.tool_grants:
+        raise SandboxToolsUnavailable("sandboxed agents cannot use tool grants yet")
+    if published.artifact is None:
+        raise ArtifactLoadError("agent version has no artifact")
+    backend = agent_sandbox_backend()
+    if backend is None:
+        raise ArtifactLoadError("agent sandbox backend is not registered")
+    data = await store.get(published.artifact.digest)
+    if data is None:
+        raise ArtifactLoadError("artifact bytes not found")
+    return build_sandbox_agent(manifest, published.artifact, data, backend)
+
+
 async def load_agent(
     *,
     registry: Any,
@@ -114,6 +136,8 @@ async def load_agent(
     if published.artifact is None:
         raise ArtifactLoadError("agent version has no artifact")
     trust.verify(published.artifact)
+    if published.manifest.execution_tier == "sandboxed":
+        return await load_sandbox_agent(published, store=store)
     return await loader.load(published.artifact, store)
 
 
@@ -122,4 +146,5 @@ __all__ = [
     "InProcessArtifactLoader",
     "load_agent",
     "load_artifact_agent",
+    "load_sandbox_agent",
 ]
