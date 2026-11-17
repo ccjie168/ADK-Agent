@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 from google.adk.sessions import InMemorySessionService
@@ -25,6 +26,8 @@ from adk_agent.core import (
 from adk_agent.registry import FileTriggerFireStore
 from adk_agent.registry.manifest import published_from
 from adk_agent.runtime.quota import InMemoryQuotaManager
+from adk_agent.sandbox.agent import SandboxResult
+from adk_agent.sandbox.errors import SandboxTimeout
 from adk_agent.triggers_service import build_triggers_app
 
 _TOKEN = "webhook-token-0123456789"
@@ -191,6 +194,8 @@ def _client(
     quota=None,
     quota_config=None,
     fire_store=None,
+    sandbox=None,
+    artifact_store=None,
 ):
     runner = FakeRunner()
     trust = FakeTrust()
@@ -198,7 +203,7 @@ def _client(
     app = build_triggers_app(
         triggers=FakeTriggerStore(triggers),
         registry=registry or FakeRegistry(published or _PUBLISHED),
-        artifact_store=object(),
+        artifact_store=artifact_store or object(),
         trust=trust,
         loader=loader,
         lifecycle=lifecycle,
@@ -209,6 +214,7 @@ def _client(
         session_service=InMemorySessionService(),
         runner_factory=lambda agent: runner,
         fire_store=fire_store,
+        sandbox=sandbox,
     )
     return TestClient(app), runner, trust, loader
 
@@ -459,3 +465,100 @@ def test_sandboxed_trigger_is_refused():
     assert runner.calls == 0
     assert trust.verified == []
     assert loader.loaded == []
+
+
+class FakeArtifactStore:
+    def __init__(self, data: bytes = b"zip-bytes") -> None:
+        self.data = data
+
+    async def get(self, digest: str) -> bytes | None:
+        return self.data
+
+
+class FakeSandbox:
+    def __init__(self, text: str = "from sandbox", error: Exception | None = None) -> None:
+        self.text = text
+        self.error = error
+        self.calls: list[tuple] = []
+
+    async def run(self, artifact, data: bytes, input_text: str):
+        self.calls.append((artifact, data, input_text))
+        if self.error is not None:
+            raise self.error
+        return SandboxResult(text=self.text)
+
+
+def _sandboxed_client(sandbox, *, grants=None, audit=None):
+    published = _published(grants=grants, tier="sandboxed")
+    client, runner, trust, loader = _client(
+        [_webhook(digest=f"sha256:{published.digest}")],
+        published=published,
+        audit=audit,
+        sandbox=sandbox,
+        artifact_store=FakeArtifactStore(),
+    )
+    return client, runner, trust, loader, published
+
+
+def test_sandboxed_trigger_uses_the_backend():
+    audit = ListAuditSink()
+    sandbox = FakeSandbox()
+    client, runner, _, _, published = _sandboxed_client(sandbox, audit=audit)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 200
+    assert response.json()["text"] == "from sandbox"
+    assert runner.calls == 0
+    assert len(sandbox.calls) == 1
+    artifact, data, text = sandbox.calls[0]
+    assert artifact.digest == published.artifact.digest
+    assert data == b"zip-bytes"
+    assert text == "hello"
+
+    events = audit.recent(20)
+    assert [event.action for event in events].count("agent.run") == 1
+    assert [event.action for event in events].count("trigger.fire") == 1
+    run = next(event for event in events if event.action == "agent.run")
+    assert run.status == "ok"
+    assert run.egress == "third_party"
+    assert run.result_hash == hash_text("from sandbox")
+
+
+def test_sandboxed_tool_grants_are_refused():
+    sandbox = FakeSandbox()
+    client, runner, _, loader, _ = _sandboxed_client(
+        sandbox, grants=[ToolGrant(tool_id="payments")]
+    )
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 409
+    assert response.json() == {"error": "tool_mediation_unavailable"}
+    assert sandbox.calls == []
+    assert runner.calls == 0
+
+
+def test_sandbox_timeout_is_mapped():
+    sandbox = FakeSandbox(error=SandboxTimeout("slow"))
+    client, _, _, _, _ = _sandboxed_client(sandbox)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": "sandbox_timeout"}
+
+
+def test_floor_rejects_missing_posix_limits(monkeypatch, capsys):
+    from adk_agent import cli
+
+    monkeypatch.setattr("adk_agent.sandbox.agent_process.agent_sandbox_supported", lambda: False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["serve-triggers", "--agent-sandbox"])
+
+    assert exc.value.code == 1
+    assert "allow-unsandboxed" in capsys.readouterr().err

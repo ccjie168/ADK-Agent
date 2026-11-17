@@ -1,0 +1,43 @@
+SLICE-131 沙箱执行接入：触发服务与平台门槛
+日期: 2026-11-17
+依据: ADR-0024 第 2、5 条
+分支: slice-131-sandbox-execution，基线 5492dae
+
+一、红态（实现前）
+
+- `build_triggers_app` 没有 `sandbox` 参数，`sandboxed` 记录在触发服务里一律 409 `sandbox_unavailable`。
+- CLI 没有 `--agent-sandbox` / `--allow-unsandboxed`，也没有平台门槛。
+- 新增用例 test_sandboxed_trigger_uses_the_backend、test_sandboxed_tool_grants_are_refused、
+  test_sandbox_timeout_is_mapped、test_floor_rejects_missing_posix_limits 在实现前全部失败
+  （TypeError: unexpected keyword argument 'sandbox' / 409 而非 200）。
+
+二、实现
+
+- sandbox/agent_process.py：`agent_sandbox_supported()`，POSIX 为真。
+- triggers_service.py：
+  - `build_triggers_app(..., sandbox=...)`。
+  - `sandboxed` 分支：有工具授权直接 409 `tool_mediation_unavailable`；没有注入沙箱 409 `sandbox_unavailable`；
+    验签后取工件字节，`quota.reserve` 包住 `sandbox.run`；写 `agent.run` 审计（`egress="third_party"`）与运行指标。
+  - 错误码：`sandbox_timeout`、`sandbox_crashed`、`sandbox_violation` 均 500；`tool_mediation_unavailable` 409。
+  - `in_process` 路径不变。
+- cli.py：`serve-triggers` 新增 `--agent-sandbox` 与 `--allow-unsandboxed`；非 POSIX 未加覆盖时退出 1，
+  加覆盖时 stderr 提示降级；启用时用 `build_model()` 构造父进程模型并注入。
+- 契约：trigger_service.md、cli.md、sandbox.md 同步。
+
+三、绿态
+
+$ pytest tests/test_triggers_service.py -q
+16 passed
+
+$ pytest -q（Windows）
+1418 passed, 87 skipped
+
+$ pytest tests/test_triggers_service.py -q（WSL Ubuntu 24.04）
+16 passed
+
+四、范围与已知缺口
+
+- 只接入触发路径；控制台、A2A 与 `--agent-ref` 仍拒绝 `sandboxed`，远程 agent 适配在下一片。
+- 工具网关 RPC 未实现，声明工具授权的 `sandboxed` 记录直接拒绝执行。
+- `in_process` 的构建密钥校验与 publish 默认层级翻转留到下一片。
+- 没有在生产进程调用 `set_agent_sandbox_backend`，发布门槛仍按“无后端”拒绝 `sandboxed`。
