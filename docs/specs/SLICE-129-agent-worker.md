@@ -7,9 +7,11 @@
 
 1. 新增 `ProcessAgentSandbox`：每次 `run` 起一个子进程，把工件字节与输入送进去，返回最终文本。
 2. 子进程内完成验摘要、解包、`exec`、建 Runner 与单轮运行。父进程只负责协议、超时与资源回收。
-3. 子进程无网络：安装 socket 守卫，任何新连接抛 `SandboxViolation`。
+3. 子进程无网络：严格模式守卫拦 `getaddrinfo`、`connect`、`connect_ex`、`AF_INET`/`AF_INET6`/`AF_UNIX` 的 `socket.socket` 与 `_socket.socket` 构造，以及 `os.system`、`os.popen`、`fork`/`exec*`/`spawn*` 与 `subprocess.Popen`。绕过 Python 层的内省与 `ctypes` 属 ADR-0024 第 9 条的残余风险，写入契约。
 4. 子进程环境清空，POSIX 上环境变量为空；Windows 只保留 `SYSTEMROOT`、`TEMP`、`TMP`。
-5. POSIX 上设置 `RLIMIT_CPU`、`RLIMIT_AS`、`RLIMIT_NOFILE`、`RLIMIT_FSIZE`，可选 `RLIMIT_NPROC`；平台不支持时跳过并如实上报。
+5. POSIX 上设置 `RLIMIT_CPU`、`RLIMIT_AS`、`RLIMIT_NOFILE`、`RLIMIT_FSIZE`，可选 `RLIMIT_NPROC`；`memory_mb` 按字节换算，上报 `getrlimit` 读回值；平台不支持时跳过并如实上报。
+6. 每次运行的 cwd 是父进程创建的一次性临时目录，结束删除；用 `-I` 启动，cwd 不进 `sys.path`。
+7. 墙钟覆盖写请求、读帧与回收；协议错误先 kill 并回收子进程再读 stderr，失败有界。
 6. 失败映射为 `SandboxViolation`、`SandboxTimeout`、`SandboxCrashed`，父进程总是杀掉并回收子进程。
 7. 协议帧走独立句柄：工件对 fd 1 的输出重定向到 stderr，帧写到 `os.dup(1)` 保存的句柄，避免工件打印污染协议。
 8. 收紧能力探针：注册值必须实现 `AgentSandboxBackend` 协议，`object()` 之类的占位不再算可用。
@@ -86,8 +88,17 @@
 - [x] 超出墙钟抛 `SandboxTimeout`，子进程被回收 -> `::test_wall_clock_timeout`
 - [x] 加载期异常抛 `SandboxCrashed` -> `::test_load_failure_is_a_crash`
 - [x] 字节与摘要不符抛 `SandboxCrashed` -> `::test_digest_mismatch_is_rejected`
-- [x] 子进程上报的限制与请求一致（POSIX） -> `::test_limits_are_reported`
+- [x] 子进程上报的限制与请求一致（POSIX，读回值） -> `::test_limits_are_reported`
 - [x] 工件打印不污染协议，stderr 有输出 -> `::test_artifact_stdout_is_redirected`
+- [x] UDP 出口被拒 -> `::test_udp_egress_is_denied`
+- [x] 直接构造 `_socket.socket` 被拒 -> `::test_raw_socket_module_is_denied`
+- [x] `AF_UNIX` 套接字被拒（POSIX） -> `::test_unix_sockets_are_denied`
+- [x] 子进程创建被拒 -> `::test_process_creation_is_denied`
+- [x] 工件伪造 `SandboxViolation` 仍归为崩溃 -> `::test_artifact_cannot_forge_a_violation`
+- [x] 运行目录是一次性临时目录且被删除 -> `::test_runs_in_a_removed_temp_directory`
+- [x] 畸形帧且子进程存活时有界失败 -> `::test_malformed_frame_does_not_hang`
+- [x] `_clear_env` 单独移除密钥 -> `::test_clear_env_removes_secrets`
+- [x] 非法 limits 帧值抛 `SandboxCrashed` -> `::test_invalid_limit_values_are_rejected`
 - [x] `set_agent_sandbox_backend(object())` 抛 `TypeError`，协议桩算可用 -> `tests/sandbox/test_agent_process.py::test_backend_must_implement_the_protocol` 与 `tests/registry/test_execution_tier_boundary.py`
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
@@ -97,6 +108,8 @@
 - [x] 反例 2：超时后父进程不杀子进程 -> 期望 `::test_wall_clock_timeout` 失败
 - [x] 反例 3：占位后端对象被当成可用 -> 期望 `tests/sandbox/test_agent_process.py::test_backend_must_implement_the_protocol` 与 `tests/registry/test_execution_tier_boundary.py::test_a_placeholder_backend_does_not_count` 失败
 - [x] 反例 4：工件打印混入协议帧 -> 期望 `::test_artifact_stdout_is_redirected` 失败
+- [x] 反例 5：`memory_mb` 未按字节换算 -> 期望 POSIX 上所有正常用例与 `::test_limits_are_reported` 失败（验证代理在 Linux 容器复现）
+- [x] 反例 6：畸形帧后先等 stderr 再回收 -> 期望 `::test_malformed_frame_does_not_hang` 挂起或超时
 
 红态记录: 见证据文件。
 

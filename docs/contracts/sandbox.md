@@ -4,7 +4,8 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 
 ## 进程
 
-- 命令：`<sys.executable> -E -s -m adk_agent.sandbox.agent_worker`。
+- 命令：`<sys.executable> -I -m adk_agent.sandbox.agent_worker`，cwd 是本次运行的一次性临时目录，运行结束即删除。
+  `-I` 不把 cwd 放进 `sys.path`，工件无法往后续运行的导入路径投放模块。
 - 环境：POSIX 传空环境；Windows 只传 `SYSTEMROOT`、`TEMP`、`TMP`。
 - 一次运行一个进程，结束即回收；不复用、不重试。
 
@@ -12,7 +13,8 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 
 - 4 字节大端长度加 UTF-8 JSON；最大 32 MiB，超过、截断或非 JSON 都算协议错误。
 - 协议只走启动时的 stdout 句柄。子进程把 fd 1 重定向到 stderr，再单独保存一份原始 stdout 句柄写帧，所以工件的 `print` 不会污染协议。
-- stderr 由父进程并发读取，最多保留 8 KiB，只用于诊断。
+  该句柄与工件同进程，工件若找到它并写入畸形帧，父进程按协议错误处理：先 kill 并回收子进程，再读取 stderr，失败有界。
+- stderr 由父进程并发读取，保留前 8 KiB 后继续读并丢弃，避免管道写满阻塞子进程。stderr 只用于诊断，可能包含宿主路径，只对可信调用方展示。
 
 ## 请求
 
@@ -32,25 +34,31 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 }
 ```
 
+输入不截断；调用方按服务入口的限制（当前 8000 字符）自行约束。
+
 ## 响应
 
-- `{"type": "limits", "applied": {"cpu_seconds": 10, ...}}`：实际生效的限制。POSIX 上才可能有内容；Windows 返回空对象。
+- `{"type": "limits", "applied": {...}}`：内核读回的实际限制。`memory_mb` 以 MB 上报；POSIX 上才可能有内容，Windows 返回空对象。
 - `{"type": "final", "text": "..."}`：最终响应文本。
 - `{"type": "error", "kind": "violation|load|crash", "message": "<类名>: <短消息>"}`。
-  - `violation`：网络守卫或其它沙箱守卫拒绝，父进程抛 `SandboxViolation`。
+  - `violation`：守卫实际触发（按实例身份判定，工件伪造异常类不算），父进程抛 `SandboxViolation`。
   - `load`：工件解包、摘要、`exec` 或类型检查失败，父进程抛 `SandboxCrashed`。
   - `crash`：运行期异常，父进程抛 `SandboxCrashed`。
 
 ## 限制与平台差异
 
-- POSIX：设置 `RLIMIT_CPU`、`RLIMIT_AS`、`RLIMIT_NOFILE`、`RLIMIT_FSIZE`；`processes` 非空时设 `RLIMIT_NPROC`。
+- POSIX：`RLIMIT_CPU`、`RLIMIT_AS`、`RLIMIT_NOFILE`、`RLIMIT_FSIZE`；`processes` 非空时设 `RLIMIT_NPROC`。
+  `RLIMIT_AS` 以字节为单位设置，`memory_mb` 先乘 1024×1024；上报值是 `getrlimit` 读回值除以 1024×1024。
   `RLIMIT_NPROC` 按 uid 计数，同一服务账号下的并发运行共享该额度，默认关闭。
 - Windows：不设置 `RLIMIT`，只保留脚本级网络守卫与环境清空。生产要求 POSIX，能力探测与启动参数在接入切片落地。
-- 墙钟超时由父进程负责，超时后 `kill` 并 `wait`，抛 `SandboxTimeout`。
+- 墙钟超时由父进程负责：写请求、读每一帧与回收都在同一个 deadline 之内；超时后 `kill` 并 `wait`，抛 `SandboxTimeout`。
 
-## 边界
+## 网络与进程守卫
 
-- 子进程无网络：socket 的 `getaddrinfo`、`connect`、`connect_ex` 被替换，任何新连接抛 `SandboxViolation`。事件循环在安装守卫前创建，避免 Windows 的 loopback socketpair 被误伤。
-- 环境清空发生在安装守卫之后、加载工件之前。
-- 工件仍然可以通过文件系统访问宿主文件；v1 不做文件系统命名空间，见 ADR-0024 第 9 条。
-- 本切片不注册后端，发布与加载仍把 `sandboxed` 当作不可用。
+严格模式（agent worker 使用）拦截：
+
+- `socket.getaddrinfo`、`socket.socket.connect`、`connect_ex`；
+- `socket.socket` 构造 `AF_INET`、`AF_INET6`、`AF_UNIX`，以及 `_socket.socket` 按模块名直接构造；
+- `os.system`、`os.popen`、`os.fork`/`forkpty`/`exec*`/`spawn*`、`subprocess.Popen`。
+
+残余风险：工件仍可通过 `socket.socket.__bases__[0]` 等内省拿到原始 C 类型，或用 `ctypes` 直接调用 libc，绕过 Python 层守卫。这与 ADR-0024 第 9 条一致：v1 不是内核级隔离，开放给不受信网络调用方之前必须有容器或虚拟机层级。工件仍可读写宿主文件系统中服务账号有权限的路径；一次性 cwd 只堵导入路径投放，不是命名空间。

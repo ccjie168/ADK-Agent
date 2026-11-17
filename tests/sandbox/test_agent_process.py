@@ -111,9 +111,19 @@ def test_wall_clock_timeout():
 
     started = time.monotonic()
     with pytest.raises(SandboxTimeout):
-        _run(artifact, data, wall=1.5)
+        _run(artifact, data, wall=6.0)
 
-    assert time.monotonic() - started < 10
+    assert time.monotonic() - started < 20
+
+
+def test_a_second_run_works_after_a_timeout():
+    slow, slow_data = _artifact(_source("await asyncio.sleep(30)\n        text = 'late'"))
+    fast, fast_data = _artifact(_source('text = "recovered"'))
+
+    with pytest.raises(SandboxTimeout):
+        _run(slow, slow_data, wall=6.0)
+
+    assert _run(fast, fast_data).text == "recovered"
 
 
 def test_load_failure_is_a_crash():
@@ -150,9 +160,78 @@ def test_artifact_stdout_is_redirected():
     assert _run(artifact, data).text == "clean"
 
 
+def test_udp_egress_is_denied():
+    artifact, data = _artifact(
+        _source(
+            "import socket\n"
+            "        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\n"
+            '        sock.sendto(b"probe", ("example.com", 9))\n'
+            '        text = "sent"'
+        )
+    )
+
+    with pytest.raises(SandboxViolation):
+        _run(artifact, data)
+
+
+def test_process_creation_is_denied():
+    artifact, data = _artifact(
+        _source(
+            "import subprocess\n"
+            "        import sys\n"
+            '        subprocess.run([sys.executable, "-c", "pass"])\n'
+            '        text = "spawned"'
+        )
+    )
+
+    with pytest.raises(SandboxViolation):
+        _run(artifact, data)
+
+
+def test_artifact_cannot_forge_a_violation():
+    artifact, data = _artifact(
+        _source(
+            "from adk_agent.sandbox.errors import SandboxViolation\n"
+            '        raise SandboxViolation("forged")\n'
+            '        text = "unreachable"'
+        )
+    )
+
+    with pytest.raises(SandboxCrashed):
+        _run(artifact, data)
+
+
+def test_runs_in_a_removed_temp_directory():
+    artifact, data = _artifact(_source("text = os.getcwd()"))
+
+    result = _run(artifact, data)
+
+    assert result.text != os.getcwd()
+    assert not os.path.exists(result.text)
+
+
+def test_clear_env_removes_secrets(monkeypatch):
+    from types import SimpleNamespace
+
+    from adk_agent.sandbox import agent_worker
+
+    environ = {"ADK_TEST_LEAK": "leak-me"}
+    if os.name == "nt":
+        environ.update({"SYSTEMROOT": "root", "TEMP": "temp"})
+    monkeypatch.setattr(agent_worker, "os", SimpleNamespace(name=os.name, environ=environ))
+
+    agent_worker._clear_env()
+
+    allowed = {"SYSTEMROOT", "TEMP"} if os.name == "nt" else set()
+    assert set(environ) == allowed
+
+
 def test_backend_must_implement_the_protocol():
-    with pytest.raises(TypeError):
-        set_agent_sandbox_backend(object())
+    from types import SimpleNamespace
+
+    for bad in (object(), SimpleNamespace(run=1), SimpleNamespace(run=lambda *a: None)):
+        with pytest.raises(TypeError):
+            set_agent_sandbox_backend(bad)
 
     class Stub:
         async def run(self, artifact, data, input_text):
@@ -160,3 +239,59 @@ def test_backend_must_implement_the_protocol():
 
     set_agent_sandbox_backend(Stub())
     assert agent_sandbox_available() is True
+
+
+def test_raw_socket_module_is_denied():
+    artifact, data = _artifact(
+        _source(
+            "import _socket\n"
+            "        _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)\n"
+            '        text = "opened"'
+        )
+    )
+
+    with pytest.raises(SandboxViolation):
+        _run(artifact, data)
+
+
+@pytest.mark.skipif(not hasattr(__import__("socket"), "AF_UNIX"), reason="AF_UNIX is absent")
+def test_unix_sockets_are_denied():
+    artifact, data = _artifact(
+        _source(
+            "import socket\n"
+            "        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)\n"
+            "        sock.connect('/tmp/adk-sandbox-probe.sock')\n"
+            '        text = "connected"'
+        )
+    )
+
+    with pytest.raises(SandboxViolation):
+        _run(artifact, data)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="frame fd layout is POSIX specific")
+def test_malformed_frame_does_not_hang():
+    artifact, data = _artifact(
+        _source(
+            "import struct\n"
+            "        os.write(3, struct.pack('>I', 3) + b'{{{')\n"
+            "        await asyncio.sleep(60)\n"
+            '        text = "never"'
+        )
+    )
+
+    started = time.monotonic()
+    with pytest.raises(SandboxCrashed):
+        _run(artifact, data, wall=6.0)
+
+    assert time.monotonic() - started < 15
+
+
+def test_invalid_limit_values_are_rejected():
+    from adk_agent.sandbox.agent_process import _applied_limits
+
+    with pytest.raises(SandboxCrashed):
+        _applied_limits({"applied": 5})
+    with pytest.raises(SandboxCrashed):
+        _applied_limits({"applied": {"cpu_seconds": "many"}})
+    assert _applied_limits({"applied": {"cpu_seconds": 10}}) == {"cpu_seconds": 10}

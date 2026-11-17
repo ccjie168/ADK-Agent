@@ -11,13 +11,12 @@ from typing import Any, cast
 
 from ..core import AgentArtifact
 from ..registry.loader import load_artifact_agent
-from .errors import SandboxError
 from .frames import FrameError, read_frame, write_frame
-from .guard import install_network_guard
+from .guard import install_network_guard, last_violation
 from .policy import SandboxPolicy
 
 _ALLOWED_ENV = ("SYSTEMROOT", "TEMP", "TMP")
-_MAX_INPUT = 8000
+_MIB = 1024 * 1024
 
 
 def _apply_limits(limits: dict[str, Any]) -> dict[str, int]:
@@ -27,19 +26,25 @@ def _apply_limits(limits: dict[str, Any]) -> dict[str, int]:
 
     applied: dict[str, int] = {}
 
-    def set_limit(kind: int, key: str, value: int) -> None:
+    def set_limit(kind: int, key: str, value: int, report: Any = int) -> None:
         try:
             resource.setrlimit(kind, (value, value))
+            soft, _ = resource.getrlimit(kind)
         except (ValueError, OSError):
             return
-        applied[key] = value
+        applied[key] = report(soft)
 
     cpu = limits.get("cpu_seconds")
     if isinstance(cpu, int) and cpu > 0:
         set_limit(resource.RLIMIT_CPU, "cpu_seconds", cpu)
     memory = limits.get("memory_mb")
     if isinstance(memory, int) and memory > 0:
-        set_limit(resource.RLIMIT_AS, "memory_mb", memory)
+        set_limit(
+            resource.RLIMIT_AS,
+            "memory_mb",
+            memory * _MIB,
+            lambda soft: soft // _MIB,
+        )
     files = limits.get("open_files")
     if isinstance(files, int) and files > 0:
         set_limit(resource.RLIMIT_NOFILE, "open_files", files)
@@ -59,14 +64,23 @@ def _clear_env() -> None:
     os.environ.update(kept)
 
 
-def _is_violation(exc: BaseException) -> bool:
+def _is_guard_violation(exc: BaseException) -> bool:
+    """Only the instance the guard raised counts; artifacts cannot forge it."""
+    violation = last_violation()
+    if violation is None:
+        return False
+    stack: list[BaseException | None] = [exc]
     seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        if isinstance(current, SandboxError):
-            return True
+    while stack:
+        current = stack.pop()
+        if current is None or id(current) in seen:
+            continue
         seen.add(id(current))
-        current = current.__cause__ or current.__context__
+        if current is violation:
+            return True
+        stack.append(current.__cause__)
+        if not current.__suppress_context__:
+            stack.append(current.__context__)
     return False
 
 
@@ -100,12 +114,12 @@ def main() -> int:
         applied = _apply_limits(dict(request.get("limits") or {}))
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        install_network_guard(SandboxPolicy(allow_network=False))
+        install_network_guard(SandboxPolicy(allow_network=False), strict=True)
         _clear_env()
         write_frame(out, {"type": "limits", "applied": applied})
         artifact = AgentArtifact.model_validate(request["artifact"])
         data = base64.b64decode(str(request["data"]), validate=True)
-        input_text = str(request.get("input", ""))[:_MAX_INPUT]
+        input_text = str(request.get("input", ""))
         agent = load_artifact_agent(artifact, data)
         phase = "run"
         text = loop.run_until_complete(_run(agent, input_text))
@@ -113,7 +127,7 @@ def main() -> int:
         write_frame(out, {"type": "final", "text": text})
         return 0
     except Exception as exc:  # noqa: BLE001
-        kind = "violation" if _is_violation(exc) else "crash" if phase == "run" else "load"
+        kind = "violation" if _is_guard_violation(exc) else "crash" if phase == "run" else "load"
         message = f"{type(exc).__name__}: {exc}"[:200]
         write_frame(out, {"type": "error", "kind": kind, "message": message})
         return 2

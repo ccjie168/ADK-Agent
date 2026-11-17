@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
@@ -33,8 +34,10 @@ _backend: AgentSandboxBackend | None = None
 
 def set_agent_sandbox_backend(backend: AgentSandboxBackend | None) -> None:
     """Register the agent sandbox backend; ``None`` means the capability is absent."""
-    if backend is not None and not isinstance(backend, AgentSandboxBackend):
-        raise TypeError("agent sandbox backend must implement run()")
+    if backend is not None:
+        run = getattr(backend, "run", None)
+        if not callable(run) or not inspect.iscoroutinefunction(run):
+            raise TypeError("agent sandbox backend must implement an async run()")
     global _backend
     _backend = backend
 
@@ -44,7 +47,7 @@ def agent_sandbox_backend() -> AgentSandboxBackend | None:
 
 
 def agent_sandbox_available() -> bool:
-    return isinstance(_backend, AgentSandboxBackend)
+    return _backend is not None
 
 
 def require_execution_supported(manifest: AgentManifest) -> None:

@@ -50,3 +50,43 @@ $ python scripts/check.py --full
 - 工件仍可读宿主文件系统；v1 不做命名空间，见 ADR-0024 第 9 条。
 - RLIMIT_NPROC 按 uid 计数，默认关闭；契约写明并发运行共享额度。
 - Windows 不设 RLIMIT，只保证脚本级网络守卫与环境清空；生产平台门槛在接入切片落地。
+
+六、第一轮独立验证（HEAD 7ab2f57）与修复
+
+验证结论 DO NOT MERGE，主要问题与处理：
+
+1. [P0] memory_mb 直接传给 RLIMIT_AS，单位是字节，Linux 上所有正常工件崩溃。
+   修复：乘 1024×1024；上报改为 getrlimit 读回值。WSL 上 43 个 sandbox 用例通过。
+2. [P0] 协议错误路径先 await stderr 再回收，工件写畸形帧并保持存活可让父进程无限挂起。
+   修复：先 kill 并 wait，再读 stderr；stderr 继续读并丢弃前 8 KiB 之后的内容；墙钟覆盖写请求与帧循环。
+   新增 POSIX 回归 tests/sandbox/test_agent_process.py::test_malformed_frame_does_not_hang。
+3. [P0/P1] 网络守卫只覆盖三个 Python 方法，UDP、子进程、AF_UNIX 与 _socket 可绕过。
+   修复：严格模式额外拦截 AF_INET/AF_INET6/AF_UNIX 的 socket.socket 构造、_socket.socket 构造
+   （模块属性替换为守卫子类）、os.system/os.popen/fork/exec*/spawn*/subprocess.Popen。
+   残留：内省拿原始 C 类型或用 ctypes 调 libc 仍可绕过，写入契约与 ADR-0024 第 9 条一致。
+   WSL 与 Windows 新增用例覆盖 UDP、AF_UNIX、_socket、subprocess。
+4. [P1] 无一次性临时目录，cwd 进入 sys.path 可被投放模块。
+   修复：父进程建临时目录作 cwd，运行后删除；改用 -I 启动。
+5. [P1] 能力探针只查属性存在。
+   修复：要求可调用且是协程函数；run=1 与同步 run 都被拒。
+6. [P1] 失败分类按异常类，工件可伪造。
+   修复：守卫记录它抛出的实例，worker 沿异常链按实例身份判定；伪造 SandboxViolation 归为 crash。
+7. [P2] 非法 limits 帧值、输入静默截断、stderr 排空、3.10 超时类型、SandboxCrashed 未导出、错误信息含宿主路径。
+   修复：非法 limits 抛 SandboxCrashed；去掉静默截断并在契约写明输入上限由调用方负责；stderr 读到 EOF、只留前 8 KiB；
+   except asyncio.TimeoutError；sandbox/__init__ 导出 SandboxCrashed；契约写明 stderr 摘录可能含宿主路径且只给可信调用方。
+
+七、Linux 验证（WSL Ubuntu 24.04，Python 3.12）
+
+$ pytest tests/sandbox -q
+43 passed
+
+$ pytest -q（整仓，缺 import-linter 与可选模型依赖）
+1384 passed, 90 skipped, 3 failed
+3 个失败都是 WSL venv 缺依赖（test_layering 的 import-linter、test_smoke 的 anthropic/litellm），不是本切片回归。
+
+八、修复后的门禁（Windows，Python 3.14）
+
+$ python scripts/check.py --full
+1394 passed, 83 skipped
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
