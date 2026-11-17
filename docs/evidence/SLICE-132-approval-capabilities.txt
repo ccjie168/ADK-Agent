@@ -1,0 +1,32 @@
+SLICE-132 审批接口的能力校验
+日期: 2026-11-17
+依据: ADR-0022 第 1、8 条
+基线: b23fb2a
+
+一、红态（实现前）
+
+在演示控制台上用发布者角色实测（SLICE-131 期间）：
+- GET /api/approvals -> 200，返回待决审批。
+- GET /api/approvals/history -> 200。
+- POST /api/approvals/{id} 未做能力检查，逻辑上可决定。
+
+新用例 test_roles_without_approval_capabilities_are_forbidden 在加上检查前会得到 200 而非 403。
+
+二、实现
+
+- console.py：列表与历史在 `_principal_for` 后检查 `approvals.read`，决定检查 `approvals.decide`；
+  缺少能力返回 403 `{"error": "forbidden"}`，检查先于任何存储读写。
+- 租户隔离与 admin 语义不变。
+- 测试主体补角色：审批调用方改为 operator，新增发布者越权用例。
+
+三、绿态
+
+$ pytest tests/test_console_approvals.py tests/test_console_approvals_history.py tests/test_console_approvals_expiry.py -q
+23 passed
+
+$ pytest -q（Windows）
+1424 passed, 87 skipped
+
+四、范围
+
+- 只覆盖审批三个端点；其他控制台接口的能力审查单列后续。

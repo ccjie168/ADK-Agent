@@ -4195,6 +4195,8 @@ def build_console_app(
         if approvals is None:
             return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
         caller = _principal_for(request)
+        if "approvals.read" not in _capabilities_for(caller.roles):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         try:
             pending = approvals.pending()
             if inspect.isawaitable(pending):
@@ -4228,6 +4230,8 @@ def build_console_app(
             return JSONResponse({"error": "invalid decision"}, status_code=400)
 
         caller = _principal_for(request)
+        if "approvals.decide" not in _capabilities_for(caller.roles):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         try:
             record = approvals.get(request_id)
             if inspect.isawaitable(record):
@@ -4311,6 +4315,8 @@ def build_console_app(
             return JSONResponse({"error": "invalid_status"}, status_code=400)
         limit = max(1, min(200, limit))
         caller = _principal_for(request)
+        if "approvals.read" not in _capabilities_for(caller.roles):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         tenant = None if "admin" in caller.roles else caller.tenant
         try:
             entries = approvals.history(tenant=tenant, status=status, limit=limit)

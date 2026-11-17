@@ -14,7 +14,7 @@ from adk_agent.core import AgentRef, ApprovalRequest, Principal
 UTC = timezone.utc
 _AT = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
 AUTH = {"Authorization": "Bearer alice-token"}
-ALICE = Principal(tenant="acme", subject="alice", kind="human")
+ALICE = Principal(tenant="acme", subject="alice", kind="human", roles=["operator"])
 
 
 class Clock:

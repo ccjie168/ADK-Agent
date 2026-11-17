@@ -15,8 +15,8 @@ from adk_agent.identity import InvalidIdentity
 UTC = timezone.utc
 NOW = datetime(2026, 11, 16, 10, 0, 0, tzinfo=UTC)
 
-ALICE = Principal(tenant="acme", subject="alice", kind="human")
-LOCAL_VIEWER = Principal(tenant="local", subject="local-viewer", kind="human", roles=["viewer"])
+ALICE = Principal(tenant="acme", subject="alice", kind="human", roles=["operator"])
+LOCAL_VIEWER = Principal(tenant="local", subject="local-viewer", kind="human", roles=["operator"])
 ADMIN = Principal(tenant="acme", subject="admin", kind="human", roles=["admin"])
 
 TOKENS = {

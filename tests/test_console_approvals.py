@@ -17,22 +17,25 @@ from adk_agent.identity import InvalidIdentity
 UTC = timezone.utc
 _AT = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
 
-ALICE = Principal(tenant="acme", subject="alice", kind="human")
-VIEWER = Principal(tenant="acme", subject="viewer", kind="human", roles=["viewer"])
+ALICE = Principal(tenant="acme", subject="alice", kind="human", roles=["operator"])
+VIEWER = Principal(tenant="acme", subject="viewer", kind="human", roles=["operator"])
 ADMIN = Principal(tenant="acme", subject="admin", kind="human", roles=["admin"])
-CAROL = Principal(tenant="other", subject="carol", kind="human")
+CAROL = Principal(tenant="other", subject="carol", kind="human", roles=["operator"])
+PUBLISHER = Principal(tenant="acme", subject="publisher", kind="human", roles=["publisher"])
 
 TOKENS = {
     "alice-token": ALICE,
     "viewer-token": VIEWER,
     "admin-token": ADMIN,
     "carol-token": CAROL,
+    "publisher-token": PUBLISHER,
 }
 
 AUTH_ALICE = {"Authorization": "Bearer alice-token"}
 AUTH_VIEWER = {"Authorization": "Bearer viewer-token"}
 AUTH_ADMIN = {"Authorization": "Bearer admin-token"}
 AUTH_CAROL = {"Authorization": "Bearer carol-token"}
+AUTH_PUBLISHER = {"Authorization": "Bearer publisher-token"}
 
 
 class _Provider:
@@ -247,3 +250,19 @@ def test_approvals_require_a_token(tmp_path):
     inbox = _inbox(tmp_path)
     with _app(approvals=inbox) as client:
         assert client.get("/api/approvals").status_code == 401
+
+
+def test_roles_without_approval_capabilities_are_forbidden(tmp_path):
+    inbox = _inbox(tmp_path)
+    inbox.submit(_request())
+    with _app(approvals=inbox) as client:
+        listed = client.get("/api/approvals", headers=AUTH_PUBLISHER)
+        decided = _decide(client, headers=AUTH_PUBLISHER)
+        history = client.get("/api/approvals/history", headers=AUTH_PUBLISHER)
+
+    assert listed.status_code == 403
+    assert listed.json() == {"error": "forbidden"}
+    assert decided.status_code == 403
+    assert decided.json() == {"error": "forbidden"}
+    assert history.status_code == 403
+    assert len(inbox.pending()) == 1
