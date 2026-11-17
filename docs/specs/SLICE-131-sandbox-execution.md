@@ -28,19 +28,19 @@
 ## 新增/修改文件
 
 - 修改 `src/adk_agent/triggers_service.py`、`src/adk_agent/cli.py`、`src/adk_agent/sandbox/agent_process.py`
-- 新增 `tests/test_triggers_sandbox.py`
+- 扩展 `tests/test_triggers_service.py`
 - 文档：上述契约、`docs/specs/ROADMAP.md`、`docs/PROGRESS.md`
 - 证据：`docs/evidence/SLICE-131-sandbox-execution.txt`
 
 ## 完成判据（可执行）
 
-- [x] 注入假沙箱后，`sandboxed` 触发返回沙箱文本 -> `tests/test_triggers_sandbox.py::test_sandboxed_trigger_uses_the_backend`
+- [x] 注入假沙箱后，`sandboxed` 触发返回沙箱文本 -> `tests/test_triggers_service.py::test_sandboxed_trigger_uses_the_backend`
 - [x] 沙箱调用收到工件字节与触发输入 -> 同上用例检查记录
 - [x] 写 `agent.run` 审计，status=ok -> 同上
 - [x] 声明 `tool_grants` 的 `sandboxed` 触发 409 `tool_mediation_unavailable` -> `::test_sandboxed_tool_grants_are_refused`
 - [x] 未注入沙箱 409 `sandbox_unavailable` -> `tests/test_triggers_service.py::test_sandboxed_trigger_is_refused`
 - [x] 沙箱超时映射 500 `sandbox_timeout` -> `::test_sandbox_timeout_is_mapped`
-- [x] 非 POSIX 未加 `--allow-unsandboxed` 启动失败 -> `tests/test_triggers_sandbox.py::test_floor_rejects_windows_without_override`
+- [x] 非 POSIX 未加 `--allow-unsandboxed` 启动失败 -> `tests/test_triggers_service.py::test_floor_rejects_missing_posix_limits`
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）

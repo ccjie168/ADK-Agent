@@ -270,6 +270,54 @@ def build_triggers_app(
                 )
             )
 
+        async def record_agent_run(
+            status: Literal["ok", "error", "denied"],
+            error_code: str | None,
+            started_at: float,
+            result_text: str | None = None,
+        ) -> None:
+            """Record the agent dimension of a sandboxed run, never raising."""
+            elapsed = time.perf_counter() - started_at
+            metrics.inc(
+                "adk_agent_runs_total",
+                {
+                    "source": "trigger",
+                    "tenant": tenant,
+                    "agent": trigger.agent_id,
+                    "status": status,
+                },
+            )
+            metrics.observe(
+                "adk_agent_run_duration_seconds",
+                elapsed,
+                {"agent": trigger.agent_id, "tenant": tenant},
+            )
+            if audit is None:
+                return
+            try:
+                await audit.emit(
+                    AuditEvent(
+                        event_id=uuid.uuid4().hex,
+                        run_id=run_id,
+                        trace_id=trace_id,
+                        tenant=tenant,
+                        principal=principal,
+                        agent_ref=ref,
+                        action="agent.run",
+                        target=f"{trigger.agent_id}@{trigger.version}",
+                        args_hash=hash_text(input_text),
+                        result_hash=hash_text(result_text) if result_text is not None else None,
+                        data_classes=[],
+                        latency_ms=int(elapsed * 1000),
+                        egress="third_party",
+                        status=status,
+                        error_code=error_code,
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("trigger %s/%s agent.run audit failed", tenant, trigger_id)
+
         if not input_text:
             await finish("error", "invalid_request")
             await emit("error", "invalid_request", run_id, trace_id)
@@ -367,66 +415,36 @@ def build_triggers_app(
                         sandbox_result = await active_sandbox.run(artifact, data, input_text)
                 else:
                     sandbox_result = await active_sandbox.run(artifact, data, input_text)
-            except QuotaExceeded:
-                metrics.inc("adk_agent_quota_denials_total", {"tenant": tenant, "limit": "runs"})
+            except QuotaExceeded as exc:
+                metrics.inc("adk_agent_quota_denials_total", {"tenant": tenant, "limit": exc.limit})
                 await finish("denied", "quota_exceeded")
+                await record_agent_run("denied", "quota_exceeded", started_at)
                 await emit("denied", "quota_exceeded", run_id, trace_id)
                 return TriggerExecution("denied", "quota_exceeded", run_id, trace_id)
             except SandboxTimeout:
                 await finish("error", "sandbox_timeout")
+                await record_agent_run("error", "sandbox_timeout", started_at)
                 await emit("error", "sandbox_timeout", run_id, trace_id)
                 return TriggerExecution("error", "sandbox_timeout", run_id, trace_id)
             except SandboxViolation:
                 await finish("error", "sandbox_violation")
+                await record_agent_run("error", "sandbox_violation", started_at)
                 await emit("error", "sandbox_violation", run_id, trace_id)
                 return TriggerExecution("error", "sandbox_violation", run_id, trace_id)
             except SandboxCrashed:
                 await finish("error", "sandbox_crashed")
+                await record_agent_run("error", "sandbox_crashed", started_at)
                 await emit("error", "sandbox_crashed", run_id, trace_id)
                 return TriggerExecution("error", "sandbox_crashed", run_id, trace_id)
             except Exception:  # noqa: BLE001
                 logger.exception("trigger %s/%s sandbox run failed", tenant, trigger_id)
                 await finish("error", "run_failed")
+                await record_agent_run("error", "run_failed", started_at)
                 await emit("error", "run_failed", run_id, trace_id)
                 return TriggerExecution("error", "run_failed", run_id, trace_id)
 
-            elapsed = time.perf_counter() - started_at
-            metrics.inc(
-                "adk_agent_runs_total",
-                {
-                    "source": "trigger",
-                    "tenant": tenant,
-                    "agent": trigger.agent_id,
-                    "status": "ok",
-                },
-            )
-            metrics.observe(
-                "adk_agent_run_duration_seconds",
-                elapsed,
-                {"agent": trigger.agent_id, "tenant": tenant},
-            )
-            if audit is not None:
-                await audit.emit(
-                    AuditEvent(
-                        event_id=uuid.uuid4().hex,
-                        run_id=run_id,
-                        trace_id=trace_id,
-                        tenant=tenant,
-                        principal=principal,
-                        agent_ref=ref,
-                        action="agent.run",
-                        target=trigger.agent_id,
-                        args_hash=hash_text(input_text),
-                        result_hash=hash_text(sandbox_result.text),
-                        data_classes=[],
-                        latency_ms=int(elapsed * 1000),
-                        egress="third_party",
-                        status="ok",
-                        error_code=None,
-                        timestamp=datetime.now(timezone.utc),
-                    )
-                )
             await finish("ok")
+            await record_agent_run("ok", None, started_at, sandbox_result.text)
             await emit("ok", None, run_id, trace_id, sandbox_result.text)
             return TriggerExecution("ok", None, run_id, trace_id, sandbox_result.text)
 

@@ -41,3 +41,14 @@ $ pytest tests/test_triggers_service.py -q（WSL Ubuntu 24.04）
 - 工具网关 RPC 未实现，声明工具授权的 `sandboxed` 记录直接拒绝执行。
 - `in_process` 的构建密钥校验与 publish 默认层级翻转留到下一片。
 - 没有在生产进程调用 `set_agent_sandbox_backend`，发布门槛仍按“无后端”拒绝 `sandboxed`。
+
+五、第一轮独立验证（HEAD d7c419e）
+
+结论 DO NOT MERGE。安全关键路径（信任、生命周期、审批、工具授权拒绝、配额、租户、错误码、平台门槛）正确，
+阻塞项是成功路径先写 `agent.run` 审计再 `finish("ok")`：审计 sink 失败时 fire 会永久停在 running。
+
+修复：
+- 成功路径改为先 `finish("ok")`，再写 `agent.run` 审计；审计写入包在 try/except 里，失败只记日志。
+- 失败路径（timeout/violation/crash/未知）与配额拒绝都补写 `agent.run` 审计与 `adk_agent_runs_total` 指标。
+- 配额拒绝指标的 `limit` 标签改用 `QuotaExceeded.limit`；`agent.run` 的 `target` 改为 `<id>@<version>`。
+- 测试补齐：`trust.verified`、幂等 fire 记录 finished、violation/crash 映射、失败审计、沙箱配额。

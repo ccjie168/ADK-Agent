@@ -61,7 +61,7 @@
 - 工具守卫按 manifest 授权安装；声明了 `requires_approval` 的授权直接拒绝运行。
 - 版本按触发记录的 `agent_id`、`version`、`digest` 固定，不使用 latest。
 - `sandboxed` 记录：验签、取工件字节后调用注入的沙箱 `run`，不加载进程内 agent；配额用 `reserve` 包住整次运行；
-  写 `agent.run` 审计（`egress="third_party"`）。声明了 `tool_grants` 的 `sandboxed` 记录直接拒绝，
+  写 `agent.run` 审计（`egress="third_party"`，成功、失败与配额拒绝都写）与运行指标。声明了 `tool_grants` 的 `sandboxed` 记录直接拒绝，
   工具中介落地前不执行。
 
 ## 调度

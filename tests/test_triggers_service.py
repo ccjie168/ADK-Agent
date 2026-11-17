@@ -27,7 +27,7 @@ from adk_agent.registry import FileTriggerFireStore
 from adk_agent.registry.manifest import published_from
 from adk_agent.runtime.quota import InMemoryQuotaManager
 from adk_agent.sandbox.agent import SandboxResult
-from adk_agent.sandbox.errors import SandboxTimeout
+from adk_agent.sandbox.errors import SandboxCrashed, SandboxTimeout, SandboxViolation
 from adk_agent.triggers_service import build_triggers_app
 
 _TOKEN = "webhook-token-0123456789"
@@ -488,7 +488,9 @@ class FakeSandbox:
         return SandboxResult(text=self.text)
 
 
-def _sandboxed_client(sandbox, *, grants=None, audit=None):
+def _sandboxed_client(
+    sandbox, *, grants=None, audit=None, fire_store=None, quota=None, quota_config=None
+):
     published = _published(grants=grants, tier="sandboxed")
     client, runner, trust, loader = _client(
         [_webhook(digest=f"sha256:{published.digest}")],
@@ -496,19 +498,28 @@ def _sandboxed_client(sandbox, *, grants=None, audit=None):
         audit=audit,
         sandbox=sandbox,
         artifact_store=FakeArtifactStore(),
+        fire_store=fire_store,
+        quota=quota,
+        quota_config=quota_config,
     )
     return client, runner, trust, loader, published
 
 
-def test_sandboxed_trigger_uses_the_backend():
+def test_sandboxed_trigger_uses_the_backend(tmp_path):
     audit = ListAuditSink()
+    fire_store = FileTriggerFireStore(tmp_path)
     sandbox = FakeSandbox()
-    client, runner, _, _, published = _sandboxed_client(sandbox, audit=audit)
+    client, runner, trust, _, published = _sandboxed_client(
+        sandbox, audit=audit, fire_store=fire_store
+    )
 
     with client:
-        response = _fire(client, json={"input": "hello"})
+        response = _fire(client, headers={"Idempotency-Key": "sbx-1"}, json={"input": "hello"})
+        again = _fire(client, headers={"Idempotency-Key": "sbx-1"}, json={"input": "hello"})
 
     assert response.status_code == 200
+    assert again.json()["duplicate"] is True
+    assert trust.verified
     assert response.json()["text"] == "from sandbox"
     assert runner.calls == 0
     assert len(sandbox.calls) == 1
@@ -524,6 +535,8 @@ def test_sandboxed_trigger_uses_the_backend():
     assert run.status == "ok"
     assert run.egress == "third_party"
     assert run.result_hash == hash_text("from sandbox")
+    stored = asyncio.run(fire_store.get("acme", "nightly", "sbx-1"))
+    assert stored is not None and stored.status == "ok"
 
 
 def test_sandboxed_tool_grants_are_refused():
@@ -562,3 +575,57 @@ def test_floor_rejects_missing_posix_limits(monkeypatch, capsys):
 
     assert exc.value.code == 1
     assert "allow-unsandboxed" in capsys.readouterr().err
+
+
+def test_sandbox_violation_is_mapped():
+    sandbox = FakeSandbox(error=SandboxViolation("denied"))
+    client, _, _, _, _ = _sandboxed_client(sandbox)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": "sandbox_violation"}
+
+
+def test_sandbox_crash_is_mapped():
+    sandbox = FakeSandbox(error=SandboxCrashed("crashed"))
+    client, _, _, _, _ = _sandboxed_client(sandbox)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": "sandbox_crashed"}
+
+
+def test_sandbox_timeout_is_audited():
+    audit = ListAuditSink()
+    sandbox = FakeSandbox(error=SandboxTimeout("slow"))
+    client, _, _, _, _ = _sandboxed_client(sandbox, audit=audit)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 500
+    run = next(event for event in audit.recent(20) if event.action == "agent.run")
+    assert run.status == "error"
+    assert run.error_code == "sandbox_timeout"
+
+
+def test_sandboxed_quota_is_enforced():
+    audit = ListAuditSink()
+    quota = InMemoryQuotaManager()
+    config = QuotaConfig(tenants={"acme": QuotaPolicy(max_runs=1, window_seconds=60)})
+    sandbox = FakeSandbox()
+    client, _, _, _, _ = _sandboxed_client(sandbox, audit=audit, quota=quota, quota_config=config)
+
+    with client:
+        first = _fire(client, json={"input": "hello"})
+        second = _fire(client, json={"input": "hello"})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert len(sandbox.calls) == 1
+    run_events = [event for event in audit.recent(20) if event.action == "agent.run"]
+    assert any(event.status == "denied" for event in run_events)
