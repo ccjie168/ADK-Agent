@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 import shutil
 import signal
 import sys
 import tempfile
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
@@ -344,7 +346,8 @@ class ProcessAgentSandbox:
                 deadline,
             )
             return
-        if calls[0] >= self.limits.max_tool_calls:
+        calls[0] += 1
+        if calls[0] > self.limits.max_tool_calls:
             raise SandboxViolation("tool call limit exceeded")
         if tool_id not in granted:
             await self._reply(
@@ -370,7 +373,6 @@ class ProcessAgentSandbox:
                 deadline,
             )
             return
-        calls[0] += 1
         try:
             remaining = max(deadline - asyncio.get_running_loop().time(), 0.001)
             result = await asyncio.wait_for(self.tools(manifest, tool_id, args), timeout=remaining)
@@ -384,6 +386,32 @@ class ProcessAgentSandbox:
                     "id": call_id,
                     "code": "tool_failed",
                     "message": "tool execution failed",
+                },
+                deadline,
+            )
+            return
+        if not isinstance(result, Mapping):
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": "tool_result_invalid",
+                    "message": "tool result is not a mapping",
+                },
+                deadline,
+            )
+            return
+        try:
+            json.dumps(result)
+        except (TypeError, ValueError):
+            await self._reply(
+                proc,
+                {
+                    "type": "tool_error",
+                    "id": call_id,
+                    "code": "tool_result_invalid",
+                    "message": "tool result is not JSON",
                 },
                 deadline,
             )

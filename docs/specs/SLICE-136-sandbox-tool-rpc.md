@@ -30,7 +30,7 @@
 
 - 修改 `src/adk_agent/sandbox/agent.py`、`agent_channel.py`、`agent_process.py`、`agent_worker.py`
 - 修改 `registry/loader.py`（按执行器能力决定是否允许工具授权）、`triggers_service.py`（传 manifest）
-- 测试：`tests/sandbox/test_agent_tool_rpc.py`、扩充 `tests/sandbox/test_agent_process.py`、`tests/test_triggers_service.py`
+- 测试：`tests/sandbox/test_agent_tool_rpc.py`、`tests/test_registry_startup.py`、`tests/test_triggers_service.py`
 - 文档：`docs/specs/ROADMAP.md`、`docs/PROGRESS.md`
 - 证据：`docs/evidence/SLICE-136-sandbox-tool-rpc.txt`
 
@@ -57,6 +57,9 @@
 3. **信任边界**：worker 到父进程；JSON 帧。
 4. **恶意输入最坏结果**：工件伪造授权（缓解：父进程只信 manifest，不信子进程）；越权调用工具（缓解：`tool_id` 必须在 manifest 授权内）；超大参数拖垮父进程（缓解：沿用 32 MiB 帧上限与调用上限）；结果泄密（缓解：执行器由接入片按审批与租户策略实现）。
 5. **失败是否泄露信息**：错误只带稳定 code 与短消息，不回显执行器内部错误详情。
+
+残余风险：工具回调是进程内 Python 钩子，工件可用内省或 `gc` 摘除并让本地工具函数执行，
+与 ADR-0024 第 9 条记录的 `ctypes` 绕过同级；生产前仍需容器或虚拟机层级。
 
 ## 范围外
 

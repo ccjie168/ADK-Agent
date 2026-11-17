@@ -64,7 +64,10 @@ class SandboxChannel:
             )
         if frame.get("type") != "tool_result":
             raise SandboxToolError("tool_failed", "tool result is malformed")
-        return frame.get("result")
+        result = frame.get("result")
+        if result is None:
+            raise SandboxToolError("tool_result_invalid", "tool returned no result")
+        return result
 
     async def call_model(self, request: dict[str, Any]) -> list[dict[str, Any]]:
         if self._task is None or self._task.done():
@@ -132,6 +135,8 @@ def install_tool_proxy(agent: Any, active: SandboxChannel) -> None:
     async def proxy(tool: Any, args: Any, tool_context: Any) -> Any:
         return await active.call_tool(str(getattr(tool, "name", "")), dict(args or {}))
 
-    agent.before_tool_callback = proxy
+    fields = getattr(type(agent), "model_fields", {})
+    if "before_tool_callback" in fields:
+        agent.before_tool_callback = proxy
     for sub in getattr(agent, "sub_agents", None) or ():
         install_tool_proxy(sub, active)

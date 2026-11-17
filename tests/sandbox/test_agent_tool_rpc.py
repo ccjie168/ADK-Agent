@@ -46,7 +46,15 @@ agent = LlmAgent(name="bot", model=Fake(model="fake"), instruction="x", tools=[p
 """
 
 
-def _artifact(calls: int = 1):
+_TREE_SOURCE = _SOURCE.replace(
+    'agent = LlmAgent(name="bot", model=Fake(model="fake"), instruction="x", tools=[ping])',
+    "from google.adk.agents import SequentialAgent\n"
+    'worker = LlmAgent(name="worker", model=Fake(model="fake"), instruction="x", tools=[ping])\n'
+    'agent = SequentialAgent(name="bot", sub_agents=[worker])',
+)
+
+
+def _artifact(calls: int = 1, source: str | None = None):
     manifest = {
         "id": "bot",
         "version": "1.0.0",
@@ -55,7 +63,7 @@ def _artifact(calls: int = 1):
         "model_policy": {"provider_allowlist": ["fake"]},
         "execution_tier": "sandboxed",
     }
-    source = _SOURCE.replace("__CALLS__", str(calls))
+    source = (source or _SOURCE).replace("__CALLS__", str(calls))
     data = pack_files(
         {
             "manifest.json": json.dumps(manifest).encode("utf-8"),
@@ -148,3 +156,44 @@ def test_tool_call_limit():
         asyncio.run(sandbox.run(artifact, data, "hi", manifest=_manifest("ping")))
 
     assert len(seen) == 2
+
+
+def test_executor_none_is_refused():
+    artifact, data = _artifact()
+
+    async def tools(manifest, tool_id, args):
+        return None
+
+    sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=30), tools=tools)
+    with pytest.raises(SandboxCrashed) as exc:
+        asyncio.run(sandbox.run(artifact, data, "hi", manifest=_manifest("ping")))
+
+    assert "tool_result_invalid" in str(exc.value)
+
+
+def test_executor_result_must_be_json():
+    artifact, data = _artifact()
+
+    async def tools(manifest, tool_id, args):
+        return {"bad": object()}
+
+    sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=30), tools=tools)
+    with pytest.raises(SandboxCrashed) as exc:
+        asyncio.run(sandbox.run(artifact, data, "hi", manifest=_manifest("ping")))
+
+    assert "tool_result_invalid" in str(exc.value)
+
+
+def test_synthetic_agent_tree_installs_on_llm_agents():
+    artifact, data = _artifact(source=_TREE_SOURCE)
+    seen: list = []
+
+    async def tools(manifest, tool_id, args):
+        seen.append(tool_id)
+        return {"pong": args["x"]}
+
+    sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=30), tools=tools)
+    result = asyncio.run(sandbox.run(artifact, data, "hi", manifest=_manifest("ping")))
+
+    assert result.text == "done"
+    assert seen == ["ping"]

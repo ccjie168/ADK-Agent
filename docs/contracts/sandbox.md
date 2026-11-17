@@ -88,15 +88,18 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 
 ## 工具中介帧
 
-worker 给 agent 树安装工具回调：任何工具调用都发帧到父进程，工件内的工具函数不执行。
+worker 给具备 `before_tool_callback` 字段的 agent 安装工具回调，子 agent 继续递归；回调存在时工具调用发帧到父进程，
+工件内工具函数不执行。回调是进程内 Python 钩子，工件可用内省或 `gc` 摘除，属于与 `ctypes` 同级的残余风险。
 
 - 子进程发 `{"type": "tool", "id": <int>, "tool_id": "<name>", "args": {...}}`；参数必须是 JSON 对象，
   不可序列化时 worker 直接抛 `tool_args_invalid`，不发送。
 - 父进程回 `{"type": "tool_result", "id": ..., "result": ...}` 或
   `{"type": "tool_error", "id": ..., "code": "<code>", "message": "<短消息>"}`。
-- 判定顺序：帧格式 → 调用上限（`max_tool_calls`，默认 100，超出终止运行并抛 `SandboxViolation`）→
+- 判定顺序：帧格式 → 调用上限（`max_tool_calls`，默认 100，按收到的帧计数，超出终止运行并抛 `SandboxViolation`）→
   `tool_id` 必须在本次运行的 manifest `tool_grants` 里，否则 `tool_not_granted` → 后端必须有工具执行器，
   否则 `tool_mediation_unavailable` → 执行器异常回 `tool_failed`，不回显内部错误。
+- 执行器结果必须是 `Mapping` 且可 JSON 序列化；`None`、非映射或不可序列化时回 `tool_result_invalid`，
+  不继续执行本地工具。
 - 执行器由接入方注入，签名是 `async (manifest, tool_id, args) -> Mapping`；审批、租户与 `tool.call`
   审计属于执行器的实现，不在协议层。
 - 没有传入 manifest 时授权集合为空，一切工具调用被拒。
