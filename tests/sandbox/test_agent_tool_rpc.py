@@ -95,7 +95,7 @@ def test_tool_call_round_trips():
     artifact, data = _artifact()
     seen: list = []
 
-    async def tools(manifest, tool_id, args):
+    async def tools(manifest, tool_id, args, invocation):
         seen.append((tool_id, args))
         return {"pong": args["x"]}
 
@@ -110,7 +110,7 @@ def test_unauthorized_tool_is_refused():
     artifact, data = _artifact()
     seen: list = []
 
-    async def tools(manifest, tool_id, args):
+    async def tools(manifest, tool_id, args, invocation):
         seen.append(tool_id)
         return {}
 
@@ -145,7 +145,7 @@ def test_tool_call_limit():
     artifact, data = _artifact(calls=5)
     seen: list = []
 
-    async def tools(manifest, tool_id, args):
+    async def tools(manifest, tool_id, args, invocation):
         seen.append(tool_id)
         return {}
 
@@ -161,7 +161,7 @@ def test_tool_call_limit():
 def test_executor_none_is_refused():
     artifact, data = _artifact()
 
-    async def tools(manifest, tool_id, args):
+    async def tools(manifest, tool_id, args, invocation):
         return None
 
     sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=30), tools=tools)
@@ -174,7 +174,7 @@ def test_executor_none_is_refused():
 def test_executor_result_must_be_json():
     artifact, data = _artifact()
 
-    async def tools(manifest, tool_id, args):
+    async def tools(manifest, tool_id, args, invocation):
         return {"bad": object()}
 
     sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=30), tools=tools)
@@ -188,7 +188,7 @@ def test_synthetic_agent_tree_installs_on_llm_agents():
     artifact, data = _artifact(source=_TREE_SOURCE)
     seen: list = []
 
-    async def tools(manifest, tool_id, args):
+    async def tools(manifest, tool_id, args, invocation):
         seen.append(tool_id)
         return {"pong": args["x"]}
 

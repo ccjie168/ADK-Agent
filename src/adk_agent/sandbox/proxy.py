@@ -36,8 +36,14 @@ class SandboxAgent(BaseAgent):
     manifest: AgentManifest
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
+        from ..runtime.context import current_invocation
+
         result: SandboxResult = await self.backend.run(
-            self.artifact, self.data, _user_text(ctx), manifest=self.manifest
+            self.artifact,
+            self.data,
+            _user_text(ctx),
+            manifest=self.manifest,
+            invocation=current_invocation(),
         )
         yield Event(
             author=self.name,

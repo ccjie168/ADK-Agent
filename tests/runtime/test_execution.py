@@ -122,3 +122,25 @@ def test_run_uses_invocation_input():
     message = runner.kwargs["new_message"]
     assert message.parts[0].text == "hello"
     assert message.role == "user"
+
+
+def test_run_sets_and_clears_the_invocation():
+    from adk_agent.runtime.context import current_invocation
+
+    class _Runner:
+        def __init__(self) -> None:
+            self.seen = []
+
+        async def run_async(self, **kwargs):
+            self.seen.append(current_invocation())
+            if False:
+                yield
+
+    runner = _Runner()
+    runtime = AgentRuntime(runner)
+    invocation = _invocation()
+
+    asyncio.run(runtime.run(invocation, user_id="u1", session_id="s1"))
+
+    assert runner.seen == [invocation]
+    assert current_invocation() is None

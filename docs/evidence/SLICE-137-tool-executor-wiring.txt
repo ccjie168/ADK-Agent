@@ -1,0 +1,55 @@
+SLICE-137 工具执行器接入
+日期: 2026-11-18
+依据: ADR-0024 第 3 条
+基线: fc3ae87
+
+一、红态（实现前）
+
+把 `src/` 换回基线并移走新增模块后：
+
+$ pytest tests/tools/test_client.py tests/tools/test_gateway_executor.py -q
+ERROR tests/tools/test_client.py
+ERROR tests/tools/test_gateway_executor.py
+E   ModuleNotFoundError: No module named 'adk_agent.tools.client'
+
+$ pytest tests/runtime/test_execution.py tests/sandbox/test_agent_proxy.py \
+    tests/test_cli_sandbox_adapters.py -q
+3 failed, 20 passed
+
+失败的是 test_run_sets_and_clears_the_invocation、test_sandbox_agent_passes_the_current_invocation
+与 test_install_builds_a_gateway_executor。新增用例合计 10 个，基线全部失败。
+
+二、实现
+
+- 新增 `runtime/context.py`：`current_invocation()` contextvar；`AgentRuntime.run` 设置并在 finally 重置。
+- 新增 `tools/client.py`：`ToolGatewayClient.invoke(invocation, tool_id, args, grants)`，
+  200 返回 `ToolResponse.output`，403 -> `ToolDenied`，5xx/非 200/网络错误 -> `ToolGatewayError`。
+- 新增 `tools/executor.py`：`gateway_executor(client)` 返回
+  `async (manifest, tool_id, args, invocation)`；无 invocation 抛 `tool_principal_unavailable`，
+  网关拒绝映射 `tool_denied`，网关故障映射 `tool_gateway_unavailable`，非映射输出包装成 `{"output": ...}`。
+- `sandbox/agent.py`、`agent_process.py`、`proxy.py`：`run` 增加 `invocation` 关键字并传给执行器；
+  执行器的 `SandboxToolError` 按 code 回帧。
+- `cli.py`：`--tool-gateway-url` / `--tool-gateway-token-env` 加到 console、serve、serve-many、serve-a2a；
+  `--agent-sandbox` 且给了网关 URL 时构造带执行器的 `ProcessAgentSandbox`，工具授权记录因此可加载。
+- 契约：`sandbox.md` 的执行器签名、`cli.md` 的新 flag、新增 `tool_gateway.md`。
+
+三、绿态
+
+$ pytest tests/tools/test_client.py tests/tools/test_gateway_executor.py \
+    tests/runtime/test_execution.py tests/sandbox/test_agent_proxy.py \
+    tests/test_cli_sandbox_adapters.py -q
+10 passed
+
+$ pytest -q（Windows）
+1487 passed, 87 skipped
+
+$ python scripts/check.py --full
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
+
+四、范围与已知缺口
+
+- 触发路径仍不接执行器，声明工具授权的 `sandboxed` 触发继续拒绝。
+- 审批由网关既有 `approval_required` 处理，本切片不新增审批交互。
+- 网关 token 只从环境变量读取，不进入子进程。
+- `serve-a2a` 的 `--tool-gateway-url` 只在该命令使用 `--agent-sandbox` 时生效。

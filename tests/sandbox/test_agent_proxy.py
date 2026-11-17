@@ -16,11 +16,19 @@ from adk_agent.sandbox.proxy import build_sandbox_agent
 class _Backend:
     def __init__(self) -> None:
         self.calls: list[tuple[str, bytes, str]] = []
+        self.invocations: list = []
 
     async def run(
-        self, artifact: AgentArtifact, data: bytes, input_text: str, *, manifest=None
+        self,
+        artifact: AgentArtifact,
+        data: bytes,
+        input_text: str,
+        *,
+        manifest=None,
+        invocation=None,
     ) -> SandboxResult:
         self.calls.append((artifact.digest, data, input_text))
+        self.invocations.append(invocation)
         return SandboxResult(text="hello from the sandbox")
 
 
@@ -81,3 +89,39 @@ def test_sandbox_agent_keeps_no_state_between_runs():
         agent.backend.run(agent.artifact, agent.data, "two", manifest=agent.manifest)
     ).text
     assert [call[2] for call in backend.calls] == ["one", "two"]
+
+
+def test_sandbox_agent_passes_the_current_invocation():
+    from adk_agent.core import AgentRef, Invocation, Principal
+    from adk_agent.runtime.context import reset_invocation, set_invocation
+
+    backend = _Backend()
+    agent = build_sandbox_agent(_manifest(), _artifact(), b"zip!", backend)
+    invocation = Invocation(
+        run_id="r1",
+        trace_id="t1",
+        principal=Principal(tenant="acme", subject="alice", kind="human"),
+        agent_ref=AgentRef(id="bot", version="1.0.0", digest="d" * 64),
+        input="hi",
+    )
+
+    async def run():
+        service = InMemorySessionService()
+        runner = Runner(app_name="app", agent=agent, session_service=service)
+        session = await service.create_session(app_name="app", user_id="local")
+        return [
+            event
+            async for event in runner.run_async(
+                user_id="local",
+                session_id=session.id,
+                new_message=types.Content(role="user", parts=[types.Part(text="hi")]),
+            )
+        ]
+
+    token = set_invocation(invocation)
+    try:
+        asyncio.run(run())
+    finally:
+        reset_invocation(token)
+
+    assert backend.invocations == [invocation]

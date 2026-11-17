@@ -100,8 +100,9 @@ worker 给具备 `before_tool_callback` 字段的 agent 安装工具回调，子
   否则 `tool_mediation_unavailable` → 执行器异常回 `tool_failed`，不回显内部错误。
 - 执行器结果必须是 `Mapping` 且可 JSON 序列化；`None`、非映射或不可序列化时回 `tool_result_invalid`，
   不继续执行本地工具。
-- 执行器由接入方注入，签名是 `async (manifest, tool_id, args) -> Mapping`；审批、租户与 `tool.call`
-  审计属于执行器的实现，不在协议层。
+- 执行器由接入方注入，签名是 `async (manifest, tool_id, args, invocation) -> Mapping`；`invocation` 是本次运行的
+  主体与 agent_ref，由 `AgentRuntime` 写入 contextvar，代理读取后传给后端；没有时执行器拒绝
+  `tool_principal_unavailable`。审批、租户与 `tool.call` 审计属于执行器的实现，不在协议层。
 - 没有传入 manifest 时授权集合为空，一切工具调用被拒。
 
 残余风险：工件仍可通过 `socket.socket.__bases__[0]` 等内省拿到原始 C 类型，或用 `ctypes` 直接调用 libc，绕过 Python 层守卫。这与 ADR-0024 第 9 条一致：v1 不是内核级隔离，开放给不受信网络调用方之前必须有容器或虚拟机层级。工件仍可读写宿主文件系统中服务账号有权限的路径；一次性 cwd 只堵导入路径投放，不是命名空间。

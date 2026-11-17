@@ -327,6 +327,9 @@
 - 声明工具授权的 `sandboxed` 记录只有在沙箱后端带工具执行器时才加载；当前 CLI 构造的 `ProcessAgentSandbox`
   没有执行器，因此加载时退出 1。
 - `--agent-sandbox` 在非 POSIX 平台默认退出 1；`--allow-unsandboxed` 才允许本地开发并在 stderr 提示降级。
+- `--tool-gateway-url` 让沙箱后端带工具执行器，工具授权记录因此可加载；token 只从
+  `--tool-gateway-token-env`（默认 `ADK_TOOL_GATEWAY_TOKEN`）指向的环境变量读取。
+- 该 flag 适用于 `console`、`serve`、`serve-many` 与 `serve-a2a`。
 
 ## `adk-agent serve` / `serve-many` 的 MCP HTTP 鉴权
 
