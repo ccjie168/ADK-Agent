@@ -1,0 +1,129 @@
+SLICE-130 沙箱模型出口中介
+日期: 2026-11-17
+依据: ADR-0024 第 3 条
+分支: slice-130-model-egress，基线 744846c
+
+一、红态（实现前）
+
+$ pytest tests/sandbox/test_agent_channel.py -q
+E   ModuleNotFoundError: No module named 'adk_agent.sandbox.agent_channel'
+1 error during collection
+
+$ pytest tests/sandbox/test_agent_process.py -q
+5 failed：ProcessAgentSandbox 不接受 model 参数，工件用 build_model() 时没有代理，
+未注入模型也能照常运行。
+（红态证据以失败用例名为准：test_model_calls_are_mediated、test_model_spec_is_ignored、
+test_model_mediation_requires_a_parent_model、test_model_errors_are_returned、
+test_model_run_keeps_the_worker_env_empty。）
+
+二、实现
+
+- sandbox/agent_channel.py：SandboxChannel 在 stdout 帧上写 model 请求、从 stdin 读
+  model_result / model_error，按递增 id 分发；SandboxModel 实现 ADK BaseLlm，
+  generate_content_async 把 LlmRequest 序列化后等父进程结果，再逐条产出 LlmResponse。
+- sandbox/agent_worker.py：读请求后创建通道并在加载工件前替换
+  adk_agent.build_model 与 adk_agent.models.build_model；传入的 spec 只作标签。
+- sandbox/agent_process.py：ProcessAgentSandbox 增加 model 注入；帧循环处理 model 帧，
+  在剩余墙钟内做非流式调用；stdin 保持打开直到运行结束；无模型时回 model_error。
+- 契约：docs/contracts/sandbox.md 增加模型中介帧、id 规则与工具出口仍拒绝的说明。
+
+三、绿态
+
+$ pytest tests/sandbox -q（Windows）
+25 passed, 7 skipped（本切片子集）
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+58 passed
+
+$ python scripts/check.py --full（Windows）
+1403 passed, 87 skipped
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
+
+四、范围与已知缺口
+
+- 模型调用统一非流式；ADK 的流式模式在 v1 里按单次响应处理。
+- 模型由父进程注入，工件无法选择提供方或模型；manifest 的 model_policy 校验仍只在发布端。
+- 工具调用不中转：工具内的外连被网络守卫拒绝。工具网关 RPC 与平台门槛、执行路由一起，
+  在接入切片落地。
+- 子进程环境为空，凭据只在父进程；中介测试同时验证了工件侧环境没有父进程的测试密钥。
+
+五、第一轮独立验证（HEAD fae19b1）与修复
+
+验证结论 DO NOT MERGE，Critical：子进程可在 `LlmRequest.config.http_options` 里塞
+`base_url` 与 headers，父进程带真实凭据调用时把 API Key 发到攻击者地址（端到端 POC）。
+同时父进程从未强制 `request.model`，实际用子进程给的模型名。
+
+修复：
+- `_sanitize_model_request`：强制 `model` 为注入模型的名字，删除 `config.http_options` 与
+  `live_connect_config`，再校验成 `LlmRequest`。新增 `test_model_request_is_sanitized`，
+  工件在 before_model_callback 里写入恶意 base_url 与模型名，父进程模型断言已剥离/覆盖。
+- 模型帧的序列化与回包错误统一映射为 `SandboxCrashed`；新增超限响应用例。
+- 模型错误只回异常类名，测试断言原始文本不出现。
+- `AgentSandboxLimits.max_model_calls` 默认 100，按运行计数；新增限制用例。
+- 通道读循环退出后清空任务引用，关闭后的调用直接报错。
+
+六、修复后绿态
+
+$ pytest tests/sandbox -q（Windows 子集）
+29 passed, 7 skipped
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+62 passed
+
+$ python scripts/check.py --full
+（见提交前输出）
+
+七、第二轮复核（HEAD c722995）
+
+结论 DO NOT MERGE，又两处 Critical 可在真实链路上拿到父进程 API Key：
+- `config: {"httpOptions": {...}}` 用 camelCase 别名通过校验，按键 pop 挡不住。
+- `cache_config.create_http_options` 未消毒，ADK 建缓存时会用它覆盖 base_url。
+
+修复：
+- `_sanitize_model_request` 改成先 `LlmRequest.model_validate`，再在模型对象上清字段：
+  `config.http_options`、`config.cached_content`、`config.store`、`config.should_return_http_response`、
+  `cache_config`、`cache_metadata`、`previous_interaction_id`、`live_connect_config`；强制 `model`。
+- `contents` 里出现 `file_data` 直接抛 `SandboxCrashed`，不让父进程按子进程给的 URI 取资源。
+- 无模型与超限两条分支的 `_reply` 移进外层 try，回包失败统一映射为 `SandboxCrashed`。
+- 新增用例：camelCase + cache_config（`test_model_aliases_and_cache_options_are_stripped`）、
+  file_uri 拒绝（`test_model_file_references_are_rejected`）、回包失败映射（`test_reply_failures_are_crashed`）。
+
+八、第二轮修复后绿态
+
+$ pytest tests/sandbox -q（Windows 子集）
+28 passed, 7 skipped
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+65 passed
+
+九、第三轮复核（HEAD fa64a9a）
+
+结论 DO NOT MERGE：原两条 Critical 已挡住，但 `config.tools` 里的 provider 侧工具
+（`mcp_servers`、`url_context`、`retrieval`、`file_search`、`google_search`、`code_execution`）
+会绕过子进程守卫，由提供方执行；`file_data` 只挡了 contents 顶层，嵌套 function_response 与
+system_instruction 里的文件引用仍被接受。
+
+修复：
+- `_reject_provider_tools`：只允许 `function_declarations`，其余字段非空即拒绝。
+- `_reject_file_references`：递归检查 `contents`（含 function_response.parts）与 `system_instruction`，
+  拒绝任意层级的 `file_data` 与 `File` 对象。
+- 清空 `service_tier`、`labels`、`routing_config`、`model_selection_config`、`continuation_token`、
+  `automatic_continuation`。
+- 新增用例：provider 工具拒绝、本地 function declarations 保留、嵌套文件引用拒绝、continuation 字段清空。
+
+十、第三轮修复后绿态
+
+$ pytest tests/sandbox/test_agent_process.py -q（Windows）
+32 passed, 7 skipped
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+69 passed
+
+十一、第四轮复核（HEAD a44d552）
+
+结论 MERGE：两处原 Critical 与 provider 工具、文件引用、continuation 字段均已挡住；
+剩余为计费/策略与误杀类低危。合并前再收紧一处：顶层 `LlmRequest.service_tier` 也清空，
+provider 工具用例补 `retrieval`/`code_execution`，文件引用用例补裸 `File` 形式。
+
+最终绿态：Windows 全门禁 1414 passed / 87 skipped，Linux `tests/sandbox` 69 passed。
