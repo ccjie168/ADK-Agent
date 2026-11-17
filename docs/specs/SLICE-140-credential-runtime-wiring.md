@@ -17,9 +17,10 @@
 
 ## 完成判据
 
-- [x] 两段引用解析密文，单段引用走环境变量 -> `test_routing_provider`
-- [x] `serve-tool-gateway` 配置凭据库后连接器凭据从密文解析 -> `test_tool_gateway_uses_stored_credentials`
-- [x] 控制台远程 agent 在配置凭据库与 KEK 时使用 `RoutingSecretProvider` -> 控制台构造路径（无独立用例）
+- [x] 两段引用解析密文，单段引用走环境变量 -> `test_routing_provider_splits_two_segment_references`
+- [x] `serve-tool-gateway` 配置凭据库后构造路由 provider -> `test_tool_gateway_uses_a_routing_provider`
+- [x] 控制台远程 agent 在配置凭据库与 KEK 时解析存储密文 -> `test_register_resolves_stored_ciphertext`
+- [x] 控制台拒绝跨租户的凭据引用 -> `test_register_rejects_cross_tenant_credential_ref`
 - [x] 未配置凭据库时行为不变 -> 既有用例
 - [x] 全量门禁通过
 

@@ -2148,6 +2148,7 @@ def main(argv: list[str] | None = None) -> None:
             print("provide --tools, --connectors-dir or CONNECTOR_URL", file=sys.stderr)
             raise SystemExit(1)
 
+        credential_store: Any = None
         if connector_source:
             specs = _load_tools(args.tools).specs() if args.tools else []
             connector_store = (
@@ -2157,11 +2158,10 @@ def main(argv: list[str] | None = None) -> None:
             )
             connector_specs = asyncio.run(connector_store.list(args.connector_tenant))
             inner: Any = PrefixedEnvSecretProvider()
-            secret_backend = LocalKeyBackend.from_env()
             credential_store = _credential_store(args)
-            if secret_backend is not None and credential_store is not None:
+            if credential_store is not None:
                 inner = RoutingSecretProvider(
-                    TenantSecretProvider(secret_backend, credential_store), inner
+                    TenantSecretProvider(LocalKeyBackend.from_env(), credential_store), inner
                 )
             specs.extend(
                 build_connector_tools(
@@ -2190,6 +2190,13 @@ def main(argv: list[str] | None = None) -> None:
         import uvicorn
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+        from .registry.credentials_postgres import PostgresCredentialStore
+
+        if isinstance(credential_store, PostgresCredentialStore):
+            # The pool may have opened in uvicorn's loop, which is now closed;
+            # a cross-loop close is best-effort and must not fail shutdown.
+            with contextlib.suppress(Exception):
+                asyncio.run(credential_store.aclose())
     elif args.cmd == "serve-audit":
         rate_limit = _rate_limit(args)
         from .audit import AuditPipeline, PostgresAuditSink, query_audit_records
@@ -2541,8 +2548,6 @@ def main(argv: list[str] | None = None) -> None:
         if args.peer_dir or args.peer_db:
             console_peers, console_peer_grants = _peer_stores(args)
             console_remote_agents = _remote_agent_store(args)
-        from .secretstore import PrefixedEnvSecretProvider
-
         run_console(
             agents=agents,
             host=args.host,
@@ -2562,7 +2567,6 @@ def main(argv: list[str] | None = None) -> None:
             peers=console_peers,
             peer_grants=console_peer_grants,
             remote_agents=console_remote_agents,
-            remote_secrets=PrefixedEnvSecretProvider(),
             eval_reports=(
                 HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
                 if args.registry_url

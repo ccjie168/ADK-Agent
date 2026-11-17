@@ -169,8 +169,11 @@ class RoutingSecretProvider:
         self._prefixed = prefixed
 
     async def resolve(self, reference: str) -> str:
-        try:
-            parse_credential_ref(reference)
-        except ValueError:
+        if not reference.startswith("secret://"):
             return await self._prefixed.resolve(reference)
+        parts = reference[len("secret://") :].split("/")
+        if len(parts) == 1 and parts[0]:
+            return await self._prefixed.resolve(reference)
+        if len(parts) != 2 or not all(parts):
+            raise SecretNotFound(f"invalid secret reference {reference!r}")
         return await self._tenant.resolve(reference)

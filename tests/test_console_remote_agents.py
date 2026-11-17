@@ -44,13 +44,23 @@ def _record(**overrides) -> RemoteAgent:
     return RemoteAgent(**data)
 
 
-def _app(tmp_path, *, roles=None, peers=True, remote_agents=True, audit=None, secrets=None):
+def _app(
+    tmp_path,
+    *,
+    roles=None,
+    peers=True,
+    remote_agents=True,
+    audit=None,
+    secrets=None,
+    credentials=None,
+):
     return build_console_app(
         {"probe": LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")},
         auth_token="secret",
         roles=roles,
         peers=FilePeerStore(tmp_path / "peer-state") if peers else None,
         remote_agents=FileRemoteAgentStore(tmp_path / "peer-state") if remote_agents else None,
+        credentials=credentials,
         remote_secrets=secrets,
         audit_sink=audit,
     )
@@ -92,12 +102,12 @@ def test_register_pins_card(tmp_path, monkeypatch):
         return _digest(), CARD
 
     monkeypatch.setattr("adk_agent.console.fetch_agent_card", fake)
-    secrets = MappingSecretProvider({"secret://crm/token": "tok"})
+    secrets = MappingSecretProvider({"secret://acme/token": "tok"})
 
     with TestClient(_app(tmp_path, audit=sink, secrets=secrets)) as client:
         response = client.post(
             "/api/remote-agents",
-            json=_register_body(credential_ref="secret://crm/token", label="CRM bot"),
+            json=_register_body(credential_ref="secret://acme/token", label="CRM bot"),
             headers=AUTH,
         )
 
@@ -169,12 +179,87 @@ def test_register_secret_unavailable(tmp_path, monkeypatch):
     with TestClient(_app(tmp_path)) as client:
         response = client.post(
             "/api/remote-agents",
-            json=_register_body(credential_ref="secret://crm/token"),
+            json=_register_body(credential_ref="secret://acme/token"),
             headers=AUTH,
         )
 
     assert response.status_code == 503
     assert response.json() == {"error": "secret_unavailable"}
+
+
+def test_register_rejects_cross_tenant_credential_ref(tmp_path, monkeypatch):
+    _seed_peer(tmp_path)
+    _patch_fetch(monkeypatch)
+    seen = {}
+
+    async def fake(url, credential=None, *, client=None, max_bytes=1048576):
+        seen["credential"] = credential
+        return _digest(), CARD
+
+    monkeypatch.setattr("adk_agent.console.fetch_agent_card", fake)
+    secrets = MappingSecretProvider({"secret://other/token": "tok"})
+
+    with TestClient(_app(tmp_path, secrets=secrets)) as client:
+        response = client.post(
+            "/api/remote-agents",
+            json=_register_body(credential_ref="secret://other/token"),
+            headers=AUTH,
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "secret_unavailable"}
+    assert "credential" not in seen
+
+
+def test_register_resolves_stored_ciphertext(tmp_path, monkeypatch):
+    import asyncio
+    import base64
+    import json
+    import os
+
+    from adk_agent.core import CredentialBinding
+    from adk_agent.registry import FileCredentialStore
+    from adk_agent.secretstore import LocalKeyBackend, credential_aad
+
+    raw = os.urandom(32)
+    monkeypatch.setenv(
+        "ADK_SECRET_KEKS",
+        json.dumps({"active": "k1", "keys": {"k1": base64.b64encode(raw).decode("ascii")}}),
+    )
+    backend = LocalKeyBackend({"k1": raw}, "k1")
+    store = FileCredentialStore(tmp_path / "credentials")
+    asyncio.run(
+        store.add(
+            CredentialBinding(
+                credential_id="crm",
+                tenant="acme",
+                secret_ref="secret://acme/token",
+                created_by="ops",
+                created_at="2026-11-18T00:00:00Z",
+                wrapped_secret=backend.wrap(b"stored", credential_aad("acme", "crm")),
+                secret_key_id="k1",
+                secret_version=1,
+            )
+        )
+    )
+    _seed_peer(tmp_path)
+    seen = {}
+
+    async def fake(url, credential=None, *, client=None, max_bytes=1048576):
+        seen["credential"] = credential
+        return _digest(), CARD
+
+    monkeypatch.setattr("adk_agent.console.fetch_agent_card", fake)
+
+    with TestClient(_app(tmp_path, credentials=store)) as client:
+        response = client.post(
+            "/api/remote-agents",
+            json=_register_body(credential_ref="secret://acme/token"),
+            headers=AUTH,
+        )
+
+    assert response.status_code == 200
+    assert seen["credential"] == "stored"
 
 
 def test_register_fetch_error_codes(tmp_path, monkeypatch):

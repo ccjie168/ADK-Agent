@@ -198,3 +198,39 @@ def test_routing_provider_splits_two_segment_references(monkeypatch):
 
     assert asyncio.run(routing.resolve(reference)) == "stored"
     assert asyncio.run(routing.resolve("secret://global")) == "global"
+
+
+def test_routing_provider_fails_closed_without_a_backend(monkeypatch):
+    import os
+
+    from adk_agent.secretstore import (
+        LocalKeyBackend,
+        PrefixedEnvSecretProvider,
+        RoutingSecretProvider,
+        SecretNotFound,
+        TenantSecretProvider,
+    )
+
+    encrypting = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    binding = _stored_binding(encrypting)
+    routing = RoutingSecretProvider(
+        TenantSecretProvider(None, _StoredCredential(binding)), PrefixedEnvSecretProvider()
+    )
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+
+    with pytest.raises(SecretNotFound, match="no key backend"):
+        asyncio.run(routing.resolve("secret://acme/token"))
+
+
+def test_routing_provider_rejects_malformed_references():
+    from adk_agent.secretstore import (
+        PrefixedEnvSecretProvider,
+        RoutingSecretProvider,
+        SecretNotFound,
+        TenantSecretProvider,
+    )
+
+    routing = RoutingSecretProvider(TenantSecretProvider(), PrefixedEnvSecretProvider())
+
+    with pytest.raises(SecretNotFound):
+        asyncio.run(routing.resolve("secret://a/b/c"))
