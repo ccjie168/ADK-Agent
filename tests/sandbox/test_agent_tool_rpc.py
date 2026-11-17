@@ -212,3 +212,21 @@ def test_executor_error_code_reaches_the_child():
         asyncio.run(sandbox.run(artifact, data, "hi", manifest=_manifest("ping")))
 
     assert "tool_denied" in str(exc.value)
+
+
+def test_tool_executor_receives_the_invocation():
+    artifact, data = _artifact()
+    seen: list = []
+
+    async def tools(manifest, tool_id, args, invocation):
+        seen.append(invocation)
+        return {"pong": args["x"]}
+
+    marker = object()
+    sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=30), tools=tools)
+    result = asyncio.run(
+        sandbox.run(artifact, data, "hi", manifest=_manifest("ping"), invocation=marker)
+    )
+
+    assert result.text == "done"
+    assert seen == [marker]
