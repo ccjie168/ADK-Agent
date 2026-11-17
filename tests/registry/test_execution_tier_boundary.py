@@ -12,7 +12,18 @@ from adk_agent.core import AgentArtifact, AgentManifest, AgentRef, PublishedAgen
 from adk_agent.registry import published_from
 from adk_agent.registry.loader import load_agent
 from adk_agent.registry.service import build_registry_service_app
-from adk_agent.sandbox.agent import AgentSandboxUnavailable, set_agent_sandbox_backend
+from adk_agent.sandbox.agent import (
+    AgentSandboxUnavailable,
+    SandboxResult,
+    agent_sandbox_available,
+    set_agent_sandbox_backend,
+)
+
+
+class _Backend:
+    async def run(self, artifact, data, input_text):
+        return SandboxResult(text="stub")
+
 
 AUTH = {"Authorization": "Bearer secret"}
 
@@ -79,7 +90,7 @@ def test_sandboxed_publish_needs_a_backend():
 
 
 def test_sandboxed_publish_with_backend():
-    set_agent_sandbox_backend(object())
+    set_agent_sandbox_backend(_Backend())
     with TestClient(build_registry_service_app(MemoryRegistry(), auth_token="secret")) as client:
         response = _post(client, _record("sandboxed"))
 
@@ -147,10 +158,17 @@ def test_load_agent_gates_sandboxed_records():
     assert trust.calls == 0
     assert loader.calls == 0
 
-    set_agent_sandbox_backend(object())
+    set_agent_sandbox_backend(_Backend())
     assert _load(record, trust, loader) is not None
     assert trust.calls == 1
     assert loader.calls == 1
+
+
+def test_a_placeholder_backend_does_not_count():
+    with pytest.raises(TypeError):
+        set_agent_sandbox_backend(object())
+
+    assert agent_sandbox_available() is False
 
 
 def test_load_agent_allows_legacy_and_in_process_records():

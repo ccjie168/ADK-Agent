@@ -11,6 +11,10 @@ class SandboxTimeout(SandboxError):
     error_code = "SandboxTimeout"
 
 
+class SandboxCrashed(SandboxError):
+    error_code = "SandboxCrashed"
+
+
 class SandboxViolation(SandboxError):
     error_code = "SandboxViolation"
 

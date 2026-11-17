@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
-from .errors import SandboxError, SandboxTimeout, SandboxToolError, SandboxViolation
+from .errors import (
+    SandboxCrashed,
+    SandboxError,
+    SandboxTimeout,
+    SandboxToolError,
+    SandboxViolation,
+)
 from .policy import SandboxPolicy, check_url
 from .runner import ToolSandbox, install_tool_sandbox, sandboxed_callable
 
 __all__ = [
+    "SandboxCrashed",
     "SandboxError",
     "SandboxPolicy",
     "SandboxTimeout",

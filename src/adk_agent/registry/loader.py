@@ -49,6 +49,44 @@ def _check_entries(archive: zipfile.ZipFile, entrypoint: str) -> None:
         raise ArtifactLoadError("artifact has no entrypoint")
 
 
+def load_artifact_agent(artifact: AgentArtifact, data: bytes) -> Any:
+    """Verify the bytes and execute the entrypoint, returning the ADK agent."""
+    _, hexdigest = artifact.digest.split(":", 1)
+    if len(data) != artifact.size or hashlib.sha256(data).hexdigest() != hexdigest:
+        raise ArtifactLoadError("artifact bytes do not match the declared digest")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as exc:
+        raise ArtifactLoadError("artifact is not a zip") from exc
+    with archive:
+        _check_entries(archive, artifact.entrypoint)
+        try:
+            manifest = AgentManifest.model_validate_json(archive.read("manifest.json"))
+        except Exception as exc:  # noqa: BLE001
+            raise ArtifactLoadError("artifact manifest is invalid") from exc
+        source = archive.read(artifact.entrypoint)
+    namespace: dict[str, Any] = {"__name__": f"_adk_artifact_{uuid.uuid4().hex}"}
+    try:
+        exec(  # nosec B102  # executing signed artifact code is the loader's purpose
+            compile(source, f"<artifact:{artifact.digest}>/{artifact.entrypoint}", "exec"),
+            namespace,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise ArtifactLoadError(f"artifact module failed to load ({type(exc).__name__})") from exc
+    agent = namespace.get("agent")
+    if agent is None:
+        agent = namespace.get("root_agent")
+    if agent is None:
+        raise ArtifactLoadError("artifact module exposes no agent")
+    from google.adk.agents import BaseAgent
+
+    if not isinstance(agent, BaseAgent):
+        raise ArtifactLoadError("artifact agent is not an ADK agent")
+    if agent.name != manifest.id:
+        raise ArtifactLoadError("artifact agent name does not match the manifest")
+    return agent
+
+
 class InProcessArtifactLoader:
     """Verify bytes, read the entrypoint, and execute it in this process."""
 
@@ -56,42 +94,7 @@ class InProcessArtifactLoader:
         data = await store.get(artifact.digest)
         if data is None:
             raise ArtifactLoadError("artifact bytes not found")
-        _, hexdigest = artifact.digest.split(":", 1)
-        if len(data) != artifact.size or hashlib.sha256(data).hexdigest() != hexdigest:
-            raise ArtifactLoadError("artifact bytes do not match the declared digest")
-        try:
-            archive = zipfile.ZipFile(io.BytesIO(data))
-        except zipfile.BadZipFile as exc:
-            raise ArtifactLoadError("artifact is not a zip") from exc
-        with archive:
-            _check_entries(archive, artifact.entrypoint)
-            try:
-                manifest = AgentManifest.model_validate_json(archive.read("manifest.json"))
-            except Exception as exc:  # noqa: BLE001
-                raise ArtifactLoadError("artifact manifest is invalid") from exc
-            source = archive.read(artifact.entrypoint)
-        namespace: dict[str, Any] = {"__name__": f"_adk_artifact_{uuid.uuid4().hex}"}
-        try:
-            exec(  # nosec B102  # executing signed artifact code is the loader's purpose
-                compile(source, f"<artifact:{artifact.digest}>/{artifact.entrypoint}", "exec"),
-                namespace,
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise ArtifactLoadError(
-                f"artifact module failed to load ({type(exc).__name__})"
-            ) from exc
-        agent = namespace.get("agent")
-        if agent is None:
-            agent = namespace.get("root_agent")
-        if agent is None:
-            raise ArtifactLoadError("artifact module exposes no agent")
-        from google.adk.agents import BaseAgent
-
-        if not isinstance(agent, BaseAgent):
-            raise ArtifactLoadError("artifact agent is not an ADK agent")
-        if agent.name != manifest.id:
-            raise ArtifactLoadError("artifact agent name does not match the manifest")
-        return agent
+        return load_artifact_agent(artifact, data)
 
 
 async def load_agent(
@@ -114,4 +117,9 @@ async def load_agent(
     return await loader.load(published.artifact, store)
 
 
-__all__ = ["ArtifactLoadError", "InProcessArtifactLoader", "load_agent"]
+__all__ = [
+    "ArtifactLoadError",
+    "InProcessArtifactLoader",
+    "load_agent",
+    "load_artifact_agent",
+]

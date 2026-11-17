@@ -1,23 +1,48 @@
-"""Agent-level sandbox capability (ADR-0024). The worker lands in SLICE-129."""
+"""Agent-level sandbox capability (ADR-0024)."""
 
 from __future__ import annotations
 
-from ..core import AgentManifest
+import inspect
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
-_backend: object | None = None
+from ..core import AgentArtifact, AgentManifest
+
+
+@dataclass(frozen=True)
+class SandboxResult:
+    """Outcome of one sandboxed run."""
+
+    text: str
+    limits: Mapping[str, int] = field(default_factory=dict)
 
 
 class AgentSandboxUnavailable(RuntimeError):
     """A sandboxed manifest was used while no agent sandbox backend is registered."""
 
 
-def set_agent_sandbox_backend(backend: object | None) -> None:
+@runtime_checkable
+class AgentSandboxBackend(Protocol):
+    """Execution seam for sandboxed artifacts."""
+
+    async def run(self, artifact: AgentArtifact, data: bytes, input_text: str) -> SandboxResult: ...
+
+
+_backend: AgentSandboxBackend | None = None
+
+
+def set_agent_sandbox_backend(backend: AgentSandboxBackend | None) -> None:
     """Register the agent sandbox backend; ``None`` means the capability is absent."""
+    if backend is not None:
+        run = getattr(backend, "run", None)
+        if not callable(run) or not inspect.iscoroutinefunction(run):
+            raise TypeError("agent sandbox backend must implement an async run()")
     global _backend
     _backend = backend
 
 
-def agent_sandbox_backend() -> object | None:
+def agent_sandbox_backend() -> AgentSandboxBackend | None:
     return _backend
 
 
