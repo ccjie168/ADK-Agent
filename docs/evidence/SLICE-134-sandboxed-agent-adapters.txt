@@ -47,10 +47,10 @@ loader.calls == 1，新判据要求 0）。新增用例 12 个、改判据的既
 $ pytest tests/sandbox/test_agent_proxy.py tests/test_registry_startup.py \
     tests/test_console_on_demand.py tests/test_cli_sandbox_adapters.py \
     tests/registry/test_execution_tier_boundary.py -q
-48 passed
+49 passed
 
 $ pytest -q（Windows）
-1458 passed, 87 skipped
+1459 passed, 87 skipped
 
 $ python scripts/check.py --full
 [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
@@ -63,3 +63,14 @@ ALL PASS
 - `serve-a2a` 仍只接受 `--agent` 文件，没有 `--agent-ref`，A2A 的注册表接入另立切片。
 - 平台构建密钥校验与 publish 默认层级翻转仍未做。
 - 未注册后端时 `sandboxed` 仍在加载处被拒绝，行为与 SLICE-128 一致。
+
+六、第一轮独立验证（f922027）
+
+结论 MERGE，无阻断项。四条低风险意见：
+
+1. CLI 启动路径未捕获 `SandboxToolsUnavailable`，会带 traceback 退出（退出码仍为 1）。
+   已加入 except 元组并补 `test_cli_refuses_sandboxed_record_with_tool_grants`。
+2. 父进程取字节后不复核 digest。子进程在 `compile` 前复核 size/digest，不匹配不会执行；
+   保留现状，错误表现为沙箱加载失败。
+3. `sandbox.md` 的平台说明过时、spec 测试路径写错、证据计数措辞不准。均已修正。
+4. manifest id 与 BaseAgent 名称约束的边角差异为既有行为，不在本切片处理。
