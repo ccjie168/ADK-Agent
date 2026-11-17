@@ -72,9 +72,9 @@
 - [x] 服务发布 `sandboxed` 且后端可用 -> 201 -> `::test_sandboxed_publish_with_backend`
 - [x] `load_agent` 遇 `sandboxed` 记录抛 `AgentSandboxUnavailable`，后端可用时放行 -> `::test_load_agent_gates_sandboxed_records`
 - [x] CLI `publish` 缺层级或 `sandboxed` 退出 1，`in_process` 成功 -> `tests/test_cli_publish_tier.py`
-- [x] 控制台按需加载 `sandboxed` -> 409 `sandbox_unavailable` -> `tests/test_console_execution_tier.py`
+- [x] 控制台按需加载 `sandboxed` -> 409 `sandbox_unavailable` -> `tests/test_console_on_demand.py::test_sandboxed_record_is_refused`
 - [x] 触发执行 `sandboxed` -> 409 `sandbox_unavailable`，runner 未调用 -> `tests/test_triggers_service.py::test_sandboxed_trigger_is_refused`
-- [x] 组合器与脚手架产物声明 `in_process` -> 既有 compose 测试与 `tests/test_templates.py` 增补断言
+- [x] 组合器与脚手架产物声明 `in_process` -> `tests/compose/test_declarative.py::test_manifest_carries_tools_and_data_classes` 与 `tests/test_new_cli.py::test_new_creates_project`
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
 ## 反例（必须在实现前跑红）

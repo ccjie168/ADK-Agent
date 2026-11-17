@@ -276,6 +276,7 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         RefError,
         load_registry_agents,
     )
+    from .sandbox.agent import AgentSandboxUnavailable
 
     trust = _artifact_trust(args)
     if trust is None:
@@ -314,6 +315,7 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         ArtifactLoadError,
         ArtifactTrustError,
         ArtifactStoreError,
+        AgentSandboxUnavailable,
         PublishUnavailable,
     ) as exc:
         print(f"registry load failed: {exc}", file=sys.stderr)

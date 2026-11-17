@@ -487,6 +487,8 @@ def build_registry_service_app(
             return _error("invalid_record", 400)
         if manifest_digest(record.manifest) != record.digest:
             return _error("invalid_record", 400)
+        if _cross_tenant(_principal(request), record.manifest.tenant):
+            return _error("tenant_forbidden", 403)
         manifest_data = body.get("manifest") if isinstance(body, dict) else None
         if not isinstance(manifest_data, dict):
             return _error("invalid_record", 400)
@@ -496,8 +498,6 @@ def build_registry_service_app(
             return _error("invalid_record", 400)
         if tier == "sandboxed" and not agent_sandbox_available():
             return _error("sandbox_unavailable", 409)
-        if _cross_tenant(_principal(request), record.manifest.tenant):
-            return _error("tenant_forbidden", 403)
 
         artifact = record.artifact
         if artifact is not None:
