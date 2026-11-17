@@ -7,7 +7,8 @@
 
 1. `secretstore/keys.py`：`KeyBackend` 端口与 `LocalKeyBackend`，AES-256-GCM 信封加密，AAD 绑定租户与凭据 id。
 2. `CredentialBinding` 增加 `wrapped_secret`、`secret_key_id`、`secret_version`。
-3. `TenantSecretProvider` 先按 `secret_ref` 找启用的密文记录并解密，缺失时回退环境变量。
+3. `TenantSecretProvider` 先按 `secret_ref` 找密文记录并解密；只有完全没有密文时才回退环境变量。
+   有密文但缺后端、绑定全被禁用或解密失败时 fail-closed，不回退。
 4. CLI `credentials register --secret-stdin` 从标准输入读值、加密后写入；不接受 argv 传值。
 5. keyring 从 `ADK_SECRET_KEKS` 读取（`active` + `keys`），轮换保留旧 key id 用于解密。
 
@@ -30,7 +31,7 @@
 ## 5 问威胁建模
 
 1. **数据**：凭据明文、数据密钥、KEK、密文与 AAD。
-2. **调用方**：父进程服务、CLI、工具网关。
+2. **调用方**：父进程服务与 CLI；工具网关的运行时接入在下一片。
 3. **信任边界**：密钥材料与存储；worker 不接触明文。
 4. **恶意输入最坏结果**：密文跨记录搬运（缓解：AAD 绑定租户与凭据 id）；丢失 KEK（缓解：保留旧 key id，缺失 fail-closed）；明文进日志（缓解：输出只含元数据）。
 5. **失败是否泄露信息**：解密失败只回不可用，不回显密文或密钥。

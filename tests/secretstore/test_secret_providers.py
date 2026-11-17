@@ -149,3 +149,20 @@ def test_disabled_ciphertext_does_not_fall_back(monkeypatch):
 
     with pytest.raises(Exception, match="disabled"):
         asyncio.run(provider.resolve("secret://acme/token"))
+
+
+def test_decryption_failure_does_not_fall_back(monkeypatch):
+    import os
+
+    from adk_agent.secretstore import LocalKeyBackend, TenantSecretProvider
+
+    encrypting = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    binding = _stored_binding(encrypting)
+    other = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    provider = TenantSecretProvider(backend=other, credentials=_StoredCredential(binding))
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+
+    from adk_agent.secretstore import SecretNotFound
+
+    with pytest.raises(SecretNotFound, match="cannot be decrypted"):
+        asyncio.run(provider.resolve("secret://acme/token"))

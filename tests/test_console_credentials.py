@@ -191,3 +191,31 @@ def test_operator_can_read_credentials(tmp_path):
         response = client.get("/api/credentials", headers=AUTH)
 
     assert response.status_code == 200
+
+
+def test_list_does_not_expose_ciphertext(tmp_path):
+    import asyncio
+    import os
+
+    from adk_agent.core import CredentialBinding
+    from adk_agent.secretstore import LocalKeyBackend, credential_aad
+
+    backend = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    reference = "secret://" + "local/token"
+    binding = CredentialBinding(
+        credential_id="crm",
+        tenant="local",
+        secret_ref=reference,
+        created_by="ops",
+        created_at="2026-11-18T00:00:00Z",
+        wrapped_secret=backend.wrap(b"value", credential_aad("local", "crm")),
+        secret_key_id="k1",
+        secret_version=1,
+    )
+    asyncio.run(FileCredentialStore(tmp_path / "credentials").add(binding))
+    with TestClient(_app(tmp_path)) as client:
+        response = client.get("/api/credentials", headers=AUTH)
+
+    assert response.status_code == 200
+    [row] = response.json()
+    assert "wrapped_secret" not in row

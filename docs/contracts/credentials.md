@@ -1,6 +1,6 @@
 # 租户凭据引用契约
 
-绑定只保存元数据，不保存密钥值。值由进程环境提供，变量名由引用推导。
+绑定只保存元数据，不保存密钥值。值可来自密文或进程环境，变量名由引用推导。
 
 ## `CredentialBinding`
 
@@ -20,7 +20,7 @@
 - `credential_id`、`tenant`：`^[A-Za-z0-9][A-Za-z0-9._+-]*$`。
 - `secret_ref`：`^secret://[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`，租户段必须等于 `tenant`。
 - 未知字段、缺失字段、无时区的时间戳都拒绝。
-- 记录里没有令牌、口令或任何值字段。
+- 记录里默认没有令牌、口令或任何值字段。
 
 ## 引用到环境变量
 
@@ -71,9 +71,10 @@
 
 - 记录可带 `wrapped_secret`（对象）、`secret_key_id` 与 `secret_version`；密文用 AES-256-GCM，
   数据密钥由 KEK 包裹，AAD 是 `adk-credential:<tenant>:<credential_id>`。
-- keyring 从 `ADK_SECRET_KEKS` 读取：`{"active": "<key id>", "keys": {"<key id>": "<base64 32 bytes>"}}`。
+- keyring 从 `ADK_SECRET_KEKS` 读取：JSON 对象，含 `active`（当前 key id）与 `keys`（key id 到 base64 编码的 32 字节 KEK）。
 - `TenantSecretProvider` 先按 `secret_ref` 找启用且带密文的记录并解密，失败抛不可用；没有密文时
   回退 `ADK_SECRET_<TENANT>_<NAME>` 环境变量。
 - `credentials register [--secret-stdin]` 从标准输入读值并加密写入，缺 `ADK_SECRET_KEKS` 退出 1；值必须是单行；
+- 凭据响应只返回元数据，不返回 `wrapped_secret` 或任何密文载荷。
   输出只含元数据，不含明文。
 - 轮换保留旧 key id 用于解密；keyring 缺失旧 key id 时拒绝解密。
