@@ -1,0 +1,61 @@
+SLICE-133 控制台读接口的能力校验
+日期: 2026-11-17
+依据: ADR-0022 第 1、8 条
+基线: 48d9024
+
+一、红态（实现前）
+
+新增用例在实现前全部失败，失败形态是 200 而非 403，或页面缺少 data-capability 标记：
+
+$ pytest tests/test_console_audit.py tests/test_console_tools.py tests/test_console_tool_grants.py \
+    tests/test_console_connectors.py tests/test_console_credentials.py \
+    tests/test_console_connector_requests.py tests/test_console_registry.py \
+    tests/test_console_peers.py tests/test_console_remote_agents.py \
+    tests/test_policy_api.py tests/test_console.py -q
+13 failed, 108 passed
+
+失败的 13 个用例正是新增的 test_read_requires_capability 系列、
+test_publisher_can_read_registry、test_get_policy_requires_capability 与
+test_audit_block_is_capability_gated。
+
+二、实现
+
+- console.py 新增 `_forbidden_if_missing(caller, capability)`，统一返回 403 `{"error": "forbidden"}`。
+- 下列读接口在 `_principal_for` 与租户参数检查之后、任何存储读取之前检查能力：
+  - `GET /api/audit` -> `audit.read`
+  - `GET /api/policy` -> `policy.read`
+  - `GET /api/registry` 与 `GET /api/registry/{tenant}/{id}/{version}/eval` -> `registry.read`
+  - `GET /api/tools` -> `tools.read`
+  - `GET /api/tool-grants` 与 `/usage` -> `grants.read`
+  - `GET /api/connectors`、`/api/connector-requests`、`/api/credentials` -> `connectors.read`
+  - `GET /api/peers` 与 `/api/remote-agents` -> `peers.read`
+- 聊天面板的 Recent audit 区块包进 `data-capability="audit.read"`，`loadAudit()` 在没有该能力时不请求。
+- 契约：`docs/contracts/console.md` 每个读接口写明能力与 403、租户参数先于能力检查；
+  新增 `GET /api/policy` 一节，并说明 `PUT /api/policy` 仍走 `policy.update` 的 RBAC。
+- 测试主体调整（断言不变，只换主体角色以匹配新授权模型）：
+  - `test_console_peers.py::test_tenant_visibility`：viewer -> operator
+  - `test_console_remote_agents.py`：读断言所在客户端 viewer -> operator
+  - `test_console_oidc.py`：own registry 读与 audit 读 guest -> ops
+  - `test_console_shared_audit.py::test_console_scopes_tenant`：主体补 operator 角色
+  - `test_tool_grant_usage.py::test_usage_tenant_scope`：viewer -> operator
+  - `test_policy_api.py`：被拒写后改用 ops 客户端读回，agent.run 审计改用 ListAuditSink 断言
+
+三、绿态
+
+$ pytest <上面 11 个文件> -q
+121 passed
+
+$ pytest -q（Windows）
+1445 passed, 87 skipped
+
+$ python scripts/check.py --full
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
+
+四、范围与已知缺口
+
+- 写路径未改：注册表 load/unload、连接器注册/停用/检查、连接器申请提交与决定、
+  凭据注册/停用、对端与远程 agent 写操作、tool-grants 提交与决定仍按 admin 或既有 RBAC。
+- 基础能力接口（runs、plans、traces、sessions、chat）对所有登录主体开放，符合 ADR-0022 的初始映射。
+- 界面与服务端在 `grants.decide`、`connectors.manage` 上仍不一致：界面给 operator 显示决定按钮，
+  服务端只允许 admin；写路径对齐另行切片。

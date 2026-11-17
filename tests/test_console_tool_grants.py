@@ -198,3 +198,23 @@ def test_no_store(tmp_path):
 
     assert response.status_code == 404
     assert response.json() == {"error": "tool_grants_not_configured"}
+
+
+def test_read_requires_capability(tmp_path):
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        listed = client.get("/api/tool-grants", headers=AUTH)
+        usage = client.get("/api/tool-grants/usage", headers=AUTH)
+
+    assert listed.status_code == 403
+    assert listed.json() == {"error": "forbidden"}
+    assert usage.status_code == 403
+    assert usage.json() == {"error": "forbidden"}
+
+
+def test_operator_can_read_grants(tmp_path):
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        listed = client.get("/api/tool-grants", headers=AUTH)
+        usage = client.get("/api/tool-grants/usage", headers=AUTH)
+
+    assert listed.status_code == 200
+    assert usage.status_code == 200

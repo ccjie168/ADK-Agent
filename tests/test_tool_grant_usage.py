@@ -150,7 +150,7 @@ def test_usage_tenant_scope():
         _event("other", "crm.read", "ok", "grants-v1"),
     ):
         asyncio.run(sink.emit(event))
-    with TestClient(_app(sink, roles=["viewer"])) as client:
+    with TestClient(_app(sink, roles=["operator"])) as client:
         response = client.get("/api/tool-grants/usage", headers=AUTH)
 
     assert response.status_code == 200

@@ -154,3 +154,18 @@ def test_check_healthy(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == HEALTH.model_dump(mode="json")
+
+
+def test_read_requires_capability(tmp_path):
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = client.get("/api/connectors", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_operator_can_read_connectors(tmp_path):
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        response = client.get("/api/connectors", headers=AUTH)
+
+    assert response.status_code == 200

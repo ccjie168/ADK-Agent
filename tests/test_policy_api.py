@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 
+from adk_agent.audit import ListAuditSink
 from adk_agent.console import build_console_app
 
 AUTH = {"Authorization": "Bearer secret"}
@@ -42,13 +43,20 @@ def _write_policy(path: Path, policy: dict) -> Path:
     return path
 
 
-def _client(tmp_path: Path, *, roles=("ops",), policy: dict | None = None) -> TestClient:
+def _client(
+    tmp_path: Path,
+    *,
+    roles=("ops",),
+    policy: dict | None = None,
+    audit=None,
+) -> TestClient:
     policy_file = _write_policy(tmp_path / "policy.json", policy or _policy())
     app = build_console_app(
         _agents(),
         auth_token="secret",
         policy_file=str(policy_file),
         roles=list(roles),
+        audit_sink=audit,
     )
     return TestClient(app)
 
@@ -81,6 +89,7 @@ def test_put_policy_denied_without_role(tmp_path):
     with _client(tmp_path, roles=("guest",)) as client:
         response = client.put("/api/policy", json=_policy("2"), headers=AUTH)
         assert response.status_code == 403
+    with _client(tmp_path) as client:
         current = client.get("/api/policy", headers=AUTH).json()
 
     assert current["version"] == "1"
@@ -115,15 +124,23 @@ def test_chat_denied_without_role(tmp_path, monkeypatch):
             yield
 
     monkeypatch.setattr("google.adk.runners.Runner.run_async", counted_run)
-    with _client(tmp_path, roles=("guest",)) as client:
+    sink = ListAuditSink()
+    with _client(tmp_path, roles=("guest",), audit=sink) as client:
         response = client.post("/api/chat", json={"agent": "probe", "message": "hi"}, headers=AUTH)
-        audit = client.get("/api/audit?limit=20", headers=AUTH).json()
 
     assert response.status_code == 403
     assert calls == 0
-    [event] = [item for item in audit if item["action"] == "agent.run"]
-    assert event["status"] == "denied"
-    assert event["error_code"] == "policy_denied"
+    [event] = [item for item in sink.recent() if item.action == "agent.run"]
+    assert event.status == "denied"
+    assert event.error_code == "policy_denied"
+
+
+def test_get_policy_requires_capability(tmp_path):
+    with _client(tmp_path, roles=("guest",)) as client:
+        response = client.get("/api/policy", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
 
 
 def test_chat_allowed_with_role(tmp_path, monkeypatch):

@@ -148,7 +148,7 @@ def test_console_reads_from_query():
 
 def test_console_scopes_tenant():
     query = _RecordingQuery([_event(0, tenant="acme"), _event(1, tenant="other")])
-    principal = Principal(tenant="acme", subject="alice", kind="human")
+    principal = Principal(tenant="acme", subject="alice", kind="human", roles=["operator"])
     app = build_console_app(
         _agents(), auth_token=None, oidc=_Provider(principal), audit_query=query
     )

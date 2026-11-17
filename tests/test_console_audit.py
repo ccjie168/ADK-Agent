@@ -47,3 +47,20 @@ def test_chat_writes_audit_event(monkeypatch):
 def test_audit_requires_token():
     with TestClient(build_console_app(_agents(), auth_token="secret")) as client:
         assert client.get("/api/audit").status_code == 401
+
+
+def test_read_requires_capability():
+    with TestClient(build_console_app(_agents(), auth_token="secret", roles=["viewer"])) as client:
+        response = client.get("/api/audit", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_operator_can_read_audit():
+    with TestClient(
+        build_console_app(_agents(), auth_token="secret", roles=["operator"])
+    ) as client:
+        response = client.get("/api/audit", headers=AUTH)
+
+    assert response.status_code == 200

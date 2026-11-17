@@ -70,6 +70,7 @@ def _app(
     registry: bool = True,
     eval_reports: bool = True,
     remote_agents=None,
+    roles=None,
 ):
     kwargs = {}
     if registry:
@@ -78,7 +79,7 @@ def _app(
         kwargs["eval_reports"] = FileEvalReportStore(tmp_path)
     if remote_agents is not None:
         kwargs["remote_agents"] = remote_agents
-    return build_console_app(_agents(), auth_token="secret", **kwargs)
+    return build_console_app(_agents(), auth_token="secret", roles=roles, **kwargs)
 
 
 def _digest(char: str = "a") -> str:
@@ -353,3 +354,32 @@ def test_unsafe_tenant_remote_only(tmp_path):
 
     assert response.status_code == 400
     assert response.json() == {"error": "unsafe_tenant"}
+
+
+def test_read_requires_capability(tmp_path):
+    _populated(tmp_path)
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        listed = client.get("/api/registry", headers=AUTH)
+
+    assert listed.status_code == 403
+    assert listed.json() == {"error": "forbidden"}
+
+
+def test_publisher_can_read_registry(tmp_path):
+    published = published_from(_manifest(tenant="local"))
+    asyncio.run(FileAgentRegistry(tmp_path).publish(published))
+    with TestClient(_app(tmp_path, roles=["publisher"])) as client:
+        listed = client.get("/api/registry", headers=AUTH)
+
+    assert listed.status_code == 200
+    assert [entry["id"] for entry in listed.json()] == ["support-bot"]
+
+
+def test_eval_read_requires_capability(tmp_path):
+    published = published_from(_manifest(tenant="local"))
+    asyncio.run(FileAgentRegistry(tmp_path).publish(published))
+    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+        response = client.get("/api/registry/local/support-bot/1.0.0/eval", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}

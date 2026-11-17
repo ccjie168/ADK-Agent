@@ -20,6 +20,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - 鉴权与其他 `/api/*` 相同，缺少或错误的 token 返回 401 `{"error":"unauthorized"}`。
 - `capabilities` 由服务端按角色映射计算，映射只在一处定义。同一主体有多个角色时取并集。未知角色只得到基础能力。
 - 基础能力是 `chat.run`、`runs.read`、`sessions.read`。
+- 读接口按消费它的面板检查能力：审计 `audit.read`，策略 `policy.read`，注册表与评测 `registry.read`，工具目录 `tools.read`，工具授权 `grants.read`，连接器、连接器申请与凭据 `connectors.read`，对端与远程目录 `peers.read`。
 - `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`grants.decide`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。
 - `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
 - 其余管理能力只由 `admin` 得到，包括 `connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
@@ -192,9 +193,17 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/audit?limit=50` -> `[AuditEvent]`
 
-`limit` 上限 200。事件按时间正序，最多返回最近 200 条。非 `admin` 身份只返回自己租户的事件。配置了 `--audit-url` 时从审计服务读取，服务不可用返回 502 `audit_unavailable`。
+`limit` 上限 200。事件按时间正序，最多返回最近 200 条。需要 `audit.read` 能力，缺少返回 403 `forbidden`。非 `admin` 身份只返回自己租户的事件。聊天面板的 Recent audit 区块同样按 `audit.read` 隐藏。配置了 `--audit-url` 时从审计服务读取，服务不可用返回 502 `audit_unavailable`。
 
 事件结构见 `audit_event.schema.json`。
+
+## `GET /api/policy` -> `AccessPolicy`
+
+返回当前访问策略，结构见 `access_policy.schema.json`。仅在配置了 `--policy` 时存在。
+
+- 需要 `policy.read` 能力，缺少返回 403 `forbidden`。
+- 未配置策略文件时返回 404。
+- `PUT /api/policy` 不走能力清单，仍由 `policy.update` 的 RBAC 判定；拒绝返回 403 `policy_denied`。
 
 ## `GET /api/tenants` -> `[str]`
 
@@ -204,7 +213,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/registry?tenant=<name>` -> `[RegistryEntry]`
 
-返回该租户的已发布版本与远端目录记录。`tenant` 缺失时用当前 principal 的租户。本地条目按 `(id, version)` 排序，远端条目按 `id` 排序；混合视图按 `id` 排序，同 `id` 时 `local` 在前。
+返回该租户的已发布版本与远端目录记录。`tenant` 缺失时用当前 principal 的租户。需要 `registry.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。本地条目按 `(id, version)` 排序，远端条目按 `id` 排序；混合视图按 `id` 排序，同 `id` 时 `local` 在前。
 
 ```json
 {
@@ -257,6 +266,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 返回该版本的评测报告，结构见 `eval_report.schema.json`。
 
+- 需要 `registry.read` 能力，缺少返回 403 `forbidden`。
 - 非 `admin` 身份请求其他租户返回 403 `tenant_forbidden`。
 - 没有报告返回 404 `eval_report_not_found`。
 - 非法路径分量返回 400 `unsafe_tenant`。
@@ -287,7 +297,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/tools?tenant=<name>` -> `[ToolEntry]`
 
-只读工具目录。每个条目附带该租户已发布版本里引用它的 agent。
+只读工具目录。每个条目附带该租户已发布版本里引用它的 agent。需要 `tools.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
 
 ```json
 {
@@ -314,6 +324,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 只读连接器列表，按 `connector_id` 排序。全局连接器（`tenant` 为 `null`）对所有租户可见。
 
+- 需要 `connectors.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
 - 由 `console --connectors-dir DIR`（文件存储）或已有的 `--registry-url`（控制面）提供；都未配置时返回 404 `connectors_not_configured`。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
 - 存储不可达返回 503 `connector_store_unavailable`。
@@ -375,6 +386,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 只读凭据引用清单，按 `credential_id` 排序。记录只含元数据，没有密钥值。形状与存储见 `credentials.md`。
 
+- 需要 `connectors.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
 - 由 `console --credentials-dir DIR` 或 `--credential-db URL`（都未给时读 `CREDENTIAL_DATABASE_URL`）提供；未配置返回 404 `credentials_not_configured`。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
 - 存储不可达返回 503 `credential_store_unavailable`。
@@ -400,7 +412,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 形状与存储见 `connector_requests.md`。
 
-`GET /api/connector-requests?tenant=<name>&status=<status>` -> `[ConnectorRequest]`：按 `requested_at` 倒序。`tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`；`status` 不在 `pending`、`approved`、`denied` 中 400 `invalid_status`。由 `console --connector-requests-dir DIR` 或 `--connector-request-db URL`（都未给时读 `CONNECTOR_REQUEST_DATABASE_URL`）提供；未配置 404 `connector_requests_not_configured`；存储失败 503 `connector_request_store_unavailable`。
+`GET /api/connector-requests?tenant=<name>&status=<status>` -> `[ConnectorRequest]`：按 `requested_at` 倒序。需要 `connectors.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。`tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`；`status` 不在 `pending`、`approved`、`denied` 中 400 `invalid_status`。由 `console --connector-requests-dir DIR` 或 `--connector-request-db URL`（都未给时读 `CONNECTOR_REQUEST_DATABASE_URL`）提供；未配置 404 `connector_requests_not_configured`；存储失败 503 `connector_request_store_unavailable`。
 
 `POST /api/connector-requests` -> `ConnectorRequest`：请求 `{spec, reason}`，任何已认证主体可提交。服务端取调用主体作为 `tenant` 与 `requested_by`，生成 `request_id`；`spec.tenant` 必须等于调用方租户，否则 400 `invalid_connector_request`。成功 201，写 `connector.request` 审计。
 
@@ -414,6 +426,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 只读 peer 与其授权。按 `peer_id` 排序。
 
+- 需要 `peers.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
 - 由 `console --peer-dir DIR`（文件）或 `--peer-db URL`（Postgres）提供；都未配置返回 404 `peers_not_configured`。
 - 非 `admin` 只返回自己租户的 peer；`admin` 可按 `tenant` 取一个租户，缺省返回全部。
 - 存储不可达返回 503 `peer_store_unavailable`。
@@ -472,6 +485,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 }
 ```
 
+- 需要 `peers.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
 - 由 `console --peer-dir DIR` 或 `--peer-db URL` 提供；未配置返回 404 `remote_agents_not_configured`。
 - 非 `admin` 只返回自己租户的记录；`admin` 可按 `tenant` 过滤，缺省返回全部。
 - 存储不可达返回 503 `remote_agent_store_unavailable`。
@@ -509,6 +523,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 列出工具临时授权请求，按 `requested_at` 倒序。`status` 取 `pending`、`approved`、`denied`、`expired`、`cancelled`，其他值 400 `invalid_status`。
 
+- 需要 `grants.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
 - 未配置授权存储返回 404 `tool_grants_not_configured`。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
 - 存储不可达返回 503 `grant_store_unavailable`。
@@ -521,6 +536,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 {"tool_id": "crm.read", "allowed": 3, "denied": 1, "temporary": 2}
 ```
 
+- 需要 `grants.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
 - 事件来源与控制台审计面板相同（共享审计或进程缓冲），上限 1000 条。
 - 非 `admin` 只能看自己的租户；审计服务不可用返回 502 `audit_unavailable`。
 - Grants 面板对已批准且 24 小时内到期的请求显示 expiring 徽标。
