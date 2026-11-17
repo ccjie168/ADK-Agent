@@ -12,11 +12,14 @@ $ pytest tests/test_console_audit.py tests/test_console_tools.py tests/test_cons
     tests/test_console_connector_requests.py tests/test_console_registry.py \
     tests/test_console_peers.py tests/test_console_remote_agents.py \
     tests/test_policy_api.py tests/test_console.py -q
-13 failed, 108 passed
+13 failed, 109 passed
 
-失败的 13 个用例正是新增的 test_read_requires_capability 系列、
-test_publisher_can_read_registry、test_get_policy_requires_capability 与
-test_audit_block_is_capability_gated。
+把 `src/adk_agent/console.py` 换回基线 48d9024 后复现。失败的 13 个用例是
+9 个 test_read_requires_capability（审计、工具、工具授权、连接器、凭据、
+连接器申请、注册表、对端、远程目录），加 test_eval_read_requires_capability、
+test_operator_lacks_tools_capability、test_get_policy_requires_capability 与
+test_audit_block_is_capability_gated。test_publisher_can_read_registry 只断言 200，
+红态本来就通过。
 
 二、实现
 
@@ -38,15 +41,17 @@ test_audit_block_is_capability_gated。
   - `test_console_oidc.py`：own registry 读与 audit 读 guest -> ops
   - `test_console_shared_audit.py::test_console_scopes_tenant`：主体补 operator 角色
   - `test_tool_grant_usage.py::test_usage_tenant_scope`：viewer -> operator
-  - `test_policy_api.py`：被拒写后改用 ops 客户端读回，agent.run 审计改用 ListAuditSink 断言
+  - `test_policy_api.py`：被拒写后先直接读策略文件再构造 ops 客户端（构造会重写策略文件），
+    审计改用 ListAuditSink 断言；新增断言覆盖被拒的 policy.update 写 denied 审计
+  - `test_console_tools.py` 新增 `test_operator_lacks_tools_capability`，固定 operator 无 `tools.read`
 
 三、绿态
 
 $ pytest <上面 11 个文件> -q
-121 passed
+122 passed
 
 $ pytest -q（Windows）
-1445 passed, 87 skipped
+1446 passed, 87 skipped
 
 $ python scripts/check.py --full
 [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
@@ -59,3 +64,8 @@ ALL PASS
 - 基础能力接口（runs、plans、traces、sessions、chat）对所有登录主体开放，符合 ADR-0022 的初始映射。
 - 界面与服务端在 `grants.decide`、`connectors.manage` 上仍不一致：界面给 operator 显示决定按钮，
   服务端只允许 admin；写路径对齐另行切片。
+- 存储未配置的 404 与 `status` 非法的 400 先于能力检查，只暴露配置与参数是否合法。
+- `GET /api/registry` 用 `registry.read` 同时返回远端目录条目，`GET /api/remote-agents` 需要
+  `peers.read`，发布者能经注册表看到远端元数据，与 Registry 面板可见范围一致。
+- Registry 面板的 Refresh selected 对远端记录调用 `POST /api/remote-agents/{id}/refresh`，
+  服务端仅 admin；发布者能看到按钮并得到 403，属既有界面/写路径不一致，另行切片。

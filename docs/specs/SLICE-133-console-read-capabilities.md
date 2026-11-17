@@ -9,7 +9,7 @@
 2. 能力名只复用 ADR-0022 的现有名称，不新增能力。
 3. 顺序为 `_principal_for` → 租户参数检查（若有）→ 能力检查 → 存储读取；既有租户用例的 `tenant_forbidden` 断言保持不变。
 4. `GET /api/audit` 收紧后，聊天面板里的“Recent audit”区块按 `audit.read` 隐藏；运行进度不受影响。
-5. `admin` 与 `operator` 的既有行为不变，只有界面本来就隐藏的主体失去 API 访问。
+5. `admin` 行为不变。`operator` 只在 `GET /api/tools` 上由 200 变 403，因为 Tools 标签本就按 `tools.read` 隐藏且 `operator` 没有该能力；其余读接口对 `operator` 行为不变。
 
 | 路由 | 能力 | 界面消费方 |
 | --- | --- | --- |
@@ -45,7 +45,7 @@
 ## 完成判据（可执行）
 
 - [x] 无角色主体对 11 个读接口均得 403 `forbidden` -> 各测试文件的 `test_read_requires_capability`
-- [x] `operator` 与 `admin` 的读行为不变 -> 各文件既有用例
+- [x] `admin` 读行为不变；`operator` 除 `GET /api/tools` 变 403 外不变 -> 各文件既有用例与 `test_operator_lacks_tools_capability`
 - [x] 发布者不能读审计、策略、连接器、凭据与对端目录；能读注册表、工具与授权 -> `test_console_tools.py` 与 `test_console_registry.py` 的新用例
 - [x] 租户参数错误仍先返回 403 `tenant_forbidden` -> 既有 `test_cross_tenant_forbidden`
 - [x] 聊天页在无 `audit.read` 时隐藏审计区块 -> `test_console.py` 的页面用例
@@ -63,6 +63,11 @@
 3. **信任边界**：前端能力清单到服务端授权。
 4. **恶意输入最坏结果**：越权读取跨角色治理数据（缓解：服务端能力检查）；跨租户读取（缓解：租户检查保持原样并先执行）；界面隐藏被当成授权（缓解：服务端检查，隐藏只影响展示）。
 5. **失败是否泄露信息**：403 只回 `forbidden`，不透露资源是否存在；租户参数的 `tenant_forbidden` 只暴露调用方自己的租户。
+
+## 已知小缺口
+
+- 各存储未配置的 404 与 `status` 非法的 400 先于能力检查；它们只暴露“该存储是否配置”与“参数是否合法”，不泄露租户或治理数据。
+- `GET /api/registry` 用 `registry.read` 同时返回远端目录条目，而 `GET /api/remote-agents` 需要 `peers.read`；发布者能经注册表看到远端元数据，与 Registry 面板的可见范围一致。
 
 ## 范围外
 

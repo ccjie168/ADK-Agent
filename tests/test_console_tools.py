@@ -269,3 +269,11 @@ def test_publisher_can_read_tools(tmp_path):
         response = _tools(client, tenant="local")
 
     assert response.status_code == 200
+
+
+def test_operator_lacks_tools_capability(tmp_path):
+    with TestClient(_app(tmp_path, roles=["operator"])) as client:
+        response = _tools(client, tenant="local")
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}

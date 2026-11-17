@@ -86,14 +86,19 @@ def test_put_policy_persists_and_audits(tmp_path):
 
 def test_put_policy_denied_without_role(tmp_path):
     policy_file = tmp_path / "policy.json"
-    with _client(tmp_path, roles=("guest",)) as client:
+    sink = ListAuditSink()
+    with _client(tmp_path, roles=("guest",), audit=sink) as client:
         response = client.put("/api/policy", json=_policy("2"), headers=AUTH)
         assert response.status_code == 403
+
+    assert json.loads(policy_file.read_text())["version"] == "1"
+    [event] = [item for item in sink.recent() if item.action == "policy.update"]
+    assert event.status == "denied"
+    assert event.error_code == "policy_denied"
     with _client(tmp_path) as client:
         current = client.get("/api/policy", headers=AUTH).json()
 
     assert current["version"] == "1"
-    assert json.loads(policy_file.read_text())["version"] == "1"
 
 
 def test_put_invalid_policy_keeps_old(tmp_path):
