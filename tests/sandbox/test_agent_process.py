@@ -307,3 +307,41 @@ def test_low_level_fork_exec_is_denied():
 
     with pytest.raises(SandboxViolation):
         _run(artifact, data)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups are POSIX only")
+def test_descendant_holding_pipes_does_not_hang():
+    artifact, data = _artifact(
+        _source(
+            "import ctypes\n"
+            "        import struct\n"
+            "        import time\n"
+            "        libc = ctypes.CDLL(None)\n"
+            "        if libc.fork() == 0:\n"
+            "            time.sleep(60)\n"
+            "            os._exit(0)\n"
+            "        os.write(3, struct.pack('>I', 3) + b'{{{')\n"
+            "        await asyncio.sleep(60)\n"
+            '        text = "never"'
+        )
+    )
+
+    started = time.monotonic()
+    with pytest.raises(SandboxCrashed):
+        _run(artifact, data, wall=6.0)
+
+    assert time.monotonic() - started < 20
+
+
+@pytest.mark.skipif(os.name != "posix", reason="_posixsubprocess is POSIX only")
+def test_posixsubprocess_fork_exec_is_denied():
+    artifact, data = _artifact(
+        _source(
+            "import _posixsubprocess\n"
+            "        _posixsubprocess.fork_exec()\n"
+            '        text = "spawned"'
+        )
+    )
+
+    with pytest.raises(SandboxViolation):
+        _run(artifact, data)

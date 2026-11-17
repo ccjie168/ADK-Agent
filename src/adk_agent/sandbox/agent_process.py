@@ -6,6 +6,7 @@ import asyncio
 import base64
 import os
 import shutil
+import signal
 import sys
 import tempfile
 from contextlib import suppress
@@ -53,6 +54,25 @@ async def _stderr_text(task: asyncio.Task[str]) -> str:
         with suppress(asyncio.CancelledError):
             await task
         return ""
+
+
+def _kill(proc: asyncio.subprocess.Process) -> None:
+    """Kill the worker and, on POSIX, every process in its session group."""
+    if os.name == "posix":
+        killpg = getattr(os, "killpg", None)
+        sigkill = getattr(signal, "SIGKILL", None)
+        if killpg is not None and sigkill is not None:
+            with suppress(ProcessLookupError, PermissionError):
+                killpg(proc.pid, sigkill)
+    if proc.returncode is None:
+        with suppress(ProcessLookupError):
+            proc.kill()
+
+
+async def _wait_bounded(proc: asyncio.subprocess.Process) -> None:
+    """Never block on ``wait()``: it resolves only after all pipes close."""
+    with suppress(asyncio.TimeoutError):
+        await asyncio.wait_for(proc.wait(), timeout=_EXIT_GRACE)
 
 
 def _applied_limits(frame: dict[str, Any]) -> dict[str, int]:
@@ -104,6 +124,9 @@ class ProcessAgentSandbox:
         }
         workdir = tempfile.mkdtemp(prefix="adk-agent-sandbox-")
         try:
+            session: dict[str, Any] = {}
+            if os.name == "posix":
+                session["start_new_session"] = True
             proc = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-I",
@@ -114,6 +137,7 @@ class ProcessAgentSandbox:
                 stderr=asyncio.subprocess.PIPE,
                 env=self._env(),
                 cwd=workdir,
+                **session,
             )
             stderr_task = asyncio.create_task(_read_stderr(proc.stderr))
             loop = asyncio.get_running_loop()
@@ -164,8 +188,8 @@ class ProcessAgentSandbox:
                 raise SandboxTimeout(f"worker exceeded {self.limits.wall_seconds}s") from None
             finally:
                 if proc.returncode is None:
-                    proc.kill()
-                    await proc.wait()
+                    _kill(proc)
+                    await _wait_bounded(proc)
                 if not stderr_task.done():
                     stderr_task.cancel()
                     with suppress(asyncio.CancelledError):
@@ -178,5 +202,5 @@ class ProcessAgentSandbox:
         try:
             await asyncio.wait_for(proc.wait(), timeout=_EXIT_GRACE)
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
+            _kill(proc)
+            await _wait_bounded(proc)

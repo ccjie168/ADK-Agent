@@ -39,7 +39,7 @@
 - `AgentSandboxLimits`：`wall_seconds=30`、`cpu_seconds=10`、`memory_mb=1024`、`open_files=256`、`file_bytes=8 MiB`、`processes=None`。
 - `ProcessAgentSandbox(limits=None)` 实现 `AgentSandboxBackend`。
 - 启动命令：`[sys.executable, "-I", "-m", "adk_agent.sandbox.agent_worker"]`，cwd 是一次性临时目录；POSIX 传 `env={}`，Windows 传 `SYSTEMROOT/TEMP/TMP`。
-- 墙钟超时由父进程负责；超时后 `kill()` 并 `await wait()`；stderr 收尾最多再等 5 秒。
+- 墙钟超时由父进程负责；POSIX 以独立会话启动，超时后用 `killpg` 回收进程组；`wait()` 与 stderr 收尾各带 5 秒上限。
 - stderr 并发读取，读到 EOF，只保留前 8 KiB，只用于诊断，不进结果。
 
 `src/adk_agent/sandbox/agent_worker.py`（新文件）：
@@ -95,6 +95,8 @@
 - [x] `AF_UNIX` 套接字被拒（POSIX） -> `::test_unix_sockets_are_denied`
 - [x] 子进程创建被拒 -> `::test_process_creation_is_denied`
 - [x] 低层 `_fork_exec` 被拒（POSIX） -> `::test_low_level_fork_exec_is_denied`
+- [x] 直接调用 `_posixsubprocess.fork_exec` 被拒（POSIX） -> `::test_posixsubprocess_fork_exec_is_denied`
+- [x] 后代持有管道时运行仍有界结束（POSIX） -> `::test_descendant_holding_pipes_does_not_hang`
 - [x] 工件伪造 `SandboxViolation` 仍归为崩溃 -> `::test_artifact_cannot_forge_a_violation`
 - [x] 运行目录是一次性临时目录且被删除 -> `::test_runs_in_a_removed_temp_directory`
 - [x] 畸形帧且子进程存活时有界失败 -> `::test_malformed_frame_does_not_hang`

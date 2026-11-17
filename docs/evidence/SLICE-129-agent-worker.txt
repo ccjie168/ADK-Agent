@@ -114,3 +114,20 @@ $ pytest tests/sandbox -q（WSL Ubuntu 24.04）
 $ python scripts/check.py --full
 [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
 ALL PASS
+
+十一、第三轮复核（HEAD 2f54c80）
+
+结论 DO NOT MERGE：asyncio 的 `Process.wait()` 只在所有管道断开后唤醒。工件用 ctypes fork 一个持有
+stdout/stderr 的后代并保持存活时，子进程已被杀但 `_reap` 的第二次 `wait()` 仍会挂住，wall + 10 秒的
+硬上界不成立（验证代理用 ctypes fork 复现，wall=6 时 25 秒仍未返回）。
+
+修复：
+- POSIX 上 worker 以独立会话启动（`start_new_session=True`）。
+- 回收用 `os.killpg(pid, SIGKILL)` 杀掉整个进程组，再 `wait`；`wait()` 与 stderr 收尾各带 5 秒上限，
+  即使后代 setsid 逃逸也不会拖住父进程。
+- 新增 POSIX 回归 `test_descendant_holding_pipes_does_not_hang`（ctypes fork 持管道，断言有界结束）
+  与 `test_posixsubprocess_fork_exec_is_denied`。
+
+验证：
+- WSL Ubuntu 24.04 `pytest tests/sandbox -q`：48 passed。
+- Windows `scripts/check.py --full`：1394 passed, 86 skipped，9 步全 PASS。
