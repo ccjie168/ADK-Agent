@@ -4192,9 +4192,11 @@ def build_console_app(
 
     @app.get("/api/approvals")
     async def list_approvals(request: Request) -> Any:
+        caller = _principal_for(request)
+        if "approvals.read" not in _capabilities_for(caller.roles):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         if approvals is None:
             return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
-        caller = _principal_for(request)
         try:
             pending = approvals.pending()
             if inspect.isawaitable(pending):
@@ -4213,6 +4215,9 @@ def build_console_app(
 
     @app.post("/api/approvals/{request_id}")
     async def decide_approval(request: Request, request_id: str) -> Any:
+        caller = _principal_for(request)
+        if "approvals.decide" not in _capabilities_for(caller.roles):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         if approvals is None:
             return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
         if not _TRACE_ID.fullmatch(request_id):
@@ -4227,7 +4232,6 @@ def build_console_app(
         if not isinstance(reason, str):
             return JSONResponse({"error": "invalid decision"}, status_code=400)
 
-        caller = _principal_for(request)
         try:
             record = approvals.get(request_id)
             if inspect.isawaitable(record):
@@ -4305,12 +4309,14 @@ def build_console_app(
 
     @app.get("/api/approvals/history")
     async def approval_history(request: Request, limit: int = 50, status: str | None = None) -> Any:
+        caller = _principal_for(request)
+        if "approvals.read" not in _capabilities_for(caller.roles):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
         if approvals is None:
             return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
         if status is not None and status not in HISTORY_STATUSES:
             return JSONResponse({"error": "invalid_status"}, status_code=400)
         limit = max(1, min(200, limit))
-        caller = _principal_for(request)
         tenant = None if "admin" in caller.roles else caller.tenant
         try:
             entries = approvals.history(tenant=tenant, status=status, limit=limit)

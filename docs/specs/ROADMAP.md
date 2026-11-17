@@ -222,6 +222,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-129 agent 沙箱 worker 与协议：子进程加载与单轮运行，无网络、清空环境、RLIMIT 与墙钟超时，错误按类型映射。已完成。
 - SLICE-130 沙箱模型出口中介：`build_model()` 在 worker 内变为代理，模型调用经父进程执行，凭据不进入子进程。已完成。
 - SLICE-131 沙箱执行接入：触发服务可注入沙箱，`sandboxed` 触发走子进程，配额、审计与错误映射统一，平台门槛默认拒绝非 POSIX。已完成。
+- SLICE-132 审批接口能力校验：列表、决定与历史按 `approvals.read`/`approvals.decide` 授权，界面隐藏之外服务端也拒绝。已完成。
 
 ## 完成定义
 
