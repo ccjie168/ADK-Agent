@@ -119,3 +119,11 @@ $ pytest tests/sandbox/test_agent_process.py -q（Windows）
 
 $ pytest tests/sandbox -q（WSL Ubuntu 24.04）
 69 passed
+
+十一、第四轮复核（HEAD a44d552）
+
+结论 MERGE：两处原 Critical 与 provider 工具、文件引用、continuation 字段均已挡住；
+剩余为计费/策略与误杀类低危。合并前再收紧一处：顶层 `LlmRequest.service_tier` 也清空，
+provider 工具用例补 `retrieval`/`code_execution`，文件引用用例补裸 `File` 形式。
+
+最终绿态：Windows 全门禁 1414 passed / 87 skipped，Linux `tests/sandbox` 69 passed。

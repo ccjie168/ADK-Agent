@@ -289,6 +289,7 @@ class ProcessAgentSandbox:
         request.cache_config = None
         request.cache_metadata = None
         request.previous_interaction_id = None
+        request.service_tier = None
         _reject_file_references(request.contents)
         return request
 

@@ -642,6 +642,8 @@ def test_provider_tools_are_rejected():
         {"mcp_servers": [{"name": "evil"}]},
         {"file_search": {"file_search_store_names": ["x"]}},
         {"google_search": {}},
+        {"retrieval": {}},
+        {"code_execution": {}},
     ):
         with pytest.raises(SandboxCrashed):
             _sanitize(
@@ -701,6 +703,19 @@ def test_nested_file_references_are_rejected():
                 },
             }
         )
+    with pytest.raises(SandboxCrashed):
+        _sanitize(
+            {
+                "model": "attacker/model",
+                "contents": [],
+                "config": {
+                    "system_instruction": {
+                        "uri": "gs://secret/object",
+                        "mime_type": "text/plain",
+                    }
+                },
+            }
+        )
 
 
 def test_continuation_fields_are_cleared():
@@ -708,6 +723,7 @@ def test_continuation_fields_are_cleared():
         {
             "model": "attacker/model",
             "contents": [],
+            "service_tier": "flex",
             "config": {
                 "continuation_token": "dG9rZW4=",
                 "automatic_continuation": True,
@@ -716,6 +732,7 @@ def test_continuation_fields_are_cleared():
         }
     )
 
+    assert request.service_tier is None
     assert request.config is not None
     assert request.config.continuation_token is None
     assert request.config.automatic_continuation is None
