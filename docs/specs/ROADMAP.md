@@ -225,6 +225,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-132 审批接口能力校验：列表、决定与历史按 `approvals.read`/`approvals.decide` 授权，界面隐藏之外服务端也拒绝。已完成。
 - SLICE-133 控制台读接口能力校验：审计、策略、注册表、工具、授权、连接器、凭据、对端与远程目录的读接口按面板能力授权，聊天页审计区块同步隐藏。已完成。
 - SLICE-134 控制台与 MCP 的沙箱执行适配：`--agent-sandbox` 注册进程沙箱，`--agent-ref` 与控制台按需加载返回沙箱代理，工具授权的 `sandboxed` 记录拒绝加载。已完成。
+- SLICE-135 A2A 的注册表启动：`serve-a2a --agent-ref` 复用注册表加载与沙箱代理，peer 模式校验 agent 名与 manifest id 一致。已完成。
 
 ## 完成定义
 

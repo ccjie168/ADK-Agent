@@ -375,11 +375,15 @@
 - 审计的 `trace_id` 取 `traceparent` 的 trace-id，规则见 `tracing.md`。没有时每次调用新生成。
 - `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
 
-## `adk-agent serve-a2a --agent FILE [--rpc-path PREFIX] [--host H] [--port P] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--quota-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent serve-a2a (--agent FILE | --agent-ref TENANT/ID@VERSION) [--registry DIR | --registry-url URL] [--artifact-dir DIR | $ARTIFACT_URL] [--artifact-keys FILE | $ADK_ARTIFACT_KEYS] [--agent-sandbox | --allow-unsandboxed] [--rpc-path PREFIX] [--host H] [--port P] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--quota-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把一个 agent 暴露成 A2A 端点。
 
 - 需要可选依赖 `a2a-sdk[http-server]>=0.3.4,<2`。没装时退出 1 并给出安装命令。
+- `--agent` 与 `--agent-ref` 二选一，同时给退出 1；`--agent-ref` 只接受一个，重复退出 1。
+- `--agent-ref` 的注册表、工件字节与可信公钥要求同「从注册表启动」一节。
+- `--agent-sandbox` 让 `sandboxed` 引用加载为沙箱代理，工件不在 A2A 进程内执行；非 POSIX 门槛同其他命令。
+- peer 模式下用 `--agent-ref` 时，agent 名必须等于 `--manifest` 的 `id`，否则退出 1。
 - 非回环地址必须提供 `--auth-token-env` 指向的 token。loopback 可以 `--allow-unauthenticated`（仅开发）。
 - token 保护所有路径，包括 `/.well-known/agent-card.json` 和 JSON-RPC。
 - 审计和配额规则同 MCP 一节。tenant 固定 `local`，principal 是 `local` 下的 `a2a_user`，kind 是 `service`。
