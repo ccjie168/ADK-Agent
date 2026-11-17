@@ -127,23 +127,17 @@ def test_sandbox_agent_passes_the_current_invocation():
     assert backend.invocations == [invocation]
 
 
-def test_audited_runner_publishes_the_invocation():
+def test_audited_runner_publishes_the_invocation_to_the_sandbox():
     from adk_agent.core import Principal
     from adk_agent.runtime.audit_proxy import AuditedRunner
 
-    seen: list = []
-
-    class _Inner:
-        async def run_async(self, **kwargs):
-            from adk_agent.core.context import current_invocation
-
-            seen.append(current_invocation())
-            if False:
-                yield
-
+    backend = _Backend()
+    agent = build_sandbox_agent(_manifest(), _artifact(), b"zip!", backend)
+    service = InMemorySessionService()
+    inner = Runner(app_name="app", agent=agent, session_service=service)
     principal = Principal(tenant="acme", subject="alice", kind="human")
     runner = AuditedRunner(
-        _Inner(),
+        inner,
         agent_name="bot",
         principal=principal,
         audit=None,
@@ -152,13 +146,16 @@ def test_audited_runner_publishes_the_invocation():
     )
 
     async def drain() -> None:
+        session = await service.create_session(app_name="app", user_id="u")
         async for _ in runner.run_async(
-            user_id="u", session_id="s", new_message=None, state_delta=None
+            user_id="u",
+            session_id=session.id,
+            new_message=types.Content(role="user", parts=[types.Part(text="hi")]),
         ):
             pass
 
     asyncio.run(drain())
 
-    assert len(seen) == 1
-    assert seen[0] is not None
-    assert seen[0].principal == principal
+    assert len(backend.invocations) == 1
+    assert backend.invocations[0] is not None
+    assert backend.invocations[0].principal == principal

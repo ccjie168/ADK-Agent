@@ -14,10 +14,12 @@ E   ModuleNotFoundError: No module named 'adk_agent.tools.client'
 
 $ pytest tests/runtime/test_execution.py tests/sandbox/test_agent_proxy.py \
     tests/test_cli_sandbox_adapters.py -q
-3 failed, 13 passed（另有 2 个 collection error：新增模块不存在）
+2 failed, 15 passed（另有 2 个 collection error：新增模块不存在）
 
-失败的是 test_run_sets_and_clears_the_invocation、test_sandbox_agent_passes_the_current_invocation
-与 test_install_builds_a_gateway_executor。新增用例合计 12 个，基线全部失败。
+失败的是 test_sandbox_agent_passes_the_current_invocation 与 test_install_builds_a_gateway_executor；
+test_run_sets_and_clears_the_invocation 与 test_audited_runner_publishes_the_invocation_to_the_sandbox
+在基线通过，因为 `AgentRuntime._run` 与 `AuditedRunner` 自 SLICE-017 起就写 `core.context`。
+全切片新增 15 个用例，其中 2 个在基线通过。
 
 二、实现
 
@@ -60,10 +62,10 @@ ALL PASS
 
 1. 高：首版新增了第二个 `runtime/context.py`，只有 `AgentRuntime` 写它，而 serve/serve-many/serve-a2a
    走 `AuditedRunner`，写的是既有的 `core.context`，因此这三个命令的工具调用必然 `tool_principal_unavailable`。
-   已删除新模块，代理改读 `core.context`，并补经 `AuditedRunner` 的用例 `test_audited_runner_publishes_the_invocation`。
+   已删除新模块，代理改读 `core.context`，并把回归用例改为 `AuditedRunner -> SandboxAgent -> 执行器` 的端到端形态。
 2. 测试缺口：补执行器错误码穿透到子进程的用例、`ToolGatewayError -> tool_gateway_unavailable` 用例，
    以及客户端 302 与无 token 的用例。
-3. 证据计数：定向实际 27 passed，红态 3 failed / 13 passed 加 2 个 collection error，已改正。
+3. 证据计数：定向实际 27 passed，红态 2 failed / 15 passed 加 2 个 collection error，已改正。
 4. 契约：`ToolGatewayClient.invoke` 返回值、`current_invocation` 来源、`run(invocation=...)`、
    `SandboxToolError` 会回 code 与 message、CLI 默认无执行器的表述均已改正。
 5. 客户端显式 `follow_redirects=False` 与 `trust_env=False`；缺 token 时 CLI 在 stderr 告警。

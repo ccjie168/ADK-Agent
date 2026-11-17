@@ -102,7 +102,7 @@ worker 给具备 `before_tool_callback` 字段的 agent 安装工具回调，子
 - 执行器结果必须是 `Mapping` 且可 JSON 序列化；`None`、非映射或不可序列化时回 `tool_result_invalid`，
   不继续执行本地工具。
 - 执行器由接入方注入，签名是 `async (manifest, tool_id, args, invocation) -> Mapping`；`invocation` 是本次运行的
-  主体与 agent_ref，由 `AgentRuntime` 写入 contextvar，代理读取后传给后端；没有时执行器拒绝
+  主体与 agent_ref，由 `AgentRuntime` 或 `AuditedRunner` 写入 `core.context`，代理读取后传给后端；没有时执行器拒绝
   `tool_principal_unavailable`。审批、租户与 `tool.call` 审计属于执行器的实现，不在协议层。
 - 没有传入 manifest 时授权集合为空，一切工具调用被拒。
 
