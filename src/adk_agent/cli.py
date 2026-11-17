@@ -2989,6 +2989,7 @@ def main(argv: list[str] | None = None) -> None:
         from pydantic import ValidationError
 
         from .core import CredentialBinding, CredentialStoreError
+        from .secretstore.keys import KeyBackendError
 
         store = _credential_store(args)
         if store is None:
@@ -3010,9 +3011,11 @@ def main(argv: list[str] | None = None) -> None:
                     backend = LocalKeyBackend.from_env()
                     if backend is None:
                         raise ValueError("set ADK_SECRET_KEKS to store a secret")
-                    value = sys.stdin.read().strip()
+                    value = sys.stdin.read().rstrip("\r\n")
                     if not value:
                         raise ValueError("the secret on stdin is empty")
+                    if "\r" in value or "\n" in value:
+                        raise ValueError("the secret must be a single line")
                     wrapped = backend.wrap(
                         value.encode("utf-8"), credential_aad(args.tenant, args.id)
                     )
@@ -3037,14 +3040,21 @@ def main(argv: list[str] | None = None) -> None:
 
         try:
             result = asyncio.run(run_credentials())
-        except (CredentialStoreError, ValidationError, ValueError) as exc:
+        except (CredentialStoreError, ValidationError, ValueError, KeyBackendError) as exc:
             print(f"credentials failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
 
         if args.credentials_cmd == "list":
-            print(json.dumps([record.model_dump(mode="json") for record in result]))
+            print(
+                json.dumps(
+                    [
+                        record.model_dump(mode="json", exclude={"wrapped_secret"})
+                        for record in result
+                    ]
+                )
+            )
         else:
-            print(json.dumps(result.model_dump(mode="json")))
+            print(json.dumps(result.model_dump(mode="json", exclude={"wrapped_secret"})))
     elif args.cmd == "triggers":
         from pydantic import ValidationError
 

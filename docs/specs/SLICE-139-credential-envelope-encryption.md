@@ -37,6 +37,8 @@
 
 ## 范围外
 
+- 运行时接入：`serve-tool-gateway` 与控制台远程 agent 仍使用环境变量 provider，下一片改为
+  `TenantSecretProvider(backend, credentials)`；本切片只交付密钥后端、存储字段与 CLI 写入。
 - 控制面 `/v1/credentials` 写入端点（ADR-0025 切片 3）。
 - 记录级轮换命令与 `credential.decrypt_failed` 审计（切片 4）。
 - KMS/Vault 实现。

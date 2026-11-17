@@ -178,4 +178,5 @@ def test_cli_stores_an_encrypted_secret(tmp_path, capsys, monkeypatch):
 
     assert created["secret_key_id"] == "k1"
     assert created["secret_version"] == 1
+    assert "wrapped_secret" not in created
     assert "s3cret" not in json.dumps(created)

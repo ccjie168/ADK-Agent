@@ -3538,7 +3538,7 @@ def build_console_app(
         except CredentialStoreError:
             logger.exception("credential list failed: tenant=%s", target)
             return JSONResponse({"error": "credential_store_unavailable"}, status_code=503)
-        return [record.model_dump(mode="json") for record in records]
+        return [record.model_dump(mode="json", exclude={"wrapped_secret"}) for record in records]
 
     @app.post("/api/credentials")
     async def register_credential(request: Request) -> Any:
@@ -3596,7 +3596,9 @@ def build_console_app(
                 timestamp=datetime.now(timezone.utc),
             )
         )
-        return JSONResponse(stored.model_dump(mode="json"), status_code=201)
+        return JSONResponse(
+            stored.model_dump(mode="json", exclude={"wrapped_secret"}), status_code=201
+        )
 
     @app.post("/api/credentials/{credential_id}/disable")
     async def disable_credential(
@@ -3642,7 +3644,7 @@ def build_console_app(
                     timestamp=datetime.now(timezone.utc),
                 )
             )
-        return JSONResponse(disabled.model_dump(mode="json"))
+        return JSONResponse(disabled.model_dump(mode="json", exclude={"wrapped_secret"}))
 
     @app.get("/api/peers")
     async def list_peers(request: Request, tenant: str | None = None) -> Any:

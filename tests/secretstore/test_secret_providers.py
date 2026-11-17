@@ -103,3 +103,49 @@ def test_tenant_provider_falls_back_to_the_environment(monkeypatch):
     provider = TenantSecretProvider()
 
     assert asyncio.run(provider.resolve("secret://acme/token")) == "from-env"
+
+
+def _stored_binding(backend, *, enabled=True):
+
+    from adk_agent.core import CredentialBinding
+    from adk_agent.secretstore import credential_aad
+
+    aad = credential_aad("acme", "crm")
+    return CredentialBinding(
+        credential_id="crm",
+        tenant="acme",
+        secret_ref="secret://acme/token",
+        created_by="ops",
+        created_at="2026-11-18T00:00:00Z",
+        enabled=enabled,
+        wrapped_secret=backend.wrap(b"from-store", aad),
+        secret_key_id="k1",
+        secret_version=1,
+    )
+
+
+def test_ciphertext_without_backend_fails_closed(monkeypatch):
+    import os
+
+    from adk_agent.secretstore import LocalKeyBackend, TenantSecretProvider
+
+    backend = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    provider = TenantSecretProvider(credentials=_StoredCredential(_stored_binding(backend)))
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+
+    with pytest.raises(Exception, match="key backend"):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+
+def test_disabled_ciphertext_does_not_fall_back(monkeypatch):
+    import os
+
+    from adk_agent.secretstore import LocalKeyBackend, TenantSecretProvider
+
+    backend = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    binding = _stored_binding(backend, enabled=False)
+    provider = TenantSecretProvider(backend=backend, credentials=_StoredCredential(binding))
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+
+    with pytest.raises(Exception, match="disabled"):
+        asyncio.run(provider.resolve("secret://acme/token"))

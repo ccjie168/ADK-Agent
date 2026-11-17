@@ -74,6 +74,6 @@
 - keyring 从 `ADK_SECRET_KEKS` 读取：`{"active": "<key id>", "keys": {"<key id>": "<base64 32 bytes>"}}`。
 - `TenantSecretProvider` 先按 `secret_ref` 找启用且带密文的记录并解密，失败抛不可用；没有密文时
   回退 `ADK_SECRET_<TENANT>_<NAME>` 环境变量。
-- `credentials register --secret-stdin` 从标准输入读值并加密写入，缺 `ADK_SECRET_KEKS` 退出 1；
+- `credentials register [--secret-stdin]` 从标准输入读值并加密写入，缺 `ADK_SECRET_KEKS` 退出 1；值必须是单行；
   输出只含元数据，不含明文。
 - 轮换保留旧 key id 用于解密；keyring 缺失旧 key id 时拒绝解密。

@@ -14,17 +14,17 @@ ADR-0022 第 5 条要求“租户凭据存储需要单独的密钥后端设计�
 
 ## 决定
 
-1. **端口。** 新增 `KeyBackend` 端口：`wrap(plaintext, aad) -> wrapped`、`unwrap(wrapped, aad) -> plaintext`、`current_key_id()`、`rotate()`。实现放在 `secretstore/`，与 `SecretProvider` 分开：前者管密钥材料，后者按 `secret://` 解析。
+1. **端口。** 新增 `KeyBackend` 端口：`wrap(plaintext, aad) -> wrapped`、`unwrap(wrapped, aad) -> plaintext`、`current_key_id()`。轮换通过重建 keyring（保留旧 key id）完成，端口不提供 `rotate()`。实现放在 `secretstore/`，与 `SecretProvider` 分开：前者管密钥材料，后者按 `secret://` 解析。
 
-2. **信封加密。** 每条凭据用一次性数据密钥（AES-256-GCM）加密，数据密钥由租户主密钥（KEK）包裹。AAD 绑定 `tenant`、`credential_id` 与格式版本，密文不能跨租户或跨记录搬运。
+2. **信封加密。** 每条凭据用一次性数据密钥（AES-256-GCM）加密，数据密钥由租户主密钥（KEK）包裹。AAD 绑定 `tenant` 与 `credential_id`，密文不能跨租户或跨记录搬运；格式版本与 key id 在 payload 内校验。
 
-3. **v1 后端是本地文件 KEK。** 主密钥从 `ADK_SECRET_KEK`（32 字节，base64）读取，可来自文件挂载的 Secret。KEK 只在启动时读取，不落盘、不进日志、不进审计。KMS/Vault 作为同一端口的后续实现，不在 v1 引入新依赖。
+3. **v1 后端是本地文件 KEK。** 主密钥从 `ADK_SECRET_KEKS` 读取，格式是 `{"active": "<key id>", "keys": {"<key id>": "<base64 32 bytes>"}}`，可来自文件挂载的 Secret。KEK 只在启动时读取，不落盘、不进日志、不进审计。KMS/Vault 作为同一端口的后续实现，不在 v1 引入新依赖。
 
 4. **存储。** `CredentialBinding` 增加可选的 `wrapped_secret`、`secret_key_id` 与 `secret_version`；密钥值字段只存密文。文件与 Postgres 存储都按 `(tenant, credential_id)` 写入。
 
 5. **解析顺序。** `TenantSecretProvider` 先查存储里的密文并用 KEK 解开；没有密文时回退到环境变量，保留兼容；两者都没有时按既有错误返回不可用。解出的明文只在调用瞬间存在，不写缓存。
 
-6. **轮换。** `rotate()` 生成新 KEK，旧 KEK 以 key id 保留在 keyring 中用于解开旧记录；重新包裹数据密钥，不重加密凭据值。没有旧 key id 的记录在轮换后拒绝解开（fail-closed）。
+6. **轮换。** 运维生成新 KEK，旧 KEK 以 key id 保留在 keyring 中用于解开旧记录；重新包裹数据密钥，不重加密凭据值。没有旧 key id 的记录在轮换后拒绝解开（fail-closed）。
 
 7. **写入路径。** CLI `credentials register --secret-stdin`（不接受 argv 传值）加密后写存储；控制面 `POST /v1/credentials` 与 `POST /v1/credentials/{id}/disable` 由 admin 调用。审计只记 `credential.register`/`credential.disable` 与 key id，不记密文。
 

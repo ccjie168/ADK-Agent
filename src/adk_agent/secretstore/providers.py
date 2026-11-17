@@ -70,19 +70,21 @@ class TenantSecretProvider:
         self._credentials = credentials
 
     async def _stored(self, tenant: str, reference: str) -> str | None:
-        if self._backend is None or self._credentials is None:
+        if self._credentials is None:
             return None
         bindings = await self._credentials.list(tenant)
-        binding = next(
-            (
-                item
-                for item in bindings
-                if item.secret_ref == reference and item.enabled and item.wrapped_secret is not None
-            ),
-            None,
-        )
-        if binding is None:
+        matching = [item for item in bindings if item.secret_ref == reference]
+        encrypted = [item for item in matching if item.wrapped_secret is not None]
+        if not encrypted:
             return None
+        if self._backend is None:
+            raise SecretNotFound(f"secret {reference} has ciphertext but no key backend")
+        candidates = sorted(
+            (item for item in encrypted if item.enabled), key=lambda item: item.credential_id
+        )
+        if not candidates:
+            raise SecretNotFound(f"secret {reference} is disabled")
+        binding = candidates[0]
         aad = _credential_aad(binding.tenant, binding.credential_id)
         try:
             return self._backend.unwrap(binding.wrapped_secret, aad).decode("utf-8")
