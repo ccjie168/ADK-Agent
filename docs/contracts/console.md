@@ -73,8 +73,8 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 返回待决的人工审批请求，按 `requested_at` 正序。结构见 `approval_request.schema.json`。
 
 - 已过期的请求不返回。`expires_at` 是有效截止时间。请求自带时原样返回；没有时由收件箱用 `requested_at` 加配置的 TTL 推算；两者都没有时为 `null`。
+- 需要 `approvals.read` 能力，缺少返回 403 `forbidden`，先于任何存储访问与配置检查。
 - 未配置审批目录或审批数据库时返回 404 `approvals_not_configured`。
-- 需要 `approvals.read` 能力，缺少返回 403 `forbidden`。
 - 非 `admin` 身份只看到自己租户的请求。
 - 请求里的 `input` 是待审内容，只在这里返回给有权限的调用方。
 - 收件箱后端在启动时确定。`--approval-db` 或 `$APPROVAL_DATABASE_URL` 使用 Postgres；`--approval-dir` 或 `$ADK_APPROVAL_DIR` 使用目录。显式 flag 优先于环境变量，两个显式 flag 同时给出时控制台退出 1；只有环境变量时 `APPROVAL_DATABASE_URL` 优先。
@@ -85,7 +85,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 请求：`{approved, reason?}`
 响应：`ApprovalDecision`，结构见 `approval_decision.schema.json`。`approver` 是当前 principal 的 `subject`，`decided_at` 由服务端生成。
 
-- 需要 `approvals.decide` 能力，缺少返回 403 `forbidden`。
+- 需要 `approvals.decide` 能力，缺少返回 403 `forbidden`，先于请求体与 id 校验。
 - 请求 id 必须匹配 `^[A-Za-z0-9._-]{1,128}$`，否则 400 `unsafe_request_id`。
 - `approved` 缺失或不是布尔返回 400 `invalid decision`。
 - 请求不存在返回 404 `approval_not_found`。
@@ -111,7 +111,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 }
 ```
 
-- 需要 `approvals.read` 能力，缺少返回 403 `forbidden`。
+- 需要 `approvals.read` 能力，缺少返回 403 `forbidden`，先于 `status` 校验与存储访问。
 - 未配置审批存储返回 404 `approvals_not_configured`；存储不可达返回 503 `approval_unavailable`。
 - 非 `admin` 只返回自己租户的记录，租户取 `request.principal.tenant`。`admin` 可看全部租户。
 - 包含已归档记录，`archived` 为 true。`terminal_at` 取 `decision.decided_at`；过期记录取 `expires_at`；都没有时取 `requested_at`。

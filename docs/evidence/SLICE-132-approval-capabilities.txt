@@ -15,14 +15,16 @@ SLICE-132 审批接口的能力校验
 二、实现
 
 - console.py：列表与历史在 `_principal_for` 后检查 `approvals.read`，决定检查 `approvals.decide`；
-  缺少能力返回 403 `{"error": "forbidden"}`，检查先于任何存储读写。
+  缺少能力返回 403 `{"error": "forbidden"}`，检查先于存储读写、配置检查与请求体解析。
 - 租户隔离与 admin 语义不变。
 - 测试主体补角色：审批调用方改为 operator，新增发布者越权用例。
+- `test_policy_denies_decision` 的策略绑定角色由 `viewer` 改为 `operator`，与调用方角色匹配，
+  恢复正常意图：绑定命中但 allow 列表不含 `approval.decide`。
 
 三、绿态
 
 $ pytest tests/test_console_approvals.py tests/test_console_approvals_history.py tests/test_console_approvals_expiry.py -q
-23 passed
+24 passed
 
 $ pytest -q（Windows）
 1424 passed, 87 skipped
@@ -30,3 +32,13 @@ $ pytest -q（Windows）
 四、范围
 
 - 只覆盖审批三个端点；其他控制台接口的能力审查单列后续。
+
+五、第一轮独立验证（54d9f70）
+
+结论 MERGE，无高/中危问题。门禁复跑 ALL PASS，1424 passed, 87 skipped。四条低危/信息级意见：
+
+- 证据文件计数写 23，实测 24。已修正。
+- 403 原在请求体/参数校验之后。已把三处能力检查移到 `_principal_for` 之后的第一位，
+  并在越权用例里补畸形请求体、非法 id、非法 status、未配置审批四组断言。
+- `test_policy_denies_decision` 的绑定角色与调用方角色不匹配，退化为“无绑定默认拒绝”。已改为 `operator`。
+- 契约条目顺序与实现不一致。已在三处写明 403 的优先级。

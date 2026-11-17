@@ -33,6 +33,7 @@
 - [x] 发布者决定审批 403 且审批仍待决 -> 同上
 - [x] 发布者读审批历史 403 -> 同上
 - [x] operator 与 admin 的列表、决定、历史行为不变 -> 既有审批用例
+- [x] 缺少能力的调用方即使请求体畸形、id 非法、status 非法或审批未配置，也先拿 403 -> 同一用例
 - [x] 租户过滤不变 -> `::test_list_pending_filters_by_tenant` 与 history 的租户用例
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
 
