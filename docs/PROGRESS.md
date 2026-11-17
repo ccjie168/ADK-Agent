@@ -253,7 +253,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 ## 未决事项（恢复时先看）
 
-1. ADR-0001 到 ADR-0022 均已接受。ADR-0003 到 ADR-0006 决定可选依赖不进默认依赖，ADR-0007 新增可选 extra `oidc`（`PyJWT[crypto]`），ADR-0019 决定会话表用 Postgres RLS 做租户隔离，ADR-0020 把 `app_states` 纳入同一边界，ADR-0021 决定 OTel 导出边界，ADR-0022 决定能力驱动的角色视图、声明式组合、自动化与 agent 沙箱顺序。
+1. ADR-0001 到 ADR-0024 均已接受。ADR-0003 到 ADR-0006 决定可选依赖不进默认依赖，ADR-0007 新增可选 extra `oidc`（`PyJWT[crypto]`），ADR-0019 决定会话表用 Postgres RLS 做租户隔离，ADR-0020 把 `app_states` 纳入同一边界，ADR-0021 决定 OTel 导出边界，ADR-0022 决定能力驱动的角色视图、声明式组合、自动化与 agent 沙箱顺序，ADR-0023 决定 CodeQL 安全审核通道，ADR-0024 决定 agent 级沙箱的进程隔离、资源上限与出口中介。
 2. 本地 venv 为验证装了 `a2a-sdk`、`sqlalchemy`、`asyncpg`、`greenlet`，都不在项目依赖里。换环境要先装。
 3. 未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`package.json`、`package-lock.json` 是本地工具，不要加进仓库。
 
@@ -264,8 +264,8 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 1. 发行完整性只剩首次真实发布。release workflow 与回写脚本已合入；操作员设置 registry 凭据、在 `master` 上手动触发，再把 digest 回写 PR。见 `docs/evidence/SLICE-109-release-pipeline.txt`。
 2. 密钥扫描不做历史扫描（gitleaks/trufflehog 延后）。GitHub 自定义 pattern 与 validity checks 需要付费套餐，当前关闭。
 3. legacy 无前缀 `user_id` 与 plain `app_name` 在 `--session-rls` 开启后不可见，不自动迁移；需要迁移时单独评审。
-4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固与调度循环也已收口（SLICE-113 到 127）。下一步先为 agent 级沙箱写 ADR 再实现，之后是凭据密钥后端，编号进入时分配。SLICE-110 到 SLICE-127 已完成。
-5. 租户凭据只存引用，不存值。密钥后端、KMS、轮换与控制面 `/v1/credentials` 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。这些按 ADR-0022 的顺序另行切片。
+4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固、调度循环与执行层级也已收口（SLICE-113 到 128）。ADR-0024 已确认，下一步是 agent 沙箱的 worker 进程与管道协议（SLICE-129），之后是出口中介、接入收口与凭据密钥后端，编号进入时分配。SLICE-110 到 SLICE-128 已完成。
+5. 租户凭据只存引用，不存值。密钥后端、KMS、轮换与控制面 `/v1/credentials` 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。执行层级已进 manifest：新发布必须显式声明，无沙箱后端时 `sandboxed` 在发布与加载两处被拒；历史记录缺字段按 `in_process` 读取且 digest 不变。组合器与脚手架当前明确写 `in_process`，手写 manifest 暂无法与平台产物区分；SLICE-129 有后端后把 publish 默认翻成 `sandboxed`，`in_process` 只接受平台构建密钥签名的工件。这些按 ADR-0022 与 ADR-0024 的顺序另行切片。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 

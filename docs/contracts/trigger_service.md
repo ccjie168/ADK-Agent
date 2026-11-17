@@ -42,6 +42,7 @@
 | 409 | `digest_mismatch` | 注册表记录的 digest 与触发不一致 |
 | 409 | `version_retired` | 注册表或生命周期显示已退役 |
 | 409 | `approval_required` | manifest 的工具授权声明了需要审批 |
+| 409 | `sandbox_unavailable` | 记录声明 `sandboxed` 而没有 agent 沙箱后端 |
 | 409 | `fire_in_progress` | 同幂等键的运行未结束 |
 | 429 | `quota_exceeded` | 租户配额超限 |
 | 502 | `agent_load_failed` | 工件验签或加载失败 |

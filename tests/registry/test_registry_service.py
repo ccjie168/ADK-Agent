@@ -91,6 +91,7 @@ def _manifest(tenant: str = "t1", version: str = "1.0.0", description: str = "bo
         owner=tenant,
         description=description,
         model_policy={"provider_allowlist": ["litellm"]},
+        execution_tier="in_process",
     )
 
 

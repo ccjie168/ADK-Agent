@@ -163,6 +163,7 @@ def build_composed(
         ),
         data_scopes=(cast("list[DataClass]", sorted(set(classes))) if selected else []),
         exposure="none",
+        execution_tier="in_process",
     )
     agent_py = _render_agent(name, resolved_description, instruction, selected)
     manifest_json = json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"

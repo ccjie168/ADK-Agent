@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -13,6 +14,7 @@ from .artifact import AgentArtifact
 from .policy import DataClass, ToolGrant
 
 Exposure = Literal["none", "mcp", "http", "a2a"]
+ExecutionTier = Literal["in_process", "sandboxed"]
 
 _SAFE_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
 
@@ -55,6 +57,8 @@ class AgentManifest(BaseModel):
     exposure: Exposure = "none"
     eval_suite: EvalSuite | None = None
     slo: Slo | None = None
+    # None only appears on records published before ADR-0024; it reads as in_process.
+    execution_tier: ExecutionTier | None = None
 
 
 class AgentRef(BaseModel):
@@ -86,5 +90,17 @@ class PublishedAgent(BaseModel):
 def manifest_digest(manifest: AgentManifest) -> str:
     """Hash the manifest's canonical JSON. The digest is not part of the manifest."""
     payload = manifest.model_dump(mode="json")
+    if payload.get("execution_tier") is None:
+        payload.pop("execution_tier", None)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def declared_execution_tier(data: Mapping[str, Any]) -> ExecutionTier:
+    """Read the tier a new publish must declare; legacy records may omit it."""
+    value = data.get("execution_tier")
+    if value is None:
+        raise ValueError("manifest must declare execution_tier")
+    if value not in ("in_process", "sandboxed"):
+        raise ValueError("manifest execution_tier must be in_process or sandboxed")
+    return cast(ExecutionTier, value)

@@ -177,6 +177,22 @@
       ],
       "default": null
     },
+    "execution_tier": {
+      "anyOf": [
+        {
+          "enum": [
+            "in_process",
+            "sandboxed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Tier"
+    },
     "exposure": {
       "default": "none",
       "enum": [

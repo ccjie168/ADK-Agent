@@ -86,6 +86,7 @@ def _manifest(_version: str = "1.0.0") -> dict:
         "tenant": "acme",
         "owner": "acme",
         "model_policy": {"provider_allowlist": ["litellm"]},
+        "execution_tier": "in_process",
     }
 
 

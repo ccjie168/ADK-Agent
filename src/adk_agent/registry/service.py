@@ -36,10 +36,12 @@ from ..core import (
     LifecycleTransitionError,
     Principal,
     PublishedAgent,
+    declared_execution_tier,
     manifest_digest,
 )
 from ..core.artifact import MAX_ARTIFACT_BYTES, MEDIA_TYPE
 from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
+from ..sandbox.agent import agent_sandbox_available
 from .artifacts import ArtifactStoreError
 from .file import RegistryConflict, RegistryError, RegistryIntegrityError
 from .reports import EvalReportConflict
@@ -485,6 +487,15 @@ def build_registry_service_app(
             return _error("invalid_record", 400)
         if manifest_digest(record.manifest) != record.digest:
             return _error("invalid_record", 400)
+        manifest_data = body.get("manifest") if isinstance(body, dict) else None
+        if not isinstance(manifest_data, dict):
+            return _error("invalid_record", 400)
+        try:
+            tier = declared_execution_tier(manifest_data)
+        except ValueError:
+            return _error("invalid_record", 400)
+        if tier == "sandboxed" and not agent_sandbox_available():
+            return _error("sandbox_unavailable", 409)
         if _cross_tenant(_principal(request), record.manifest.tenant):
             return _error("tenant_forbidden", 403)
 

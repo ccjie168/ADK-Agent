@@ -87,6 +87,7 @@ def test_manifest_carries_tools_and_data_classes():
     )
 
     assert manifest.exposure == "none"
+    assert manifest.execution_tier == "in_process"
     assert manifest.model_policy.provider_allowlist == ["litellm"]
     assert manifest.tool_grants == [
         ToolGrant(tool_id="ping", data_classes=["internal", "public", "internal"])

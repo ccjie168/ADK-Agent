@@ -308,3 +308,19 @@ def test_cli_wires_store_and_limit(tmp_path, monkeypatch):
     assert captured["artifact_store"] is not None
     assert captured["artifact_loader"] is not None
     assert captured["max_loaded_agents"] == 5
+
+
+@needs_crypto
+def test_sandboxed_record_is_refused(tmp_path):
+    key = _key()
+    registry = FileAgentRegistry(tmp_path / "registry")
+    sandboxed = published_from(
+        _manifest(version="2.0.0").model_copy(update={"execution_tier": "sandboxed"})
+    )
+    asyncio.run(registry.publish(sandboxed))
+
+    with TestClient(_app(tmp_path, trust_key=key)) as client:
+        response = _load(client, version="2.0.0")
+
+    assert response.status_code == 409
+    assert response.json() == {"error": "sandbox_unavailable"}
