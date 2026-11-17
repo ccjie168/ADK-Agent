@@ -73,3 +73,26 @@ $ pytest tests/sandbox -q（WSL Ubuntu 24.04）
 
 $ python scripts/check.py --full
 （见提交前输出）
+
+七、第二轮复核（HEAD c722995）
+
+结论 DO NOT MERGE，又两处 Critical 可在真实链路上拿到父进程 API Key：
+- `config: {"httpOptions": {...}}` 用 camelCase 别名通过校验，按键 pop 挡不住。
+- `cache_config.create_http_options` 未消毒，ADK 建缓存时会用它覆盖 base_url。
+
+修复：
+- `_sanitize_model_request` 改成先 `LlmRequest.model_validate`，再在模型对象上清字段：
+  `config.http_options`、`config.cached_content`、`config.store`、`config.should_return_http_response`、
+  `cache_config`、`cache_metadata`、`previous_interaction_id`、`live_connect_config`；强制 `model`。
+- `contents` 里出现 `file_data` 直接抛 `SandboxCrashed`，不让父进程按子进程给的 URI 取资源。
+- 无模型与超限两条分支的 `_reply` 移进外层 try，回包失败统一映射为 `SandboxCrashed`。
+- 新增用例：camelCase + cache_config（`test_model_aliases_and_cache_options_are_stripped`）、
+  file_uri 拒绝（`test_model_file_references_are_rejected`）、回包失败映射（`test_reply_failures_are_crashed`）。
+
+八、第二轮修复后绿态
+
+$ pytest tests/sandbox -q（Windows 子集）
+28 passed, 7 skipped
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+65 passed

@@ -223,16 +223,31 @@ class ProcessAgentSandbox:
         if not isinstance(data, dict):
             raise SandboxCrashed("worker sent an invalid model request")
         payload = dict(data)
-        config = payload.get("config")
-        if isinstance(config, dict):
-            config = dict(config)
-            config.pop("http_options", None)
-            payload["config"] = config
-        payload.pop("live_connect_config", None)
         name = getattr(self.model, "model", None)
         if isinstance(name, str) and name:
             payload["model"] = name
-        return LlmRequest.model_validate(payload)
+        payload.pop("live_connect_config", None)
+        # Validate first, then clear fields on the model: pydantic accepts both
+        # snake_case and camelCase aliases, so popping keys is not enough.
+        request = LlmRequest.model_validate(payload)
+        if isinstance(name, str) and name:
+            request.model = name
+        config = request.config
+        if config is not None:
+            config.http_options = None
+            config.cached_content = None
+            config.should_return_http_response = None
+            config.store = None
+        request.cache_config = None
+        request.cache_metadata = None
+        request.previous_interaction_id = None
+        for content in request.contents or []:
+            for part in content.parts or []:
+                if getattr(part, "file_data", None) is not None:
+                    raise SandboxCrashed(
+                        "file references are not allowed in sandboxed model requests"
+                    )
+        return request
 
     async def _serve_model(
         self,
@@ -244,27 +259,31 @@ class ProcessAgentSandbox:
         call_id = frame.get("id")
         if not isinstance(call_id, int) or proc.stdin is None:
             raise SandboxCrashed("worker sent an invalid model frame")
-        if self.model is None:
-            await self._reply(
-                proc,
-                {
-                    "type": "model_error",
-                    "id": call_id,
-                    "message": "model mediation is not configured",
-                },
-                deadline,
-            )
-            return
-        if calls[0] >= self.limits.max_model_calls:
-            await self._reply(
-                proc,
-                {"type": "model_error", "id": call_id, "message": "model call limit exceeded"},
-                deadline,
-            )
-            return
-        calls[0] += 1
-        model = self.model
         try:
+            if self.model is None:
+                await self._reply(
+                    proc,
+                    {
+                        "type": "model_error",
+                        "id": call_id,
+                        "message": "model mediation is not configured",
+                    },
+                    deadline,
+                )
+                return
+            if calls[0] >= self.limits.max_model_calls:
+                await self._reply(
+                    proc,
+                    {
+                        "type": "model_error",
+                        "id": call_id,
+                        "message": "model call limit exceeded",
+                    },
+                    deadline,
+                )
+                return
+            calls[0] += 1
+            model = self.model
             try:
                 request = self._sanitize_model_request(frame.get("request"))
 
@@ -277,6 +296,8 @@ class ProcessAgentSandbox:
                 remaining = max(deadline - asyncio.get_running_loop().time(), 0.001)
                 responses = await asyncio.wait_for(collect(), timeout=remaining)
             except asyncio.TimeoutError:
+                raise
+            except SandboxCrashed:
                 raise
             except Exception as exc:  # noqa: BLE001
                 await self._reply(
