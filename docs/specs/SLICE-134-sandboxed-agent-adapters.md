@@ -29,7 +29,7 @@
 
 - 新增 `src/adk_agent/sandbox/proxy.py`
 - 修改 `src/adk_agent/sandbox/agent.py`、`registry/loader.py`、`console.py`、`cli.py`
-- 测试：`tests/sandbox/test_agent_proxy.py`、`tests/test_registry_loader.py`、`tests/test_console_on_demand.py`、`tests/test_cli_sandbox_adapters.py`
+- 测试：`tests/sandbox/test_agent_proxy.py`、`tests/test_registry_startup.py`、`tests/test_console_on_demand.py`、`tests/test_cli_sandbox_adapters.py`、`tests/registry/test_execution_tier_boundary.py`
 - 文档：`docs/specs/ROADMAP.md`、`docs/PROGRESS.md`
 - 证据：`docs/evidence/SLICE-134-sandboxed-agent-adapters.txt`
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import importlib.util
 import json
@@ -330,3 +331,46 @@ def test_sandboxed_with_tool_grants_is_refused(tmp_path):
             )
     finally:
         set_agent_sandbox_backend(None)
+
+
+@needs_crypto
+def test_cli_refuses_sandboxed_record_with_tool_grants(tmp_path, monkeypatch, capsys):
+    from adk_agent.sandbox.agent import set_agent_sandbox_backend
+
+    key = _key()
+    _published(tmp_path, key)
+    manifest = AgentManifest(
+        id="bot",
+        version="3.0.0",
+        tenant="acme",
+        owner="acme",
+        model_policy={"provider_allowlist": ["litellm"]},
+        execution_tier="sandboxed",
+        tool_grants=[{"tool_id": "crm.read", "data_classes": ["internal"]}],
+    )
+    digest = "sha256:" + "a" * 64
+    artifact = AgentArtifact(digest=digest, size=1, signature=sign_digest(digest, key), key_id="k1")
+    asyncio.run(
+        FileAgentRegistry(tmp_path / "registry").publish(
+            published_from(manifest, artifact=artifact)
+        )
+    )
+    monkeypatch.setenv("ADK_ARTIFACT_KEYS", json.dumps({"k1": _raw_hex(key)}))
+    set_agent_sandbox_backend(_SandboxBackend())
+    try:
+        with pytest.raises(SystemExit) as exc:
+            cli._registry_agents(
+                argparse.Namespace(
+                    agent_ref=["acme/bot@3.0.0"],
+                    registry=str(tmp_path / "registry"),
+                    artifact_dir=str(tmp_path / "store"),
+                    artifact_keys=None,
+                    registry_url=None,
+                    registry_token_env="ADK_REGISTRY_AUTH_TOKEN",
+                )
+            )
+    finally:
+        set_agent_sandbox_backend(None)
+
+    assert exc.value.code == 1
+    assert "tool grants" in capsys.readouterr().err

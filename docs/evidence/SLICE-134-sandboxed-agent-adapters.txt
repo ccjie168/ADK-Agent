@@ -17,7 +17,7 @@ $ pytest tests/test_registry_startup.py tests/test_console_on_demand.py \
 
 失败的 11 个是新增的 4 个加载/代理用例、2 个控制台按需加载用例、6 个 CLI 用例，
 以及改判据后的 test_load_agent_gates_sandboxed_records（旧断言要求
-loader.calls == 1，新判据要求 0）。新增用例合计 13 个，基线全部失败。
+loader.calls == 1，新判据要求 0）。新增用例 12 个、改判据的既有用例 1 个，基线全部失败。
 
 二、实现
 
@@ -33,6 +33,7 @@ loader.calls == 1，新判据要求 0）。新增用例合计 13 个，基线全
   `serve-many` 接受 `--agent-sandbox`/`--allow-unsandboxed`，在加载注册表 agent 之前注册
   `ProcessAgentSandbox(model=build_model())`；非 POSIX 默认退出 1。
 - 契约：`cli.md`、`sandbox.md`、`console.md` 同步。
+- CLI 把 `SandboxToolsUnavailable` 映射为 `registry load failed: ...` 并退出 1，`test_cli_refuses_sandboxed_record_with_tool_grants` 覆盖。
 
 三、测试判据变更（已获用户同意）
 
