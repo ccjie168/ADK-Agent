@@ -64,9 +64,49 @@ def _artifact(source: str, *, digest_of: bytes | None = None):
     return AgentArtifact(digest=digest, size=len(data)), data
 
 
-def _run(artifact, data, text: str = "hi", *, wall: float = 30.0) -> SandboxResult:
-    sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=wall))
+def _run(artifact, data, text: str = "hi", *, wall: float = 30.0, model=None) -> SandboxResult:
+    sandbox = ProcessAgentSandbox(AgentSandboxLimits(wall_seconds=wall), model=model)
     return asyncio.run(sandbox.run(artifact, data, text))
+
+
+_MEDIATED = """
+from google.adk.agents import LlmAgent
+from adk_agent import build_model
+
+agent = LlmAgent(name="bot", model=build_model(__SPEC__), instruction=__INSTRUCTION__)
+"""
+
+
+def _mediated_source(instruction: str = "be nice", spec: str = "") -> str:
+    return _MEDIATED.replace("__SPEC__", spec).replace("__INSTRUCTION__", repr(instruction))
+
+
+class _ParentModel:
+    def __init__(
+        self, text: str = "from parent", fail: bool = False, echo_instruction: bool = False
+    ) -> None:
+        self.text = text
+        self.fail = fail
+        self.echo_instruction = echo_instruction
+        self.requests: list = []
+
+    async def generate_content_async(self, llm_request, stream=False):
+        from google.adk.models.llm_response import LlmResponse
+        from google.genai import types
+
+        self.requests.append(llm_request)
+        if self.fail:
+            raise RuntimeError("Boom")
+        text = self.text
+        config = getattr(llm_request, "config", None)
+        instruction = getattr(config, "system_instruction", None) if config else None
+        if self.echo_instruction and instruction is not None:
+            text = (
+                instruction
+                if isinstance(instruction, str)
+                else "".join(part.text or "" for part in instruction.parts)
+            )
+        yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text=text)]))
 
 
 @pytest.fixture(autouse=True)
@@ -370,3 +410,58 @@ def test_escaped_descendant_is_still_bounded():
         _run(artifact, data, wall=6.0)
 
     assert time.monotonic() - started < 30
+
+
+def test_model_calls_are_mediated():
+    model = _ParentModel()
+    artifact, data = _artifact(_mediated_source())
+
+    result = _run(artifact, data, model=model)
+
+    assert result.text == "from parent"
+    assert len(model.requests) == 1
+    request = model.requests[0]
+    assert request.contents[-1].parts[0].text == "hi"
+
+
+def test_model_spec_is_ignored():
+    model = _ParentModel(text="parent chose the model")
+    artifact, data = _artifact(_mediated_source(spec='"litellm:tenant/model"'))
+
+    assert _run(artifact, data, model=model).text == "parent chose the model"
+
+
+def test_model_mediation_requires_a_parent_model():
+    artifact, data = _artifact(_mediated_source())
+
+    with pytest.raises(SandboxCrashed) as raised:
+        _run(artifact, data)
+
+    assert "SandboxModelError" in str(raised.value)
+
+
+def test_model_errors_are_returned():
+    artifact, data = _artifact(_mediated_source())
+
+    with pytest.raises(SandboxCrashed) as raised:
+        _run(artifact, data, model=_ParentModel(fail=True))
+
+    assert "RuntimeError" in str(raised.value)
+
+
+def test_model_run_keeps_the_worker_env_empty(monkeypatch):
+    monkeypatch.setenv("ADK_TEST_LEAK", "leak-me")
+    model = _ParentModel(echo_instruction=True)
+    source = _MEDIATED.replace("__SPEC__", "").replace(
+        "__INSTRUCTION__", '"env=" + repr(sorted(os.environ))'
+    )
+    source = "import os\n" + source
+    artifact, data = _artifact(source)
+
+    result = _run(artifact, data, model=model)
+
+    assert "leak-me" not in result.text
+    line = next(item for item in result.text.splitlines() if item.startswith("env="))
+    entries = ast.literal_eval(line.removeprefix("env="))
+    allowed = {"SYSTEMROOT", "TEMP", "TMP"} if os.name == "nt" else set()
+    assert set(entries) <= allowed

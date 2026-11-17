@@ -1,0 +1,49 @@
+SLICE-130 沙箱模型出口中介
+日期: 2026-11-17
+依据: ADR-0024 第 3 条
+分支: slice-130-model-egress，基线 744846c
+
+一、红态（实现前）
+
+$ pytest tests/sandbox/test_agent_channel.py -q
+E   ModuleNotFoundError: No module named 'adk_agent.sandbox.agent_channel'
+1 error during collection
+
+$ pytest tests/sandbox/test_agent_process.py -q
+5 failed：ProcessAgentSandbox 不接受 model 参数，工件用 build_model() 时没有代理，
+未注入模型也能照常运行。
+（红态证据以失败用例名为准：test_model_calls_are_mediated、test_model_spec_is_ignored、
+test_model_mediation_requires_a_parent_model、test_model_errors_are_returned、
+test_model_run_keeps_the_worker_env_empty。）
+
+二、实现
+
+- sandbox/agent_channel.py：SandboxChannel 在 stdout 帧上写 model 请求、从 stdin 读
+  model_result / model_error，按递增 id 分发；SandboxModel 实现 ADK BaseLlm，
+  generate_content_async 把 LlmRequest 序列化后等父进程结果，再逐条产出 LlmResponse。
+- sandbox/agent_worker.py：读请求后创建通道并在加载工件前替换
+  adk_agent.build_model 与 adk_agent.models.build_model；传入的 spec 只作标签。
+- sandbox/agent_process.py：ProcessAgentSandbox 增加 model 注入；帧循环处理 model 帧，
+  在剩余墙钟内做非流式调用；stdin 保持打开直到运行结束；无模型时回 model_error。
+- 契约：docs/contracts/sandbox.md 增加模型中介帧、id 规则与工具出口仍拒绝的说明。
+
+三、绿态
+
+$ pytest tests/sandbox -q（Windows）
+25 passed, 7 skipped（本切片子集）
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+58 passed
+
+$ python scripts/check.py --full（Windows）
+1403 passed, 87 skipped
+[PASS] format / lint / types / layering / specs / test / sast / deps / secrets
+ALL PASS
+
+四、范围与已知缺口
+
+- 模型调用统一非流式；ADK 的流式模式在 v1 里按单次响应处理。
+- 模型由父进程注入，工件无法选择提供方或模型；manifest 的 model_policy 校验仍只在发布端。
+- 工具调用不中转：工具内的外连被网络守卫拒绝。工具网关 RPC 与平台门槛、执行路由一起，
+  在接入切片落地。
+- 子进程环境为空，凭据只在父进程；中介测试同时验证了工件侧环境没有父进程的测试密钥。

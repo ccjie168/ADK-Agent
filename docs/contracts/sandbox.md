@@ -45,6 +45,18 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
   - `load`：工件解包、摘要、`exec` 或类型检查失败，父进程抛 `SandboxCrashed`。
   - `crash`：运行期异常，父进程抛 `SandboxCrashed`。
 
+## 模型中介帧
+
+子进程无网络，`adk_agent.build_model()` 在 worker 内被替换为代理模型。工件必须用它取模型；传入的 spec 只是标签，真正调用哪个模型由父进程决定。
+
+- 子进程发 `{"type": "model", "id": <int>, "request": <LlmRequest JSON>}`。
+- 父进程在剩余墙钟内用注入的模型执行非流式调用，回
+  `{"type": "model_result", "id": <int>, "responses": [<LlmResponse JSON>]}`，或
+  `{"type": "model_error", "id": <int>, "message": "<异常类名>"}`。
+- 父进程没有注入模型时回 `model_error`，消息是 `model mediation is not configured`，运行以 `SandboxCrashed` 结束。
+- 请求与响应都是普通帧，受 32 MiB 上限约束；id 由子进程递增分配，未知 id 的响应当作无主帧丢弃。
+- 模型凭据只在父进程；子进程环境仍为空。工具调用不中转：工具里的外连会被守卫拒绝。
+
 ## 限制与平台差异
 
 - POSIX：`RLIMIT_CPU`、`RLIMIT_AS`、`RLIMIT_NOFILE`、`RLIMIT_FSIZE`；`processes` 非空时设 `RLIMIT_NPROC`。

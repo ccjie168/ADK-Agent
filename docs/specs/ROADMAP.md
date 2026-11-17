@@ -220,6 +220,7 @@ M5 出口证据见 `docs/evidence/M5-milestone.txt`。
 - SLICE-127 调度循环与重试：多副本 slot 单赢家，只调用 pinned 版本，补重试语义。已完成。
 - SLICE-128 执行层级与发布门槛：manifest 增加 `execution_tier`，发布与加载在无沙箱后端时拒绝 `sandboxed`，历史记录 digest 不变。已完成。
 - SLICE-129 agent 沙箱 worker 与协议：子进程加载与单轮运行，无网络、清空环境、RLIMIT 与墙钟超时，错误按类型映射。已完成。
+- SLICE-130 沙箱模型出口中介：`build_model()` 在 worker 内变为代理，模型调用经父进程执行，凭据不进入子进程。已完成。
 
 ## 完成定义
 

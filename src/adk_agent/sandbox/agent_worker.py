@@ -84,22 +84,43 @@ def _is_guard_violation(exc: BaseException) -> bool:
     return False
 
 
-async def _run(agent: Any, input_text: str) -> str:
+async def _run(agent: Any, input_text: str, sandbox_channel: Any = None) -> str:
     from google.adk.runners import Runner
     from google.adk.sessions import InMemorySessionService
     from google.genai import types
 
-    service = InMemorySessionService()
-    runner = Runner(app_name=agent.name, agent=agent, session_service=service)
-    session = await service.create_session(app_name=agent.name, user_id="sandbox")
-    message = types.Content(role="user", parts=[types.Part(text=input_text)])
-    text = ""
-    async for event in runner.run_async(
-        user_id="sandbox", session_id=str(session.id), new_message=message
-    ):
-        if event.is_final_response() and event.content and event.content.parts:
-            text = "".join(part.text or "" for part in event.content.parts)
-    return text
+    if sandbox_channel is not None:
+        sandbox_channel.start()
+    try:
+        service = InMemorySessionService()
+        runner = Runner(app_name=agent.name, agent=agent, session_service=service)
+        session = await service.create_session(app_name=agent.name, user_id="sandbox")
+        message = types.Content(role="user", parts=[types.Part(text=input_text)])
+        text = ""
+        async for event in runner.run_async(
+            user_id="sandbox", session_id=str(session.id), new_message=message
+        ):
+            if event.is_final_response() and event.content and event.content.parts:
+                text = "".join(part.text or "" for part in event.content.parts)
+        return text
+    finally:
+        if sandbox_channel is not None:
+            sandbox_channel.close()
+
+
+def _sandbox_model(spec: Any = None) -> Any:
+    """The parent chooses the model; the artifact's spec is only a label."""
+    from .agent_channel import SandboxModel
+
+    return SandboxModel(model="sandboxed")
+
+
+def _install_model_proxy() -> None:
+    import adk_agent
+    import adk_agent.models
+
+    adk_agent.build_model = _sandbox_model
+    adk_agent.models.build_model = _sandbox_model
 
 
 def main() -> int:
@@ -120,9 +141,14 @@ def main() -> int:
         artifact = AgentArtifact.model_validate(request["artifact"])
         data = base64.b64decode(str(request["data"]), validate=True)
         input_text = str(request.get("input", ""))
+        from .agent_channel import SandboxChannel, set_channel
+
+        sandbox_channel = SandboxChannel(sys.stdin.buffer, out)
+        set_channel(sandbox_channel)
+        _install_model_proxy()
         agent = load_artifact_agent(artifact, data)
         phase = "run"
-        text = loop.run_until_complete(_run(agent, input_text))
+        text = loop.run_until_complete(_run(agent, input_text, sandbox_channel))
         loop.close()
         write_frame(out, {"type": "final", "text": text})
         return 0

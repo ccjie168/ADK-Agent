@@ -13,6 +13,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
+from google.adk.models.llm_request import LlmRequest
+
 from ..core import AgentArtifact
 from .agent import SandboxResult
 from .errors import SandboxCrashed, SandboxTimeout, SandboxViolation
@@ -99,8 +101,9 @@ def _error(frame: dict[str, Any], stderr: str) -> Exception:
 class ProcessAgentSandbox:
     """Run one artifact in a fresh child process with limits and no network."""
 
-    def __init__(self, limits: AgentSandboxLimits | None = None) -> None:
+    def __init__(self, limits: AgentSandboxLimits | None = None, model: Any = None) -> None:
         self.limits = limits or AgentSandboxLimits()
+        self.model = model
 
     def _env(self) -> dict[str, str]:
         if os.name != "nt":
@@ -123,6 +126,7 @@ class ProcessAgentSandbox:
             },
         }
         workdir = tempfile.mkdtemp(prefix="adk-agent-sandbox-")
+        proc: asyncio.subprocess.Process | None = None
         try:
             session: dict[str, Any] = {}
             if os.name == "posix":
@@ -154,9 +158,6 @@ class ProcessAgentSandbox:
                     raise SandboxCrashed("worker exited before reading the request") from exc
                 except FrameError as exc:
                     raise SandboxCrashed(f"request does not fit in one frame: {exc}") from exc
-                finally:
-                    proc.stdin.close()
-
                 applied: dict[str, int] = {}
                 while True:
                     remaining = deadline - loop.time()
@@ -167,6 +168,8 @@ class ProcessAgentSandbox:
                             read_frame_async(proc.stdout), timeout=remaining
                         )
                     except FrameError as exc:
+                        if proc.stdin is not None:
+                            proc.stdin.close()
                         await self._reap(proc)
                         stderr = await _stderr_text(stderr_task)
                         detail = f": {stderr.strip()[:300]}" if stderr.strip() else ""
@@ -177,16 +180,25 @@ class ProcessAgentSandbox:
                     if kind == "limits":
                         applied = _applied_limits(frame)
                         continue
+                    if kind == "model":
+                        await self._serve_model(frame, proc, deadline)
+                        continue
                     if kind == "final":
+                        if proc.stdin is not None:
+                            proc.stdin.close()
                         await self._reap(proc)
                         return SandboxResult(text=str(frame.get("text", "")), limits=applied)
                     if kind == "error":
+                        if proc.stdin is not None:
+                            proc.stdin.close()
                         await self._reap(proc)
                         raise _error(frame, await _stderr_text(stderr_task))
                     raise SandboxCrashed("worker sent an unknown frame")
             except asyncio.TimeoutError:
                 raise SandboxTimeout(f"worker exceeded {self.limits.wall_seconds}s") from None
             finally:
+                if proc.stdin is not None and not proc.stdin.is_closing():
+                    proc.stdin.close()
                 if proc.returncode is None:
                     _kill(proc)
                     await _wait_bounded(proc)
@@ -195,7 +207,66 @@ class ProcessAgentSandbox:
                     with suppress(asyncio.CancelledError):
                         await stderr_task
         finally:
+            if proc is not None and proc.stdin is not None and not proc.stdin.is_closing():
+                proc.stdin.close()
             shutil.rmtree(workdir, ignore_errors=True)
+
+    async def _serve_model(
+        self,
+        frame: dict[str, Any],
+        proc: asyncio.subprocess.Process,
+        deadline: float,
+    ) -> None:
+        call_id = frame.get("id")
+        if not isinstance(call_id, int) or proc.stdin is None:
+            raise SandboxCrashed("worker sent an invalid model frame")
+        if self.model is None:
+            await self._reply(
+                proc,
+                {
+                    "type": "model_error",
+                    "id": call_id,
+                    "message": "model mediation is not configured",
+                },
+                deadline,
+            )
+            return
+        try:
+            request = LlmRequest.model_validate(frame.get("request"))
+
+            async def collect() -> list[dict[str, Any]]:
+                return [
+                    item.model_dump(mode="json")
+                    async for item in self.model.generate_content_async(request, stream=False)
+                ]
+
+            remaining = max(deadline - asyncio.get_running_loop().time(), 0.001)
+            responses = await asyncio.wait_for(collect(), timeout=remaining)
+        except asyncio.TimeoutError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            await self._reply(
+                proc,
+                {"type": "model_error", "id": call_id, "message": type(exc).__name__},
+                deadline,
+            )
+            return
+        await self._reply(
+            proc,
+            {"type": "model_result", "id": call_id, "responses": responses},
+            deadline,
+        )
+
+    @staticmethod
+    async def _reply(
+        proc: asyncio.subprocess.Process,
+        payload: dict[str, Any],
+        deadline: float,
+    ) -> None:
+        if proc.stdin is None:
+            raise SandboxCrashed("worker pipes are unavailable")
+        remaining = max(deadline - asyncio.get_running_loop().time(), 0.001)
+        await asyncio.wait_for(write_frame_async(proc.stdin, payload), timeout=remaining)
 
     @staticmethod
     async def _reap(proc: asyncio.subprocess.Process) -> None:
