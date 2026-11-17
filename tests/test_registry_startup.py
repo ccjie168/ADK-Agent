@@ -228,3 +228,25 @@ def test_missing_artifact_config(tmp_path, monkeypatch, capsys):
 
     assert exc.value.code == 1
     assert "artifact" in capsys.readouterr().err
+
+
+@needs_crypto
+def test_cli_refuses_sandboxed_record_without_a_backend(tmp_path, monkeypatch, capsys):
+    key = _key()
+    _published(tmp_path, key)
+    manifest = AgentManifest(
+        id="bot",
+        version="2.0.0",
+        tenant="acme",
+        owner="acme",
+        model_policy={"provider_allowlist": ["litellm"]},
+        execution_tier="sandboxed",
+    )
+    asyncio.run(FileAgentRegistry(tmp_path / "registry").publish(published_from(manifest)))
+    monkeypatch.setenv("ADK_ARTIFACT_KEYS", json.dumps({"k1": _raw_hex(key)}))
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["console", *_common_args(tmp_path, key, "acme/bot@2.0.0")])
+
+    assert exc.value.code == 1
+    assert "sandbox" in capsys.readouterr().err

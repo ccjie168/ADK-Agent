@@ -104,6 +104,7 @@ from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .runtime.sessions import scoped_user_id, session_tenant
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
+from .sandbox.agent import AgentSandboxUnavailable, require_execution_supported
 from .secretstore import PrefixedEnvSecretProvider, SecretNotFound
 from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_declared_guards
 from .tracing import resolve_trace_id
@@ -2970,6 +2971,10 @@ def build_console_app(
             return JSONResponse({"error": "lifecycle_unavailable"}, status_code=503)
         if state.status == "retired":
             return JSONResponse({"error": "version_retired"}, status_code=409)
+        try:
+            require_execution_supported(record.manifest)
+        except AgentSandboxUnavailable:
+            return JSONResponse({"error": "sandbox_unavailable"}, status_code=409)
 
         async with load_lock:
             if agent_id in agents:

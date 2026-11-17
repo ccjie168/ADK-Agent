@@ -16,6 +16,7 @@ def _manifest_data() -> dict:
         "tenant": "team-a",
         "owner": "team-a",
         "description": "support",
+        "execution_tier": "in_process",
         "model_policy": {"provider_allowlist": ["litellm"]},
         "tool_grants": [{"tool_id": "crm.read", "data_classes": ["internal"]}],
         "data_scopes": ["internal"],

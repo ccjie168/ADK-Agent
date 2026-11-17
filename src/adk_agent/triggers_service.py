@@ -43,6 +43,7 @@ from .core import (
 from .metrics import MetricsRegistry
 from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .runtime.execution import AgentRuntime
+from .sandbox.agent import AgentSandboxUnavailable, require_execution_supported
 from .tools.enforcement import install_declared_guards
 from .tracing import resolve_trace_id
 
@@ -58,6 +59,7 @@ _ERROR_STATUS = {
     "digest_mismatch": 409,
     "version_retired": 409,
     "approval_required": 409,
+    "sandbox_unavailable": 409,
     "agent_load_failed": 502,
     "quota_exceeded": 429,
     "invalid_request": 400,
@@ -309,6 +311,13 @@ def build_triggers_app(
                     await emit("error", code, run_id, trace_id)
                     return TriggerExecution("error", code, run_id, trace_id)
                 await asyncio.sleep(0.2 * attempt)
+
+        try:
+            require_execution_supported(published.manifest)
+        except AgentSandboxUnavailable:
+            await finish("error", "sandbox_unavailable")
+            await emit("error", "sandbox_unavailable", run_id, trace_id)
+            return TriggerExecution("error", "sandbox_unavailable", run_id, trace_id)
 
         if any(grant.requires_approval for grant in published.manifest.tool_grants):
             await finish("denied", "approval_required")

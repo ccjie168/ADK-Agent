@@ -1,0 +1,78 @@
+SLICE-128 执行层级与发布门槛
+日期: 2026-11-17
+依据: ADR-0024 第 1、5 条
+分支: slice-128-execution-tier，基线 b081a5e（ADR-0024 已合入 master）
+
+一、红态（实现前）
+
+$ pytest tests/core/test_execution_tier.py -q
+E   ImportError: cannot import name 'declared_execution_tier' from 'adk_agent.core'
+1 error in 1.68s
+
+$ pytest tests/registry/test_execution_tier_boundary.py -q
+E   ModuleNotFoundError: No module named 'adk_agent.sandbox.agent'
+1 error in 1.59s
+
+$ pytest tests/test_cli_publish_tier.py -q
+FAILED tests/test_cli_publish_tier.py::test_publish_requires_a_declared_tier
+FAILED tests/test_cli_publish_tier.py::test_publish_in_process_writes_the_record
+2 failed, 1 passed
+（缺失层级被 pydantic 当成未知字段拒绝，发布没有单独的层级门槛。）
+
+$ pytest tests/test_console_on_demand.py::test_sandboxed_record_is_refused -q
+FAILED tests/test_console_on_demand.py::test_sandboxed_record_is_refused
+（返回 artifact_missing，不是 sandbox_unavailable。）
+
+$ pytest tests/test_triggers_service.py::test_sandboxed_trigger_is_refused -q
+ERROR tests/test_triggers_service.py
+pydantic_core.ValidationError: execution_tier Extra inputs are not permitted
+
+$ pytest tests/compose/test_declarative.py::test_manifest_carries_tools_and_data_classes -q
+AttributeError: 'AgentManifest' object has no attribute 'execution_tier'
+
+$ pytest tests/test_new_cli.py::test_new_creates_project -q
+AttributeError: 'AgentManifest' object has no attribute 'execution_tier'
+
+二、实现
+
+- core/manifest.py：新增 ExecutionTier、可选 execution_tier 字段、declared_execution_tier。
+  execution_tier 为 None 时 manifest_digest 去掉该键，历史记录 digest 不变；显式声明的层级进入 digest。
+- sandbox/agent.py：AgentSandboxUnavailable、后端注册钩子、require_execution_supported。
+  当前没有后端，sandboxed 在发布与加载两处被拒。
+- 发布边界：registry/service.py 与 cli.py 要求 manifest 显式声明层级；sandboxed 无后端返回 409 / 退出 1。
+- 加载边界：registry/loader.py、console.py 按需加载、triggers_service.py 执行前再查一次，映射 409 sandbox_unavailable。
+- 组合器与脚手架生成 in_process。
+- 契约先改：manifest.schema.json 重新导出，README、cli、registry_service、console、trigger_service、compose 同步。
+
+三、绿态
+
+$ pytest -q
+1373 passed, 80 skipped in 57.52s
+
+$ python scripts/check.py --full
+1373 passed, 80 skipped
+[PASS] format
+[PASS] lint
+[PASS] types
+[PASS] layering
+[PASS] specs
+[PASS] test
+[PASS] sast
+[PASS] deps
+[PASS] secrets
+ALL PASS
+
+四、兼容性与已知缺口
+
+- tests/core/test_execution_tier.py::test_legacy_manifest_digest_is_unchanged 证明无层级历史 manifest 的 digest 等于去掉该键的 canonical payload，读取旧记录不需要迁移。
+- 服务端缺少层级返回 400 invalid_record；同一 manifest 只有层级不同时 digest 不同，属于不同版本锚点。
+- 本切片无法区分组合器产物与手写 manifest，in_process 的发布仍等价于现状。收紧点定在 SLICE-129：
+  后端可用后 publish 默认 sandboxed，in_process 只接受平台构建密钥签名的工件。该缺口记入 PROGRESS。
+- 测试夹具更新（补 execution_tier="in_process"）：tests/registry/test_registry_service.py、test_registry_client.py、
+  tests/test_cli_publish_artifact.py、tests/test_eval_gate.py、tests/test_registry_cli.py、tests/test_registry_url_wiring.py，
+  以及 scripts/demo_seed.py。断言未改动。
+- 验证代理发现 CLI 从注册表启动时没有捕获 AgentSandboxUnavailable，会裸 traceback。已加入 cli.py 的异常元组，
+  新增回归测试 tests/test_registry_startup.py::test_cli_refuses_sandboxed_record_without_a_backend（退出 1，stderr 含 sandbox）。
+- 验证代理发现服务端 tier 检查先于跨租户检查，会把能力状态泄露给无权调用方。已把 tenant_forbidden 判定提前到 tier 之前。
+- 已知缺口（SLICE-129 处理）：后端探针是可写模块全局，加载器仍用 InProcessArtifactLoader；可用性必须来自真实 worker，
+  setter 要收紧，加载器要按 tier 选择执行器。存储适配器与公开 loader 本身不做 tier 校验，属纵深防御缺口。

@@ -32,6 +32,8 @@
 - 成功返回 201，正文是已存记录。同一版本同 digest 重发返回 201 和已有记录，幂等。
 - 同一版本不同 digest 返回 409 `{"error":"version_conflict"}`。
 - 请求体不是 JSON 返回 400 `invalid_json`；模型或摘要不符返回 400 `invalid_record`。
+- manifest 必须显式声明 `execution_tier`；缺失或为 `null` 返回 400 `invalid_record`。
+- 声明 `sandboxed` 而服务没有 agent 沙箱后端时返回 409 `sandbox_unavailable`；历史记录没有该字段按 `in_process` 读取，digest 不变。
 
 ## `PUT /v1/artifacts/{digest}`
 
@@ -136,6 +138,7 @@
 | 403 | `forbidden` | 非 admin 修改生命周期 |
 | 404 | `not_found` | 版本不存在 |
 | 404 | `eval_report_not_found` | 该版本没有评测报告 |
+| 409 | `sandbox_unavailable` | 声明 `sandboxed` 但没有 agent 沙箱后端 |
 | 409 | `version_conflict` | 同版本不同内容 |
 | 409 | `artifact_not_published` | 没有引用该摘要的发布记录 |
 | 409 | `artifact_untrusted` | 上传时记录的签名不可信 |

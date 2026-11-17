@@ -16,6 +16,7 @@ def _manifest_data(*, eval_suite: dict | None = None) -> dict:
         "tenant": "team-a",
         "owner": "team-a",
         "model_policy": {"provider_allowlist": ["litellm"]},
+        "execution_tier": "in_process",
     }
     if eval_suite is not None:
         data["eval_suite"] = eval_suite

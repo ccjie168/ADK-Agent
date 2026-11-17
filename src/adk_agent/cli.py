@@ -276,6 +276,7 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         RefError,
         load_registry_agents,
     )
+    from .sandbox.agent import AgentSandboxUnavailable
 
     trust = _artifact_trust(args)
     if trust is None:
@@ -314,6 +315,7 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         ArtifactLoadError,
         ArtifactTrustError,
         ArtifactStoreError,
+        AgentSandboxUnavailable,
         PublishUnavailable,
     ) as exc:
         print(f"registry load failed: {exc}", file=sys.stderr)
@@ -3206,17 +3208,20 @@ def main(argv: list[str] | None = None) -> None:
         if stored.artifact is not None:
             print(f"artifact {stored.artifact.digest}")
     elif args.cmd == "publish":
-        from .core import EvalReport
+        from .core import AgentManifest, EvalReport, declared_execution_tier
         from .eval import enforce_eval_gate
         from .registry import (
             FileEvalReportStore,
             HttpEvalReportStore,
-            load_manifest,
             published_from,
         )
+        from .sandbox.agent import agent_sandbox_available
 
         try:
-            manifest = load_manifest(args.path)
+            data = json.loads(Path(args.path).read_text(encoding="utf-8"))
+            manifest = AgentManifest.model_validate(data)
+            if declared_execution_tier(data) == "sandboxed" and not agent_sandbox_available():
+                raise ValueError("manifest requires the agent sandbox, which is not available")
             report = (
                 EvalReport.model_validate_json(Path(args.eval_report).read_text(encoding="utf-8"))
                 if args.eval_report

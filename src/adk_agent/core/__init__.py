@@ -47,9 +47,11 @@ from .manifest import (
     AgentManifest,
     AgentRef,
     EvalSuite,
+    ExecutionTier,
     ModelPolicy,
     PublishedAgent,
     Slo,
+    declared_execution_tier,
     manifest_digest,
 )
 from .model import Message, ModelRequest, ModelResponse
@@ -186,6 +188,7 @@ __all__ = [
     "EvalReportStore",
     "EvalSuite",
     "EvalSuiteSpec",
+    "ExecutionTier",
     "GrantRequestConflict",
     "GrantRequestError",
     "GrantRequestExpired",
@@ -262,6 +265,7 @@ __all__ = [
     "TriggerStore",
     "TriggerStoreUnavailable",
     "credential_env_name",
+    "declared_execution_tier",
     "effective_status",
     "hash_webhook_token",
     "is_active",

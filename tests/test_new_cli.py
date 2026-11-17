@@ -22,6 +22,7 @@ def test_new_creates_project(tmp_path, monkeypatch, capsys):
     manifest = AgentManifest.model_validate(json.loads((project / "manifest.json").read_text()))
     assert manifest.id == "support-bot"
     assert manifest.tenant == "local"
+    assert manifest.execution_tier == "in_process"
     assert "created" in capsys.readouterr().out
 
 

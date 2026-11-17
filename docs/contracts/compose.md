@@ -34,7 +34,7 @@
 
 ## 生成结果
 
-- manifest：`exposure="none"`，`model_policy.provider_allowlist=["litellm"]`，无 `eval_suite`。
+- manifest：`exposure="none"`，`execution_tier="in_process"`（平台模板生成，ADR-0024），`model_policy.provider_allowlist=["litellm"]`，无 `eval_suite`。
 - 工件：确定性 zip，含 `manifest.json` 与 `agent.py`。同参数同模板得到同一 sha256。
 - `agent.py` 导出 `agent` 与 `root_agent`，名字等于 manifest id。
 - 发布：`enforce_eval_gate`、`published_from`、注册表 `publish`，再用工件存储或 HTTP 注册表的 `upload_artifact` 写字节。重复组合相同内容幂等；同版本不同内容冲突。

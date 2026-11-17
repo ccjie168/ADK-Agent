@@ -122,7 +122,7 @@ class FakeLifecycle:
         return AgentLifecycle(status=self.status)
 
 
-def _published(*, grants: list[ToolGrant] | None = None):
+def _published(*, grants: list[ToolGrant] | None = None, tier: str | None = None):
     manifest = AgentManifest(
         id="assistant",
         version="1.0.0",
@@ -130,6 +130,7 @@ def _published(*, grants: list[ToolGrant] | None = None):
         owner="acme",
         model_policy={"provider_allowlist": ["litellm"]},
         tool_grants=grants or [],
+        execution_tier=tier,
     )
     artifact = AgentArtifact(digest="sha256:" + "d" * 64, size=1)
     return published_from(manifest, artifact=artifact)
@@ -442,3 +443,19 @@ def test_quota_exceeded():
 
     fired = [event for event in audit.recent(20) if event.action == "trigger.fire"]
     assert any(event.status == "denied" and event.error_code == "quota_exceeded" for event in fired)
+
+
+def test_sandboxed_trigger_is_refused():
+    published = _published(tier="sandboxed")
+    client, runner, trust, loader = _client(
+        [_webhook(digest=f"sha256:{published.digest}")], published=published
+    )
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 409
+    assert response.json() == {"error": "sandbox_unavailable"}
+    assert runner.calls == 0
+    assert trust.verified == []
+    assert loader.loaded == []

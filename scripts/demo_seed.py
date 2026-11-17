@@ -73,6 +73,7 @@ def _write_project(root: Path, tenant: str, agent_id: str) -> Path:
         owner=tenant,
         description=f"Demo agent {agent_id}",
         model_policy={"provider_allowlist": ["litellm"]},
+        execution_tier="in_process",
     )
     (source / "manifest.json").write_text(
         manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"

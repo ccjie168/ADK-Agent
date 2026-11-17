@@ -22,6 +22,7 @@
 
 校验 manifest，跑评测门禁，计算 digest，写入注册表。
 
+- manifest 必须显式声明 `execution_tier`（`in_process` 或 `sandboxed`）；缺失或非法退出 1。声明 `sandboxed` 而本地没有 agent 沙箱后端时退出 1（ADR-0024）。
 - manifest 声明 `eval_suite` 时必须给 `--eval-report`，且报告的 `suite_id`、`version` 一致，`score` 不低于 `pass_threshold`。否则退出 1，不写注册表。
 - 成功：stdout 输出 `published tenant/id@version sha256:<digest>`，退出 0。
 - 重复发布相同内容：幂等成功，返回已存记录。
@@ -51,7 +52,7 @@
 - `name` 和 `tenant` 都必须匹配 `^[A-Za-z0-9][A-Za-z0-9._+-]*$`。
 - `--tenant` 默认 `local`，写入生成的 `manifest.json`。
 - 生成 `agent.py`、`manifest.json`、`README.md`、`tests/test_agent.py`。
-- 生成的 `manifest.json` 必须通过 `AgentManifest` 校验。
+- 生成的 `manifest.json` 必须通过 `AgentManifest` 校验，并声明 `execution_tier: "in_process"`。
 - `agent.py` 已存在时退出 1。
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。

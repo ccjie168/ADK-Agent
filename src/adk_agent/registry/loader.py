@@ -11,6 +11,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from ..core import MAX_ARTIFACT_BYTES, AgentArtifact, AgentManifest, ArtifactStore
+from ..sandbox.agent import require_execution_supported
 from .trust import TrustStore
 
 _ALLOWED = frozenset({"manifest.json", "README.md", "requirements.txt"})
@@ -106,6 +107,7 @@ async def load_agent(
     published = await registry.get(ref, tenant)
     if published is None:
         raise ArtifactLoadError("agent version not found")
+    require_execution_supported(published.manifest)
     if published.artifact is None:
         raise ArtifactLoadError("agent version has no artifact")
     trust.verify(published.artifact)

@@ -95,6 +95,7 @@ class BuiltinTemplateSource:
             tool_grants=[ToolGrant(tool_id="ping", data_classes=["internal"])],
             data_scopes=["internal"],
             exposure="none",
+            execution_tier="in_process",
         )
         return {
             "agent.py": _AGENT_PY.substitute(name=name),
