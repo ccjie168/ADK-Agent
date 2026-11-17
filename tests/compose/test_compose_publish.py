@@ -59,6 +59,8 @@ def _publish(tmp_path, key, *, instruction: str = "You are helpful.", tools=("pi
             artifact_store=store,
             private_key=key,
             key_id="publisher-1",
+            builder_key=key,
+            builder_key_id="builder-1",
         )
     )
     return published, registry, store
@@ -107,3 +109,25 @@ def test_compose_publishes_a_plain_version(tmp_path):
 
     with pytest.raises(RegistryConflict):
         _publish(tmp_path, key, instruction="A completely different instruction.")
+
+
+@needs_crypto
+def test_compose_requires_a_builder_key(tmp_path):
+    from adk_agent.compose import ComposeError
+    from adk_agent.registry import FileAgentRegistry, FileArtifactStore
+
+    key = _key(tmp_path)
+    with pytest.raises(ComposeError):
+        asyncio.run(
+            compose_and_publish(
+                template_id="single-llm",
+                name="assistant",
+                version="1.0.0",
+                tenant="acme",
+                instruction="You are helpful.",
+                registry=FileAgentRegistry(tmp_path / "registry"),
+                artifact_store=FileArtifactStore(tmp_path / "artifacts"),
+                private_key=key,
+                key_id="publisher-1",
+            )
+        )

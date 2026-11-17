@@ -28,12 +28,12 @@ def _publish(tmp_path, tier: str | None):
     cli.main(["publish", str(path), "--registry", str(tmp_path / "registry")])
 
 
-def test_publish_requires_a_declared_tier(tmp_path, capsys):
+def test_publish_defaults_to_sandboxed(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc:
         _publish(tmp_path, None)
 
     assert exc.value.code == 1
-    assert "execution_tier" in capsys.readouterr().err
+    assert "sandbox" in capsys.readouterr().err
     assert not (tmp_path / "registry").exists()
 
 

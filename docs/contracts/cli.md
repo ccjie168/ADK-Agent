@@ -18,11 +18,13 @@
 - 失败：stderr 输出 `invalid manifest: <原因>`，退出 1。
 - 未知字段、非法 `id` / `version` / `tenant`、缺失必填字段都算失败。
 
-## `adk-agent publish <path> [--registry DIR] [--eval-report FILE] [--artifact DIR|ZIP --key FILE --key-id ID] [--artifact-dir DIR | $ARTIFACT_URL]`
+## `adk-agent publish <path> [--registry DIR] [--eval-report FILE] [--artifact DIR|ZIP --key FILE --key-id ID [--builder-key FILE --builder-key-id ID --builder-keys FILE]] [--artifact-dir DIR | $ARTIFACT_URL]`
 
 校验 manifest，跑评测门禁，计算 digest，写入注册表。
 
-- manifest 必须显式声明 `execution_tier`（`in_process` 或 `sandboxed`）；缺失或非法退出 1。声明 `sandboxed` 而本地没有 agent 沙箱后端时退出 1（ADR-0024）。
+- manifest 缺省 `execution_tier` 时按 `sandboxed` 处理；声明 `sandboxed` 而本地没有 agent 沙箱后端时退出 1（ADR-0024）。
+- `in_process` 且带工件时必须提供 `--builder-key`/`--builder-key-id` 与 `--builder-keys`（或 `ADK_BUILDER_KEYS`），
+  构建签名验证失败退出 1；不带工件的 `in_process` 记录是元数据，不要求构建签名。
 - manifest 声明 `eval_suite` 时必须给 `--eval-report`，且报告的 `suite_id`、`version` 一致，`score` 不低于 `pass_threshold`。否则退出 1，不写注册表。
 - 成功：stdout 输出 `published tenant/id@version sha256:<digest>`，退出 0。
 - 重复发布相同内容：幂等成功，返回已存记录。
@@ -214,8 +216,9 @@
 
 从受控模板生成并发布签名工件。参数与错误语义见 `compose.md`。
 
-`adk-agent compose --template single-llm --tenant TENANT --id ID --version VERSION --instruction TEXT [--owner OWNER] [--description TEXT] [--tools LIST] [--data-classes LIST] --key FILE --key-id ID [--registry DIR] [--registry-url URL] [--artifact-dir DIR | ARTIFACT_URL]`
+`adk-agent compose --template single-llm --tenant TENANT --id ID --version VERSION --instruction TEXT [--owner OWNER] [--description TEXT] [--tools LIST] [--data-classes LIST] --key FILE --key-id ID --builder-key FILE --builder-key-id ID [--registry DIR] [--registry-url URL] [--artifact-dir DIR | ARTIFACT_URL]`
 
+- 组合器输出 `in_process`，因此必须用构建密钥签名；缺 `--builder-key`/`--builder-key-id` 退出 1。
 - 成功输出 `composed tenant/id@version sha256:<digest>` 与 `artifact sha256:<hex>`，退出 0。
 - 未知模板、非法参数、非法 name、未声明工具、缺 key、冲突或存储不可达退出 1。
 - `--registry-url` 时字节由注册表上传；文件模式要求 `--artifact-dir` 或 `ARTIFACT_URL`，二选一。

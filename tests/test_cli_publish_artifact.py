@@ -36,6 +36,19 @@ def _project(tmp_path, version: str = "1.0.0") -> Path:
     return project
 
 
+def _builder_trust(tmp_path, key) -> Path:
+    from cryptography.hazmat.primitives import serialization
+
+    raw = (
+        key.public_key()
+        .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        .hex()
+    )
+    path = tmp_path / "builders.json"
+    path.write_text(json.dumps({"builder-1": raw}), encoding="utf-8")
+    return path
+
+
 def _key(tmp_path):
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -75,6 +88,12 @@ def test_publish_with_artifact(tmp_path, capsys):
             str(key_path),
             "--key-id",
             "publisher-1",
+            "--builder-key",
+            str(key_path),
+            "--builder-key-id",
+            "builder-1",
+            "--builder-keys",
+            str(_builder_trust(tmp_path, key)),
             "--artifact-dir",
             str(store),
         ]
@@ -111,6 +130,12 @@ def test_publish_with_zip(tmp_path):
             str(key_path),
             "--key-id",
             "publisher-1",
+            "--builder-key",
+            str(key_path),
+            "--builder-key-id",
+            "builder-1",
+            "--builder-keys",
+            str(_builder_trust(tmp_path, key)),
             "--artifact-dir",
             str(tmp_path / "store"),
         ]
@@ -196,3 +221,30 @@ def test_publish_without_artifact_is_unchanged(tmp_path):
     cli.main(["publish", str(project / "manifest.json"), "--registry", str(tmp_path / "registry")])
 
     assert _record(tmp_path).artifact is None
+
+
+@needs_crypto
+def test_publish_in_process_requires_a_builder_signature(tmp_path, capsys):
+    project = _project(tmp_path)
+    key, key_path = _key(tmp_path)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            [
+                "publish",
+                str(project / "manifest.json"),
+                "--registry",
+                str(tmp_path / "registry"),
+                "--artifact",
+                str(project),
+                "--key",
+                str(key_path),
+                "--key-id",
+                "publisher-1",
+                "--artifact-dir",
+                str(tmp_path / "store"),
+            ]
+        )
+
+    assert exc.value.code == 1
+    assert "builder" in capsys.readouterr().err

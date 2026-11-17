@@ -2,6 +2,32 @@
   "additionalProperties": false,
   "description": "A deterministic zip of agent code, addressed by its sha256.",
   "properties": {
+    "builder_key_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Builder Key Id"
+    },
+    "builder_signature": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Builder Signature"
+    },
     "digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Digest",

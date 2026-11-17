@@ -191,6 +191,8 @@ async def compose_and_publish(
     artifact_store: Any | None = None,
     private_key: Any,
     key_id: str,
+    builder_key: Any | None = None,
+    builder_key_id: str | None = None,
     now: datetime | None = None,
 ) -> PublishedAgent:
     """Build, sign, publish, and store a composed agent version."""
@@ -206,6 +208,8 @@ async def compose_and_publish(
         data_classes=data_classes,
     )
     enforce_eval_gate(manifest, None)
+    if builder_key is None or builder_key_id is None:
+        raise ComposeError("composed artifacts are in_process and require a builder key")
 
     digest = artifact_digest(data)
     artifact = AgentArtifact(
@@ -213,6 +217,8 @@ async def compose_and_publish(
         size=len(data),
         signature=sign_digest(digest, private_key),
         key_id=key_id,
+        builder_signature=(sign_digest(digest, builder_key) if builder_key is not None else None),
+        builder_key_id=builder_key_id if builder_key is not None else None,
     )
     published = published_from(manifest, artifact=artifact, now=now)
     stored = await registry.publish(published)

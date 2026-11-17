@@ -21,6 +21,8 @@ class AgentArtifact(BaseModel):
     entrypoint: str = Field(default="agent.py", pattern=r"^[A-Za-z_][A-Za-z0-9_]*\.py$")
     signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{128}$")
     key_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+    builder_signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{128}$")
+    builder_key_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 __all__ = ["MAX_ARTIFACT_BYTES", "MEDIA_TYPE", "AgentArtifact"]

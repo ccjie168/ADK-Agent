@@ -264,10 +264,11 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 1. 发行完整性只剩首次真实发布。release workflow 与回写脚本已合入；操作员设置 registry 凭据、在 `master` 上手动触发，再把 digest 回写 PR。见 `docs/evidence/SLICE-109-release-pipeline.txt`。
 2. 密钥扫描不做历史扫描（gitleaks/trufflehog 延后）。GitHub 自定义 pattern 与 validity checks 需要付费套餐，当前关闭。
 3. legacy 无前缀 `user_id` 与 plain `app_name` 在 `--session-rls` 开启后不可见，不自动迁移；需要迁移时单独评审。
-4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固、调度循环、执行层级、agent 沙箱 worker、模型出口中介、触发路径的沙箱接入、审批接口、控制台读接口的能力校验与控制台/MCP 的沙箱执行适配、A2A 的注册表启动、沙箱工具调用中介协议与工具执行器接入也已收口（SLICE-113 到 137）。ADR-0024 已确认，下一步是 `in_process` 构建密钥校验与 publish 默认翻转，之后是凭据密钥后端，编号进入时分配。SLICE-110 到 SLICE-137 已完成。
+4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固、调度循环、执行层级、agent 沙箱 worker、模型出口中介、触发路径的沙箱接入、审批接口、控制台读接口的能力校验与控制台/MCP 的沙箱执行适配、A2A 的注册表启动、沙箱工具调用中介协议、工具执行器接入与构建密钥也已收口（SLICE-113 到 138）。ADR-0024 已确认，下一步是凭据密钥后端，之后是首次真实发布与稳定的安装使用手册，编号进入时分配。SLICE-110 到 SLICE-138 已完成。
 5. 租户凭据只存引用，不存值。密钥后端、KMS、轮换与控制面 `/v1/credentials` 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。执行层级已进 manifest：新发布必须显式声明，无沙箱后端时 `sandboxed` 在发布与加载两处被拒；历史记录缺字段按 `in_process` 读取且 digest 不变。组合器与脚手架当前明确写 `in_process`，手写 manifest 暂无法与平台产物区分；SLICE-129 已交付子进程 worker 与协议，但尚未注册后端，publish 仍默认不可用；接入切片把 publish 默认翻成 `sandboxed`，`in_process` 只接受平台构建密钥签名的工件。沙箱 worker 的残余风险：POSIX 上 RLIMIT_NPROC 按 uid 计数且默认关闭，工件仍可读宿主文件系统，Windows 只有脚本级守卫；网络守卫是 Python 层，内省拿原始 C 类型或用 ctypes 可绕过。模型调用已经经父进程中转，工具调用仍被守卫拒绝，工具网关 RPC 留给接入切片；接入切片还必须同时落地平台门槛（POSIX、降 uid、网络命名空间）、`sandboxed` 的执行路由与平台构建密钥校验，再允许注册后端。这些按 ADR-0022 与 ADR-0024 的顺序另行切片。
 
 6. 控制台的读路径已在 SLICE-133 对齐到面板能力（审计、策略、注册表与评测、工具、工具授权、连接器与申请、凭据、对端与远程目录）。仍只做认证加租户/admin 判断的是写路径与基础能力接口：注册表 load/unload、connectors 注册/停用/检查、connector-requests 提交与决定、credentials 注册/停用、peers 与远程 agent 的写操作、tool-grants 提交与决定、`/api/runs`、`/api/plans`、`/api/traces/{id}`、`/api/sessions`、`/api/chat`（后五个按基础能力 `runs.read`、`sessions.read`、`chat.run`）。写路径的能力对齐与 `grants.decide`、`connectors.manage` 的界面服务端不一致（界面给 operator 显示决定按钮但服务端仅 admin）另行切片。审批历史查询参数 `limit` 由 FastAPI 在进入处理函数前转换，越权调用方带非整数 `limit` 会先得 422 而非 403；不泄露数据，记为已知小缺口。
+7. SLICE-138 的构建签名只绑定工件 digest，不绑定发布记录 manifest；HTTP 注册表发布仍可把已有平台工件换成不同租户/id/工具授权的记录。CLI 端发布会比较工件内 manifest 与记录 manifest，HTTP 端没有。后续切片在 upload 或 load 处补齐比较。`scripts/demo_seed.py` 属本地演示信任域，仍生成未签名 `in_process` 工件。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
@@ -280,3 +281,4 @@ MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和�
 1. 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件。
 2. 跑 `python scripts/check.py --fast` 确认基线。
 3. 从上面“下一刀建议”或 ROADMAP 候选里挑一个，先写 `docs/specs/SLICE-xxx.md`，先红后绿。
+
