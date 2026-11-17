@@ -90,7 +90,12 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 
 ## 执行接入
 
-- `adk-agent serve-triggers --agent-sandbox` 注入 `ProcessAgentSandbox(model=build_model())`。
+- `serve-triggers`、`console`、`serve`、`serve-many` 的 `--agent-sandbox` 注入
+  `ProcessAgentSandbox(model=build_model())`。
 - `sandboxed` 触发走 `run`，进程内加载路径不参与；`in_process` 触发行为不变。
-- 声明了工具授权的 `sandboxed` 记录拒绝执行，直到工具网关 RPC 落地。
-- 控制台、A2A 与 `--agent-ref` 仍拒绝 `sandboxed`，是否注册全局后端由后续适配决定。
+- `--agent-ref` 与控制台按需加载遇到 `sandboxed` 记录时返回沙箱代理
+  （`sandbox/proxy.py`）：每次调用起一个新的 worker 子进程，取本次用户文本，
+  经模型中介拿结果，产出一个模型事件。工件字节不在控制台或 MCP 进程内执行。
+- 沙箱代理没有会话记忆：每次调用独立，ADK 会话只保存控制台侧消息。
+- 声明了工具授权的 `sandboxed` 记录拒绝加载或执行，直到工具网关 RPC 落地。
+- 未注册后端时 `sandboxed` 在加载处被拒；`serve-a2a` 仍只接受 `--agent` 文件。

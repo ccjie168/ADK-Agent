@@ -488,6 +488,42 @@ def _add_connector_request_store_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_agent_sandbox_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--agent-sandbox",
+        action="store_true",
+        help="run sandboxed agents in the agent sandbox instead of in-process",
+    )
+    parser.add_argument(
+        "--allow-unsandboxed",
+        action="store_true",
+        help="allow --agent-sandbox on a platform without process limits (development)",
+    )
+
+
+def _install_agent_sandbox(args: argparse.Namespace) -> None:
+    """Register the process sandbox backend before registry agents load."""
+    if not getattr(args, "agent_sandbox", False):
+        return
+    from .models import build_model
+    from .sandbox.agent import set_agent_sandbox_backend
+    from .sandbox.agent_process import ProcessAgentSandbox, agent_sandbox_supported
+
+    if not agent_sandbox_supported() and not args.allow_unsandboxed:
+        print(
+            "--agent-sandbox requires POSIX process limits; "
+            "pass --allow-unsandboxed for local development",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if not agent_sandbox_supported():
+        print(
+            "warning: the agent sandbox runs without process limits",
+            file=sys.stderr,
+        )
+    set_agent_sandbox_backend(ProcessAgentSandbox(model=build_model()))
+
+
 def _add_registry_client_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--registry-url",
@@ -928,6 +964,7 @@ def main(argv: list[str] | None = None) -> None:
     _add_audit_quota_args(p_serve)
     _add_tool_grant_args(p_serve)
     _add_rate_limit_args(p_serve)
+    _add_agent_sandbox_args(p_serve)
     p_serve.add_argument(
         "--metrics",
         action="store_true",
@@ -990,6 +1027,7 @@ def main(argv: list[str] | None = None) -> None:
     _add_audit_quota_args(p_many)
     _add_tool_grant_args(p_many)
     _add_rate_limit_args(p_many)
+    _add_agent_sandbox_args(p_many)
     p_many.add_argument(
         "--metrics",
         action="store_true",
@@ -1353,6 +1391,7 @@ def main(argv: list[str] | None = None) -> None:
     _add_rate_limit_args(p_console)
     _add_runtime_args(p_console)
     _add_tool_grant_args(p_console)
+    _add_agent_sandbox_args(p_console)
 
     p_approvals = sub.add_parser("approvals", help="manage approval records")
     approvals_sub = p_approvals.add_subparsers(dest="approvals_cmd", required=True)
@@ -1717,6 +1756,7 @@ def main(argv: list[str] | None = None) -> None:
     configure_otel()
 
     if args.cmd == "serve":
+        _install_agent_sandbox(args)
         rate_limit = _rate_limit(args)
         session_rls = _session_rls(args)
         from .mcp.server import serve_agent
@@ -1763,9 +1803,11 @@ def main(argv: list[str] | None = None) -> None:
         from .factory import build_runner
 
         audit = _audit_sink(args)
+        from .sandbox.proxy import SandboxAgent
         from .tools import install_declared_guards
 
-        install_declared_guards(agent, audit, overlay=_tool_grant_store(args))
+        if not isinstance(agent, SandboxAgent):
+            install_declared_guards(agent, audit, overlay=_tool_grant_store(args))
         quota, quota_config = _quota_settings(args)
         metrics = None
         if args.metrics:
@@ -1791,6 +1833,7 @@ def main(argv: list[str] | None = None) -> None:
             tool_guard=True,
         )
     elif args.cmd == "serve-many":
+        _install_agent_sandbox(args)
         rate_limit = _rate_limit(args)
         session_rls = _session_rls(args)
         from .factory import build_runner
@@ -1818,11 +1861,13 @@ def main(argv: list[str] | None = None) -> None:
             else None
         )
         audit = _audit_sink(args)
+        from .sandbox.proxy import SandboxAgent
         from .tools import install_declared_guards
 
         tool_grants = _tool_grant_store(args)
         for loaded_agent in agents.values():
-            install_declared_guards(loaded_agent, audit, overlay=tool_grants)
+            if not isinstance(loaded_agent, SandboxAgent):
+                install_declared_guards(loaded_agent, audit, overlay=tool_grants)
         quota, quota_config = _quota_settings(args)
         metrics = None
         if args.metrics:
@@ -2259,6 +2304,7 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
         print(f"ok {count} records")
     elif args.cmd == "console":
+        _install_agent_sandbox(args)
         rate_limit = _rate_limit(args)
         session_rls = _session_rls(args)
         from .audit import PostgresAuditQuery

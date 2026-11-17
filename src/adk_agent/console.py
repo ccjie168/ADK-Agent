@@ -99,12 +99,18 @@ from .registry import (
     check_connector,
     credential_is_bound,
     fetch_agent_card,
+    load_sandbox_agent,
 )
 from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
 from .runtime.sessions import scoped_user_id, session_tenant
 from .sandbox import SandboxPolicy, ToolSandbox, install_tool_sandbox
-from .sandbox.agent import AgentSandboxUnavailable, require_execution_supported
+from .sandbox.agent import (
+    AgentSandboxUnavailable,
+    SandboxToolsUnavailable,
+    require_execution_supported,
+)
+from .sandbox.proxy import SandboxAgent
 from .secretstore import PrefixedEnvSecretProvider, SecretNotFound
 from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_declared_guards
 from .tracing import resolve_trace_id
@@ -2717,9 +2723,10 @@ def build_console_app(
     runtimes: dict[str, AgentRuntime] = {}
 
     def _register(name: str, agent: Any) -> None:
-        _wrap_model(agent, audit)
-        install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
-        install_declared_guards(agent, audit, overlay=tool_grants)
+        if not isinstance(agent, SandboxAgent):
+            _wrap_model(agent, audit)
+            install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
+            install_declared_guards(agent, audit, overlay=tool_grants)
         runner = Runner(app_name=name, agent=agent, session_service=service)
         agents[name] = agent
         runners[name] = runner
@@ -3011,7 +3018,12 @@ def build_console_app(
 
             loader = artifact_loader or InProcessArtifactLoader()
             try:
-                agent = await loader.load(artifact, artifact_store)
+                if record.manifest.execution_tier == "sandboxed":
+                    agent = await load_sandbox_agent(record, store=artifact_store)
+                else:
+                    agent = await loader.load(artifact, artifact_store)
+            except SandboxToolsUnavailable:
+                return JSONResponse({"error": "tool_mediation_unavailable"}, status_code=409)
             except ArtifactLoadError:
                 logger.exception("artifact load failed: %s/%s@%s", tenant, agent_id, version)
                 return JSONResponse({"error": "load_failed"}, status_code=500)

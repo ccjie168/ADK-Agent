@@ -45,7 +45,16 @@ def _raw_hex(key) -> str:
     )
 
 
-def _published(tmp_path, key, *, tenant="acme", name="bot", version="1.0.0"):
+def _published(
+    tmp_path,
+    key,
+    *,
+    tenant="acme",
+    name="bot",
+    version="1.0.0",
+    execution_tier=None,
+    tool_grants=None,
+):
     project = tmp_path / f"project-{tenant}-{version}"
     project.mkdir()
     manifest = {
@@ -55,6 +64,10 @@ def _published(tmp_path, key, *, tenant="acme", name="bot", version="1.0.0"):
         "owner": tenant,
         "model_policy": {"provider_allowlist": ["litellm"]},
     }
+    if execution_tier is not None:
+        manifest["execution_tier"] = execution_tier
+    if tool_grants is not None:
+        manifest["tool_grants"] = tool_grants
     (project / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (project / "agent.py").write_text(
         "from google.adk.agents import LlmAgent\n"
@@ -250,3 +263,70 @@ def test_cli_refuses_sandboxed_record_without_a_backend(tmp_path, monkeypatch, c
 
     assert exc.value.code == 1
     assert "sandbox" in capsys.readouterr().err
+
+
+class _SandboxBackend:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def run(self, artifact, data, input_text):
+        from adk_agent.sandbox.agent import SandboxResult
+
+        self.calls.append(input_text)
+        return SandboxResult(text="sandboxed")
+
+
+class _ExplodingLoader:
+    async def load(self, artifact, store):
+        raise AssertionError("in-process loader used for a sandboxed record")
+
+
+@needs_crypto
+def test_load_agent_returns_sandbox_proxy(tmp_path):
+    from adk_agent.sandbox.agent import set_agent_sandbox_backend
+
+    key = _key()
+    store, registry = _published(tmp_path, key, execution_tier="sandboxed")
+    set_agent_sandbox_backend(_SandboxBackend())
+    try:
+        agents = asyncio.run(
+            load_registry_agents(
+                ["acme/bot@1.0.0"],
+                registry=registry,
+                store=store,
+                trust=TrustStore({"k1": bytes.fromhex(_raw_hex(key))}),
+                loader=_ExplodingLoader(),
+            )
+        )
+    finally:
+        set_agent_sandbox_backend(None)
+
+    assert type(agents["bot"]).__name__ == "SandboxAgent"
+    assert agents["bot"].name == "bot"
+
+
+@needs_crypto
+def test_sandboxed_with_tool_grants_is_refused(tmp_path):
+    from adk_agent.sandbox.agent import SandboxToolsUnavailable, set_agent_sandbox_backend
+
+    key = _key()
+    store, registry = _published(
+        tmp_path,
+        key,
+        execution_tier="sandboxed",
+        tool_grants=[{"tool_id": "crm.read", "data_classes": ["internal"]}],
+    )
+    set_agent_sandbox_backend(_SandboxBackend())
+    try:
+        with pytest.raises(SandboxToolsUnavailable):
+            asyncio.run(
+                load_registry_agents(
+                    ["acme/bot@1.0.0"],
+                    registry=registry,
+                    store=store,
+                    trust=TrustStore({"k1": bytes.fromhex(_raw_hex(key))}),
+                    loader=_ExplodingLoader(),
+                )
+            )
+    finally:
+        set_agent_sandbox_backend(None)

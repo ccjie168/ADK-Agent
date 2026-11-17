@@ -33,7 +33,7 @@ from .credentials_postgres import PostgresCredentialStore
 from .file import FileAgentRegistry, RegistryConflict, RegistryError, RegistryIntegrityError
 from .lifecycle import FileAgentLifecycleStore
 from .lifecycle_postgres import PostgresAgentLifecycleStore
-from .loader import ArtifactLoadError, InProcessArtifactLoader, load_agent
+from .loader import ArtifactLoadError, InProcessArtifactLoader, load_agent, load_sandbox_agent
 from .manifest import load_manifest, published_from
 from .packaging import PackagingError, pack_agent, pack_files, read_artifact_zip
 from .paths import UnsafePath, safe_join
@@ -118,6 +118,7 @@ __all__ = [
     "credential_is_bound",
     "fetch_agent_card",
     "load_agent",
+    "load_sandbox_agent",
     "load_manifest",
     "load_private_key",
     "load_registry_agents",
