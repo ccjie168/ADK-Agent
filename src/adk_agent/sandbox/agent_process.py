@@ -100,6 +100,42 @@ def _error(frame: dict[str, Any], stderr: str) -> Exception:
     return SandboxCrashed(detail)
 
 
+def _reject_provider_tools(tools: Any) -> None:
+    """Only local function declarations may reach the provider."""
+    for tool in tools or []:
+        fields = getattr(type(tool), "model_fields", {})
+        extras = [
+            name for name in fields if name != "function_declarations" and getattr(tool, name, None)
+        ]
+        if extras:
+            raise SandboxCrashed("provider-side tools are not allowed in sandboxed model requests")
+
+
+def _reject_file_references(value: Any, depth: int = 0) -> None:
+    """Refuse any file or URI reference at any nesting level."""
+    if value is None or isinstance(value, (str, bytes, int, float, bool)):
+        return
+    if depth > 20:
+        raise SandboxCrashed("model request is nested too deeply")
+    if isinstance(value, dict):
+        if value.get("file_data") is not None:
+            raise SandboxCrashed("file references are not allowed in sandboxed model requests")
+        for item in value.values():
+            _reject_file_references(item, depth + 1)
+        return
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _reject_file_references(item, depth + 1)
+        return
+    if getattr(value, "file_data", None) is not None:
+        raise SandboxCrashed("file references are not allowed in sandboxed model requests")
+    if type(value).__name__ == "File":
+        raise SandboxCrashed("file references are not allowed in sandboxed model requests")
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        _reject_file_references(dump(mode="json"), depth + 1)
+
+
 class ProcessAgentSandbox:
     """Run one artifact in a fresh child process with limits and no network."""
 
@@ -234,19 +270,26 @@ class ProcessAgentSandbox:
             request.model = name
         config = request.config
         if config is not None:
+            _reject_provider_tools(config.tools)
             config.http_options = None
             config.cached_content = None
             config.should_return_http_response = None
             config.store = None
+            for name in (
+                "service_tier",
+                "labels",
+                "routing_config",
+                "model_selection_config",
+                "continuation_token",
+                "automatic_continuation",
+            ):
+                if hasattr(config, name):
+                    setattr(config, name, None)
+            _reject_file_references(config.system_instruction)
         request.cache_config = None
         request.cache_metadata = None
         request.previous_interaction_id = None
-        for content in request.contents or []:
-            for part in content.parts or []:
-                if getattr(part, "file_data", None) is not None:
-                    raise SandboxCrashed(
-                        "file references are not allowed in sandboxed model requests"
-                    )
+        _reject_file_references(request.contents)
         return request
 
     async def _serve_model(

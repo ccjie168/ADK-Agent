@@ -629,3 +629,94 @@ def test_reply_failures_are_crashed(monkeypatch):
 
     asyncio.run(scenario(AgentSandboxLimits(wall_seconds=5)))
     asyncio.run(scenario(AgentSandboxLimits(wall_seconds=5, max_model_calls=0)))
+
+
+def _sanitize(payload):
+    sandbox = ProcessAgentSandbox(AgentSandboxLimits(), model=_ParentModel())
+    return sandbox._sanitize_model_request(payload)
+
+
+def test_provider_tools_are_rejected():
+    for tool in (
+        {"url_context": {}},
+        {"mcp_servers": [{"name": "evil"}]},
+        {"file_search": {"file_search_store_names": ["x"]}},
+        {"google_search": {}},
+    ):
+        with pytest.raises(SandboxCrashed):
+            _sanitize(
+                {
+                    "model": "attacker/model",
+                    "contents": [],
+                    "config": {"tools": [tool]},
+                }
+            )
+
+
+def test_local_function_tools_are_allowed():
+    request = _sanitize(
+        {
+            "model": "attacker/model",
+            "contents": [],
+            "config": {"tools": [{"function_declarations": [{"name": "ping"}]}]},
+        }
+    )
+
+    assert request.config is not None
+    assert request.config.tools
+    assert request.config.tools[0].function_declarations
+
+
+def test_nested_file_references_are_rejected():
+    with pytest.raises(SandboxCrashed):
+        _sanitize(
+            {
+                "model": "attacker/model",
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "function_response": {
+                                    "name": "f",
+                                    "response": {},
+                                    "parts": [{"file_data": {"file_uri": "gs://secret/object"}}],
+                                }
+                            }
+                        ],
+                    }
+                ],
+                "config": {},
+            }
+        )
+    with pytest.raises(SandboxCrashed):
+        _sanitize(
+            {
+                "model": "attacker/model",
+                "contents": [],
+                "config": {
+                    "system_instruction": {
+                        "parts": [{"file_data": {"file_uri": "gs://secret/object"}}]
+                    }
+                },
+            }
+        )
+
+
+def test_continuation_fields_are_cleared():
+    request = _sanitize(
+        {
+            "model": "attacker/model",
+            "contents": [],
+            "config": {
+                "continuation_token": "dG9rZW4=",
+                "automatic_continuation": True,
+                "service_tier": "flexible",
+            },
+        }
+    )
+
+    assert request.config is not None
+    assert request.config.continuation_token is None
+    assert request.config.automatic_continuation is None
+    assert request.config.service_tier is None

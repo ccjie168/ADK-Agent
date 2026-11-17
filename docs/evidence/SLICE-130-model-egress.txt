@@ -96,3 +96,26 @@ $ pytest tests/sandbox -q（Windows 子集）
 
 $ pytest tests/sandbox -q（WSL Ubuntu 24.04）
 65 passed
+
+九、第三轮复核（HEAD fa64a9a）
+
+结论 DO NOT MERGE：原两条 Critical 已挡住，但 `config.tools` 里的 provider 侧工具
+（`mcp_servers`、`url_context`、`retrieval`、`file_search`、`google_search`、`code_execution`）
+会绕过子进程守卫，由提供方执行；`file_data` 只挡了 contents 顶层，嵌套 function_response 与
+system_instruction 里的文件引用仍被接受。
+
+修复：
+- `_reject_provider_tools`：只允许 `function_declarations`，其余字段非空即拒绝。
+- `_reject_file_references`：递归检查 `contents`（含 function_response.parts）与 `system_instruction`，
+  拒绝任意层级的 `file_data` 与 `File` 对象。
+- 清空 `service_tier`、`labels`、`routing_config`、`model_selection_config`、`continuation_token`、
+  `automatic_continuation`。
+- 新增用例：provider 工具拒绝、本地 function declarations 保留、嵌套文件引用拒绝、continuation 字段清空。
+
+十、第三轮修复后绿态
+
+$ pytest tests/sandbox/test_agent_process.py -q（Windows）
+32 passed, 7 skipped
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+69 passed

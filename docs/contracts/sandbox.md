@@ -52,8 +52,12 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 - 子进程发 `{"type": "model", "id": <int>, "request": <LlmRequest JSON>}`。
 - 父进程不信任请求内容：先校验成 `LlmRequest`，再在模型对象上强制 `model` 为注入模型的名字，
   清空 `config.http_options`、`config.cached_content`、`config.store`、`config.should_return_http_response`、
-  `cache_config`、`cache_metadata`、`previous_interaction_id` 与 `live_connect_config`。
-  含 `file_data` 的 part 直接拒绝（不允许父进程按子进程给的 URI 取资源）。snake_case 与 camelCase 别名都覆盖。
+  `config.service_tier`、`config.labels`、`config.routing_config`、`config.model_selection_config`、
+  `config.continuation_token`、`config.automatic_continuation`、`cache_config`、`cache_metadata`、
+  `previous_interaction_id` 与 `live_connect_config`。snake_case 与 camelCase 别名都覆盖。
+- `config.tools` 只允许 `function_declarations`（本地函数）。`mcp_servers`、`url_context`、`retrieval`、
+  `file_search`、`google_search`、`code_execution` 等 provider 侧工具一律拒绝，因为它们绕过子进程守卫并由提供方执行。
+- `contents` 任意层级与 `config.system_instruction` 里的 `file_data`/`File` 引用一律拒绝，父进程不按子进程给的 URI 取资源。
 - 父进程在剩余墙钟内用注入的模型执行非流式调用，回
   `{"type": "model_result", "id": <int>, "responses": [<LlmResponse JSON>]}`，或
   `{"type": "model_error", "id": <int>, "message": "<异常类名>"}`。

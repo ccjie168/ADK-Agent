@@ -24,8 +24,8 @@
   - `close()` 取消读帧任务。
 - `set_channel(channel)` / `channel()`：worker 在加载工件前设置。
 - `SandboxModel(BaseLlm)`：`generate_content_async` 调 `channel().call_model(llm_request.model_dump(mode="json"))`，逐条产出 `LlmResponse.model_validate(...)`。
-- 父进程侧 `_sanitize_model_request`：先校验，再强制 `model`，清空 `config.http_options`、`cached_content`、`store`、
-  `should_return_http_response`、`cache_config`、`cache_metadata`、`previous_interaction_id`，拒绝 `file_data`。
+- 父进程侧 `_sanitize_model_request`：先校验，再强制 `model`，清空 egress 字段，`config.tools` 只留
+  `function_declarations`，`contents` 任意层级与 `system_instruction` 的文件引用一律拒绝。
 
 `src/adk_agent/sandbox/agent_worker.py`（修改）：
 
@@ -73,6 +73,9 @@
 - [x] camelCase 别名与 `cache_config.create_http_options` 被剥离 -> `::test_model_aliases_and_cache_options_are_stripped`
 - [x] `file_data` 引用被拒绝 -> `::test_model_file_references_are_rejected`
 - [x] 无模型与超限分支的回包失败也映射为 `SandboxCrashed` -> `::test_reply_failures_are_crashed`
+- [x] provider 侧工具被拒绝，本地 function declarations 保留 -> `::test_provider_tools_are_rejected` 与 `::test_local_function_tools_are_allowed`
+- [x] 嵌套 `function_response` 与 `system_instruction` 的文件引用被拒绝 -> `::test_nested_file_references_are_rejected`
+- [x] continuation 与 service tier 字段被清空 -> `::test_continuation_fields_are_cleared`
 - [x] 子进程环境仍为空（模型调用不在子进程） -> `::test_model_run_keeps_the_worker_env_empty`
 - [x] 通道帧往返与 id 分发 -> `tests/sandbox/test_agent_channel.py`
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
