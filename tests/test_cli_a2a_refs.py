@@ -116,3 +116,60 @@ def test_sandboxed_ref_uses_proxy(monkeypatch):
 
     assert captured["agent"] is proxy
     assert guards == []
+
+
+def test_sandbox_flag_reaches_installer(monkeypatch):
+    seen: dict = {}
+    _stub_common(monkeypatch)
+    monkeypatch.setattr(
+        cli, "_install_agent_sandbox", lambda args: seen.setdefault("sandbox", args.agent_sandbox)
+    )
+
+    cli.main(
+        [
+            "serve-a2a",
+            "--agent-ref",
+            "acme/bot@1.0.0",
+            "--agent-sandbox",
+            "--allow-unsandboxed",
+        ]
+    )
+
+    assert seen["sandbox"] is True
+
+
+def test_neither_agent_nor_ref(monkeypatch):
+    _stub_common(monkeypatch)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["serve-a2a", "--allow-unauthenticated"])
+
+    assert exc.value.code == 1
+
+
+def test_empty_agent_with_ref_is_a_conflict(monkeypatch):
+    _stub_common(monkeypatch)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            [
+                "serve-a2a",
+                "--agent",
+                "",
+                "--agent-ref",
+                "acme/bot@1.0.0",
+                "--allow-unauthenticated",
+            ]
+        )
+
+    assert exc.value.code == 1
+
+
+def test_empty_registry_result_exits(monkeypatch):
+    _stub_common(monkeypatch)
+    monkeypatch.setattr(cli, "_registry_agents", lambda args: {})
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["serve-a2a", "--agent-ref", "acme/bot@1.0.0", "--allow-unauthenticated"])
+
+    assert exc.value.code == 1

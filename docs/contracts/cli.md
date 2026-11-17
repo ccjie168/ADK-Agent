@@ -308,17 +308,17 @@
 
 ## 客户端 `--registry-url URL [--registry-token-env VAR]`
 
-`console`、`serve`、`serve-many` 和 `publish` 接受这两个参数。给了 `--registry-url` 时注册表元数据走 HTTP，忽略 `--registry DIR`；`--registry-token-env` 默认 `ADK_REGISTRY_AUTH_TOKEN`，token 只从环境变量读。
+`console`、`serve`、`serve-many`、`serve-a2a` 和 `publish` 接受这两个参数。给了 `--registry-url` 时注册表元数据走 HTTP，忽略 `--registry DIR`；`--registry-token-env` 默认 `ADK_REGISTRY_AUTH_TOKEN`，token 只从环境变量读。
 
-- `console`、`serve`、`serve-many` 的运行工件仍从 `--artifact-dir` 或 `$ARTIFACT_URL` 读取，可信公钥仍为必需。
+- `console`、`serve`、`serve-many`、`serve-a2a` 的运行工件仍从 `--artifact-dir` 或 `$ARTIFACT_URL` 读取，可信公钥仍为必需。
 - `publish --registry-url` 先 `POST /v1/agents`；带 `--artifact` 时再用 `PUT /v1/artifacts/{digest}` 上传字节。此模式下 `--artifact-dir` 与 `$ARTIFACT_URL` 不参与，同时给退出 1。
 - `publish --registry-url` 带 `--eval-report` 时在发布记录后用 `PUT /v1/agents/{tenant}/{id}/{version}/eval` 上传报告，顺序是记录、报告、工件字节。
 
-## 从注册表启动（`console` / `serve` / `serve-many`）
+## 从注册表启动（`console` / `serve` / `serve-many` / `serve-a2a`）
 
-`console`、`serve` 和 `serve-many` 可以用 `--agent-ref TENANT/ID@VERSION` 代替本地 agent 文件。可重复。
+`console`、`serve`、`serve-many` 和 `serve-a2a` 可以用 `--agent-ref TENANT/ID@VERSION` 代替本地 agent 文件。`serve` 与 `serve-a2a` 只接受一个，其余可重复。
 
-- `--agent-ref` 与 `--agents`（或 `serve` 的 `--agent`/`--config`）互斥，同时给退出 1。二者都不给也退出 1。
+- `--agent-ref` 与 `--agents`（或 `serve`/`serve-a2a` 的 `--agent`、`serve` 的 `--config`）互斥，同时给退出 1。二者都不给也退出 1。
 - 加载前要求两个配置：工件字节来源 `--artifact-dir DIR` 或 `ARTIFACT_URL`（互斥，必须给一个），以及可信公钥 `--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`（JSON 映射 `key_id -> 64 hex 公钥`）。缺任一项退出 1。
 - 解析顺序：按租户列出注册表，找 `id@version`，用记录摘要调 `load_agent`；工件必须存在，签名必须被信任，否则退出 1。
 - agent 的名字取 manifest 的 `id`；同一批里重名退出 1。

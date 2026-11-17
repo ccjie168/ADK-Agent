@@ -1922,7 +1922,7 @@ def main(argv: list[str] | None = None) -> None:
         from .sandbox.proxy import SandboxAgent
         from .tools import install_declared_guards
 
-        if bool(args.agent) == bool(args.agent_ref):
+        if (args.agent is not None) == (args.agent_ref is not None):
             print("provide exactly one of --agent or --agent-ref", file=sys.stderr)
             raise SystemExit(1)
         if args.agent_ref:
