@@ -47,3 +47,29 @@ ALL PASS
 - 工具调用不中转：工具内的外连被网络守卫拒绝。工具网关 RPC 与平台门槛、执行路由一起，
   在接入切片落地。
 - 子进程环境为空，凭据只在父进程；中介测试同时验证了工件侧环境没有父进程的测试密钥。
+
+五、第一轮独立验证（HEAD fae19b1）与修复
+
+验证结论 DO NOT MERGE，Critical：子进程可在 `LlmRequest.config.http_options` 里塞
+`base_url` 与 headers，父进程带真实凭据调用时把 API Key 发到攻击者地址（端到端 POC）。
+同时父进程从未强制 `request.model`，实际用子进程给的模型名。
+
+修复：
+- `_sanitize_model_request`：强制 `model` 为注入模型的名字，删除 `config.http_options` 与
+  `live_connect_config`，再校验成 `LlmRequest`。新增 `test_model_request_is_sanitized`，
+  工件在 before_model_callback 里写入恶意 base_url 与模型名，父进程模型断言已剥离/覆盖。
+- 模型帧的序列化与回包错误统一映射为 `SandboxCrashed`；新增超限响应用例。
+- 模型错误只回异常类名，测试断言原始文本不出现。
+- `AgentSandboxLimits.max_model_calls` 默认 100，按运行计数；新增限制用例。
+- 通道读循环退出后清空任务引用，关闭后的调用直接报错。
+
+六、修复后绿态
+
+$ pytest tests/sandbox -q（Windows 子集）
+29 passed, 7 skipped
+
+$ pytest tests/sandbox -q（WSL Ubuntu 24.04）
+62 passed
+
+$ python scripts/check.py --full
+（见提交前输出）

@@ -13,6 +13,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
+from google.adk.models.base_llm import BaseLlm
 from google.adk.models.llm_request import LlmRequest
 
 from ..core import AgentArtifact
@@ -32,6 +33,7 @@ class AgentSandboxLimits:
     open_files: int = 256
     file_bytes: int = 8 * 1024 * 1024
     processes: int | None = None
+    max_model_calls: int = 100
 
 
 async def _read_stderr(stream: asyncio.StreamReader | None) -> str:
@@ -101,7 +103,11 @@ def _error(frame: dict[str, Any], stderr: str) -> Exception:
 class ProcessAgentSandbox:
     """Run one artifact in a fresh child process with limits and no network."""
 
-    def __init__(self, limits: AgentSandboxLimits | None = None, model: Any = None) -> None:
+    def __init__(
+        self,
+        limits: AgentSandboxLimits | None = None,
+        model: BaseLlm | None = None,
+    ) -> None:
         self.limits = limits or AgentSandboxLimits()
         self.model = model
 
@@ -159,6 +165,7 @@ class ProcessAgentSandbox:
                 except FrameError as exc:
                     raise SandboxCrashed(f"request does not fit in one frame: {exc}") from exc
                 applied: dict[str, int] = {}
+                model_calls = [0]
                 while True:
                     remaining = deadline - loop.time()
                     if remaining <= 0:
@@ -181,7 +188,7 @@ class ProcessAgentSandbox:
                         applied = _applied_limits(frame)
                         continue
                     if kind == "model":
-                        await self._serve_model(frame, proc, deadline)
+                        await self._serve_model(frame, proc, deadline, model_calls)
                         continue
                     if kind == "final":
                         if proc.stdin is not None:
@@ -211,11 +218,28 @@ class ProcessAgentSandbox:
                 proc.stdin.close()
             shutil.rmtree(workdir, ignore_errors=True)
 
+    def _sanitize_model_request(self, data: Any) -> LlmRequest:
+        """Trust nothing from the child: fix the model and drop egress overrides."""
+        if not isinstance(data, dict):
+            raise SandboxCrashed("worker sent an invalid model request")
+        payload = dict(data)
+        config = payload.get("config")
+        if isinstance(config, dict):
+            config = dict(config)
+            config.pop("http_options", None)
+            payload["config"] = config
+        payload.pop("live_connect_config", None)
+        name = getattr(self.model, "model", None)
+        if isinstance(name, str) and name:
+            payload["model"] = name
+        return LlmRequest.model_validate(payload)
+
     async def _serve_model(
         self,
         frame: dict[str, Any],
         proc: asyncio.subprocess.Process,
         deadline: float,
+        calls: list[int],
     ) -> None:
         call_id = frame.get("id")
         if not isinstance(call_id, int) or proc.stdin is None:
@@ -231,31 +255,47 @@ class ProcessAgentSandbox:
                 deadline,
             )
             return
-        try:
-            request = LlmRequest.model_validate(frame.get("request"))
-
-            async def collect() -> list[dict[str, Any]]:
-                return [
-                    item.model_dump(mode="json")
-                    async for item in self.model.generate_content_async(request, stream=False)
-                ]
-
-            remaining = max(deadline - asyncio.get_running_loop().time(), 0.001)
-            responses = await asyncio.wait_for(collect(), timeout=remaining)
-        except asyncio.TimeoutError:
-            raise
-        except Exception as exc:  # noqa: BLE001
+        if calls[0] >= self.limits.max_model_calls:
             await self._reply(
                 proc,
-                {"type": "model_error", "id": call_id, "message": type(exc).__name__},
+                {"type": "model_error", "id": call_id, "message": "model call limit exceeded"},
                 deadline,
             )
             return
-        await self._reply(
-            proc,
-            {"type": "model_result", "id": call_id, "responses": responses},
-            deadline,
-        )
+        calls[0] += 1
+        model = self.model
+        try:
+            try:
+                request = self._sanitize_model_request(frame.get("request"))
+
+                async def collect() -> list[dict[str, Any]]:
+                    return [
+                        item.model_dump(mode="json")
+                        async for item in model.generate_content_async(request, stream=False)
+                    ]
+
+                remaining = max(deadline - asyncio.get_running_loop().time(), 0.001)
+                responses = await asyncio.wait_for(collect(), timeout=remaining)
+            except asyncio.TimeoutError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                await self._reply(
+                    proc,
+                    {"type": "model_error", "id": call_id, "message": type(exc).__name__},
+                    deadline,
+                )
+                return
+            await self._reply(
+                proc,
+                {"type": "model_result", "id": call_id, "responses": responses},
+                deadline,
+            )
+        except asyncio.TimeoutError:
+            raise
+        except SandboxCrashed:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise SandboxCrashed(f"model mediation failed ({type(exc).__name__})") from exc
 
     @staticmethod
     async def _reply(

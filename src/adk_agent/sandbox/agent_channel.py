@@ -39,12 +39,12 @@ class SandboxChannel:
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
-        if self._task is None:
+        if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._read_loop())
 
     async def call_model(self, request: dict[str, Any]) -> list[dict[str, Any]]:
-        if self._task is None:
-            raise SandboxModelError("model channel is not started")
+        if self._task is None or self._task.done():
+            raise SandboxModelError("model channel is not running")
         self._next_id += 1
         call_id = self._next_id
         future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
@@ -74,6 +74,7 @@ class SandboxChannel:
                 if future is not None and not future.done():
                     future.set_result(frame)
         finally:
+            self._task = None
             self._fail_pending("model channel closed")
 
     def _fail_pending(self, message: str) -> None:

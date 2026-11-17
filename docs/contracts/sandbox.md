@@ -50,10 +50,14 @@ ADR-0024 的进程边界。父进程每次运行起一个子进程，把工件�
 子进程无网络，`adk_agent.build_model()` 在 worker 内被替换为代理模型。工件必须用它取模型；传入的 spec 只是标签，真正调用哪个模型由父进程决定。
 
 - 子进程发 `{"type": "model", "id": <int>, "request": <LlmRequest JSON>}`。
+- 父进程不信任请求内容：强制 `request.model` 为注入模型的名字，删除 `config.http_options` 与 `live_connect_config`，
+  再校验成 `LlmRequest`。子进程无法把模型调用指向别的地址或别的提供方。
 - 父进程在剩余墙钟内用注入的模型执行非流式调用，回
   `{"type": "model_result", "id": <int>, "responses": [<LlmResponse JSON>]}`，或
   `{"type": "model_error", "id": <int>, "message": "<异常类名>"}`。
 - 父进程没有注入模型时回 `model_error`，消息是 `model mediation is not configured`，运行以 `SandboxCrashed` 结束。
+- 单次运行最多 `max_model_calls`（默认 100）次模型调用，超过回 `model_error`，不执行模型。
+- 响应超过帧上限或回包失败映射为 `SandboxCrashed`，调用方不需要捕获传输层异常。
 - 请求与响应都是普通帧，受 32 MiB 上限约束；id 由子进程递增分配，未知 id 的响应当作无主帧丢弃。
 - 模型凭据只在父进程；子进程环境仍为空。工具调用不中转：工具里的外连会被守卫拒绝。
 

@@ -24,6 +24,7 @@
   - `close()` 取消读帧任务。
 - `set_channel(channel)` / `channel()`：worker 在加载工件前设置。
 - `SandboxModel(BaseLlm)`：`generate_content_async` 调 `channel().call_model(llm_request.model_dump(mode="json"))`，逐条产出 `LlmResponse.model_validate(...)`。
+- 父进程侧 `_sanitize_model_request`：强制 `model` 为注入模型的名字，删除 `config.http_options` 与 `live_connect_config`，再校验。
 
 `src/adk_agent/sandbox/agent_worker.py`（修改）：
 
@@ -34,6 +35,7 @@
 `src/adk_agent/sandbox/agent_process.py`（修改）：
 
 - `ProcessAgentSandbox(limits=None, model=None)`，`model` 是 `BaseLlm | None`，由可信调用方注入。
+- `AgentSandboxLimits.max_model_calls` 默认 100，按运行计数。
 - 帧循环处理 `model`：校验 id，还原 `LlmRequest`，在剩余墙钟内调用 `model.generate_content_async(..., stream=False)`，
   回写 `model_result` 或 `model_error`。模型错误不杀进程，由工件决定如何失败。
 - 写完运行请求后不再关闭 stdin，留给模型响应；进程收尾时再关。
@@ -63,6 +65,10 @@
 - [x] 工件传入的 spec 不影响结果，模型由父进程决定 -> `::test_model_spec_is_ignored`
 - [x] 未注入模型时运行以 `SandboxCrashed` 结束 -> `::test_model_mediation_requires_a_parent_model`
 - [x] 父进程模型抛错时子进程收到 `model_error` 并以 `SandboxCrashed` 结束 -> `::test_model_errors_are_returned`
+- [x] 子进程塞入的 `http_options` 与模型名被父进程剥离/覆盖 -> `::test_model_request_is_sanitized`
+- [x] 模型错误不向调用方泄漏原始异常文本 -> `::test_model_errors_do_not_leak_detail`
+- [x] 超限模型响应映射为 `SandboxCrashed` -> `::test_oversized_model_response_is_crashed`
+- [x] 单次运行的模型调用次数受限 -> `::test_model_call_limit_is_enforced`
 - [x] 子进程环境仍为空（模型调用不在子进程） -> `::test_model_run_keeps_the_worker_env_empty`
 - [x] 通道帧往返与 id 分发 -> `tests/sandbox/test_agent_channel.py`
 - [x] 全量门禁通过 -> `scripts/check.py --fast` 与 `scripts/check.py --full`
