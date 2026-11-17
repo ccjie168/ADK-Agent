@@ -39,10 +39,10 @@ $ pytest tests/registry/test_builder_key.py tests/test_cli_publish_artifact.py \
 四、绿态
 
 $ pytest <上面 7 个文件> -q
-49 passed
+50 passed
 
 $ pytest -q（Windows）
-1499 passed, 87 skipped
+1502 passed, 87 skipped
 
 $ python scripts/check.py --full
 [PASS] format / lint / types / layering / specs / test / sast / deps / secrets
@@ -67,3 +67,13 @@ ALL PASS
    测试名已改正；证据的 compose 描述已更新。
 4. `scripts/demo_seed.py` 属本地演示信任域，仍生成未签名 `in_process` 工件；已在 PROGRESS 标注。
 5. 补服务端两个用例：keyring 已配置但工件无构建签名返回 400，可信构建签名返回 201。
+
+七、第二轮独立验证
+
+结论 DO NOT MERGE。两项 Medium 与三项 Low 已修：
+
+1. 组合器新拒绝分支与构建签名输出没有测试。已补 test_compose_requires_a_builder_key（缺 key 抛 ComposeError），
+   正常路径断言 builder_signature 非空与 builder_key_id。
+2. contracts/README.md 的缺省层级表述与注册表服务冲突。已按路径分写：
+   CLI publish 缺省 sandboxed，HTTP 注册表服务要求显式声明。
+3. spec 反例测试名、判据层级与 PROGRESS 第 7 条位置已改正。

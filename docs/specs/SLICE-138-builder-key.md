@@ -33,7 +33,7 @@
 ## 完成判据（可执行）
 
 - [x] `in_process` 工件缺 builder 签名时发布退出 1 -> `test_publish_in_process_requires_a_builder_signature`
-- [x] 用可信 builder 密钥签名的 `in_process` 工件可发布 -> `test_publish_in_process_accepts_a_trusted_builder`
+- [x] 用可信 builder 密钥签名的 `in_process` 工件可发布 -> `test_publish_with_artifact`（CLI）与 `test_publish_in_process_accepts_a_trusted_builder`（服务端）
 - [x] 缺省 tier 按 `sandboxed` 处理 -> `test_publish_defaults_to_sandboxed`
 - [x] 组合器输出带 builder 签名且可发布 -> `tests/compose/test_compose_publish.py`
 - [x] 注册表服务拒绝无 builder 签名的 `in_process` 发布 -> `test_publish_in_process_rejects_a_missing_builder_signature`
@@ -41,7 +41,7 @@
 
 ## 反例（实现前跑红）
 
-- [x] 反例 1：当前 `in_process` 工件无需 builder 签名即可发布 -> 期望 `test_publish_in_process_requires_builder_signature` 失败
+- [x] 反例 1：当前 `in_process` 工件无需 builder 签名即可发布 -> 期望 `test_publish_in_process_requires_a_builder_signature` 失败
 - [x] 反例 2：当前缺省 tier 被拒而不是按 `sandboxed` -> 期望 `test_publish_defaults_to_sandboxed` 失败
 
 ## 5 问威胁建模
