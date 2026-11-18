@@ -1591,7 +1591,10 @@ def main(argv: list[str] | None = None) -> None:
 
     p_cr_rewrap = credentials_sub.add_parser(
         "rewrap",
-        help="re-wrap credential data keys under the active KEK (needs a keyring)",
+        help=(
+            "re-wrap credential data keys under the active KEK "
+            "(needs ADK_SECRET_KEKS or ADK_SECRET_KEKS_FILE)"
+        ),
     )
     p_cr_rewrap.add_argument("--tenant", required=True)
     p_cr_rewrap.add_argument(

@@ -79,6 +79,17 @@ class PrefixedEnvSecretProvider:
         return _checked(reference, value)
 
 
+_SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+
+
+def _credential_version(key_id: str | None) -> str:
+    if key_id is None:
+        return "credential"
+    if _SAFE_VERSION.fullmatch(f"credential.{key_id}"):
+        return f"credential.{key_id}"
+    return f"credential.{hash_text(key_id)[:12]}"
+
+
 class TenantSecretProvider:
     """Resolve ``secret://tenant/name`` from stored ciphertext, then the environment."""
 
@@ -92,14 +103,15 @@ class TenantSecretProvider:
     async def _audit_failure(self, binding: Any, error_code: str) -> None:
         if self._audit is None:
             return
-        key_id = binding.secret_key_id
-        invocation = current_invocation()
-        principal = (
-            invocation.principal
-            if invocation is not None and invocation.principal.tenant == binding.tenant
-            else Principal(tenant=binding.tenant, subject="credential_resolver", kind="service")
-        )
         try:
+            key_id = binding.secret_key_id
+            version = _credential_version(key_id)
+            invocation = current_invocation()
+            principal = (
+                invocation.principal
+                if invocation is not None and invocation.principal.tenant == binding.tenant
+                else Principal(tenant=binding.tenant, subject="credential_resolver", kind="service")
+            )
             await self._audit.emit(
                 AuditEvent(
                     event_id=uuid.uuid4().hex,
@@ -109,7 +121,7 @@ class TenantSecretProvider:
                     principal=principal,
                     agent_ref=AgentRef(
                         id=binding.credential_id,
-                        version=f"credential.{key_id}" if key_id else "credential",
+                        version=version,
                         digest="sha256:" + hash_text(f"{binding.secret_ref}:{key_id or ''}"),
                     ),
                     action="credential.decrypt_failed",
@@ -138,7 +150,8 @@ class TenantSecretProvider:
         if not encrypted:
             return None
         if self._backend is None:
-            await self._audit_failure(encrypted[0], "key_backend_unavailable")
+            audited = next((item for item in encrypted if item.enabled), encrypted[0])
+            await self._audit_failure(audited, "key_backend_unavailable")
             raise SecretNotFound(f"secret {reference} has ciphertext but no key backend")
         candidates = sorted(
             (item for item in encrypted if item.enabled), key=lambda item: item.credential_id

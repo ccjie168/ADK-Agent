@@ -1,0 +1,34 @@
+SLICE-151 解密失败审计的边界收口
+日期: 2026-11-19
+依据: SLICE-150 验证代理的低风险项
+基线: 44a5396
+
+一、实现
+
+- `_credential_version()`：key id 满足 `^[A-Za-z0-9][A-Za-z0-9._+-]*$` 时写
+  `credential.<key id>`，否则写 `credential.<sha256 前 12 位>`；没有 key id 时为 `credential`。
+- 元数据与主体提取移入审计的 try，构造失败只记 warning，解析仍 fail-closed。
+- 带密文但无密钥后端时优先审计启用中的绑定。
+- `credentials.md` 写明 version 回退规则；`rewrap` 帮助同时提到两个 keyring 变量。
+
+二、绿态
+
+$ pytest tests/secretstore -q
+39 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
+
+$ pytest -q（Windows）
+1598 passed, 89 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线对 `prod/key` 这类 key id 构造 `AgentRef` 失败，审计被吞掉；缺后端时审计 `encrypted[0]`，
+可能指向已停用的记录。
+
+四、范围与已知缺口
+
+- 工具网关与控制台的解析路径没有设置 invocation，审计主体仍是服务主体，run/trace id 与
+  对应的 `tool.call` 事件不关联；这是归因质量缺口，非安全缺口。
+- 后端错误码细分随后端切片。
