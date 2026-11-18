@@ -1,0 +1,47 @@
+SLICE-153 控制台写路径与基础能力接口的能力校验
+日期: 2026-11-19
+依据: PROGRESS 缺口清单第 6 条
+基线: de919be
+
+一、实现
+
+- `POST /api/registry/load`、`POST /api/registry/unload` 先检查 `registry.load`，再解析请求体、
+  做配置 404 与租户检查。
+- `POST /api/tool-grants` 先检查 `grants.request`，再解析请求体；工具授权面板的 Request 按钮
+  已有同名标记，新增回归用例。
+- `GET /api/runs`、`GET /api/plans`、`GET /api/traces/{trace_id}` 检查 `runs.read`；
+  `GET /api/sessions` 检查 `sessions.read`（先于 `agent` 参数检查）；
+  `POST /api/chat`、`POST /api/chat/stream` 检查 `chat.run`（先于请求体解析）。
+- 拒绝统一返回 403 `{"error": "forbidden"}`。能力表与角色集合不变，也不改工具授权决定接口的
+  admin 限制（`grants.decide` 的界面服务端不一致仍待另立切片定方向）。
+- 既有跨租户与低权限用例的调用方角色由 `viewer` 改为 `publisher`，保留原断言（`tenant_forbidden`
+  与决定接口 403）；这不是改判据，而是让调用方能走到租户检查。
+
+二、绿态
+
+$ pytest tests/test_console_write_capabilities.py -q
+5 passed
+
+$ pytest tests/test_console_unload.py tests/test_console_tool_grants.py tests/test_console_on_demand.py -q
+32 passed
+
+$ pytest -q（Windows）
+1606 passed, 89 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+- 基线 operator 带坏请求体调用 `POST /api/registry/load` 返回 400，不检查能力；
+  带合法请求体时基线继续进入加载处理（该用例 app 未配置可信公钥，返回 503，但同样未检查能力），
+  能力检查后两条路径都返回 403。
+- 基线 operator 调用 `POST /api/registry/unload` 返回 404，不检查能力。
+- 基线 operator 能提交工具授权申请并得到 201。
+- 基线运行、计划、trace、会话与聊天接口只做认证，不检查能力。
+
+四、范围与已知缺口
+
+- `grants.decide` 与 `connectors.manage` 的界面服务端不一致另立切片，需要先定方向：
+  让 operator 真正能决定工具授权属于放宽权限，需要人工确认。
+- 连接器申请提交、审批历史与 `/api/tenants` 的能力归属不在本切片。

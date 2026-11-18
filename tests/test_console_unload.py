@@ -149,7 +149,9 @@ class FakeProvider:
     def __init__(self) -> None:
         self.principals = {
             "admin": Principal(tenant="acme", subject="admin", kind="human", roles=["admin"]),
-            "viewer": Principal(tenant="local", subject="viewer", kind="human"),
+            "viewer": Principal(
+                tenant="local", subject="viewer", kind="human", roles=["publisher"]
+            ),
         }
 
     async def resolve(self, credential: str) -> Principal:
