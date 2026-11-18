@@ -14,6 +14,7 @@
 - 每个切片从 spec 到合并不再逐次确认: 写 spec 与契约、先红后绿、跑门禁、push、开 PR、按 ADR-0023 分诊告警、全绿且可合并时 squash merge。
 - 合并前必须有一个独立只读验证代理确认 diff、证据与 `--full` 结果，不采信实现代理的自述。验证不通过就修，修完再验，不打断自动化。
 - 每个切片只发一条汇总，含 PR 链接、门禁数字与证据路径。
+- 每个切片按 `docs/guides/slice-checklist.md` 的检查点执行；spec 引用的用例名由 `scripts/check_specs.py` 校验必须真实存在。
 
 ## 硬规则
 

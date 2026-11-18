@@ -1,0 +1,38 @@
+SLICE-146 spec 用例名可执行校验与切片检查表
+日期: 2026-11-18
+依据: 会话要求“写提示词不如写可运行的验证实例”
+基线: 2406b9a
+
+一、实现
+
+- `scripts/check_specs.py` 新增用例名校验：活跃 spec（`状态: merged` 之外）里反引号引用的
+  `test_*` 必须真实存在于 `tests/` 的 `def test_*`/`async def test_*`；缺失时 specs 步骤失败，
+  输出 `unknown-test:<name>`。
+- 修正 SLICE-137 的唯一失效引用，改为实际用例名。
+- 新增 `docs/guides/slice-checklist.md`：切片顺序、已被自动化固化的检查表、提交前人工检查、
+  工具约定与 stop list。
+- `CLAUDE.md` 的切片流程指向检查表，并声明用例名校验已由 `scripts/check_specs.py` 固化。
+- 新增 `tests/test_check_specs.py` 与 `tests/test_slice_checklist.py` 锁定以上行为。
+
+二、绿态
+
+$ pytest tests/test_check_specs.py tests/test_slice_checklist.py -q
+6 passed
+
+$ pytest -q（Windows）
+1576 passed, 88 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线 `check_specs.py` 只查章节，spec 引用不存在的用例名仍然通过；新增用例在基线上
+`check_file` 不接受用例集合参数而失败。修 SLICE-137 前，新校验在仓库上直接报
+`unknown-test:test_proxy_passes_principal`。
+
+四、范围与已知缺口
+
+- 只校验 spec，不校验 evidence（历史记录允许保留旧名）。
+- 文档代码块的可执行性仍由每切片的守卫测试负责（`tests/test_install_guide.py` 是模式）。
+- 检查表本身不阻断漏掉的步骤，只提供清单；能固化的部分已列在“已被自动化固化的检查”表里。

@@ -38,7 +38,7 @@
 ## 反例（实现前跑红）
 
 - [x] 反例 1：当前没有工具网关客户端 -> `tests/tools/test_client.py` 收集失败
-- [x] 反例 2：当前代理不传 principal -> `test_proxy_passes_principal` 失败
+- [x] 反例 2：当前代理不传 principal -> `test_sandbox_agent_passes_the_current_invocation` 失败
 
 ## 5 问威胁建模
 
