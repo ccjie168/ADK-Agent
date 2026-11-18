@@ -1,0 +1,35 @@
+SLICE-148 企业内网身份认证文档：AD / Entra ID / ADFS
+日期: 2026-11-18
+依据: 会话确认内网优先；ADR-0026 范围说明把身份认证与密钥管理分开
+基线: d9f0f63
+
+一、实现
+
+- 新增 `docs/guides/ad-oidc.md`：先决条件（issuer、audience、discovery）、`OidcConfig` 字段表、
+  Entra ID 单租户样例、ADFS 样例、控制台 PKCE 浏览器登录块、启动参数、排障表与不支持的方式。
+- 样例中的 `client_secret_env` 只写环境变量名，不写密钥；LDAP/Kerberos/SPNEGO 明确列为未实现，
+  需要时另立 ADR；密钥管理指向 ADR-0026。
+- 安装手册的控制台小节指向这份文档。
+- 新增 `tests/test_ad_oidc_guide.py`：章节齐全、所有 JSON 样例通过 `OidcConfig`/`OidcBrowserConfig`
+  校验、缺 `issuer`/`audience` 会被模型拒绝、文档包含 `--oidc-config`、ADR-0007/0026 与 Kerberos 限制。
+
+二、绿态
+
+$ pytest tests/test_ad_oidc_guide.py -q
+4 passed
+
+$ pytest -q（Windows）
+1584 passed, 88 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线没有该文档，读取即失败；把样例字段写错或删掉必填字段会让模型校验用例失败。
+
+四、范围与已知缺口
+
+- 只覆盖 OIDC；LDAP/Kerberos/SPNEGO 与 Windows 集成认证未实现。
+- IdP 侧的组、角色与条件访问不在文档范围内，只给出 claim 要求。
+- 没有针对真实 Entra/ADFS 的联调记录；样例只保证通过本仓库的配置模型校验。

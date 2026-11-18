@@ -83,6 +83,7 @@ export ADK_CONSOLE_TOKEN=change-me
 ```
 
 - 写操作需要 admin 角色；读面板按能力校验（`audit.read`、`registry.read` 等）。
+- 企业内网的 AD、Entra ID 与 ADFS 接入走 OIDC，配置样例见 `docs/guides/ad-oidc.md`。
 - `--agent-ref TENANT/ID@VERSION` 改为从注册表加载已经签名的工件；这时还要给
   `--artifact-dir` 与 `--artifact-keys`。用 `--agents` 加载本地文件时不需要这两个参数。
 - `--agent-sandbox` 让沙箱执行；`--tool-gateway-url` 让沙箱里的工具调用经工具网关。
