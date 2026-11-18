@@ -73,7 +73,8 @@ class FileCredentialStore:
         self._lock = threading.Lock()
 
     def _path(self, tenant: str, credential_id: str) -> Path:
-        return safe_join(self.root, tenant, f"{credential_id}.json", pattern=_NAME.pattern)
+        base = safe_join(self.root, tenant, credential_id, pattern=_NAME.pattern)
+        return base.with_name(f"{base.name}.json")
 
     async def add(self, binding: CredentialBinding) -> CredentialBinding:
         path = self._path(binding.tenant, binding.credential_id)

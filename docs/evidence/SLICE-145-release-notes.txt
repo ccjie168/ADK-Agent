@@ -9,7 +9,7 @@ SLICE-145 v0.1.0 发布说明
 - 升级说明覆盖凭据迁移（128 字符上限、引用首段必须等于记录租户）、轮换步骤与 `publish` 的
   `in_process` 限制。
 - 已知缺口与 PROGRESS 对齐：KMS、控制台明文写入、`credential.decrypt_failed` 审计、
-  构建签名与 manifest 绑定、跨租户审计链、并发停用审计、demo_seed 未签名工件、Windows 锁重试、
+  构建签名与 manifest 绑定、跨租户审计链、并发停用审计、demo_seed 只有演示发布签名、Windows 锁重试、
   沙箱残余风险。
 - 新增 `tests/test_release_notes.py`：发布说明必须与 `pyproject.toml` 的版本一致、章节齐全、
   没有 `TODO`/`TBD` 占位。
@@ -20,7 +20,7 @@ $ pytest tests/test_release_notes.py tests/test_install_guide.py -q
 9 passed
 
 $ pytest -q（Windows）
-1569 passed, 88 skipped
+1570 passed, 88 skipped
 
 $ python scripts/check.py --full
 ALL PASS
@@ -48,3 +48,19 @@ ALL PASS
 6. 低：守卫测试的版本正则限定在 `[project]` 表；章节改为整行精确匹配；占位检查改为大小写不敏感。
 7. 低：沙箱残余改引 `docs/contracts/sandbox.md`，总体取舍仍指向 ADR-0024 第 9 条。
 8. 低：CI 全绿改成“打 tag 前确认”，不在说明里预判尚未完成的检查。
+
+六、第二轮独立验证
+
+结论 DO NOT MERGE。超长凭据记录的处置说明不可执行，另发现文件存储对 124-128 字符 id 的真实边界
+问题。处理：
+
+1. 中：删除“停用后重新注册”的说法。超长记录在模型校验层就被拒绝，停用与重新注册都无法清理它；
+   改为“备份后手动删除旧状态（文件后端删 `<tenant>/<id>.json`，Postgres 删行），再按新 id 注册；
+   租户超长时换新租户”。
+2. 中：文件存储的 `_path` 把 `.json` 后缀一起套 128 字符上限，124-128 字符的 id 通过模型校验
+   却在落盘时抛 `UnsafePath`。改为先按 id 校验并拼路径，再追加固定后缀；补 128 字符 id 的
+   存取用例。
+3. 低：88 skipped 的说明补上 POSIX-only 沙箱用例。
+4. 低：`rewrap` 示例补存储选择参数，并说明 `skipped` 同时包含无密文与已在当前 key id 的记录。
+5. 低：PROGRESS 第 5 条关于工具调用仍被拒绝的陈旧描述已更新。
+6. 低：证据里 `demo_seed` 的旧措辞已同步。
