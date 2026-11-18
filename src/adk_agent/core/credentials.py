@@ -6,6 +6,7 @@ addressed by ``secret://<tenant>/<name>``.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime
 from typing import Any
@@ -31,6 +32,18 @@ class CredentialConflict(CredentialStoreError):
 
 class CredentialStoreUnavailable(CredentialStoreError):
     """The credential store backend cannot be reached."""
+
+
+_SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+
+
+def credential_version(key_id: str | None) -> str:
+    """AgentRef version for credential audit events; always safe for the schema."""
+    if not key_id:
+        return "credential"
+    if _SAFE_VERSION.fullmatch(f"credential.{key_id}"):
+        return f"credential.{key_id}"
+    return f"credential.{hashlib.sha256(key_id.encode('utf-8')).hexdigest()[:12]}"
 
 
 def parse_credential_ref(reference: str) -> tuple[str, str]:
@@ -86,5 +99,6 @@ __all__ = [
     "CredentialStoreError",
     "CredentialStoreUnavailable",
     "credential_env_name",
+    "credential_version",
     "parse_credential_ref",
 ]

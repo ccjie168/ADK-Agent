@@ -19,6 +19,7 @@ from ..core import (
     Principal,
     SecretProvider,
     credential_env_name,
+    credential_version,
     parse_credential_ref,
 )
 from ..core.context import current_invocation
@@ -79,17 +80,6 @@ class PrefixedEnvSecretProvider:
         return _checked(reference, value)
 
 
-_SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
-
-
-def _credential_version(key_id: str | None) -> str:
-    if key_id is None:
-        return "credential"
-    if _SAFE_VERSION.fullmatch(f"credential.{key_id}"):
-        return f"credential.{key_id}"
-    return f"credential.{hash_text(key_id)[:12]}"
-
-
 class TenantSecretProvider:
     """Resolve ``secret://tenant/name`` from stored ciphertext, then the environment."""
 
@@ -105,7 +95,7 @@ class TenantSecretProvider:
             return
         try:
             key_id = binding.secret_key_id
-            version = _credential_version(key_id)
+            version = credential_version(key_id)
             invocation = current_invocation()
             principal = (
                 invocation.principal

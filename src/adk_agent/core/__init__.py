@@ -31,6 +31,7 @@ from .credentials import (
     CredentialStoreError,
     CredentialStoreUnavailable,
     credential_env_name,
+    credential_version,
     parse_credential_ref,
 )
 from .eval import EvalCase, EvalCaseResult, EvalReport, EvalSuiteSpec
@@ -265,6 +266,7 @@ __all__ = [
     "TriggerStore",
     "TriggerStoreUnavailable",
     "credential_env_name",
+    "credential_version",
     "declared_execution_tier",
     "effective_status",
     "hash_webhook_token",

@@ -136,7 +136,9 @@
 - 请求体不接受 `wrapped_secret` 等其他密文字段；出现即 400 `invalid_credential`。
 - 同 id 已存在返回 409 `credential_conflict`，重发不会覆盖；需要先停用或换 id。
 - 成功写一条 `credential.register` 审计，`target` 是 `<tenant>/<credential_id>`，
-  `agent_ref.version` 是 `credential.<key id>`（无密文时为 `credential`），不记明文与密文。
+  `agent_ref.version` 是 `credential.<key id>`；当 `credential.<key id>` 不满足 `AgentRef.version`
+  的 schema（`^[A-Za-z0-9][A-Za-z0-9._+-]*$`）时改用 key id 的 SHA-256 前 12 位；无密文时为
+  `credential`。不记明文与密文。
 - 存储不可达返回 503 `credential_store_unavailable`。
 - 明文只在请求处理期间存在，不写日志、不进审计、不回响应；加密失败只记异常类型。
 
@@ -145,7 +147,7 @@
 - 只有 admin 能写，非 admin 返回 403 `forbidden`；admin 可以停用任意租户。
 - `tenant` 缺省取调用方租户；静态 token 没有租户，缺省时返回 400 `invalid_request`。
 - 不存在返回 404 `credential_not_found`；成功返回 200，已停用时重发返回 200，幂等。
-- 成功写一条 `credential.disable` 审计，字段规则同上。
+- 成功写一条 `credential.disable` 审计，字段规则同上（保留原 key id，不安全的 id 同样哈希化）。
 - 存储不可达返回 503 `credential_store_unavailable`。
 
 ## 错误
