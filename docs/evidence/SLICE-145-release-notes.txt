@@ -27,10 +27,24 @@ ALL PASS
 
 三、红态
 
-基线没有 `docs/releases/`，`test_release_notes_exist_for_the_project_version` 失败；
-未加发布说明前版本升级会让用例失败。
+先加 `test_release_notes.py` 而不加 `docs/releases/v0.1.0.md`，第一个用例失败；
+版本升级而不加说明文件同样失败。
 
 四、范围与已知缺口
 
 - 打 tag、GitHub Release 与镜像推送在本切片合并后单独执行；镜像只在本地构建验证。
 - 没有英文版发布说明。
+
+五、第一轮独立验证
+
+结论 DO NOT MERGE。发布说明里有两处事实错误（全量数字仍是 1566；把明文写入路径写成只有控制面），
+另有升级与残余清单的措辞不精确。处理：
+
+1. 高：全量数字改为 1569。
+2. 高：明文写入路径改为“控制面 `/v1/credentials` 或 CLI `credentials register --secret-stdin`”。
+3. 中：`demo_seed.py` 改为“只带演示发布签名、没有平台构建签名”，PROGRESS 同步。
+4. 中：轮换删除旧 key 的判据改为“所有带密文记录的 `secret_key_id` 都是新 key id”，说明无密文记录计入 `skipped`。
+5. 中：128 字符超长记录写明没有改名命令，需停用后按新 id 重新注册，且只影响打 tag 前的内部记录。
+6. 低：守卫测试的版本正则限定在 `[project]` 表；章节改为整行精确匹配；占位检查改为大小写不敏感。
+7. 低：沙箱残余改引 `docs/contracts/sandbox.md`，总体取舍仍指向 ADR-0024 第 9 条。
+8. 低：CI 全绿改成“打 tag 前确认”，不在说明里预判尚未完成的检查。
