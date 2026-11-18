@@ -269,6 +269,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 6. 控制台的读路径已在 SLICE-133 对齐到面板能力（审计、策略、注册表与评测、工具、工具授权、连接器与申请、凭据、对端与远程目录）。仍只做认证加租户/admin 判断的是写路径与基础能力接口：注册表 load/unload、connectors 注册/停用/检查、connector-requests 提交与决定、credentials 注册/停用、peers 与远程 agent 的写操作、tool-grants 提交与决定、`/api/runs`、`/api/plans`、`/api/traces/{id}`、`/api/sessions`、`/api/chat`（后五个按基础能力 `runs.read`、`sessions.read`、`chat.run`）。写路径的能力对齐与 `grants.decide`、`connectors.manage` 的界面服务端不一致（界面给 operator 显示决定按钮但服务端仅 admin）另行切片。审批历史查询参数 `limit` 由 FastAPI 在进入处理函数前转换，越权调用方带非整数 `limit` 会先得 422 而非 403；不泄露数据，记为已知小缺口。
 7. SLICE-138 的构建签名只绑定工件 digest，不绑定发布记录 manifest；HTTP 注册表发布仍可把已有平台工件换成不同租户/id/工具授权的记录。CLI 端发布会比较工件内 manifest 与记录 manifest，HTTP 端没有。后续切片在 upload 或 load 处补齐比较。`scripts/demo_seed.py` 属本地演示信任域，仍生成未签名 `in_process` 工件。
+8. SLICE-140 的残余：`serve-tool-gateway` 只在配置连接器时解析与校验 `--credentials-dir`/`--credential-db`，只给 `--tools` 时凭据标志被忽略且不校验互斥；`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 同时给时显式标志胜出、不报错，契约文字比实现严格。新增的两个接线用例没有清空 `CREDENTIAL_DATABASE_URL`，CI 若导出该变量会误报。ADR-0025 第 8 条的 `credential.decrypt_failed` 审计随轮换切片一起做。`ADK_SECRET_KEKS` 格式非法时启动直接抛 `KeyBackendError` traceback，需一次 UX 收口。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
