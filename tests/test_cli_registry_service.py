@@ -84,3 +84,26 @@ def test_artifact_source_exclusive(monkeypatch, tmp_path, capsys):
 
     assert exc.value.code == 1
     assert "artifact" in capsys.readouterr().err.lower()
+
+
+def test_builds_credential_routes(monkeypatch):
+    monkeypatch.setenv("REG_TOKEN", "secret")
+    captured: dict = {}
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: captured.update(app=app))
+
+    cli.main(_argv("--database-url", DSN, "--credentials-dir", "cred"))
+
+    paths = {route.path for route in captured["app"].routes}
+    assert "/v1/credentials" in paths
+    assert "/v1/credentials/{credential_id}/disable" in paths
+
+
+def test_invalid_kek_exits(monkeypatch, capsys):
+    monkeypatch.setenv("REG_TOKEN", "secret")
+    monkeypatch.setenv("ADK_SECRET_KEKS", "not-json")
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_argv("--database-url", DSN))
+
+    assert exc.value.code == 1
+    assert "ADK_SECRET_KEKS" in capsys.readouterr().err

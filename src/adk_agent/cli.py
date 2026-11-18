@@ -1356,6 +1356,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="JSON file mapping key id to a 64 hex Ed25519 public key",
     )
+    _add_credential_store_args(p_registry)
     _add_http_args(p_registry)
     _add_rate_limit_args(p_registry)
     p_registry.add_argument(
@@ -2417,12 +2418,22 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
 
         oidc = _identity_provider(args)
+        from .secretstore import KeyBackendError, LocalKeyBackend
+
+        credential_store = _credential_store(args)
+        try:
+            key_backend = LocalKeyBackend.from_env()
+        except KeyBackendError as exc:
+            print(f"invalid ADK_SECRET_KEKS: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
         app = build_registry_service_app(
             registry,
             artifact_store=store,
             eval_reports=eval_reports,
             lifecycle=lifecycle,
             connectors=connectors,
+            credentials=credential_store,
+            key_backend=key_backend,
             audit=_audit_sink(args),
             trust=_artifact_trust(args),
             builder_keys=_builder_trust(args),
@@ -2436,6 +2447,12 @@ def main(argv: list[str] | None = None) -> None:
         import uvicorn
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+        from .registry.credentials_postgres import PostgresCredentialStore
+
+        if isinstance(credential_store, PostgresCredentialStore):
+            # Same cross-loop caveat as the console command.
+            with contextlib.suppress(Exception):
+                asyncio.run(credential_store.aclose())
     elif args.cmd == "verify-audit":
         from .audit import (
             AuditChainBroken,

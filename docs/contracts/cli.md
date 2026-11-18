@@ -301,13 +301,14 @@
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥。
 - OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
 
-## `adk-agent serve-registry --database-url URL [--artifact-dir DIR | $ARTIFACT_URL] [--artifact-keys FILE | $ADK_ARTIFACT_KEYS] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent serve-registry --database-url URL [--artifact-dir DIR | $ARTIFACT_URL] [--artifact-keys FILE | $ADK_ARTIFACT_KEYS] [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 启动注册表控制面服务，接口见 `registry_service.md`。
 
 - `--database-url` 指向 Postgres，接受 `postgresql://` 或 `postgresql+asyncpg://`；默认取 `$REGISTRY_DATABASE_URL`。缺失或非 Postgres 退出 1。
 - 工件字节存储用 `--artifact-dir DIR` 或 `$ARTIFACT_URL`，二选一；都不给时带工件的发布和工件上传返回 503 `artifact_store_unavailable`，不带工件的发布与读取照常。两者同时给退出 1。
 - `--artifact-keys` 或 `$ADK_ARTIFACT_KEYS` 提供可信公钥，用于发布与上传时验签。
+- `--credentials-dir`、`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 只能给一个，冲突退出 2；配置后开放 `/v1/credentials` 写入与停用端点。`ADK_SECRET_KEKS` 是服务端加密明文的 KEK keyring，格式非法时启动退出 1；不设时端点只接受元数据。
 - 鉴权、`/healthz`、限流与其他服务一致。
 
 ## 客户端 `--registry-url URL [--registry-token-env VAR]`
