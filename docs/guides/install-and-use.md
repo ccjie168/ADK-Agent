@@ -13,11 +13,13 @@
 
 ```bash
 python -m venv .venv
-.venv/Scripts/python.exe -m pip install -e ".[dev,litellm]"
+.venv/Scripts/python.exe -m pip install -e ".[dev,litellm,claude]"
 .venv/Scripts/python.exe scripts/check.py --fast
 ```
 
 Linux/macOS 把 `.venv/Scripts/python.exe` 换成 `.venv/bin/python`。只部署运行时不装 `dev` extra。
+`claude` extra 是 Anthropic 兼容端点（含 DeepSeek 的 `/anthropic`）所需；OIDC 另加 `oidc`；
+Postgres 后端还要单独安装 `asyncpg` 与 `sqlalchemy`（暂未声明为 extra）。
 
 ## 配置模型
 
@@ -88,12 +90,9 @@ export ADK_CONSOLE_TOKEN=change-me
 `publish` 的 `--key` 是发布签名私钥，`--builder-keys` 是构建公钥信任文件；
 加载时用 `--artifact-keys` 提供发布公钥。
 
-```bash
-.venv/Scripts/python.exe -m adk_agent publish ./project/manifest.json \
-  --artifact ./project --key publisher.pem --key-id publisher-1 \
-  --artifact-dir ./artifacts --registry ./registry
+带工件的发布目前只支持 `in_process`，并且必须同时给发布签名与构建签名：
 
-# in_process 工件还必须带构建密钥与构建公钥信任文件
+```bash
 .venv/Scripts/python.exe -m adk_agent publish ./project/manifest.json \
   --artifact ./project --key publisher.pem --key-id publisher-1 \
   --builder-key builder.pem --builder-key-id builder-1 \
@@ -108,9 +107,12 @@ export ADK_CONSOLE_TOKEN=change-me
   --artifact-dir ./artifacts --registry ./registry
 ```
 
-新发布必须声明 `execution_tier`；缺省按 `sandboxed`，没有沙箱后端时发布直接失败。
-`in_process` 只接受构建密钥签名的工件，本地/HTTP 发布都要求构建公钥信任文件。加载时
-`--artifact-keys` 提供可信公钥，`serve-registry --builder-keys` 校验构建签名。
+- 新发布必须声明 `execution_tier`。缺省按 `sandboxed`；`publish` 命令不注册沙箱后端，
+  所以带工件的 `sandboxed` 发布会被拒绝，等沙箱发布接入后再开放。
+- `in_process` 只接受构建密钥签名的工件；本地与 HTTP 发布都要求构建公钥信任文件
+  （`--builder-keys` 或 `ADK_BUILDER_KEYS`）。
+- 加载时 `--artifact-keys` 提供发布公钥，`serve-registry --builder-keys` 校验构建签名。
+- 没有工件的 manifest-only 发布不做签名校验，只登记元数据。
 
 ## 服务面
 
@@ -126,9 +128,11 @@ export ADK_CONSOLE_TOKEN=change-me
 | `serve-audit` | 审计服务 | `--out` 或 `--audit-db` |
 | `serve-triggers` | 定时与 webhook 触发 | `--triggers-dir`/`--trigger-db`、`--agent-sandbox` |
 
-除 `serve-triggers` 外的服务共用 bearer token / OIDC / 限流参数；`serve-triggers` 的 webhook
-用每个触发定义自己的 token 哈希，不接受 `--auth-token-env`。`/healthz` 全部免鉴权；
-`/metrics` 只在 `serve`/`serve-many`（`--metrics`）、控制台、模型网关与工具网关等显式开放的服务上提供。
+除 `serve-triggers` 外的服务共用 bearer token 与 OIDC 参数；`serve-triggers` 的 webhook
+用每个触发定义自己的 token 哈希，不接受 `--auth-token-env`，但仍接受限流参数。
+`/healthz` 在 console、serve、serve-many、serve-registry、serve-tool-gateway、
+serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有该路径）；
+`/metrics` 只在 serve/serve-many（`--metrics`）、控制台、模型网关与工具网关提供。
 
 ## 凭据
 
@@ -173,7 +177,8 @@ docker run --rm -p 8000:8000 \
 ## 升级与回滚
 
 1. 先跑 `scripts/check.py --full`，再构建镜像并做 `/healthz` 冒烟。
-2. 保留旧镜像 tag。数据库迁移是加表与加列；破坏性变更需要单独评审，不能靠回滚镜像撤销。
+2. 保留旧镜像 tag。数据库初始化只做 `CREATE TABLE IF NOT EXISTS` 与 RLS 变更，没有新增列的迁移路径；
+   破坏性变更需要单独评审，不能靠回滚镜像撤销。
 3. 审计钥环或 KEK 轮换后，旧密钥在全部历史验证完之前不要删除。
 
 ## 排障

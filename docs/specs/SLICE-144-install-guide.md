@@ -19,6 +19,7 @@
 - [x] 手册包含安装、模型、控制台、发布、凭据、Docker、升级与排障 -> `test_guide_covers_the_required_sections`
 - [x] 手册里的命令都是真实子命令 -> `test_every_guide_command_is_a_real_subcommand`
 - [x] 手册里每个 flag 都被对应命令接受 -> `test_every_guide_flag_is_accepted_by_its_command`
+- [x] `compose` 与 `publish` 示例带齐必填 flag -> `test_guide_commands_carry_the_required_flags`
 - [x] 手册写明 `ADK_SECRET_KEKS`、`credentials rewrap` 与控制面 TLS 要求 -> `test_guide_names_the_credential_environment`
 - [x] 全量门禁通过
 

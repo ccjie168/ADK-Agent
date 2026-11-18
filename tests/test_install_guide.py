@@ -74,7 +74,38 @@ def test_every_guide_flag_is_accepted_by_its_command(capsys):
         assert exc.value.code == 0, command
         help_text = capsys.readouterr().out
         for flag in flags:
-            assert flag in help_text, f"{flag} is not accepted by {' '.join(command)}"
+            pattern = rf"(?<![\w-]){re.escape(flag)}(?![\w-])"
+            assert re.search(pattern, help_text), f"{flag} is not accepted by {' '.join(command)}"
+
+
+def test_guide_commands_carry_the_required_flags():
+    invocations = {tuple(command): flags for command, flags in _invocations()}
+
+    compose = set(invocations[("compose",)])
+    assert {
+        "--template",
+        "--tenant",
+        "--id",
+        "--version",
+        "--instruction",
+        "--key",
+        "--key-id",
+        "--builder-key",
+        "--builder-key-id",
+        "--artifact-dir",
+        "--registry",
+    } <= compose
+
+    publish = set(invocations[("publish",)])
+    assert {
+        "--key",
+        "--key-id",
+        "--builder-key",
+        "--builder-key-id",
+        "--builder-keys",
+        "--artifact-dir",
+        "--registry",
+    } <= publish
 
 
 def test_guide_documents_required_auth_and_credential_environment():

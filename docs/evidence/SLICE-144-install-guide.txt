@@ -17,10 +17,10 @@ SLICE-144 稳定的安装与使用手册
 二、绿态
 
 $ pytest tests/test_install_guide.py -q
-4 passed
+5 passed
 
 $ pytest -q（Windows）
-1564 passed, 88 skipped
+1565 passed, 88 skipped
 
 $ python scripts/check.py --full
 ALL PASS
@@ -42,3 +42,20 @@ ALL PASS
 `ADK_MCP_AUTH_TOKEN`，容器启动即拒绝服务；HTTP/控制台示例没写 token 环境变量；`publish` 示例
 多了不存在的 `--artifact-keys`。已逐条修正，并把手册守卫测试从“只校验首个命令词”加强为
 “逐个命令块校验每个 flag 都被该命令的 `--help` 接受”，另补章节与凭据环境断言。
+
+六、第二轮独立验证
+
+结论 DO NOT MERGE。逐条修正：
+
+1. 高：干净安装的 `.[dev,litellm]` 不含 `anthropic`，而手册第一个模型选项走 Anthropic 兼容端点，
+   导入即失败。安装命令改为 `.[dev,litellm,claude]`，并说明 OIDC 需要 `oidc`、
+   Postgres 需要单独安装 `asyncpg` 与 `sqlalchemy`。
+2. 中：第一个 `publish` 示例只带 `--artifact`，`in_process` 缺构建签名与公钥信任文件，
+   `sandboxed` 在 publish 路径没有沙箱后端，必然失败。删除该示例，只保留带构建签名的
+   `in_process` 命令，并说明带工件的 `sandboxed` 发布等沙箱发布接入后再开放。
+3. 低：守卫测试只校验“出现的 flag 被接受”，不校验必填 flag。补
+   `test_guide_commands_carry_the_required_flags`，并把 flag 匹配改为词边界精确匹配，
+   避免 `--key` 被 `--key-id` 满足。
+4. 低：服务面段落把限流也归为 `serve-triggers` 不支持，实际它支持限流；`/healthz` 不是所有服务都有。
+   已改为按服务列出，`/metrics` 只列实际提供的四个面。
+5. 低：升级说明里的“加列”改为“只做 CREATE TABLE IF NOT EXISTS 与 RLS 变更，没有新增列的迁移路径”。
