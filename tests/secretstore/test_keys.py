@@ -186,3 +186,28 @@ def test_keyring_file_missing_is_rejected(tmp_path, monkeypatch):
 
     with pytest.raises(KeyBackendError, match="cannot read"):
         load_key_backend()
+
+
+def test_keyring_file_must_be_utf8(tmp_path, monkeypatch):
+    from adk_agent.secretstore import load_key_backend
+
+    path = tmp_path / "keks.bin"
+    path.write_bytes(b"\xff\xfe\x00")
+    if os.name != "nt":
+        path.chmod(0o600)
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.setenv("ADK_SECRET_KEKS_FILE", str(path))
+
+    with pytest.raises(KeyBackendError, match="UTF-8"):
+        load_key_backend()
+
+
+def test_empty_file_variable_does_not_conflict(monkeypatch):
+    from adk_agent.secretstore import load_key_backend
+
+    monkeypatch.setenv("ADK_SECRET_KEKS", _keyring_text(os.urandom(32)))
+    monkeypatch.setenv("ADK_SECRET_KEKS_FILE", "")
+
+    backend = load_key_backend()
+
+    assert backend is not None

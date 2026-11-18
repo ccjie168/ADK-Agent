@@ -86,5 +86,8 @@
   保留 `enabled`、`description` 等并发修改；记录不存在抛 `CredentialNotFound`。
   文件存储在记录旁创建 `<id>.json.lock` 并用 OS 文件锁串行化读改写，跨进程的 `disable` 不会被覆盖；
   Postgres 用 `jsonb_set` 只改这两个键，`disable` 也只改 `enabled`。
+- 解密或密钥后端不可用时不回退，并按 ADR-0025 第 8 条写 `credential.decrypt_failed` 审计：
+  `target` 是 `<tenant>/<credential_id>`，`agent_ref.version` 是 `credential.<key id>`，
+  `error_code` 是 `decrypt_failed` 或 `key_backend_unavailable`；不记明文与密文。
 - `credentials rewrap --tenant T [--dry-run]` 逐条把非当前 key id 的记录换到当前 KEK；
   已是当前 key id 或没有密文的记录计入 `skipped`；输出 `{tenant, rewrapped, skipped, dry_run}`。

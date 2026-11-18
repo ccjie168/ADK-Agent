@@ -5,10 +5,23 @@ from __future__ import annotations
 import logging
 import os
 import re
+import uuid
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import datetime, timezone
 from typing import Any
 
-from ..core import CredentialStoreError, SecretProvider, credential_env_name, parse_credential_ref
+from ..audit.hashing import hash_text
+from ..core import (
+    AgentRef,
+    AuditEvent,
+    AuditSink,
+    CredentialStoreError,
+    Principal,
+    SecretProvider,
+    credential_env_name,
+    parse_credential_ref,
+)
+from ..core.context import current_invocation
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
@@ -69,9 +82,46 @@ class PrefixedEnvSecretProvider:
 class TenantSecretProvider:
     """Resolve ``secret://tenant/name`` from stored ciphertext, then the environment."""
 
-    def __init__(self, backend: Any = None, credentials: Any = None) -> None:
+    def __init__(
+        self, backend: Any = None, credentials: Any = None, audit: AuditSink | None = None
+    ) -> None:
         self._backend = backend
         self._credentials = credentials
+        self._audit = audit
+
+    async def _audit_failure(self, binding: Any, error_code: str) -> None:
+        if self._audit is None:
+            return
+        key_id = binding.secret_key_id
+        invocation = current_invocation()
+        principal = (
+            invocation.principal
+            if invocation is not None and invocation.principal.tenant == binding.tenant
+            else Principal(tenant=binding.tenant, subject="credential_resolver", kind="service")
+        )
+        try:
+            await self._audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=invocation.run_id if invocation is not None else uuid.uuid4().hex,
+                    trace_id=invocation.trace_id if invocation is not None else uuid.uuid4().hex,
+                    tenant=binding.tenant,
+                    principal=principal,
+                    agent_ref=AgentRef(
+                        id=binding.credential_id,
+                        version=f"credential.{key_id}" if key_id else "credential",
+                        digest="sha256:" + hash_text(f"{binding.secret_ref}:{key_id or ''}"),
+                    ),
+                    action="credential.decrypt_failed",
+                    target=f"{binding.tenant}/{binding.credential_id}",
+                    args_hash=hash_text(f"{error_code}:{key_id or ''}"),
+                    status="error",
+                    error_code=error_code,
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("credential decrypt audit failed: %s", type(exc).__name__)
 
     async def _stored(self, tenant: str, reference: str) -> str | None:
         if self._credentials is None:
@@ -88,6 +138,7 @@ class TenantSecretProvider:
         if not encrypted:
             return None
         if self._backend is None:
+            await self._audit_failure(encrypted[0], "key_backend_unavailable")
             raise SecretNotFound(f"secret {reference} has ciphertext but no key backend")
         candidates = sorted(
             (item for item in encrypted if item.enabled), key=lambda item: item.credential_id
@@ -99,6 +150,7 @@ class TenantSecretProvider:
         try:
             return self._backend.unwrap(binding.wrapped_secret, aad).decode("utf-8")
         except Exception as exc:  # noqa: BLE001
+            await self._audit_failure(binding, "decrypt_failed")
             raise SecretNotFound(f"secret {reference} cannot be decrypted") from exc
 
     async def resolve(self, reference: str) -> str:

@@ -267,3 +267,63 @@ def test_routing_provider_rejects_malformed_references():
 
     with pytest.raises(SecretNotFound):
         asyncio.run(routing.resolve("secret://a/b/c"))
+
+
+def test_decrypt_failure_writes_an_audit_event():
+    import os
+
+    from adk_agent.audit import ListAuditSink
+    from adk_agent.secretstore import LocalKeyBackend, SecretNotFound, TenantSecretProvider
+
+    encrypting = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    other = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    binding = _stored_binding(encrypting)
+    sink = ListAuditSink()
+    provider = TenantSecretProvider(
+        backend=other, credentials=_StoredCredential(binding), audit=sink
+    )
+
+    with pytest.raises(SecretNotFound, match="cannot be decrypted"):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+    [event] = [item for item in sink.recent() if item.action == "credential.decrypt_failed"]
+    assert event.error_code == "decrypt_failed"
+    assert event.target == "acme/crm"
+    assert event.agent_ref.version == "credential.k1"
+    assert event.status == "error"
+    assert "from-store" not in event.model_dump_json()
+
+
+def test_missing_key_backend_writes_an_audit_event():
+    import os
+
+    from adk_agent.audit import ListAuditSink
+    from adk_agent.secretstore import LocalKeyBackend, SecretNotFound, TenantSecretProvider
+
+    encrypting = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    binding = _stored_binding(encrypting)
+    sink = ListAuditSink()
+    provider = TenantSecretProvider(credentials=_StoredCredential(binding), audit=sink)
+
+    with pytest.raises(SecretNotFound, match="no key backend"):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+    [event] = [item for item in sink.recent() if item.action == "credential.decrypt_failed"]
+    assert event.error_code == "key_backend_unavailable"
+
+
+def test_successful_resolution_does_not_audit():
+    import os
+
+    from adk_agent.audit import ListAuditSink
+    from adk_agent.secretstore import LocalKeyBackend, TenantSecretProvider
+
+    backend = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    binding = _stored_binding(backend)
+    sink = ListAuditSink()
+    provider = TenantSecretProvider(
+        backend=backend, credentials=_StoredCredential(binding), audit=sink
+    )
+
+    assert asyncio.run(provider.resolve("secret://acme/token")) == "from-store"
+    assert sink.recent() == []

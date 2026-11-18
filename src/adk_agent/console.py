@@ -2656,11 +2656,12 @@ def build_console_app(
 
     policy_store = FilePolicyStore(policy_file) if policy_file else None
     policy_engine = RolePolicyEngine(policy_store.load()) if policy_store else None
+    audit = audit_sink if audit_sink is not None else ListAuditSink()
     if remote_secrets is not None:
         secrets = remote_secrets
     elif credentials is not None:
         secrets = RoutingSecretProvider(
-            TenantSecretProvider(load_key_backend(), credentials),
+            TenantSecretProvider(load_key_backend(), credentials, audit=audit),
             PrefixedEnvSecretProvider(),
         )
     else:
@@ -2673,7 +2674,6 @@ def build_console_app(
         if session_service is not None
         else _session_service(session_db, rls=session_rls)
     )
-    audit = audit_sink if audit_sink is not None else ListAuditSink()
 
     async def _emit_peer(
         action: str,

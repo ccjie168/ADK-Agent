@@ -1,0 +1,37 @@
+SLICE-150 凭据解密失败审计与 keyring 边界收口
+日期: 2026-11-19
+依据: ADR-0026 第 6 条、ADR-0025 第 8 条；SLICE-149 验证的低风险项
+基线: c9f1147
+
+一、实现
+
+- `TenantSecretProvider` 接受可选 `audit`：解密失败写 `credential.decrypt_failed`
+  （`error_code=decrypt_failed`），带密文但无密钥后端写 `error_code=key_backend_unavailable`；
+  `target=<tenant>/<credential_id>`，`agent_ref.version=credential.<key id>`，只写元数据。
+- 主体取当前 invocation（租户一致时），否则用服务主体；审计异常只记日志，不影响 fail-closed。
+- 工具网关与控制台把各自的 `AuditSink` 传入 provider；工具网关只构造一个 sink。
+- `LocalKeyBackend.from_file` 把非 UTF-8 映射为 `KeyBackendError`；空的
+  `ADK_SECRET_KEKS_FILE` 视为未设置，不与 `ADK_SECRET_KEKS` 误报冲突。
+- `credentials.md`、`cli.md`、`registry_service.md` 与 `--secret-stdin`/`rewrap` 帮助补齐两个变量名。
+
+二、绿态
+
+$ pytest tests/secretstore -q
+37 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
+
+$ pytest -q（Windows）
+1596 passed, 89 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线 provider 没有审计参数，解密失败只抛 `SecretNotFound`；非 UTF-8 keyring 会抛
+`UnicodeDecodeError`，`serve-registry` 只捕获 `KeyBackendError`，会打出 traceback。
+
+四、范围与已知缺口
+
+- KMS/Vault/HSM 的错误码细分（`kms_unavailable`/`kms_denied`）随后端切片。
+- 成功解密仍不逐次审计（ADR-0025 的既定取舍）。
+- 远程 agent 的 CLI 不产生审计，provider 在那里没有 sink。
