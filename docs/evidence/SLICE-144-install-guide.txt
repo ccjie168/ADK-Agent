@@ -1,0 +1,36 @@
+SLICE-144 稳定的安装与使用手册
+日期: 2026-11-18
+依据: PROGRESS 的下一刀清单
+基线: 844fd89
+
+一、实现
+
+- 新增 `docs/guides/install-and-use.md`：前提、源码安装、模型配置、MCP 与审计/配额、
+  控制台、发布与 compose、服务面参数表、凭据（register/控制面/rewrap/吊销、TLS 要求）、
+  Docker、升级回滚、排障表。
+- 手册不重复 `operations.md` 的多副本拓扑、备份与密钥轮换，指向该文档。
+- 示例密钥一律用占位符或 `${VAR}`，不含真实值。
+- 新增 `tests/test_install_guide.py`：章节齐全、每个 `-m adk_agent <cmd>` 都是真实子命令、
+  凭据章节包含 `ADK_SECRET_KEKS`、`credentials rewrap` 与 TLS 要求。
+
+二、绿态
+
+$ pytest tests/test_install_guide.py -q
+3 passed
+
+$ pytest -q（Windows）
+1563 passed, 88 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线没有该手册，`test_guide_covers_the_required_sections` 读取文件失败；
+写一个不存在的子命令会让 `test_every_guide_command_is_a_real_subcommand` 失败。
+
+四、范围与已知缺口
+
+- 首次真实发布、`git tag` 与镜像推送需要单独确认。
+- 没有英文版本、截图或录屏。
+- 手册默认 POSIX 与 Windows 两套解释器路径写法，用一句话说明替换规则。
