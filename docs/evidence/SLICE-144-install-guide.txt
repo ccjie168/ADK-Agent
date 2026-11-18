@@ -11,15 +11,16 @@ SLICE-144 稳定的安装与使用手册
 - 手册不重复 `operations.md` 的多副本拓扑、备份与密钥轮换，指向该文档。
 - 示例密钥一律用占位符或 `${VAR}`，不含真实值。
 - 新增 `tests/test_install_guide.py`：章节齐全、每个 `-m adk_agent <cmd>` 都是真实子命令、
-  凭据章节包含 `ADK_SECRET_KEKS`、`credentials rewrap` 与 TLS 要求。
+  每个命令块里的 flag 都被该命令的 `--help` 接受、凭据章节包含 `ADK_SECRET_KEKS`、
+  `credentials rewrap` 与 TLS 要求。
 
 二、绿态
 
 $ pytest tests/test_install_guide.py -q
-3 passed
+4 passed
 
 $ pytest -q（Windows）
-1563 passed, 88 skipped
+1564 passed, 88 skipped
 
 $ python scripts/check.py --full
 ALL PASS
@@ -34,3 +35,10 @@ ALL PASS
 - 首次真实发布、`git tag` 与镜像推送需要单独确认。
 - 没有英文版本、截图或录屏。
 - 手册默认 POSIX 与 Windows 两套解释器路径写法，用一句话说明替换规则。
+
+五、第一轮独立验证
+
+结论 DO NOT MERGE。手册里 `compose` 示例用了不存在的 `--param` 且缺必填参数；Docker 示例没有
+`ADK_MCP_AUTH_TOKEN`，容器启动即拒绝服务；HTTP/控制台示例没写 token 环境变量；`publish` 示例
+多了不存在的 `--artifact-keys`。已逐条修正，并把手册守卫测试从“只校验首个命令词”加强为
+“逐个命令块校验每个 flag 都被该命令的 `--help` 接受”，另补章节与凭据环境断言。

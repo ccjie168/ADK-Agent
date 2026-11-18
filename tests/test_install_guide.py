@@ -1,4 +1,4 @@
-"""SLICE-144: the install and usage manual references real commands and sections."""
+"""SLICE-144: the install and usage manual references real commands and flags."""
 
 from __future__ import annotations
 
@@ -14,6 +14,23 @@ GUIDE = Path(__file__).resolve().parent.parent / "docs" / "guides" / "install-an
 
 def _guide() -> str:
     return GUIDE.read_text(encoding="utf-8")
+
+
+def _invocations() -> list[tuple[list[str], list[str]]]:
+    text = _guide().replace("\\\n", " ")
+    found: list[tuple[list[str], list[str]]] = []
+    for line in text.splitlines():
+        match = re.search(r"-m adk_agent ([a-z0-9-]+)(.*)", line)
+        if match is None:
+            continue
+        command = [match.group(1)]
+        rest = match.group(2)
+        tokens = rest.split()
+        if tokens and re.fullmatch(r"[a-z][a-z0-9-]*", tokens[0]):
+            command.append(tokens.pop(0))
+        flags = re.findall(r"--[a-z][a-z0-9-]*", " ".join(tokens))
+        found.append((command, flags))
+    return found
 
 
 def test_guide_covers_the_required_sections():
@@ -34,20 +51,38 @@ def test_guide_covers_the_required_sections():
 
 
 def test_every_guide_command_is_a_real_subcommand():
-    commands = sorted(set(re.findall(r"-m adk_agent ([a-z0-9-]+)", _guide())))
+    invocations = _invocations()
+    first_tokens = {command[0] for command, _ in invocations}
 
-    assert "serve" in commands
-    assert "console" in commands
-    assert "docs" not in commands
-    for command in commands:
+    assert {"console", "credentials", "publish", "serve"} <= first_tokens
+    for command, _ in invocations:
         with pytest.raises(SystemExit) as exc:
-            cli.main([command, "--help"])
+            cli.main([*command, "--help"])
         assert exc.value.code == 0, command
 
 
-def test_guide_names_the_credential_environment():
+def test_every_guide_flag_is_accepted_by_its_command(capsys):
+    invocations = _invocations()
+
+    assert any("compose" in command for command, _ in invocations)
+    for command, flags in invocations:
+        if not flags:
+            continue
+        capsys.readouterr()
+        with pytest.raises(SystemExit) as exc:
+            cli.main([*command, "--help"])
+        assert exc.value.code == 0, command
+        help_text = capsys.readouterr().out
+        for flag in flags:
+            assert flag in help_text, f"{flag} is not accepted by {' '.join(command)}"
+
+
+def test_guide_documents_required_auth_and_credential_environment():
     text = _guide()
 
     assert "ADK_SECRET_KEKS" in text
+    assert "ADK_MCP_AUTH_TOKEN" in text
+    assert "ADK_CONSOLE_TOKEN" in text
     assert "credentials rewrap" in text
     assert "TLS" in text
+    assert "--builder-keys" in text

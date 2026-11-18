@@ -5,7 +5,7 @@
 
 ## 前提
 
-- Python 3.13 或 3.14（本仓库的开发环境是 3.14）。
+- Python 3.10 及以上（CI 与 Docker 用 3.13；本仓库开发环境是 3.14）。
 - 一个模型后端：DeepSeek（Anthropic 兼容端点或 LiteLLM）、Gemini，或任意 LiteLLM 支持的通道。
 - 可选：Postgres 15（多副本、共享注册表、审计、配额、凭据）；Docker（构建镜像）。
 
@@ -46,8 +46,17 @@ DeepSeek 的 `/anthropic` 端点拒绝历史里的 `redacted_thinking`，多轮�
 .venv/Scripts/python.exe -m adk_agent serve --agent examples/minimal/agent.py
 ```
 
-`serve` 默认 stdio；加 `--transport streamable-http --port 8000` 走 HTTP。接入 Claude Code 的
-`.mcp.json` 写法见 README，密钥只用 `${VAR}` 展开。
+`serve` 默认 stdio。走 HTTP 时必须同时给 bearer token，否则拒绝启动：
+
+```bash
+export ADK_MCP_AUTH_TOKEN=change-me
+.venv/Scripts/python.exe -m adk_agent serve \
+  --agent examples/minimal/agent.py --transport streamable-http --port 8000
+```
+
+客户端发 `Authorization: Bearer $ADK_MCP_AUTH_TOKEN`。回环开发想免鉴权时加
+`--allow-unauthenticated`，不要用在共享网络上。接入 Claude Code 的 `.mcp.json` 写法见 README，
+密钥只用 `${VAR}` 展开。
 
 带审计与配额：
 
@@ -60,6 +69,7 @@ export ADK_AUDIT_AUTH_TOKEN=...
 ## 控制台
 
 ```bash
+export ADK_CONSOLE_TOKEN=change-me
 .venv/Scripts/python.exe -m adk_agent console \
   --agents examples/minimal/agent.py \
   --auth-token-env ADK_CONSOLE_TOKEN \
@@ -71,26 +81,36 @@ export ADK_AUDIT_AUTH_TOKEN=...
 - 写操作需要 admin 角色；读面板按能力校验（`audit.read`、`registry.read` 等）。
 - `--agent-ref TENANT/ID@VERSION` 改为从注册表加载已经签名的工件。
 - `--agent-sandbox` 让沙箱执行；`--tool-gateway-url` 让沙箱里的工具调用经工具网关。
+- 回环开发可以用 `--allow-unauthenticated`；共享网络上不要用。
 
 ## 发布与加载
 
+`publish` 的 `--key` 是发布签名私钥，`--builder-keys` 是构建公钥信任文件；
+加载时用 `--artifact-keys` 提供发布公钥。
+
 ```bash
-# 打包并签名工件
+.venv/Scripts/python.exe -m adk_agent publish ./project/manifest.json \
+  --artifact ./project --key publisher.pem --key-id publisher-1 \
+  --artifact-dir ./artifacts --registry ./registry
+
+# in_process 工件还必须带构建密钥与构建公钥信任文件
 .venv/Scripts/python.exe -m adk_agent publish ./project/manifest.json \
   --artifact ./project --key publisher.pem --key-id publisher-1 \
   --builder-key builder.pem --builder-key-id builder-1 \
+  --builder-keys ./builder-keys.json \
   --artifact-dir ./artifacts --registry ./registry
 
 # 声明式组合（必须带构建密钥）
 .venv/Scripts/python.exe -m adk_agent compose --template single-llm \
-  --param name=bot --param tenant=acme --param instruction='...' \
+  --tenant acme --id bot --version 1.0.0 --instruction 'You are a helper.' \
   --key publisher.pem --key-id publisher-1 \
   --builder-key builder.pem --builder-key-id builder-1 \
   --artifact-dir ./artifacts --registry ./registry
 ```
 
-新发布必须声明 `execution_tier`；缺省按 `sandboxed`。`in_process` 只接受构建密钥签名的工件。
-加载时 `--artifact-keys` 提供可信公钥，`serve-registry --builder-keys` 校验构建签名。
+新发布必须声明 `execution_tier`；缺省按 `sandboxed`，没有沙箱后端时发布直接失败。
+`in_process` 只接受构建密钥签名的工件，本地/HTTP 发布都要求构建公钥信任文件。加载时
+`--artifact-keys` 提供可信公钥，`serve-registry --builder-keys` 校验构建签名。
 
 ## 服务面
 
@@ -99,14 +119,16 @@ export ADK_AUDIT_AUTH_TOKEN=...
 | `serve` | 单个 agent 暴露为 MCP | `--agent`/`--agent-ref`、`--transport`、`--audit-url`、`--quota-config` |
 | `serve-many` | 多个 agent 的 MCP | `--agents`、`--agent-sandbox` |
 | `serve-a2a` | A2A 端点 | `--agent`/`--agent-ref`、`--manifest`、`--peer-dir`/`--peer-db` |
-| `console` | 控制台与聊天 | `--registry`、`--artifact-*`、`--audit-*`、`--agent-sandbox` |
-| `serve-registry` | 注册表控制面 | `--database-url`、`--artifact-*`、`--builder-keys`、`--credentials-*` |
-| `serve-tool-gateway` | 工具网关 | `--tools`/`--connectors-dir`、`--credentials-*` |
+| `console` | 控制台与聊天 | `--registry`、`--artifact-dir`、`--audit-url`、`--agent-sandbox` |
+| `serve-registry` | 注册表控制面 | `--database-url`、`--artifact-dir`、`--builder-keys`、`--credentials-dir`/`--credential-db` |
+| `serve-tool-gateway` | 工具网关 | `--tools`/`--connectors-dir`、`--credentials-dir`/`--credential-db` |
 | `serve-model-gateway` | 模型网关 | provider 与 breaker 参数 |
 | `serve-audit` | 审计服务 | `--out` 或 `--audit-db` |
 | `serve-triggers` | 定时与 webhook 触发 | `--triggers-dir`/`--trigger-db`、`--agent-sandbox` |
 
-全部服务的鉴权、限流与 OIDC 参数一致；`/healthz` 免鉴权，`/metrics` 需要 token。
+除 `serve-triggers` 外的服务共用 bearer token / OIDC / 限流参数；`serve-triggers` 的 webhook
+用每个触发定义自己的 token 哈希，不接受 `--auth-token-env`。`/healthz` 全部免鉴权；
+`/metrics` 只在 `serve`/`serve-many`（`--metrics`）、控制台、模型网关与工具网关等显式开放的服务上提供。
 
 ## 凭据
 
@@ -122,19 +144,24 @@ printf '%s' "$CRM_TOKEN" | .venv/Scripts/python.exe -m adk_agent credentials reg
   --secret-ref secret://acme/token --secret-stdin
 ```
 
+- `credential_id` 与 `tenant`、以及 `secret://` 的两段最长 128 字符。
 - 运行时按 `secret://tenant/name` 解析：工具网关、控制台远程 agent、`remote-agents` CLI 都先查密文，
   没有密文才回退 `ADK_SECRET_<TENANT>_<NAME>`；缺 KEK 而记录带密文时 fail-closed。
 - 控制面写入：`serve-registry --credential-db` 后，admin 调 `POST /v1/credentials`，明文入参由服务端
   加密；非回环部署必须走 TLS。
 - 轮换：把新 KEK 加进 keyring 并把 `active` 指向它，保留旧 key，然后
   `credentials rewrap --tenant acme --credentials-dir ./credentials`；先 `--dry-run` 看计数。
-- 吊销：`credentials disable` 或控制面停用端点；吊销立即生效，已经解析过的明文不缓存。
+- 吊销：`credentials disable` 或控制面停用端点。带密文的绑定立即 fail-closed；仅靠环境变量的值
+  还需要同时清除对应的 `ADK_SECRET_*` 环境变量。
 
 ## Docker
+
+镜像默认以 `serve --transport streamable-http --host 0.0.0.0` 启动，鉴权 token 与模型凭据都由环境注入：
 
 ```bash
 docker build -t adk-agent:local .
 docker run --rm -p 8000:8000 \
+  -e ADK_MCP_AUTH_TOKEN=change-me \
   -e ADK_AGENT_MODEL=litellm:deepseek/deepseek-v4-pro \
   -e DEEPSEEK_API_KEY \
   adk-agent:local
@@ -146,7 +173,7 @@ docker run --rm -p 8000:8000 \
 ## 升级与回滚
 
 1. 先跑 `scripts/check.py --full`，再构建镜像并做 `/healthz` 冒烟。
-2. 保留旧镜像 tag；数据库迁移是向前兼容的建表与加列，回滚镜像即可。
+2. 保留旧镜像 tag。数据库迁移是加表与加列；破坏性变更需要单独评审，不能靠回滚镜像撤销。
 3. 审计钥环或 KEK 轮换后，旧密钥在全部历史验证完之前不要删除。
 
 ## 排障
