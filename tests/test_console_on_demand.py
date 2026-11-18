@@ -217,7 +217,7 @@ def test_cross_tenant_forbidden(tmp_path):
     key = _key()
     registry = FileAgentRegistry(tmp_path / "registry")
     _publish(tmp_path, registry, key)
-    with TestClient(_app(tmp_path, trust_key=key, roles=["viewer"])) as client:
+    with TestClient(_app(tmp_path, trust_key=key, roles=["publisher"])) as client:
         response = _load(client, tenant="acme")
 
     assert response.status_code == 403

@@ -2959,6 +2959,10 @@ def build_console_app(
 
     @app.post("/api/registry/load")
     async def load_registry_entry(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "registry.load")
+        if denied is not None:
+            return denied
         if registry is None:
             return JSONResponse({"error": "registry_not_configured"}, status_code=404)
         try:
@@ -2977,7 +2981,6 @@ def build_console_app(
         if not isinstance(version, str) or not version:
             return JSONResponse({"error": "invalid_request"}, status_code=400)
 
-        caller = _principal_for(request)
         if tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
         if artifact_trust is None:
@@ -3064,6 +3067,10 @@ def build_console_app(
 
     @app.post("/api/registry/unload")
     async def unload_registry_entry(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "registry.load")
+        if denied is not None:
+            return denied
         try:
             body = await request.json()
         except ValueError:
@@ -3073,7 +3080,6 @@ def build_console_app(
         name = body.get("name")
         if not isinstance(name, str) or not name:
             return JSONResponse({"error": "invalid_request"}, status_code=400)
-        caller = _principal_for(request)
         async with load_lock:
             if name not in agents:
                 return JSONResponse({"error": "not_found"}, status_code=404)
@@ -4091,6 +4097,10 @@ def build_console_app(
 
     @app.post("/api/tool-grants")
     async def create_tool_grant(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "grants.request")
+        if denied is not None:
+            return denied
         try:
             body = await request.json()
         except ValueError:
@@ -4137,7 +4147,6 @@ def build_console_app(
 
         if tool_grants is None:
             return JSONResponse({"error": "tool_grants_not_configured"}, status_code=404)
-        caller = _principal_for(request)
         target = tenant or caller.tenant
         if target != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
@@ -4262,8 +4271,12 @@ def build_console_app(
         return JSONResponse(decided.model_dump(mode="json"))
 
     @app.get("/api/runs")
-    async def list_runs(request: Request, limit: int = 50) -> list[dict]:
-        events = _visible_events(await _query_events(request), _principal_for(request))
+    async def list_runs(request: Request, limit: int = 50) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "runs.read")
+        if denied is not None:
+            return denied
+        events = _visible_events(await _query_events(request), caller)
         return _summarize_runs(events, limit)
 
     @app.get("/api/approvals")
@@ -4414,15 +4427,22 @@ def build_console_app(
         ]
 
     @app.get("/api/plans")
-    async def list_plans(request: Request, limit: int = 50) -> list[dict]:
-        events = _visible_events(await _query_events(request), _principal_for(request))
+    async def list_plans(request: Request, limit: int = 50) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "runs.read")
+        if denied is not None:
+            return denied
+        events = _visible_events(await _query_events(request), caller)
         return _summarize_plans(events, limit)
 
     @app.get("/api/sessions")
     async def list_sessions(request: Request, agent: str | None = None) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "sessions.read")
+        if denied is not None:
+            return denied
         if agent not in agents:
             return JSONResponse({"error": "unknown_agent"}, status_code=400)
-        caller = _principal_for(request)
         with session_tenant(caller.tenant):
             listed = await service.list_sessions(app_name=agent, user_id=_session_user(caller))
         sessions = sorted(
@@ -4505,7 +4525,11 @@ def build_console_app(
             return JSONResponse(policy.model_dump(mode="json"))
 
     @app.post("/api/chat")
-    async def chat(request: Request) -> JSONResponse:
+    async def chat(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "chat.run")
+        if denied is not None:
+            return denied
         try:
             body = await request.json()
         except ValueError:
@@ -4523,7 +4547,6 @@ def build_console_app(
         if runtime is None:
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
-        caller = _principal_for(request)
         with session_tenant(caller.tenant):
             session_id = await _session_id_for(
                 service, name, body.get("session_id"), _session_user(caller)
@@ -4573,6 +4596,10 @@ def build_console_app(
 
     @app.post("/api/chat/stream")
     async def chat_stream(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "chat.run")
+        if denied is not None:
+            return denied
         try:
             body = await request.json()
         except ValueError:
@@ -4590,7 +4617,6 @@ def build_console_app(
         if runtime is None:
             return JSONResponse({"error": "unknown agent"}, status_code=400)
 
-        caller = _principal_for(request)
         with session_tenant(caller.tenant):
             session_id = await _session_id_for(
                 service, name, body.get("session_id"), _session_user(caller)
@@ -4676,10 +4702,14 @@ def build_console_app(
         )
 
     @app.get("/api/traces/{trace_id}")
-    async def get_trace(request: Request, trace_id: str) -> dict:
+    async def get_trace(request: Request, trace_id: str) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "runs.read")
+        if denied is not None:
+            return denied
         if not _TRACE_ID.fullmatch(trace_id):
             return {"trace_id": trace_id, "root": None, "error": "trace_not_found"}
-        events = _visible_events(await _query_events(request), _principal_for(request))
+        events = _visible_events(await _query_events(request), caller)
         return _trace_payload(events, trace_id)
 
     if rate_limit is not None:

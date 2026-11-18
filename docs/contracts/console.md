@@ -21,6 +21,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - `capabilities` 由服务端按角色映射计算，映射只在一处定义。同一主体有多个角色时取并集。未知角色只得到基础能力。
 - 基础能力是 `chat.run`、`runs.read`、`sessions.read`。
 - 读接口按消费它的面板检查能力：审计 `audit.read`，策略 `policy.read`，注册表与评测 `registry.read`，工具目录 `tools.read`，工具授权 `grants.read`，连接器、连接器申请与凭据 `connectors.read`，对端与远程目录 `peers.read`。
+- 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`，基础运行与聊天 `runs.read`、`sessions.read`、`chat.run`。写接口的能力检查先于请求体解析、配置 404 与租户检查；读接口保持租户检查先于能力检查。
 - `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`grants.decide`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。
 - `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
 - 其余管理能力只由 `admin` 得到，包括 `connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
@@ -54,13 +55,15 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 请求：`{agent, message, session_id?}`
 响应：`{session_id, reply, run_id, trace_id}`
 
+需要 `chat.run` 能力，缺少返回 403 `forbidden`，先于请求体解析。
+
 租户配额用尽时返回 429 `{"error":"quota_exceeded"}`，并写一条 `agent.run` 的 `denied` 审计，`error_code` 是 `quota_exceeded`。配额在模型调用前检查，超限的请求不会触发模型。配额后端不可用返回 503 `{"error":"quota_unavailable"}`。
 
 可选请求头 `X-Trace-Id`，必须匹配 `^[A-Za-z0-9._-]{1,128}$`。没有合法值时读 `traceparent` 的 trace-id，规则见 `tracing.md`。两者都没有时自动生成。
 
 ## `POST /api/chat/stream`
 
-请求同 `/api/chat`。响应 `text/event-stream`。
+请求同 `/api/chat`。响应 `text/event-stream`。同样需要 `chat.run` 能力，缺少返回 403 `forbidden`，先于请求体解析。
 
 - `event: progress`，数据是 `ProgressEvent`（见 `progress_event.schema.json`）。
 - `event: done`，数据是 `{session_id, reply, run_id, trace_id, dropped}`，`dropped` 总是存在。
@@ -121,7 +124,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/plans?limit=50` -> `[PlanSummary]`
 
-从当前进程的审计缓冲按 `trace_id` 聚合 `orchestration.run` 事件，按最后事件时间倒序。`limit` 夹在 1 到 200。
+从当前进程的审计缓冲按 `trace_id` 聚合 `orchestration.run` 事件，按最后事件时间倒序。`limit` 夹在 1 到 200。需要 `runs.read` 能力，缺少返回 403 `forbidden`。
 
 ```json
 {
@@ -147,6 +150,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 ## `GET /api/traces/{trace_id}` -> `{trace_id, root, total_ms, error}`
 
 根是最后一条 `agent.run` 或 `orchestration.run` 事件，`children` 是同一 trace 的其余事件。
+需要 `runs.read` 能力，缺少返回 403 `forbidden`，先于 `trace_id` 格式检查。
 非 `admin` 身份只能看到自己租户的事件，别的租户的 trace 视为找不到。
 找不到根时 `root` 为 `null`，`error` 为 `trace_not_found`。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。`trace_id` 必须匹配
 `^[A-Za-z0-9._-]{1,128}$`。
@@ -283,6 +287,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 成功返回 200 `{"name": "support-bot", "version": "1.0.0", "loaded": true}`。同名 agent 已在控制台加载时返回 200 且 `loaded=false`，不切换版本。
 
+- 需要 `registry.load` 能力，缺少返回 403 `forbidden`，先于请求体解析与配置检查。
 - 需要注册表、工件存储和可信公钥。缺注册表返回 404 `registry_not_configured`，缺存储返回 503 `artifact_store_unavailable`，缺公钥返回 503 `artifact_trust_unavailable`。
 - 请求体不是 JSON 或字段不合法返回 400 `invalid_request`。
 - 非 `admin` 身份加载其他租户返回 403 `tenant_forbidden`。
@@ -558,6 +563,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 }
 ```
 
+- 需要 `grants.request` 能力，缺少返回 403 `forbidden`，先于请求体解析与租户检查；工具授权面板的 Request 按钮按同一能力显示。
 - 版本必须已发布且 `digest` 与记录一致，否则 404 `not_found`；退役版本 409 `version_retired`。
 - `expires_hours` 默认 24，范围 1 到 168，否则 400 `invalid_request`；`reason` 不能为空。
 - 申请人取 principal 的 `subject`，状态 `pending`。
@@ -582,6 +588,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 {"name": "support-bot"}
 ```
 
+- 需要 `registry.load` 能力，缺少返回 403 `forbidden`，先于请求体解析。
 - 成功 200 `{"name": "support-bot", "unloaded": true}`，写 `agent.unload` 审计。
 - agent 不存在 404 `not_found`；启动时加载的 agent 409 `not_unloadable`；非 `admin` 加载其他租户的版本 403 `tenant_forbidden`。
 - 正在进行的运行持有自己的运行时引用，不会被中断；卸载只影响后续加载与聊天选择。
@@ -589,7 +596,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/runs?limit=50` -> `[RunSummary]`
 
-从审计缓冲或审计服务读出的事件按 `run_id` 聚合，按最后事件时间倒序。`limit` 夹在 1 到 200。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。
+从审计缓冲或审计服务读出的事件按 `run_id` 聚合，按最后事件时间倒序。`limit` 夹在 1 到 200。需要 `runs.read` 能力，缺少返回 403 `forbidden`。配置了 `--audit-url` 时服务不可用返回 502 `audit_unavailable`。
 
 ```json
 {
@@ -614,7 +621,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/sessions?agent=<name>` -> `[SessionSummary]`
 
-列出该 agent 在当前主体下的会话，按最后更新时间倒序。开启 `--session-tenant-scope` 时主体键是 `<tenant>:<subject>`，否则是 `<subject>`。
+列出该 agent 在当前主体下的会话，按最后更新时间倒序。需要 `sessions.read` 能力，缺少返回 403 `forbidden`，先于 `agent` 参数检查。开启 `--session-tenant-scope` 时主体键是 `<tenant>:<subject>`，否则是 `<subject>`。
 
 ```json
 {"session_id": "s1", "last_update_time": "2026-11-12T10:00:00Z"}

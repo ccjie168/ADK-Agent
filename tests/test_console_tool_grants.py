@@ -111,7 +111,7 @@ def test_retired_version_rejected(tmp_path):
 
 def test_cross_tenant_forbidden(tmp_path):
     _registry, record = _record(tmp_path, tenant="acme")
-    with TestClient(_app(tmp_path, roles=["viewer"])) as client:
+    with TestClient(_app(tmp_path, roles=["publisher"])) as client:
         response = _request(client, record)
 
     assert response.status_code == 403
@@ -120,7 +120,7 @@ def test_cross_tenant_forbidden(tmp_path):
 
 def test_non_admin_cannot_decide(tmp_path):
     _registry, record = _record(tmp_path, tenant="local")
-    with TestClient(_app(tmp_path, tenant="local", roles=["viewer"])) as client:
+    with TestClient(_app(tmp_path, tenant="local", roles=["publisher"])) as client:
         created = _request(client, record)
         response = client.post(
             f"/api/tool-grants/{created.json()['request_id']}/decide",
