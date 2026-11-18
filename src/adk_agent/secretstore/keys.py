@@ -5,7 +5,9 @@ from __future__ import annotations
 import base64
 import json
 import os
+import stat
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, Protocol
 
 from cryptography.exceptions import InvalidTag
@@ -156,5 +158,32 @@ class LocalKeyBackend:
         value = os.environ.get(variable)
         return None if value is None else cls.from_json(value)
 
+    @classmethod
+    def from_file(cls, path: str | Path) -> LocalKeyBackend:
+        file = Path(path)
+        try:
+            if os.name != "nt":
+                mode = file.stat().st_mode
+                if mode & (stat.S_IRWXG | stat.S_IRWXO):
+                    raise KeyBackendError(
+                        f"keyring file {path} must not be group or world readable"
+                    )
+            return cls.from_json(file.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise KeyBackendError(f"cannot read keyring file {path}") from exc
 
-__all__ = ["KeyBackend", "KeyBackendError", "LocalKeyBackend"]
+
+def load_key_backend(
+    *, variable: str = "ADK_SECRET_KEKS", file_variable: str = "ADK_SECRET_KEKS_FILE"
+) -> LocalKeyBackend | None:
+    """Pick the keyring from the environment or a read-only file, never both."""
+    value = os.environ.get(variable)
+    path = os.environ.get(file_variable)
+    if value is not None and path is not None:
+        raise KeyBackendError(f"set only one of {variable} or {file_variable}")
+    if path:
+        return LocalKeyBackend.from_file(path)
+    return None if value is None else LocalKeyBackend.from_json(value)
+
+
+__all__ = ["KeyBackend", "KeyBackendError", "LocalKeyBackend", "load_key_backend"]

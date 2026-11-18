@@ -289,3 +289,42 @@ def test_cli_rewraps_to_the_active_key(tmp_path, capsys, monkeypatch):
         "skipped": 1,
         "dry_run": False,
     }
+
+
+def test_cli_stores_a_secret_from_a_keyring_file(tmp_path, capsys, monkeypatch):
+    import base64
+    import io
+    import os
+
+    keyring = tmp_path / "keks.json"
+    keyring.write_text(
+        json.dumps(
+            {"active": "k1", "keys": {"k1": base64.b64encode(os.urandom(32)).decode("ascii")}}
+        ),
+        encoding="utf-8",
+    )
+    if os.name != "nt":
+        keyring.chmod(0o600)
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.setenv("ADK_SECRET_KEKS_FILE", str(keyring))
+    monkeypatch.setattr("sys.stdin", io.StringIO("s3cret\n"))
+
+    cli.main(
+        [
+            "credentials",
+            "register",
+            "--credentials-dir",
+            str(tmp_path / "credentials"),
+            "--tenant",
+            "acme",
+            "--id",
+            "crm",
+            "--secret-ref",
+            "secret://acme/token",
+            "--secret-stdin",
+        ]
+    )
+    created = json.loads(capsys.readouterr().out)
+
+    assert created["secret_key_id"] == "k1"
+    assert "s3cret" not in json.dumps(created)

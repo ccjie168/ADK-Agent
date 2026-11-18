@@ -2141,11 +2141,11 @@ def main(argv: list[str] | None = None) -> None:
         from .registry import FileConnectorStore
         from .registry.connectors_postgres import PostgresConnectorStore
         from .secretstore import (
-            LocalKeyBackend,
             PrefixedEnvSecretProvider,
             RoutingSecretProvider,
             TenantScopedSecretProvider,
             TenantSecretProvider,
+            load_key_backend,
         )
         from .tools import FunctionRegistry, FunctionToolGateway
         from .tools.connectors import build_connector_tools
@@ -2173,7 +2173,7 @@ def main(argv: list[str] | None = None) -> None:
             credential_store = _credential_store(args)
             if credential_store is not None:
                 inner = RoutingSecretProvider(
-                    TenantSecretProvider(LocalKeyBackend.from_env(), credential_store), inner
+                    TenantSecretProvider(load_key_backend(), credential_store), inner
                 )
             specs.extend(
                 build_connector_tools(
@@ -2428,7 +2428,7 @@ def main(argv: list[str] | None = None) -> None:
 
         oidc = _identity_provider(args)
         from .core import CredentialStoreError
-        from .secretstore import KeyBackendError, LocalKeyBackend
+        from .secretstore import KeyBackendError, load_key_backend
 
         try:
             credential_store = _credential_store(args)
@@ -2436,9 +2436,9 @@ def main(argv: list[str] | None = None) -> None:
             print(f"invalid credential store: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
         try:
-            key_backend = LocalKeyBackend.from_env()
+            key_backend = load_key_backend()
         except KeyBackendError as exc:
-            print(f"invalid ADK_SECRET_KEKS: {exc}", file=sys.stderr)
+            print(f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
         app = build_registry_service_app(
             registry,
@@ -2851,12 +2851,12 @@ def main(argv: list[str] | None = None) -> None:
         )
         from .registry import fetch_agent_card
         from .secretstore import (
-            LocalKeyBackend,
             PrefixedEnvSecretProvider,
             RoutingSecretProvider,
             SecretNotFound,
             TenantScopedSecretProvider,
             TenantSecretProvider,
+            load_key_backend,
         )
 
         peer_store, _ = _peer_stores(args)
@@ -2867,7 +2867,7 @@ def main(argv: list[str] | None = None) -> None:
         secrets: Any = PrefixedEnvSecretProvider()
         if credential_store is not None:
             secrets = RoutingSecretProvider(
-                TenantSecretProvider(LocalKeyBackend.from_env(), credential_store),
+                TenantSecretProvider(load_key_backend(), credential_store),
                 secrets,
             )
 
@@ -3081,11 +3081,13 @@ def main(argv: list[str] | None = None) -> None:
                 if args.credentials_cmd == "disable":
                     return await store.disable(args.tenant, args.id, by="cli")
                 if args.credentials_cmd == "rewrap":
-                    from .secretstore import LocalKeyBackend, credential_aad
+                    from .secretstore import credential_aad, load_key_backend
 
-                    backend = LocalKeyBackend.from_env()
+                    backend = load_key_backend()
                     if backend is None:
-                        raise ValueError("set ADK_SECRET_KEKS to rewrap credentials")
+                        raise ValueError(
+                            "set ADK_SECRET_KEKS or ADK_SECRET_KEKS_FILE to rewrap credentials"
+                        )
                     active = backend.current_key_id()
                     rewrapped = 0
                     skipped = 0
@@ -3115,11 +3117,13 @@ def main(argv: list[str] | None = None) -> None:
                 key_id = None
                 version = None
                 if getattr(args, "secret_stdin", False):
-                    from .secretstore import LocalKeyBackend, credential_aad
+                    from .secretstore import credential_aad, load_key_backend
 
-                    backend = LocalKeyBackend.from_env()
+                    backend = load_key_backend()
                     if backend is None:
-                        raise ValueError("set ADK_SECRET_KEKS to store a secret")
+                        raise ValueError(
+                            "set ADK_SECRET_KEKS or ADK_SECRET_KEKS_FILE to store a secret"
+                        )
                     value = sys.stdin.read().rstrip("\r\n")
                     if not value:
                         raise ValueError("the secret on stdin is empty")

@@ -183,7 +183,7 @@
 - `credentials register` 接受 `--tenant`、`--id`、`--secret-ref`、可选 `--description`。引用的租户段必须等于 `--tenant`，否则退出 1。同 id 已存在退出 1（`credential_conflict`），重发不会覆盖。
 - `credentials disable --tenant TENANT --id ID` 输出停用后的 JSON。未知 id 退出 1，重复停用幂等。
 - `credentials rewrap --tenant TENANT [--dry-run]` 把该租户下非当前 KEK 的凭据数据密钥重新包裹，
-  输出 `{"tenant", "rewrapped", "skipped", "dry_run"}`；缺 `ADK_SECRET_KEKS` 退出 1；
+  输出 `{"tenant", "rewrapped", "skipped", "dry_run"}`；缺 `ADK_SECRET_KEKS` 与 `ADK_SECRET_KEKS_FILE` 退出 1；
   已是当前 key id 或没有密文的记录只计入 `skipped`，不解密明文。
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
@@ -311,7 +311,7 @@
 - `--database-url` 指向 Postgres，接受 `postgresql://` 或 `postgresql+asyncpg://`；默认取 `$REGISTRY_DATABASE_URL`。缺失或非 Postgres 退出 1。
 - 工件字节存储用 `--artifact-dir DIR` 或 `$ARTIFACT_URL`，二选一；都不给时带工件的发布和工件上传返回 503 `artifact_store_unavailable`，不带工件的发布与读取照常。两者同时给退出 1。
 - `--artifact-keys` 或 `$ADK_ARTIFACT_KEYS` 提供可信公钥，用于发布与上传时验签。
-- `--credentials-dir`、`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 只能给一个，冲突退出 2；配置后开放 `/v1/credentials` 写入与停用端点。`ADK_SECRET_KEKS` 是服务端加密明文的 KEK keyring，格式非法时启动退出 1；不设时端点只接受元数据。
+- `--credentials-dir`、`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 只能给一个，冲突退出 2；配置后开放 `/v1/credentials` 写入与停用端点。`ADK_SECRET_KEKS` 或 `ADK_SECRET_KEKS_FILE` 是服务端加密明文的 KEK keyring（二选一），格式非法或同时设置时启动退出 1；都不设时端点只接受元数据。
 - 鉴权、`/healthz`、限流与其他服务一致。
 
 ## 客户端 `--registry-url URL [--registry-token-env VAR]`

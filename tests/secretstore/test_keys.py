@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 
 import pytest
@@ -131,3 +132,57 @@ def test_rewrap_rejects_a_malformed_payload():
     short_dek_nonce = dict(wrapped, dek_nonce=base64.b64encode(b"x").decode("ascii"))
     with pytest.raises(KeyBackendError):
         rotated.rewrap(short_dek_nonce, aad)
+
+
+def _keyring_text(raw: bytes) -> str:
+    return json.dumps({"active": "k1", "keys": {"k1": base64.b64encode(raw).decode("ascii")}})
+
+
+def test_load_key_backend_reads_a_file(tmp_path, monkeypatch):
+    from adk_agent.secretstore import load_key_backend
+
+    path = tmp_path / "keks.json"
+    path.write_text(_keyring_text(os.urandom(32)), encoding="utf-8")
+    if os.name != "nt":
+        path.chmod(0o600)
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.setenv("ADK_SECRET_KEKS_FILE", str(path))
+
+    backend = load_key_backend()
+
+    assert backend is not None
+    assert backend.current_key_id() == "k1"
+
+
+def test_load_key_backend_rejects_env_and_file(monkeypatch):
+    from adk_agent.secretstore import load_key_backend
+
+    monkeypatch.setenv("ADK_SECRET_KEKS", _keyring_text(os.urandom(32)))
+    monkeypatch.setenv("ADK_SECRET_KEKS_FILE", "keks.json")
+
+    with pytest.raises(KeyBackendError, match="only one"):
+        load_key_backend()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="file modes are not enforced on Windows")
+def test_keyring_file_permissions_are_checked(tmp_path, monkeypatch):
+    from adk_agent.secretstore import load_key_backend
+
+    path = tmp_path / "keks.json"
+    path.write_text(_keyring_text(os.urandom(32)), encoding="utf-8")
+    path.chmod(0o644)
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.setenv("ADK_SECRET_KEKS_FILE", str(path))
+
+    with pytest.raises(KeyBackendError, match="group or world"):
+        load_key_backend()
+
+
+def test_keyring_file_missing_is_rejected(tmp_path, monkeypatch):
+    from adk_agent.secretstore import load_key_backend
+
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.setenv("ADK_SECRET_KEKS_FILE", str(tmp_path / "missing.json"))
+
+    with pytest.raises(KeyBackendError, match="cannot read"):
+        load_key_backend()
