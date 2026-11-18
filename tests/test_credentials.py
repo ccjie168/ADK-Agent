@@ -207,3 +207,14 @@ def test_replace_wrapped_reads_after_taking_the_lock(tmp_path):
     final = asyncio.run(store.get("acme", "crm"))
     assert final.enabled is False
     assert final.secret_key_id == "k2"
+
+
+def test_file_store_accepts_a_128_character_id(tmp_path):
+    long_id = "a" * 128
+    binding = _binding(credential_id=long_id)
+    store = FileCredentialStore(tmp_path)
+
+    asyncio.run(store.add(binding))
+
+    assert asyncio.run(store.get("acme", long_id)) == binding
+    assert [item.credential_id for item in asyncio.run(store.list("acme"))] == [long_id]
