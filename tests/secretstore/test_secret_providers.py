@@ -166,3 +166,104 @@ def test_decryption_failure_does_not_fall_back(monkeypatch):
 
     with pytest.raises(SecretNotFound, match="cannot be decrypted"):
         asyncio.run(provider.resolve("secret://acme/token"))
+
+
+def test_routing_provider_splits_two_segment_references(monkeypatch):
+    import os
+
+    from adk_agent.core import CredentialBinding
+    from adk_agent.secretstore import (
+        LocalKeyBackend,
+        PrefixedEnvSecretProvider,
+        RoutingSecretProvider,
+        TenantSecretProvider,
+        credential_aad,
+    )
+
+    backend = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    reference = "secret://" + "acme/token"
+    binding = CredentialBinding(
+        credential_id="crm",
+        tenant="acme",
+        secret_ref=reference,
+        created_by="ops",
+        created_at="2026-11-18T00:00:00Z",
+        wrapped_secret=backend.wrap(b"stored", credential_aad("acme", "crm")),
+        secret_key_id="k1",
+        secret_version=1,
+    )
+    tenant = TenantSecretProvider(backend=backend, credentials=_StoredCredential(binding))
+    routing = RoutingSecretProvider(tenant, PrefixedEnvSecretProvider())
+    monkeypatch.setenv("ADK_SECRET_GLOBAL", "global")
+
+    assert asyncio.run(routing.resolve(reference)) == "stored"
+    assert asyncio.run(routing.resolve("secret://global")) == "global"
+
+
+def test_routing_provider_fails_closed_without_a_backend(monkeypatch):
+    import os
+
+    from adk_agent.secretstore import (
+        LocalKeyBackend,
+        PrefixedEnvSecretProvider,
+        RoutingSecretProvider,
+        SecretNotFound,
+        TenantSecretProvider,
+    )
+
+    encrypting = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    binding = _stored_binding(encrypting)
+    routing = RoutingSecretProvider(
+        TenantSecretProvider(None, _StoredCredential(binding)), PrefixedEnvSecretProvider()
+    )
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+
+    with pytest.raises(SecretNotFound, match="no key backend"):
+        asyncio.run(routing.resolve("secret://acme/token"))
+
+
+def test_store_failure_fails_closed(monkeypatch):
+    from adk_agent.core import CredentialStoreUnavailable
+    from adk_agent.secretstore import SecretNotFound, TenantSecretProvider
+
+    class _Broken:
+        async def list(self, tenant):
+            raise CredentialStoreUnavailable("down")
+
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+    provider = TenantSecretProvider(credentials=_Broken())
+
+    with pytest.raises(SecretNotFound, match="unavailable"):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+
+def test_store_failure_logs_no_record_content(monkeypatch, caplog):
+    import logging
+
+    from adk_agent.secretstore import SecretNotFound, TenantSecretProvider
+
+    class _Corrupt:
+        async def list(self, tenant):
+            raise ValueError("record value='sk-live-PLAINTEXT-LEAK' is invalid")
+
+    provider = TenantSecretProvider(credentials=_Corrupt())
+
+    with caplog.at_level(logging.WARNING), pytest.raises(SecretNotFound, match="unavailable"):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+    assert "credential store read failed" in caplog.text
+    assert "sk-live-PLAINTEXT-LEAK" not in caplog.text
+
+
+def test_routing_provider_rejects_malformed_references():
+    from adk_agent.secretstore import (
+        PrefixedEnvSecretProvider,
+        RoutingSecretProvider,
+        SecretNotFound,
+        TenantSecretProvider,
+    )
+
+    routing = RoutingSecretProvider(TenantSecretProvider(), PrefixedEnvSecretProvider())
+
+    with pytest.raises(SecretNotFound):
+        asyncio.run(routing.resolve("secret://a/b/c"))

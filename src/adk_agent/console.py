@@ -111,7 +111,14 @@ from .sandbox.agent import (
     require_execution_supported,
 )
 from .sandbox.proxy import SandboxAgent
-from .secretstore import PrefixedEnvSecretProvider, SecretNotFound
+from .secretstore import (
+    LocalKeyBackend,
+    PrefixedEnvSecretProvider,
+    RoutingSecretProvider,
+    SecretNotFound,
+    TenantScopedSecretProvider,
+    TenantSecretProvider,
+)
 from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_declared_guards
 from .tracing import resolve_trace_id
 
@@ -2649,7 +2656,15 @@ def build_console_app(
 
     policy_store = FilePolicyStore(policy_file) if policy_file else None
     policy_engine = RolePolicyEngine(policy_store.load()) if policy_store else None
-    secrets = remote_secrets if remote_secrets is not None else PrefixedEnvSecretProvider()
+    if remote_secrets is not None:
+        secrets = remote_secrets
+    elif credentials is not None:
+        secrets = RoutingSecretProvider(
+            TenantSecretProvider(LocalKeyBackend.from_env(), credentials),
+            PrefixedEnvSecretProvider(),
+        )
+    else:
+        secrets = PrefixedEnvSecretProvider()
 
     from google.adk.runners import Runner
 
@@ -3914,7 +3929,9 @@ def build_console_app(
         credential = None
         if registration.credential_ref is not None:
             try:
-                credential = await secrets.resolve(registration.credential_ref)
+                credential = await TenantScopedSecretProvider(secrets, registration.tenant).resolve(
+                    registration.credential_ref
+                )
             except SecretNotFound:
                 return JSONResponse({"error": "secret_unavailable"}, status_code=503)
         try:
@@ -3977,7 +3994,9 @@ def build_console_app(
         digest: str | None = None
         try:
             credential = (
-                await secrets.resolve(existing.credential_ref)
+                await TenantScopedSecretProvider(secrets, existing.tenant).resolve(
+                    existing.credential_ref
+                )
                 if existing.credential_ref is not None
                 else None
             )

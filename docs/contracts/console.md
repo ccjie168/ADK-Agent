@@ -477,7 +477,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
   "tenant": "acme",
   "peer_id": "crm",
   "agent_card_url": "https://crm.example.com/.well-known/agent-card.json",
-  "credential_ref": "secret://crm/token",
+  "credential_ref": "secret://acme/token",
   "label": "CRM bot",
   "card_digest": "sha256:<64 hex>",
   "observed_digest": null,
@@ -497,13 +497,13 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 ```json
 {"remote_id": "crm-bot", "tenant": "acme", "peer_id": "crm",
  "agent_card_url": "https://crm.example.com/.well-known/agent-card.json",
- "credential_ref": "secret://crm/token", "label": "CRM bot"}
+ "credential_ref": "secret://acme/token", "label": "CRM bot"}
 ```
 
 - 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
 - 请求体非法 400 `invalid_request`；字段校验失败 400 `invalid_remote_agent`。
 - peer 不存在或未启用 404 `peer_not_found`；记录租户与 peer 租户不一致 400 `tenant_mismatch`。
-- 用 `credential_ref` 经 `SecretProvider` 解析凭据拉取 card，要求 card 的 `name` 等于 `remote_id`。
+- 用 `credential_ref` 经 `SecretProvider` 解析凭据拉取 card，要求 card 的 `name` 等于 `remote_id`。引用是两段 `secret://tenant/name` 时首段必须等于记录租户，否则按解析失败处理。
 - 拉取失败 502 `card_unreachable`、502 `card_unauthorized`、502 `card_too_large` 或 502 `card_invalid`；名称不符 400 `card_name_mismatch`；凭据解析失败 503 `secret_unavailable`。
 - 成功返回 200，`status="pinned"`，`card_digest` 是 card 原始字节的 sha256，`observed_digest` 为空。已存在的 `remote_id` 重新注册即重新批准；已存在记录的 `tenant` 不可改，返回 409 `remote_agent_tenant_immutable`。
 - 写 `remote_agent.register` 审计，`target` 是 `remote_id`。

@@ -102,7 +102,7 @@
 - `--connector-tenant TENANT` 决定加载哪些连接器（全局 + 该租户），默认 `local`。两段租户引用在取用时按该租户校验，不符按 `secret_unavailable` 拒绝；单段全局引用不受影响。
 - 每个启用的连接器生成一个工具，工具 id 是 `connector_id`，参数是 `path`、`method`、`query`、`json_body`。
 - 出站只允许 `methods` 与 `path_prefixes` 覆盖的请求，host/scheme 固定，禁止重定向；超时与响应大小按连接器配置。
-- 凭据用 `secret://a/b` 引用，映射到环境变量 `ADK_SECRET_A_B`；缺失时调用拒绝，错误码 `secret_unavailable`。
+- 凭据用 `secret://a/b` 引用。配置了凭据库时先解析存储里的密文：记录带密文而缺 `ADK_SECRET_KEKS`、绑定禁用或解密失败都按 `secret_unavailable` 拒绝，不回退。没有密文时映射到环境变量 `ADK_SECRET_A_B`；凭据库读取失败同样按 `secret_unavailable` 拒绝。
 - 连接器工具的 `tool.call` 审计带 `egress=third_party`；越界错误码是 `egress_denied`、`method_denied`、`path_denied`、`response_too_large` 或 `connector_unavailable`。
 
 ## `GET /v1/events`（审计服务的只读查询）
@@ -284,7 +284,7 @@
 - 设置了 `ADK_AUDIT_KEYRING` 时按记录的 `kid` 选密钥验签：未知 `kid` 退出 1；没有 `kid` 的记录用 `legacy` 指定的密钥，没给 `legacy` 时退出 1。`ADK_AUDIT_SIGNING_KEY` 单密钥模式要求每条记录都没有 `kid` 且签名匹配。两个变量同时设置时退出 1。都设置时以外的缺失签名也退出 1。没设置任何密钥时只验哈希链。
 - 轮换步骤：把新密钥加进 `keys`，把 `active` 指向它，保留旧密钥；如果旧历史没有 `kid`，把 `legacy` 指向旧密钥。全部旧记录验完之前不要删掉旧密钥。
 
-## `adk-agent serve-tool-gateway [--tools FILE] [--connectors-dir DIR | $CONNECTOR_URL] [--connector-tenant TENANT] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent serve-tool-gateway [--tools FILE] [--connectors-dir DIR | $CONNECTOR_URL] [--connector-tenant TENANT] [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把工具网关作为独立服务运行。
 
@@ -292,6 +292,7 @@
 - 只有 `/healthz` 开放。`POST /v1/invoke` 需要 bearer token，非回环地址没 token 拒绝启动。
 - 授权以 grants 过线，服务端用 `GrantPolicyEngine` 判定。拒绝和未注册工具返回 403 `{"error":"tool_denied"}`。
 - 执行失败返回 502 `{"error":"tool_call_failed"}`，输出不可 JSON 序列化返回 502 `{"error":"tool_output_invalid"}`。
+- `--credentials-dir`、`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 只能给一个，冲突退出 2；配置后连接器的两段凭据先解析存储密文，失败按 `secret_unavailable` 拒绝。
 - `GET /metrics` 需要 token，指标见 `metrics.md`。
 - 给了 `--audit-file` 时每个 `tool.call` 事件追加一行 JSON。
 - 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。

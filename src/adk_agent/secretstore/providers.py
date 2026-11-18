@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
-from ..core import SecretProvider, credential_env_name, parse_credential_ref
+from ..core import CredentialStoreError, SecretProvider, credential_env_name, parse_credential_ref
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
+
+
+logger = logging.getLogger(__name__)
 
 
 class SecretNotFound(Exception):
@@ -72,7 +76,13 @@ class TenantSecretProvider:
     async def _stored(self, tenant: str, reference: str) -> str | None:
         if self._credentials is None:
             return None
-        bindings = await self._credentials.list(tenant)
+        try:
+            bindings = await self._credentials.list(tenant)
+        except (CredentialStoreError, OSError, ValueError) as exc:
+            logger.warning(
+                "credential store read failed: tenant=%s error=%s", tenant, type(exc).__name__
+            )
+            raise SecretNotFound(f"secret {reference!r} is unavailable") from None
         matching = [item for item in bindings if item.secret_ref == reference]
         encrypted = [item for item in matching if item.wrapped_secret is not None]
         if not encrypted:
@@ -159,3 +169,21 @@ def secret_header_provider(
 
 def credential_aad(tenant: str, credential_id: str) -> bytes:
     return _credential_aad(tenant, credential_id)
+
+
+class RoutingSecretProvider:
+    """Route two-segment references to the stored provider, single ones to the prefix."""
+
+    def __init__(self, tenant: Any, prefixed: Any) -> None:
+        self._tenant = tenant
+        self._prefixed = prefixed
+
+    async def resolve(self, reference: str) -> str:
+        if not reference.startswith("secret://"):
+            return await self._prefixed.resolve(reference)
+        parts = reference[len("secret://") :].split("/")
+        if len(parts) == 1 and parts[0]:
+            return await self._prefixed.resolve(reference)
+        if len(parts) != 2 or not all(parts):
+            raise SecretNotFound(f"invalid secret reference {reference!r}")
+        return await self._tenant.resolve(reference)

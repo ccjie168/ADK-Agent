@@ -1233,6 +1233,7 @@ def main(argv: list[str] | None = None) -> None:
         default="local",
         help="tenant whose connectors are loaded (default: local)",
     )
+    _add_credential_store_args(p_tools)
     tools_audit = p_tools.add_mutually_exclusive_group()
     tools_audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
     tools_audit.add_argument(
@@ -2127,7 +2128,13 @@ def main(argv: list[str] | None = None) -> None:
         from .mcp.http import resolve_port
         from .registry import FileConnectorStore
         from .registry.connectors_postgres import PostgresConnectorStore
-        from .secretstore import PrefixedEnvSecretProvider, TenantScopedSecretProvider
+        from .secretstore import (
+            LocalKeyBackend,
+            PrefixedEnvSecretProvider,
+            RoutingSecretProvider,
+            TenantScopedSecretProvider,
+            TenantSecretProvider,
+        )
         from .tools import FunctionRegistry, FunctionToolGateway
         from .tools.connectors import build_connector_tools
         from .tools.service import build_tool_gateway_app
@@ -2141,6 +2148,7 @@ def main(argv: list[str] | None = None) -> None:
             print("provide --tools, --connectors-dir or CONNECTOR_URL", file=sys.stderr)
             raise SystemExit(1)
 
+        credential_store: Any = None
         if connector_source:
             specs = _load_tools(args.tools).specs() if args.tools else []
             connector_store = (
@@ -2149,12 +2157,16 @@ def main(argv: list[str] | None = None) -> None:
                 else FileConnectorStore(args.connectors_dir)
             )
             connector_specs = asyncio.run(connector_store.list(args.connector_tenant))
+            inner: Any = PrefixedEnvSecretProvider()
+            credential_store = _credential_store(args)
+            if credential_store is not None:
+                inner = RoutingSecretProvider(
+                    TenantSecretProvider(LocalKeyBackend.from_env(), credential_store), inner
+                )
             specs.extend(
                 build_connector_tools(
                     connector_specs,
-                    secrets=TenantScopedSecretProvider(
-                        PrefixedEnvSecretProvider(), args.connector_tenant
-                    ),
+                    secrets=TenantScopedSecretProvider(inner, args.connector_tenant),
                 )
             )
             try:
@@ -2178,6 +2190,13 @@ def main(argv: list[str] | None = None) -> None:
         import uvicorn
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
+        from .registry.credentials_postgres import PostgresCredentialStore
+
+        if isinstance(credential_store, PostgresCredentialStore):
+            # The pool may have opened in uvicorn's loop, which is now closed;
+            # a cross-loop close is best-effort and must not fail shutdown.
+            with contextlib.suppress(Exception):
+                asyncio.run(credential_store.aclose())
     elif args.cmd == "serve-audit":
         rate_limit = _rate_limit(args)
         from .audit import AuditPipeline, PostgresAuditSink, query_audit_records
@@ -2529,8 +2548,6 @@ def main(argv: list[str] | None = None) -> None:
         if args.peer_dir or args.peer_db:
             console_peers, console_peer_grants = _peer_stores(args)
             console_remote_agents = _remote_agent_store(args)
-        from .secretstore import PrefixedEnvSecretProvider
-
         run_console(
             agents=agents,
             host=args.host,
@@ -2550,7 +2567,6 @@ def main(argv: list[str] | None = None) -> None:
             peers=console_peers,
             peer_grants=console_peer_grants,
             remote_agents=console_remote_agents,
-            remote_secrets=PrefixedEnvSecretProvider(),
             eval_reports=(
                 HttpEvalReportStore(args.registry_url, auth_token=_registry_token(args))
                 if args.registry_url
