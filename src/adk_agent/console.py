@@ -112,12 +112,12 @@ from .sandbox.agent import (
 )
 from .sandbox.proxy import SandboxAgent
 from .secretstore import (
-    LocalKeyBackend,
     PrefixedEnvSecretProvider,
     RoutingSecretProvider,
     SecretNotFound,
     TenantScopedSecretProvider,
     TenantSecretProvider,
+    load_key_backend,
 )
 from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_declared_guards
 from .tracing import resolve_trace_id
@@ -2660,7 +2660,7 @@ def build_console_app(
         secrets = remote_secrets
     elif credentials is not None:
         secrets = RoutingSecretProvider(
-            TenantSecretProvider(LocalKeyBackend.from_env(), credentials),
+            TenantSecretProvider(load_key_backend(), credentials),
             PrefixedEnvSecretProvider(),
         )
     else:

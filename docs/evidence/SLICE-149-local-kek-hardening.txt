@@ -1,0 +1,39 @@
+SLICE-149 本地 KEK 加固：只读 keyring 文件与权限检查
+日期: 2026-11-19
+依据: ADR-0026 第 3 条（会话确认）
+基线: 684caf6
+
+一、实现
+
+- `secretstore/keys.py` 新增 `LocalKeyBackend.from_file()` 与 `load_key_backend()`：
+  `ADK_SECRET_KEKS` 与 `ADK_SECRET_KEKS_FILE` 二选一，同时设置抛 `KeyBackendError`；
+  POSIX 上拒绝组/其他用户可读的文件，Windows 跳过；文件缺失或内容非法抛固定错误。
+- `serve-tool-gateway`、`serve-registry`、`remote-agents`、控制台、`credentials register|rewrap`
+  全部改为 `load_key_backend()`；错误提示同时提到两个变量名。
+- `docs/contracts/credentials.md`、`docs/contracts/cli.md`、`docs/guides/install-and-use.md`
+  写明两个来源、互斥与 0600/0400 要求；ADR-0026 转为 Accepted 并记录确认。
+- 新增用例：文件读取、互斥、POSIX 权限、文件缺失、CLI 从文件加密写入。
+
+二、绿态
+
+$ pytest tests/secretstore/test_keys.py tests/test_cli_credentials.py tests/test_cli_registry_service.py -q
+31 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
+
+$ pytest -q（Windows）
+1591 passed, 89 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线只读 `ADK_SECRET_KEKS`：只设置 `ADK_SECRET_KEKS_FILE` 时 CLI 仍报“缺 KEK”；
+0644 的 keyring 文件在基线上照常加载。
+
+四、范围与已知缺口
+
+- Windows 不做 ACL 检查，文档如实说明。
+- 具体 KMS/Vault/HSM 后端随 ADR-0026 选型后另立切片。
+- `credential.decrypt_failed` 审计是 ADR-0026 的切片 2，尚未实现。
+- 第一次全量门禁因为把 `serve-registry` 的错误文案从 `ADK_SECRET_KEKS` 改成通用文案，
+  让既有用例断言失败；按“不改既有断言”的规则改回兼容文案，而不是改测试。

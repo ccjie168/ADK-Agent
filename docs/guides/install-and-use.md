@@ -178,6 +178,7 @@ serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有�
 
 ```bash
 # 生成 keyring（base64 32 字节）；active 指向当前 KEK
+# 生产建议写成 0600/0400 的只读文件，用 ADK_SECRET_KEKS_FILE 指向它；不要同时设置 ADK_SECRET_KEKS
 export ADK_SECRET_KEKS='{"active":"k1","keys":{"k1":"<base64 32 bytes>"}}'
 
 # 写一条带值的绑定：值从 stdin 读，不接受 argv
