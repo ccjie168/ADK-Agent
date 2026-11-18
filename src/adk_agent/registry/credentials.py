@@ -60,14 +60,22 @@ class FileCredentialStore:
                 tmp_path.unlink(missing_ok=True)
         return binding
 
-    async def replace(self, binding: CredentialBinding) -> CredentialBinding:
-        path = self._path(binding.tenant, binding.credential_id)
+    async def replace_wrapped(
+        self,
+        tenant: str,
+        credential_id: str,
+        wrapped_secret: dict,
+        secret_key_id: str,
+    ) -> CredentialBinding:
+        path = self._path(tenant, credential_id)
         with self._lock:
             if not path.is_file():
-                raise CredentialNotFound(
-                    f"credential not found: {binding.tenant}/{binding.credential_id}"
-                )
-            payload = json.dumps(binding.model_dump(mode="json"), indent=2, sort_keys=True) + chr(
+                raise CredentialNotFound(f"credential not found: {tenant}/{credential_id}")
+            existing = CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
+            updated = existing.model_copy(
+                update={"wrapped_secret": wrapped_secret, "secret_key_id": secret_key_id}
+            )
+            payload = json.dumps(updated.model_dump(mode="json"), indent=2, sort_keys=True) + chr(
                 10
             )
             with tempfile.NamedTemporaryFile(
@@ -78,7 +86,7 @@ class FileCredentialStore:
                 os.fsync(tmp.fileno())
                 tmp_path = Path(tmp.name)
             os.replace(tmp_path, path)
-        return binding
+        return updated
 
     async def get(self, tenant: str, credential_id: str) -> CredentialBinding | None:
         path = self._path(tenant, credential_id)

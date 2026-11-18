@@ -108,3 +108,18 @@ def test_rewrap_rejects_an_unknown_key_id():
 
     with pytest.raises(KeyBackendError):
         backend.rewrap(wrapped, b"aad")
+
+
+def test_rewrap_rejects_a_malformed_payload():
+    old = _keyring()
+    aad = b"aad"
+    wrapped = old.wrap(b"token", aad)
+    rotated = LocalKeyBackend({"k1": old._keys["k1"], "k2": os.urandom(32)}, "k2")
+
+    bad_nonce = dict(wrapped, nonce=123)
+    with pytest.raises(KeyBackendError):
+        rotated.rewrap(bad_nonce, aad)
+
+    short_dek_nonce = dict(wrapped, dek_nonce=base64.b64encode(b"x").decode("ascii"))
+    with pytest.raises(KeyBackendError):
+        rotated.rewrap(short_dek_nonce, aad)

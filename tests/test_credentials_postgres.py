@@ -74,3 +74,33 @@ def test_postgres_roundtrip_and_isolation():
             await store.aclose()
 
     asyncio.run(flow())
+
+
+@_live
+@_needs_driver
+def test_postgres_replace_wrapped_keeps_a_disable():
+    store = PostgresCredentialStore(_LIVE_URL)
+    suffix = os.urandom(4).hex()
+    tenant = f"acme{suffix}"
+    credential_id = f"cred{suffix}"
+    binding = _binding(
+        credential_id=credential_id,
+        tenant=tenant,
+        ref=f"secret://{tenant}/token",
+    )
+    wrapped = {"v": 1, "key_id": "k2"}
+
+    async def flow() -> None:
+        try:
+            assert await store.add(binding) == binding
+            await store.disable(tenant, credential_id, by="alice")
+            updated = await store.replace_wrapped(tenant, credential_id, wrapped, "k2")
+            assert updated.secret_key_id == "k2"
+            assert updated.wrapped_secret == wrapped
+            assert updated.enabled is False
+            with pytest.raises(CredentialNotFound):
+                await store.replace_wrapped(tenant, "missing", wrapped, "k2")
+        finally:
+            await store.aclose()
+
+    asyncio.run(flow())

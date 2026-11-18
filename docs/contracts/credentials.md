@@ -17,8 +17,8 @@
 ```
 
 - 示例中的 `<tenant>` 与 `<name>` 是占位符，实际记录里是具体名称。
-- `credential_id`、`tenant`：`^[A-Za-z0-9][A-Za-z0-9._+-]*$`。
-- `secret_ref`：`^secret://[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`，租户段必须等于 `tenant`。
+- `credential_id`、`tenant`：`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`（最长 128）。
+- `secret_ref`：`^secret://[A-Za-z0-9._-]{1,128}/[A-Za-z0-9._-]{1,128}$`，租户段必须等于 `tenant`。
 - 未知字段、缺失字段、无时区的时间戳都拒绝。
 - 记录里默认没有令牌、口令或任何值字段。
 
@@ -80,5 +80,7 @@
 - 轮换保留旧 key id 用于解密；keyring 缺失旧 key id 时拒绝解密。
 - `KeyBackend.rewrap(wrapped, aad)` 只把数据密钥换到当前 KEK 下重新包裹，凭据值的密文与 nonce 不变，
   不解密明文；key id 已是当前值时验证 AAD 后原样返回。
+- `CredentialStore.replace_wrapped(tenant, credential_id, wrapped_secret, secret_key_id)` 只更新这两个字段，
+  保留 `enabled`、`description` 等并发修改；记录不存在抛 `CredentialNotFound`。
 - `credentials rewrap --tenant T [--dry-run]` 逐条把非当前 key id 的记录换到当前 KEK；
   已是当前 key id 或没有密文的记录计入 `skipped`；输出 `{tenant, rewrapped, skipped, dry_run}`。

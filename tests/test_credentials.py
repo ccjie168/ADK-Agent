@@ -119,13 +119,28 @@ def test_credential_env_name():
             credential_env_name(reference)
 
 
-def test_file_store_replace_requires_an_existing_binding(tmp_path):
+def test_file_store_replace_wrapped_merges_only_the_ciphertext(tmp_path):
     store = FileCredentialStore(tmp_path)
     binding = _binding()
     asyncio.run(store.add(binding))
-    changed = binding.model_copy(update={"description": "rotated"})
+    wrapped = {"v": 1, "key_id": "k2"}
 
-    assert asyncio.run(store.replace(changed)) == changed
-    assert asyncio.run(store.get("acme", "crm")) == changed
+    updated = asyncio.run(store.replace_wrapped("acme", "crm", wrapped, "k2"))
+
+    assert updated.wrapped_secret == wrapped
+    assert updated.secret_key_id == "k2"
+    assert updated.description == binding.description
+    assert updated.created_by == binding.created_by
     with pytest.raises(CredentialNotFound):
-        asyncio.run(store.replace(_binding(tenant="other", ref="secret://other/token")))
+        asyncio.run(store.replace_wrapped("other", "crm", wrapped, "k2"))
+
+
+def test_file_store_replace_wrapped_keeps_a_concurrent_disable(tmp_path):
+    store = FileCredentialStore(tmp_path)
+    asyncio.run(store.add(_binding()))
+    asyncio.run(store.disable("acme", "crm", by="alice"))
+
+    updated = asyncio.run(store.replace_wrapped("acme", "crm", {"v": 1, "key_id": "k2"}, "k2"))
+
+    assert updated.enabled is False
+    assert asyncio.run(store.get("acme", "crm")).enabled is False

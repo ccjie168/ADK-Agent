@@ -3090,22 +3090,20 @@ def main(argv: list[str] | None = None) -> None:
                     rewrapped = 0
                     skipped = 0
                     for binding in await store.list(args.tenant):
-                        if binding.wrapped_secret is None or binding.secret_key_id == active:
+                        wrapped = binding.wrapped_secret
+                        if wrapped is None or (
+                            binding.secret_key_id == active and wrapped.get("key_id") == active
+                        ):
                             skipped += 1
                             continue
                         rewrapped_secret = backend.rewrap(
-                            binding.wrapped_secret,
+                            wrapped,
                             credential_aad(binding.tenant, binding.credential_id),
                         )
                         rewrapped += 1
                         if not args.dry_run:
-                            await store.replace(
-                                binding.model_copy(
-                                    update={
-                                        "wrapped_secret": rewrapped_secret,
-                                        "secret_key_id": active,
-                                    }
-                                )
+                            await store.replace_wrapped(
+                                binding.tenant, binding.credential_id, rewrapped_secret, active
                             )
                     return {
                         "tenant": args.tenant,

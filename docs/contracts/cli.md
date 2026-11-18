@@ -174,7 +174,7 @@
 - `connectors check --id ID` 输出 `ConnectorHealth` JSON，从 CLI 进程探测第一个路径前缀，不带凭据、不跟随重定向、超时不超过 5 秒。未知 id 退出 1；探测失败也输出结果并退出 0，因为结果本身就是检查结论。
 - 成功写 `connector.register` 或 `connector.disable` 审计；控制面模式下写端要求 admin。
 
-## `adk-agent credentials list|register|disable`
+## `adk-agent credentials list|register|disable|rewrap`
 
 管理租户凭据引用（ADR-0022 决定 5）。记录只含元数据，不存密钥值。
 

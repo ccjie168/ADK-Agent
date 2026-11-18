@@ -8,8 +8,9 @@
 1. `KeyBackend` 端口增加 `rewrap(wrapped, aad) -> wrapped`：用旧 key id 解开数据密钥，
    用当前 KEK 重新包裹，凭据值的密文与 nonce 不变，全程不出现凭据明文；AAD 校验失败、
    key id 不可用或 payload 非法时抛 `KeyBackendError`；key id 已是当前值时校验 AAD 后原样返回。
-2. `CredentialStore` 端口增加 `replace(binding)`：文件存储原子覆盖，Postgres 直接 UPDATE，
-   记录不存在抛 `CredentialNotFound`。
+2. `CredentialStore` 端口增加 `replace_wrapped(tenant, credential_id, wrapped_secret, secret_key_id)`：
+   只更新密文与 key id，文件存储在同一把锁里先读后写，Postgres 用 `jsonb_set` 只改这两个键；
+   并发的 `disable`、`description` 修改不会被覆盖；记录不存在抛 `CredentialNotFound`。
 3. `credentials rewrap --tenant T [--dry-run]`：逐条把非当前 key id 的记录换到当前 KEK；
    没有密文或已是当前 key id 的记录计入 `skipped`；输出 `{tenant, rewrapped, skipped, dry_run}`；
    缺 `ADK_SECRET_KEKS` 退出 1。
@@ -25,15 +26,15 @@
 
 - [x] 重新包裹后数据密钥用当前 KEK，值密文不变且仍可解出明文 -> `test_rewrap_moves_the_data_key_to_the_active_key`
 - [x] key id 已是当前值时原样返回 -> `test_rewrap_is_idempotent_on_the_active_key`
-- [x] AAD 不符或 key id 不可用时拒绝 -> `test_rewrap_rejects_a_different_aad`、`test_rewrap_rejects_an_unknown_key_id`
-- [x] 文件存储覆盖写入，记录不存在抛 `CredentialNotFound` -> `test_file_store_replace_requires_an_existing_binding`
+- [x] AAD 不符、key id 不可用或 payload 形状非法时拒绝 -> `test_rewrap_rejects_a_different_aad`、`test_rewrap_rejects_an_unknown_key_id`、`test_rewrap_rejects_a_malformed_payload`
+- [x] 只合并密文与 key id，保留并发停用 -> `test_file_store_replace_wrapped_merges_only_the_ciphertext`、`test_file_store_replace_wrapped_keeps_a_concurrent_disable`、`test_postgres_replace_wrapped_keeps_a_disable`
 - [x] `credentials rewrap` 先 dry-run 后落盘，重复运行全部跳过 -> `test_cli_rewraps_to_the_active_key`
 - [x] 超长 `credential_id`/`tenant` 被模型与路由拒绝（400），不再落到文件系统 -> `test_register_rejects_an_overlong_identifier`
 - [x] 全量门禁通过
 
 ## 反例
 
-- [x] 基线没有 `rewrap`/`replace`，命令不存在
+- [x] 基线没有 `rewrap`/`replace_wrapped`，命令不存在
 - [x] 把 rewrap 实现成解密后重加密 -> 无从验证；本切片用“密文与 nonce 不变”的断言锁定不触碰值密文
 
 ## 5 问威胁建模

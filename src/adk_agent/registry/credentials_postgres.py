@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -73,16 +74,25 @@ class PostgresCredentialStore:
             )
         return existing
 
-    async def replace(self, binding: CredentialBinding) -> CredentialBinding:
+    async def replace_wrapped(
+        self,
+        tenant: str,
+        credential_id: str,
+        wrapped_secret: dict[str, Any],
+        secret_key_id: str,
+    ) -> CredentialBinding:
         try:
             pool = await self._pool.get()
             async with pool.acquire() as conn:
                 status = await conn.execute(
-                    "UPDATE adk_credentials SET definition = $3::jsonb, updated_at = $4 "
+                    "UPDATE adk_credentials SET definition = jsonb_set("
+                    "jsonb_set(definition, '{wrapped_secret}', $3::jsonb), "
+                    "'{secret_key_id}', to_jsonb($4::text)), updated_at = $5 "
                     "WHERE tenant = $1 AND credential_id = $2",
-                    binding.tenant,
-                    binding.credential_id,
-                    binding.model_dump_json(),
+                    tenant,
+                    credential_id,
+                    json.dumps(wrapped_secret),
+                    secret_key_id,
                     datetime.now(timezone.utc),
                 )
         except CredentialStoreError:
@@ -92,10 +102,11 @@ class PostgresCredentialStore:
                 f"credential write failed ({type(exc).__name__})"
             ) from exc
         if status == "UPDATE 0":
-            raise CredentialNotFound(
-                f"credential not found: {binding.tenant}/{binding.credential_id}"
-            )
-        return binding
+            raise CredentialNotFound(f"credential not found: {tenant}/{credential_id}")
+        stored = await self.get(tenant, credential_id)
+        if stored is None:  # pragma: no cover - the row existed for the update
+            raise CredentialNotFound(f"credential not found: {tenant}/{credential_id}")
+        return stored
 
     async def get(self, tenant: str, credential_id: str) -> CredentialBinding | None:
         try:

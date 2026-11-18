@@ -215,3 +215,13 @@ def test_register_rejects_an_overlong_identifier(tmp_path):
 
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_credential"}
+
+
+def test_disable_rejects_an_overlong_identifier(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        response = client.post(
+            "/v1/credentials/" + "a" * 300 + "/disable?tenant=acme", headers=AUTH
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_request"}

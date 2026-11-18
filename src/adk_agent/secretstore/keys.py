@@ -98,9 +98,11 @@ class LocalKeyBackend:
             ciphertext = wrapped["ciphertext"]
         except (KeyError, ValueError, TypeError) as exc:
             raise KeyBackendError("secret payload is malformed") from exc
+        if not isinstance(nonce, str) or not isinstance(ciphertext, str):
+            raise KeyBackendError("secret payload is malformed")
         try:
             dek = AESGCM(self._keys[key_id]).decrypt(dek_nonce, wrapped_dek, aad)
-        except InvalidTag as exc:
+        except (InvalidTag, ValueError) as exc:
             raise KeyBackendError("secret payload failed to unwrap") from exc
         if key_id == self._active:
             return dict(wrapped)
