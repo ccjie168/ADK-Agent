@@ -62,10 +62,16 @@ def _grant_body(record) -> dict:
 
 def test_load_requires_registry_load(tmp_path):
     with TestClient(_app(tmp_path, roles=["operator"])) as client:
-        loaded = client.post("/api/registry/load", content=b"not json", headers=AUTH)
+        malformed = client.post("/api/registry/load", content=b"not json", headers=AUTH)
+        valid = client.post(
+            "/api/registry/load",
+            json={"tenant": "local", "id": "bot", "version": "1.0.0"},
+            headers=AUTH,
+        )
 
-    assert loaded.status_code == 403
-    assert loaded.json() == {"error": "forbidden"}
+    for response in (malformed, valid):
+        assert response.status_code == 403
+        assert response.json() == {"error": "forbidden"}
 
 
 def test_unload_requires_registry_load(tmp_path):
