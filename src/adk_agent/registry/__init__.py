@@ -35,7 +35,13 @@ from .lifecycle import FileAgentLifecycleStore
 from .lifecycle_postgres import PostgresAgentLifecycleStore
 from .loader import ArtifactLoadError, InProcessArtifactLoader, load_agent, load_sandbox_agent
 from .manifest import load_manifest, published_from
-from .packaging import PackagingError, pack_agent, pack_files, read_artifact_zip
+from .packaging import (
+    PackagingError,
+    pack_agent,
+    pack_files,
+    read_artifact_manifest,
+    read_artifact_zip,
+)
 from .paths import UnsafePath, safe_join
 from .peer_grants import FilePeerGrantStore
 from .peer_grants_postgres import PostgresPeerGrantStore
@@ -126,6 +132,7 @@ __all__ = [
     "pack_files",
     "parse_agent_ref",
     "published_from",
+    "read_artifact_manifest",
     "read_artifact_zip",
     "safe_join",
     "sign_digest",

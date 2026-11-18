@@ -64,9 +64,8 @@ def pack_agent(source: str | Path, *, entrypoint: str = "agent.py") -> bytes:
     return pack_files(files)
 
 
-def read_artifact_zip(path: str | Path) -> tuple[bytes, AgentManifest]:
-    """Read an artifact zip and its manifest without trusting either."""
-    data = Path(path).read_bytes()
+def read_artifact_manifest(data: bytes) -> AgentManifest:
+    """Read the manifest inside artifact bytes without trusting it."""
     if len(data) > MAX_ARTIFACT_BYTES:
         raise PackagingError("artifact exceeds the 8 MiB limit")
     try:
@@ -75,10 +74,21 @@ def read_artifact_zip(path: str | Path) -> tuple[bytes, AgentManifest]:
     except (KeyError, zipfile.BadZipFile) as exc:
         raise PackagingError("artifact has no readable manifest.json") from exc
     try:
-        manifest = AgentManifest.model_validate_json(raw)
+        return AgentManifest.model_validate_json(raw)
     except Exception as exc:  # noqa: BLE001
         raise PackagingError("artifact manifest is invalid") from exc
-    return data, manifest
 
 
-__all__ = ["PackagingError", "pack_agent", "pack_files", "read_artifact_zip"]
+def read_artifact_zip(path: str | Path) -> tuple[bytes, AgentManifest]:
+    """Read an artifact zip and its manifest without trusting either."""
+    data = Path(path).read_bytes()
+    return data, read_artifact_manifest(data)
+
+
+__all__ = [
+    "PackagingError",
+    "pack_agent",
+    "pack_files",
+    "read_artifact_manifest",
+    "read_artifact_zip",
+]
