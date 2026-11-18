@@ -222,6 +222,21 @@ def test_routing_provider_fails_closed_without_a_backend(monkeypatch):
         asyncio.run(routing.resolve("secret://acme/token"))
 
 
+def test_store_failure_fails_closed(monkeypatch):
+    from adk_agent.core import CredentialStoreUnavailable
+    from adk_agent.secretstore import SecretNotFound, TenantSecretProvider
+
+    class _Broken:
+        async def list(self, tenant):
+            raise CredentialStoreUnavailable("down")
+
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+    provider = TenantSecretProvider(credentials=_Broken())
+
+    with pytest.raises(SecretNotFound, match="unavailable"):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+
 def test_routing_provider_rejects_malformed_references():
     from adk_agent.secretstore import (
         PrefixedEnvSecretProvider,

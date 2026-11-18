@@ -102,7 +102,7 @@
 - `--connector-tenant TENANT` 决定加载哪些连接器（全局 + 该租户），默认 `local`。两段租户引用在取用时按该租户校验，不符按 `secret_unavailable` 拒绝；单段全局引用不受影响。
 - 每个启用的连接器生成一个工具，工具 id 是 `connector_id`，参数是 `path`、`method`、`query`、`json_body`。
 - 出站只允许 `methods` 与 `path_prefixes` 覆盖的请求，host/scheme 固定，禁止重定向；超时与响应大小按连接器配置。
-- 凭据用 `secret://a/b` 引用；配置了凭据库与 `ADK_SECRET_KEKS` 时优先解析存储里的密文，否则映射到环境变量 `ADK_SECRET_A_B`；缺失时调用拒绝，错误码 `secret_unavailable`。
+- 凭据用 `secret://a/b` 引用。配置了凭据库时先解析存储里的密文：记录带密文而缺 `ADK_SECRET_KEKS`、绑定禁用或解密失败都按 `secret_unavailable` 拒绝，不回退。没有密文时映射到环境变量 `ADK_SECRET_A_B`；凭据库读取失败同样按 `secret_unavailable` 拒绝。
 - 连接器工具的 `tool.call` 审计带 `egress=third_party`；越界错误码是 `egress_denied`、`method_denied`、`path_denied`、`response_too_large` 或 `connector_unavailable`。
 
 ## `GET /v1/events`（审计服务的只读查询）

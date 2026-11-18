@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
-from ..core import SecretProvider, credential_env_name, parse_credential_ref
+from ..core import CredentialStoreError, SecretProvider, credential_env_name, parse_credential_ref
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _HEADER_NAME = re.compile(r"^[A-Za-z0-9-]+$")
+
+
+logger = logging.getLogger(__name__)
 
 
 class SecretNotFound(Exception):
@@ -72,7 +76,11 @@ class TenantSecretProvider:
     async def _stored(self, tenant: str, reference: str) -> str | None:
         if self._credentials is None:
             return None
-        bindings = await self._credentials.list(tenant)
+        try:
+            bindings = await self._credentials.list(tenant)
+        except (CredentialStoreError, OSError, ValueError):
+            logger.warning("credential store read failed: tenant=%s", tenant, exc_info=True)
+            raise SecretNotFound(f"secret {reference!r} is unavailable") from None
         matching = [item for item in bindings if item.secret_ref == reference]
         encrypted = [item for item in matching if item.wrapped_secret is not None]
         if not encrypted:

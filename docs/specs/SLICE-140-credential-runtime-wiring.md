@@ -7,7 +7,7 @@
 
 1. 新增 `RoutingSecretProvider`：两段 `secret://tenant/name` 交给 `TenantSecretProvider`（内部再回退环境变量），单段引用交给 `PrefixedEnvSecretProvider`。
 2. `serve-tool-gateway` 新增 `--credentials-dir`/`--credential-db`，配置时构造 `RoutingSecretProvider(LocalKeyBackend.from_env(), store, prefixed)`；未配置时保持环境变量行为。
-3. 控制台在已有 `--credentials-dir`/`--credential-db` 且 `ADK_SECRET_KEKS` 存在时，用同一 provider 解析远程 agent 凭据。
+3. 控制台在已有 `--credentials-dir`/`--credential-db` 时，用同一 provider 解析远程 agent 凭据；缺 `ADK_SECRET_KEKS` 而记录带密文时 fail-closed，不回退环境变量。
 4. `remote-agents` CLI 的 `fetch_agent_card` 接入留到下一片；本切片不改它的 provider。
 5. fail-closed 语义不变：有密文但缺后端、绑定禁用或解密失败不回到环境变量。
 
@@ -21,6 +21,8 @@
 - [x] `serve-tool-gateway` 配置凭据库后构造路由 provider -> `test_tool_gateway_uses_a_routing_provider`
 - [x] 控制台远程 agent 在配置凭据库与 KEK 时解析存储密文 -> `test_register_resolves_stored_ciphertext`
 - [x] 控制台拒绝跨租户的凭据引用 -> `test_register_rejects_cross_tenant_credential_ref`
+- [x] 凭据库已配置但缺 `ADK_SECRET_KEKS` 时仍构造路由 provider 且拒绝密文 -> `test_tool_gateway_wires_routing_without_a_key_backend`、`test_register_fails_closed_without_a_key_backend`
+- [x] 凭据库读取失败按不可用拒绝 -> `test_store_failure_fails_closed`
 - [x] 未配置凭据库时行为不变 -> 既有用例
 - [x] 全量门禁通过
 

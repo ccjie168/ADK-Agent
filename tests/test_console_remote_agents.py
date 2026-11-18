@@ -262,6 +262,54 @@ def test_register_resolves_stored_ciphertext(tmp_path, monkeypatch):
     assert seen["credential"] == "stored"
 
 
+def test_register_fails_closed_without_a_key_backend(tmp_path, monkeypatch):
+    import asyncio
+    import os
+
+    from adk_agent.core import CredentialBinding
+    from adk_agent.registry import FileCredentialStore
+    from adk_agent.secretstore import LocalKeyBackend, credential_aad
+
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.setenv("ADK_SECRET_ACME_TOKEN", "from-env")
+    reference = "secret://" + "acme/token"
+    backend = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    store = FileCredentialStore(tmp_path / "credentials")
+    asyncio.run(
+        store.add(
+            CredentialBinding(
+                credential_id="crm",
+                tenant="acme",
+                secret_ref=reference,
+                created_by="ops",
+                created_at="2026-11-18T00:00:00Z",
+                wrapped_secret=backend.wrap(b"stored", credential_aad("acme", "crm")),
+                secret_key_id="k1",
+                secret_version=1,
+            )
+        )
+    )
+    _seed_peer(tmp_path)
+    seen = {}
+
+    async def fake(url, credential=None, *, client=None, max_bytes=1048576):
+        seen["credential"] = credential
+        return _digest(), CARD
+
+    monkeypatch.setattr("adk_agent.console.fetch_agent_card", fake)
+
+    with TestClient(_app(tmp_path, credentials=store)) as client:
+        response = client.post(
+            "/api/remote-agents",
+            json=_register_body(credential_ref=reference),
+            headers=AUTH,
+        )
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "secret_unavailable"}
+    assert "credential" not in seen
+
+
 def test_register_fetch_error_codes(tmp_path, monkeypatch):
     _seed_peer(tmp_path)
     mapping = {
