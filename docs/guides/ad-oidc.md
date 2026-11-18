@@ -50,8 +50,10 @@ curl -s <issuer>/.well-known/openid-configuration
 - `serve-a2a` 只在 peer 模式接受，并且要同时给 `--manifest` 与 peer 存储；与
   `--peer-token-file` 二选一。
 - `serve-triggers` 不接受；trigger 的 webhook 用每个触发定义自己的 token 哈希。
-- 模型网关、工具网关、审计与注册表在 OIDC 模式下要求请求体的 `invocation.principal` 的
-  `tenant`/`subject` 与 token 一致，否则 403 `principal_mismatch`。
+- 模型网关与工具网关在 OIDC 模式下要求请求体的 `invocation.principal` 的 `tenant`/`subject`
+  与 token 一致，否则 403 `principal_mismatch`。
+- 审计服务校验事件的 `tenant` 与 `principal.subject`，不一致返回 403 `principal_mismatch`。
+- 注册表按 token 租户判定，跨租户返回 403 `tenant_forbidden`。
 
 ## Entra ID（Azure AD）
 
@@ -69,6 +71,7 @@ curl -s <issuer>/.well-known/openid-configuration
 ```
 
 - `audience` 填接收 token 的那个 API 应用的 client ID；用真实 token 的 `aud` 核对。
+  v1 访问令牌的 `aud` 可能是 App ID URI（`api://<client-id>`），以真实 token 为准。
 - 租户 claim 用 `tid`，v2 与 v1 的 JWT 访问令牌都带它。v1 token 的 `iss` 形如
   `https://sts.windows.net/<tenant-id>/`；以真实 token 为准。SAML 里的 URI 形式
   `http://schemas.microsoft.com/identity/claims/tenantid` 通常不会出现在 JWT 里，不要照抄。
@@ -102,7 +105,8 @@ ADFS 2016 及以上提供 OIDC。典型配置：
 
 控制台可以用授权码加 PKCE 登录。`browser` 块的所有 URL 用 discovery 里的端点。控制台应用与
 API 应用是两个注册；`scopes` 里必须包含 API 的 scope（例如 `api://<api-client-id>/.default`），
-否则拿不到针对该 audience 的访问令牌，`/auth/token` 会以 `oidc_login_failed` 失败：
+否则可能拿不到访问令牌（`/auth/token` 报 `oidc_login_failed`），或拿到面向其它 audience
+的令牌（随后在 `/api/*` 上以 401 暴露）：
 
 ```json
 {
@@ -127,7 +131,8 @@ API 应用是两个注册；`scopes` 里必须包含 API 的 scope（例如 `api
 ```
 
 - 给了 `--oidc-config` 就忽略 `--auth-token-env`；与 `--allow-unauthenticated` 互斥，同时给退出 1。
-  `serve-a2a` peer 模式下与 `--peer-token-file` 互斥，冲突退出 2。
+  `serve-a2a` peer 模式下 `--oidc-config` 与 `--peer-token-file` 二选一，且不能与
+  `--auth-token-env` 或 `--allow-unauthenticated` 同时给，冲突退出 2。
 - `serve`/`serve-many` 的 OIDC 只对 `streamable-http` 生效；stdio 与 OIDC 同时给退出 1。
 - 没有 token 或 token 不合法返回 401 `unauthorized`；签发方不可达返回 503
   `identity_unavailable`。

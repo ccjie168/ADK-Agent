@@ -76,3 +76,33 @@ def test_guide_names_the_limits_and_decisions():
     assert "docs/contracts/credentials.md" in text
     assert "Kerberos" in text
     assert "client_secret_env" in text
+
+
+def _section(name: str) -> str:
+    for part in re.split(r"^## ", _guide(), flags=re.MULTILINE):
+        if part.startswith(name):
+            return part
+    raise AssertionError(f"section not found: {name}")
+
+
+def test_each_provider_has_its_own_valid_example():
+    entra = json.loads(
+        re.search(r"```json\n(.*?)```", _section("Entra ID（Azure AD）"), re.DOTALL).group(1)
+    )
+    adfs = json.loads(re.search(r"```json\n(.*?)```", _section("ADFS"), re.DOTALL).group(1))
+
+    assert OidcConfig.model_validate(entra).tenant_claim == "tid"
+    assert OidcConfig.model_validate(adfs).audience == "https://adk-agent.example.com"
+
+
+def test_browser_example_requests_an_api_scope():
+    block = re.search(r"```json\n(.*?)```", _section("控制台浏览器登录（可选）"), re.DOTALL).group(
+        1
+    )
+    browser = OidcBrowserConfig.model_validate(json.loads(block))
+
+    assert any(scope.startswith("api://") for scope in browser.scopes)
+
+
+def test_cited_contract_exists():
+    assert (GUIDE.parent.parent / "contracts" / "credentials.md").is_file()

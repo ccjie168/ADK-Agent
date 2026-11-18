@@ -21,6 +21,9 @@
 - [x] 所有 JSON 样例通过 `OidcConfig`/`OidcBrowserConfig` 校验 -> `test_every_json_example_validates`
 - [x] 缺 `issuer`/`audience` 的样例会被模型拒绝 -> `test_guide_examples_require_the_issuer_and_audience`
 - [x] 文档写明 `--oidc-config`、ADR-0007、凭据契约、Kerberos 限制与 `client_secret_env` -> `test_guide_names_the_limits_and_decisions`
+- [x] Entra 与 ADFS 各自有可校验样例，Entra 用 `tid` -> `test_each_provider_has_its_own_valid_example`
+- [x] 浏览器样例请求 API scope -> `test_browser_example_requests_an_api_scope`
+- [x] 引用的凭据契约文件存在 -> `test_cited_contract_exists`
 - [x] 全量门禁通过
 
 ## 反例
@@ -40,7 +43,7 @@
 ## 范围外
 
 - LDAP/Kerberos/SPNEGO 适配器（需要单独 ADR）。
-- 密钥管理后端（ADR-0026）。
+- 密钥管理后端（ADR-0025 与后续 ADR）。
 - IdP 侧的组、角色与条件访问配置。
 
 ## 证据
