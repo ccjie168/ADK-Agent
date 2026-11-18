@@ -327,3 +327,49 @@ def test_successful_resolution_does_not_audit():
 
     assert asyncio.run(provider.resolve("secret://acme/token")) == "from-store"
     assert sink.recent() == []
+
+
+def test_audit_sanitises_an_unsafe_key_id():
+    import os
+
+    from adk_agent.audit import ListAuditSink
+    from adk_agent.secretstore import LocalKeyBackend, SecretNotFound, TenantSecretProvider
+
+    encrypting = LocalKeyBackend({"prod/key": os.urandom(32)}, "prod/key")
+    binding = _stored_binding(encrypting)
+    other = LocalKeyBackend({"prod/key": os.urandom(32)}, "prod/key")
+    sink = ListAuditSink()
+    provider = TenantSecretProvider(
+        backend=other, credentials=_StoredCredential(binding), audit=sink
+    )
+
+    with pytest.raises(SecretNotFound):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+    [event] = [item for item in sink.recent() if item.action == "credential.decrypt_failed"]
+    assert event.agent_ref.version.startswith("credential.")
+    assert "prod/key" not in event.agent_ref.version
+
+
+def test_missing_backend_audits_the_enabled_binding():
+    import os
+
+    from adk_agent.audit import ListAuditSink
+    from adk_agent.secretstore import LocalKeyBackend, SecretNotFound, TenantSecretProvider
+
+    encrypting = LocalKeyBackend({"k1": os.urandom(32)}, "k1")
+    disabled = _stored_binding(encrypting, enabled=False)
+    enabled = _stored_binding(encrypting).model_copy(update={"credential_id": "crm2"})
+    sink = ListAuditSink()
+
+    class _Two:
+        async def list(self, tenant):
+            return [disabled, enabled]
+
+    provider = TenantSecretProvider(credentials=_Two(), audit=sink)
+
+    with pytest.raises(SecretNotFound, match="no key backend"):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+    [event] = [item for item in sink.recent() if item.action == "credential.decrypt_failed"]
+    assert event.target == "acme/crm2"
