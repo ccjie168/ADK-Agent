@@ -1,17 +1,17 @@
 # 项目进度登记
 
-更新日期: 2026-11-16
-分支: slice-127-trigger-scheduler（基于 master 59ae49a）
-最新提交: `66843e6` feat: add the trigger schedule loop and retries (SLICE-127)
-状态: 可交接暂停，工作区干净（只留本地工具目录未跟踪）
+更新日期: 2026-11-19
+分支: master（工作区干净，只留本地工具目录未跟踪）
+最新提交: `672caab` fix: share a schema-safe credential audit version (SLICE-152) (#65)
+状态: 可交接暂停；v0.1.0 已发布，凭据密钥后端等待选型
 
 ## 本次暂停交接
 
-- 代码在 `slice-127-trigger-scheduler` 分支，`66843e6`，基于 master `59ae49a`。SLICE-116 到 126 已通过 PR #22、#24、#25、#26、#28、#29、#30、#31、#32、#33、#34 合并；调度循环的 PR 尚未开。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
-- 最近门禁: `--fast` 与 `--full` 都是 1358 passed, 80 skipped；调度、服务与 CLI 用例 23 passed。
+- 代码在 `master`，`672caab`。SLICE-113 到 SLICE-152 已通过 PR #22 到 #65 合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
+- 最近门禁: `--full` 9 步全 PASS，1601 passed, 89 skipped（`docs/evidence/SLICE-152-credential-version.txt`）。
+- v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
-- 演示进程已全部停止: 控制台 8081 到 8085、8091 到 8094、8101、8102、mock IdP 9000、审计 8010、headless Edge 9223 到 9227。`adk-registry` 与 `adk-postgres-070` 容器在 127.0.0.1:5000 与 55432。演示数据留在 `C:/Users/Jie/AppData/Local/Temp/` 下的 `adk-ui-demo/`、`adk-ui-shell/`、`adk-116-seed/`、`adk-117-roles/`、`adk-118-history/` 与 `adk-119-drill/`，需要时重建。
-- 下一刀: agent 级沙箱先写 ADR，再做实现；之后是凭据密钥后端。两者都要人工确认 ADR。
+- 下一刀: 凭据密钥后端（ADR-0026 的框架已接受，具体 KMS/Vault/PKCS#11/KMIP 后端要等基础设施选型）；其余可自治项见缺口清单第 8 条。
 - 恢复顺序: 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件，跑 `./.venv/Scripts/python.exe scripts/check.py --fast`，再从缺口清单挑一项。
 
 ## 一句话
@@ -136,6 +136,31 @@
 | SLICE-125 | webhook 触发执行服务 | `36b9810` |
 | SLICE-126 | 文件存储路径加固 | `e6e4819` |
 | SLICE-127 | 调度循环与重试 | `66843e6` |
+| SLICE-128 | 执行层级进入 manifest | `c75142e` |
+| SLICE-129 | agent 子进程沙箱 worker | `744846c` |
+| SLICE-130 | 模型出口中介 | `5492dae` |
+| SLICE-131 | 触发路径接入沙箱 | `b23fb2a` |
+| SLICE-132 | 审批接口能力校验 | `9642889` |
+| SLICE-133 | 控制台读接口能力校验 | `62497aa` |
+| SLICE-134 | 控制台与 MCP 沙箱执行适配 | `eb757d9` |
+| SLICE-135 | A2A 的注册表启动 | `8f35fcb` |
+| SLICE-136 | 沙箱工具调用中介协议 | `fc3ae87` |
+| SLICE-137 | 工具执行器接入工具网关 | `1409e80` |
+| SLICE-138 | 构建密钥 | `f60764d` |
+| SLICE-139 | 凭据信封加密 | `1eab441` |
+| SLICE-140 | 凭据运行时接入 | `b396c68` |
+| SLICE-141 | `remote-agents` 凭据接入 | `23bf04d` |
+| SLICE-142 | 控制面凭据写入端点 | `fa56229` |
+| SLICE-143 | 数据密钥重包裹与 rewrap | `844fd89` |
+| SLICE-144 | 安装与使用手册 | `dadd75c` |
+| SLICE-145 | v0.1.0 发布说明 | `2406b9a` |
+| SLICE-146 | spec 用例名校验与切片清单 | `e8ffd7e` |
+| SLICE-147 | 用例引用识别与沙箱契约修正 | `d9f0f63` |
+| SLICE-148 | AD/Entra/ADFS OIDC 指南 | `684caf6` |
+| SLICE-149 | 本地 KEK 只读 keyring 与权限检查 | `c9f1147` |
+| SLICE-150 | 解密失败审计与 keyring 边界 | `44a5396` |
+| SLICE-151 | 解密失败审计的边界收口 | `56d2045` |
+| SLICE-152 | 凭据审计版本号共享与安全化 | `672caab` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
@@ -143,10 +168,9 @@
 
 本机（装了可选驱动）:
 
-- `./.venv/Scripts/python.exe scripts/check.py --fast` -> 1358 passed, 80 skipped，7 步全 PASS
-- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1358 passed, 80 skipped（`docs/evidence/SLICE-127-trigger-scheduler.txt`）
-- 设置 `TEST_POSTGRES_URL` 后 Postgres 用例可跑；本切片的审批历史用例 4 passed（`docs/evidence/SLICE-118-approval-history.txt`）。完整套件的旧记录为 1236 passed, 1 skipped（`docs/evidence/SLICE-105-app-state-rls.txt`）。
-- CI 已在 PR #19 上全绿（run 43708394988），包含锁安装、`--no-build-isolation`、完整门禁、镜像构建、Trivy 扫描与 SBOM 上传。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
+- `./.venv/Scripts/python.exe scripts/check.py --full` -> 9 步全 PASS，1601 passed, 89 skipped（`docs/evidence/SLICE-152-credential-version.txt`）
+- 设置 `TEST_POSTGRES_URL` 后 Postgres 用例可跑；完整套件的旧记录为 1236 passed, 1 skipped（`docs/evidence/SLICE-105-app-state-rls.txt`）。
+- CI 在 PR #65 上全绿（gate、analyze、CodeQL），包含锁安装、`--no-build-isolation`、完整门禁、镜像构建、Trivy 扫描与 SBOM 上传。系统 `python` 缺项目依赖，必须用 venv 里的解释器。
 
 跳过项主要是需要 `TEST_POSTGRES_URL` 的 Postgres 集成用例（配额、RLS、注册表、peer、远端目录、审计），以及 `RLIMIT_AS` 仅 POSIX 的平台跳过。设 `TEST_POSTGRES_URL` 后本地全部可跑。CI 不装 `a2a-sdk`，另有少量 A2A 用例按条件跳过。
 
@@ -253,7 +277,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 ## 未决事项（恢复时先看）
 
-1. ADR-0001 到 ADR-0024 均已接受。ADR-0003 到 ADR-0006 决定可选依赖不进默认依赖，ADR-0007 新增可选 extra `oidc`（`PyJWT[crypto]`），ADR-0019 决定会话表用 Postgres RLS 做租户隔离，ADR-0020 把 `app_states` 纳入同一边界，ADR-0021 决定 OTel 导出边界，ADR-0022 决定能力驱动的角色视图、声明式组合、自动化与 agent 沙箱顺序，ADR-0023 决定 CodeQL 安全审核通道，ADR-0024 决定 agent 级沙箱的进程隔离、资源上限与出口中介。
+1. ADR-0001 到 ADR-0026 均已接受。ADR-0003 到 ADR-0006 决定可选依赖不进默认依赖，ADR-0007 新增可选 extra `oidc`（`PyJWT[crypto]`），ADR-0019 决定会话表用 Postgres RLS 做租户隔离，ADR-0020 把 `app_states` 纳入同一边界，ADR-0021 决定 OTel 导出边界，ADR-0022 决定能力驱动的角色视图、声明式组合、自动化与 agent 沙箱顺序，ADR-0023 决定 CodeQL 安全审核通道，ADR-0024 决定 agent 级沙箱的进程隔离、资源上限与出口中介，ADR-0025 决定凭据信封加密与密钥后端端口，ADR-0026 决定密钥后端选型框架与本地 KEK 过渡方案（具体后端未选）。
 2. 本地 venv 为验证装了 `a2a-sdk`、`sqlalchemy`、`asyncpg`、`greenlet`，都不在项目依赖里。换环境要先装。
 3. 未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`package.json`、`package-lock.json` 是本地工具，不要加进仓库。
 
@@ -261,15 +285,15 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 已核实的开放项：
 
-1. 发行完整性只剩首次真实发布。release workflow 与回写脚本已合入；操作员设置 registry 凭据、在 `master` 上手动触发，再把 digest 回写 PR。见 `docs/evidence/SLICE-109-release-pipeline.txt`。
+1. 首次真实发布已完成（v0.1.0，tag 指向 `2406b9a`，release notes 见 `docs/releases/v0.1.0.md`，本地镜像 smoke 通过）。后续发布仍由操作员手动触发 release workflow：设置 registry 凭据、在 `master` 上触发，再把 digest 回写 PR。见 `docs/evidence/SLICE-109-release-pipeline.txt`。
 2. 密钥扫描不做历史扫描（gitleaks/trufflehog 延后）。GitHub 自定义 pattern 与 validity checks 需要付费套餐，当前关闭。
 3. legacy 无前缀 `user_id` 与 plain `app_name` 在 `--session-rls` 开启后不可见，不自动迁移；需要迁移时单独评审。
-4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固、调度循环、执行层级、agent 沙箱 worker、模型出口中介、触发路径的沙箱接入、审批接口、控制台读接口的能力校验与控制台/MCP 的沙箱执行适配、A2A 的注册表启动、沙箱工具调用中介协议、工具执行器接入、构建密钥、凭据信封加密与运行时接入、`remote-agents` 的凭据接入、控制面凭据写入端点与数据密钥重包裹也已收口（SLICE-113 到 143）。安装与使用手册由 SLICE-144 交付（`docs/guides/install-and-use.md`）；ADR-0024 已确认，下一步是首次真实发布（`git tag` 与镜像推送需人工确认）。SLICE-110 到 SLICE-144 已完成。
-5. 租户凭据只存引用，不存值。密钥后端已由 SLICE-139 交付（本地 KEK 信封加密），运行时解析已由 SLICE-140/141 接入工具网关、控制台与 `remote-agents`，控制面写入端点由 SLICE-142 交付，数据密钥重包裹（`credentials rewrap`）由 SLICE-143 交付；KMS 尚未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。执行层级已进 manifest：新发布必须显式声明，无沙箱后端时 `sandboxed` 在发布与加载两处被拒；历史记录缺字段按 `in_process` 读取且 digest 不变。组合器与脚手架当前明确写 `in_process`，手写 manifest 暂无法与平台产物区分；SLICE-129 已交付子进程 worker 与协议，但尚未注册后端，publish 仍默认不可用；接入切片把 publish 默认翻成 `sandboxed`，`in_process` 只接受平台构建密钥签名的工件。沙箱 worker 的残余风险：POSIX 上 RLIMIT_NPROC 按 uid 计数且默认关闭，工件仍可读宿主文件系统，Windows 只有脚本级守卫；网络守卫是 Python 层，内省拿原始 C 类型或用 ctypes 可绕过。模型调用与工具调用都已经父进程中转，工具调用经工具网关（SLICE-137）；沙箱发布还必须同时落地平台门槛（POSIX、降 uid、网络命名空间）、`sandboxed` 的执行路由与平台构建密钥校验，再允许注册后端。这些按 ADR-0022 与 ADR-0024 的顺序另行切片。
+4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固、调度循环、执行层级、agent 沙箱 worker、模型出口中介、触发路径的沙箱接入、审批接口、控制台读接口的能力校验与控制台/MCP 的沙箱执行适配、A2A 的注册表启动、沙箱工具调用中介协议、工具执行器接入、构建密钥、凭据信封加密与运行时接入、`remote-agents` 的凭据接入、控制面凭据写入端点、数据密钥重包裹、安装与使用手册、spec 用例名校验、AD/Entra/ADFS OIDC 指南、本地 KEK 加固与解密失败审计也已收口（SLICE-113 到 152）。v0.1.0 已于 2026-11-18 发布。SLICE-110 到 SLICE-152 已完成。
+5. 租户凭据只存引用，不存值。密钥后端已由 SLICE-139 交付（本地 KEK 信封加密），运行时解析已由 SLICE-140/141 接入工具网关、控制台与 `remote-agents`，控制面写入端点由 SLICE-142 交付，数据密钥重包裹（`credentials rewrap`）由 SLICE-143 交付；本地 KEK 只读 keyring 与权限检查由 SLICE-149 交付，解密失败审计由 SLICE-150 到 152 交付；KMS/Vault/PKCS#11/KMIP 后端尚未实现，ADR-0026 只定了选型框架与本地过渡方案，选型要等基础设施决定；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。执行层级已进 manifest：新发布必须显式声明，无沙箱后端时 `sandboxed` 在发布与加载两处被拒；历史记录缺字段按 `in_process` 读取且 digest 不变。组合器与脚手架当前明确写 `in_process`，手写 manifest 暂无法与平台产物区分；SLICE-129 已交付子进程 worker 与协议，但尚未注册后端，publish 仍默认不可用；接入切片把 publish 默认翻成 `sandboxed`，`in_process` 只接受平台构建密钥签名的工件。沙箱 worker 的残余风险：POSIX 上 RLIMIT_NPROC 按 uid 计数且默认关闭，工件仍可读宿主文件系统，Windows 只有脚本级守卫；网络守卫是 Python 层，内省拿原始 C 类型或用 ctypes 可绕过。模型调用与工具调用都已经父进程中转，工具调用经工具网关（SLICE-137）；沙箱发布还必须同时落地平台门槛（POSIX、降 uid、网络命名空间）、`sandboxed` 的执行路由与平台构建密钥校验，再允许注册后端。这些按 ADR-0022 与 ADR-0024 的顺序另行切片。
 
 6. 控制台的读路径已在 SLICE-133 对齐到面板能力（审计、策略、注册表与评测、工具、工具授权、连接器与申请、凭据、对端与远程目录）。仍只做认证加租户/admin 判断的是写路径与基础能力接口：注册表 load/unload、connectors 注册/停用/检查、connector-requests 提交与决定、credentials 注册/停用、peers 与远程 agent 的写操作、tool-grants 提交与决定、`/api/runs`、`/api/plans`、`/api/traces/{id}`、`/api/sessions`、`/api/chat`（后五个按基础能力 `runs.read`、`sessions.read`、`chat.run`）。写路径的能力对齐与 `grants.decide`、`connectors.manage` 的界面服务端不一致（界面给 operator 显示决定按钮但服务端仅 admin）另行切片。审批历史查询参数 `limit` 由 FastAPI 在进入处理函数前转换，越权调用方带非整数 `limit` 会先得 422 而非 403；不泄露数据，记为已知小缺口。
 7. SLICE-138 的构建签名只绑定工件 digest，不绑定发布记录 manifest；HTTP 注册表发布仍可把已有平台工件换成不同租户/id/工具授权的记录。CLI 端发布会比较工件内 manifest 与记录 manifest，HTTP 端没有。后续切片在 upload 或 load 处补齐比较。`scripts/demo_seed.py` 属本地演示信任域，仍生成只带演示发布签名、没有平台构建签名的 `in_process` 工件。
-8. SLICE-140 的残余：`serve-tool-gateway` 只在配置连接器时解析与校验 `--credentials-dir`/`--credential-db`，只给 `--tools` 时凭据标志被忽略且不校验互斥；`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 同时给时显式标志胜出、不报错，契约文字比实现严格。`remote-agents` 的测试已清空 `CREDENTIAL_DATABASE_URL`，工具网关与控制台远程 agent 的两个接线用例仍未清空。ADR-0025 第 8 条的 `credential.decrypt_failed` 审计仍未做。`ADK_SECRET_KEKS` 格式非法时 `serve-registry` 已给提示退出 1，其余命令仍是 traceback。SLICE-142 的残余：控制台 `/api/credentials` 仍接受请求体里的 `wrapped_secret`；admin 跨租户写入的审计落在调用方租户链；Postgres 下并发停用可能重复写 `credential.disable`；凭据池关闭 best-effort。超过 128 字符的 `credential_id`/`tenant` 已由 SLICE-143 的长度上限改为 400。SLICE-143 的残余：Windows 文件锁的重试对永久错误没有上限；上限收紧后旧记录（id > 128）会让控制台 `list` 抛未捕获的 `ValidationError`（500），`get` 的超长 id 由 `safe_join` 抛 `UnsafePath`（同样可能 500），CLI 会转成退出 1；只读目录上停用已停用的记录会因建锁文件失败；CLI 的 rewrap 在锁外计算新 payload（`replace_wrapped` 会重读合并，两个不同 keyring 的并发 rewrap 由最后写入者胜出）。
+8. SLICE-140 的残余：`serve-tool-gateway` 只在配置连接器时解析与校验 `--credentials-dir`/`--credential-db`，只给 `--tools` 时凭据标志被忽略且不校验互斥；`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 同时给时显式标志胜出、不报错，契约文字比实现严格。`remote-agents` 的测试已清空 `CREDENTIAL_DATABASE_URL`，工具网关与控制台远程 agent 的两个接线用例仍未清空。ADR-0025 第 8 条的 `credential.decrypt_failed` 审计已由 SLICE-150 到 152 交付（失败与缺后端两条路径，元数据写不改 fail-closed；成功解析仍不逐次审计，这是 ADR-0025 的既定取舍）。`ADK_SECRET_KEKS` 格式非法时 `serve-registry` 已给提示退出 1，其余命令仍是 traceback。SLICE-142 的残余：控制台 `/api/credentials` 仍接受请求体里的 `wrapped_secret`；admin 跨租户写入的审计落在调用方租户链；Postgres 下并发停用可能重复写 `credential.disable`；凭据池关闭 best-effort。超过 128 字符的 `credential_id`/`tenant` 已由 SLICE-143 的长度上限改为 400。SLICE-143 的残余：Windows 文件锁的重试对永久错误没有上限；上限收紧后旧记录（id > 128）会让控制台 `list` 抛未捕获的 `ValidationError`（500），`get` 的超长 id 由 `safe_join` 抛 `UnsafePath`（同样可能 500），CLI 会转成退出 1；只读目录上停用已停用的记录会因建锁文件失败；CLI 的 rewrap 在锁外计算新 payload（`replace_wrapped` 会重读合并，两个不同 keyring 的并发 rewrap 由最后写入者胜出）。SLICE-149 到 152 的残余：Windows 不做 keyring ACL 检查（只跳过，不伪造检查）；工具网关与 `remote-agents` 构造 provider 时 keyring 非法仍是 traceback，只有 `credentials` 命令转成退出 1；控制台 `/api/credentials` 仍接受请求体 `wrapped_secret`；跨租户 admin 写入的审计落在调用方租户链；Postgres 并发停用可能重复写 `credential.disable`；凭据池关闭 best-effort；解密失败审计在工具网关和控制台没有 invocation，主体是服务主体；超过 128 字符的旧凭据记录读时会失败，需要手工清理。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
