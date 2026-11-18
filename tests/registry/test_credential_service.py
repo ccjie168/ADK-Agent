@@ -178,3 +178,32 @@ def test_disable_needs_a_tenant_without_oidc(tmp_path):
 
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_request"}
+
+
+def test_register_rejects_whitespace_only_secret(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        response = client.post("/v1/credentials", json=_body(secret="   "), headers=AUTH)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_credential"}
+
+
+def test_register_conflict_on_existing_id(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        first = client.post("/v1/credentials", json=_body(), headers=AUTH)
+        second = client.post("/v1/credentials", json=_body(), headers=AUTH)
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+    assert second.json() == {"error": "credential_conflict"}
+
+
+def test_disable_rejects_unsafe_path_input(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        empty_tenant = client.post("/v1/credentials/crm/disable?tenant=", headers=AUTH)
+        bad_id = client.post("/v1/credentials/bad%20name/disable?tenant=acme", headers=AUTH)
+        bad_tenant = client.post("/v1/credentials/crm/disable?tenant=..", headers=AUTH)
+
+    for response in (empty_tenant, bad_id, bad_tenant):
+        assert response.status_code == 400
+        assert response.json() == {"error": "invalid_request"}

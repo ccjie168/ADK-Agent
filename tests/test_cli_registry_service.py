@@ -107,3 +107,13 @@ def test_invalid_kek_exits(monkeypatch, capsys):
 
     assert exc.value.code == 1
     assert "ADK_SECRET_KEKS" in capsys.readouterr().err
+
+
+def test_invalid_credential_db_exits(monkeypatch, capsys):
+    monkeypatch.setenv("REG_TOKEN", "secret")
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_argv("--database-url", DSN, "--credential-db", "sqlite:///x.db"))
+
+    assert exc.value.code == 1
+    assert "credential store" in capsys.readouterr().err.lower()

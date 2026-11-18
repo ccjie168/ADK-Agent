@@ -180,7 +180,7 @@
 
 - 后端二选一：`--credentials-dir DIR`（文件）或 `--credential-db URL`（Postgres）。都未显式给出时读 `CREDENTIAL_DATABASE_URL`。显式文件与数据库同时给出，或显式参数与环境变量冲突，退出 2。
 - `credentials list --tenant TENANT` 输出 JSON 数组。
-- `credentials register` 接受 `--tenant`、`--id`、`--secret-ref`、可选 `--description`。引用的租户段必须等于 `--tenant`，否则退出 1。重复相同内容幂等；不同内容退出 1。
+- `credentials register` 接受 `--tenant`、`--id`、`--secret-ref`、可选 `--description`。引用的租户段必须等于 `--tenant`，否则退出 1。同 id 已存在退出 1（`credential_conflict`），重发不会覆盖。
 - `credentials disable --tenant TENANT --id ID` 输出停用后的 JSON。未知 id 退出 1，重复停用幂等。
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。

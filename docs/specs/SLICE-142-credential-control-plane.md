@@ -12,7 +12,7 @@
    （尤其 `wrapped_secret`）一律 400 `invalid_credential`。
 4. `serve-registry` 新增 `--credentials-dir`/`--credential-db`（或 `CREDENTIAL_DATABASE_URL`）与
    `ADK_SECRET_KEKS` 接线；`ADK_SECRET_KEKS` 非法时启动退出 1 并给出提示。
-5. 明文只存在于请求处理期间；日志只记异常类型，不记请求体。
+5. 明文只存在于请求处理期间；加密失败只记异常类型，任何路径都不记请求体。
 
 ## 契约（先改）
 
@@ -25,12 +25,14 @@
 - [x] 只有元数据时行为不变 -> `test_register_metadata_only`
 - [x] 没有密钥后端时拒绝明文 -> `test_register_secret_needs_a_key_backend`
 - [x] 请求体带 `wrapped_secret` 被拒绝 -> `test_register_rejects_ciphertext_in_the_body`
-- [x] 多行、空或超长明文被拒绝 -> `test_register_rejects_multiline_or_empty_secrets`
+- [x] 多行、空、纯空白或超长明文被拒绝 -> `test_register_rejects_multiline_or_empty_secrets`、`test_register_rejects_whitespace_only_secret`
+- [x] 同 id 重发返回 409 -> `test_register_conflict_on_existing_id`
+- [x] 停用路由拒绝空租户与不安全路径参数 -> `test_disable_rejects_unsafe_path_input`
 - [x] 非 admin 403 -> `test_register_requires_admin`
 - [x] 停用幂等且只审计一次 -> `test_disable_is_idempotent_and_audited`
 - [x] 未配置凭据存储返回 503 -> `test_credential_store_unavailable_when_not_configured`
 - [x] 静态 token 下停用必须给 `tenant` -> `test_disable_needs_a_tenant_without_oidc`
-- [x] `serve-registry` 构造端点并拒绝非法 `ADK_SECRET_KEKS` -> `test_builds_credential_routes`、`test_invalid_kek_exits`
+- [x] `serve-registry` 构造端点并拒绝非法 `ADK_SECRET_KEKS`/`--credential-db` -> `test_builds_credential_routes`、`test_invalid_kek_exits`、`test_invalid_credential_db_exits`
 - [x] 全量门禁通过
 
 ## 反例

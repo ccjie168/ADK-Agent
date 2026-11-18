@@ -2418,9 +2418,14 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
 
         oidc = _identity_provider(args)
+        from .core import CredentialStoreError
         from .secretstore import KeyBackendError, LocalKeyBackend
 
-        credential_store = _credential_store(args)
+        try:
+            credential_store = _credential_store(args)
+        except CredentialStoreError as exc:
+            print(f"invalid credential store: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
         try:
             key_backend = LocalKeyBackend.from_env()
         except KeyBackendError as exc:

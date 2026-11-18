@@ -57,6 +57,7 @@ from .trust import ArtifactTrustError, TrustStore
 logger = logging.getLogger(__name__)
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
 _LIFECYCLE_STATUSES = frozenset({"published", "deprecated", "retired"})
 
@@ -465,7 +466,7 @@ def build_registry_service_app(
         if secret is not None:
             if (
                 not isinstance(secret, str)
-                or not secret
+                or not secret.strip()
                 or len(secret) > 8192
                 or "\r" in secret
                 or "\n" in secret
@@ -478,8 +479,8 @@ def build_registry_service_app(
                     secret.encode("utf-8"), credential_aad(tenant, credential_id)
                 )
                 key_id = key_backend.current_key_id()
-            except KeyBackendError:
-                logger.exception("credential encryption failed")
+            except KeyBackendError as exc:
+                logger.error("credential encryption failed: %s", type(exc).__name__)
                 return _error("encryption_failed", 500)
         actor = caller or Principal(
             tenant=tenant, subject="registry_operator", kind="human", roles=["admin"]
@@ -541,10 +542,16 @@ def build_registry_service_app(
             return _error("credential_store_unavailable", 503)
         if tenant is None and caller is None:
             return _error("invalid_request", 400)
+        if not _SAFE_NAME.fullmatch(credential_id) or (
+            tenant is not None and not _SAFE_NAME.fullmatch(tenant)
+        ):
+            return _error("invalid_request", 400)
         actor = caller or Principal(
             tenant=cast("str", tenant), subject="registry_operator", kind="human", roles=["admin"]
         )
         target = tenant or actor.tenant
+        if not _SAFE_NAME.fullmatch(target):
+            return _error("invalid_request", 400)
         if _cross_tenant(caller, target):
             return _error("tenant_forbidden", 403)
         try:
