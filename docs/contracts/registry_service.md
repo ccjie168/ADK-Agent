@@ -129,7 +129,7 @@
 ```
 
 - 只有 admin 能写，非 admin 返回 403 `forbidden`；admin 可以写任意租户。
-- `secret` 可选。给出时服务端用 `ADK_SECRET_KEKS` 的当前 KEK 做信封加密后只存密文；
+- `secret` 可选。给出时服务端用 keyring（`ADK_SECRET_KEKS` 或 `ADK_SECRET_KEKS_FILE`）的当前 KEK 做信封加密后只存密文；
   服务端没有密钥后端返回 503 `key_backend_unavailable`，加密失败返回 500 `encryption_failed`。
   `secret` 必须是单行、去空白后非空、最长 8192 字符，否则 400 `invalid_credential`。
 - 不给 `secret` 时只登记引用元数据，与 `credentials register` 不带 `--secret-stdin` 相同。

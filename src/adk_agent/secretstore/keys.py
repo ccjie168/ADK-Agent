@@ -168,9 +168,12 @@ class LocalKeyBackend:
                     raise KeyBackendError(
                         f"keyring file {path} must not be group or world readable"
                     )
-            return cls.from_json(file.read_text(encoding="utf-8"))
+            text = file.read_text(encoding="utf-8")
         except OSError as exc:
             raise KeyBackendError(f"cannot read keyring file {path}") from exc
+        except UnicodeDecodeError as exc:
+            raise KeyBackendError(f"keyring file {path} is not valid UTF-8") from exc
+        return cls.from_json(text)
 
 
 def load_key_backend(
@@ -178,7 +181,7 @@ def load_key_backend(
 ) -> LocalKeyBackend | None:
     """Pick the keyring from the environment or a read-only file, never both."""
     value = os.environ.get(variable)
-    path = os.environ.get(file_variable)
+    path = os.environ.get(file_variable) or None
     if value is not None and path is not None:
         raise KeyBackendError(f"set only one of {variable} or {file_variable}")
     if path:

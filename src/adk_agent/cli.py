@@ -1577,7 +1577,10 @@ def main(argv: list[str] | None = None) -> None:
     p_cr_register.add_argument(
         "--secret-stdin",
         action="store_true",
-        help="read the secret from stdin and store it encrypted (needs ADK_SECRET_KEKS)",
+        help=(
+            "read the secret from stdin and store it encrypted "
+            "(needs ADK_SECRET_KEKS or ADK_SECRET_KEKS_FILE)"
+        ),
     )
     _add_credential_store_args(p_cr_register)
 
@@ -1587,7 +1590,8 @@ def main(argv: list[str] | None = None) -> None:
     _add_credential_store_args(p_cr_disable)
 
     p_cr_rewrap = credentials_sub.add_parser(
-        "rewrap", help="re-wrap credential data keys under the active KEK"
+        "rewrap",
+        help="re-wrap credential data keys under the active KEK (needs a keyring)",
     )
     p_cr_rewrap.add_argument("--tenant", required=True)
     p_cr_rewrap.add_argument(
@@ -2151,6 +2155,7 @@ def main(argv: list[str] | None = None) -> None:
         from .tools.connectors import build_connector_tools
         from .tools.service import build_tool_gateway_app
 
+        sink = _audit_sink(args)
         connector_url = os.environ.get("CONNECTOR_URL")
         connector_source = bool(args.connectors_dir) + bool(connector_url)
         if args.connectors_dir and connector_url:
@@ -2173,7 +2178,8 @@ def main(argv: list[str] | None = None) -> None:
             credential_store = _credential_store(args)
             if credential_store is not None:
                 inner = RoutingSecretProvider(
-                    TenantSecretProvider(load_key_backend(), credential_store), inner
+                    TenantSecretProvider(load_key_backend(), credential_store, audit=sink),
+                    inner,
                 )
             specs.extend(
                 build_connector_tools(
@@ -2188,7 +2194,6 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(1) from None
         else:
             tool_registry = _load_tools(args.tools)
-        sink = _audit_sink(args)
         oidc = _identity_provider(args)
         app = build_tool_gateway_app(
             FunctionToolGateway(tool_registry, audit=sink),
