@@ -6,8 +6,9 @@ SLICE-154 工件内 manifest 与发布记录的绑定
 一、实现
 
 - `registry/packaging.py` 新增 `read_artifact_manifest(bytes)`，`read_artifact_zip` 复用它，解析行为不变。
-- `PUT /v1/artifacts/{digest}`：在签名校验之后读取 zip 内 `manifest.json`，必须与引用该 digest 的
-  记录 manifest 完全一致；无法解析或不一致返回 400 `artifact_manifest_mismatch`，不写入存储。
+- `PUT /v1/artifacts/{digest}`：在签名校验之后读取 zip 内 `manifest.json`，先与调用方可见范围找到的
+  记录比较，再扫描全部租户中引用该 digest 的记录复核；任一不一致或无法解析返回 400
+  `artifact_manifest_mismatch`，不写入存储。
 - `POST /v1/agents`：如果该 digest 的字节已存在，读取并比较，不一致返回 400
   `artifact_manifest_mismatch`；字节尚未上传时跳过，由上传端补查。
 - 契约的发布、上传与错误表同步；测试的 `_artifact` 夹具改为生成真实 zip（manifest.json +
@@ -16,10 +17,10 @@ SLICE-154 工件内 manifest 与发布记录的绑定
 二、绿态
 
 $ pytest tests/registry/test_registry_service.py -q
-23 passed
+24 passed
 
 $ pytest -q（Windows）
-1608 passed, 89 skipped
+1609 passed, 89 skipped
 
 $ python scripts/check.py --full
 ALL PASS
@@ -30,11 +31,15 @@ ALL PASS
 
 - `test_upload_rejects_bytes_with_a_different_manifest` 失败：基线返回 201 并把字节写入存储。
 - `test_publish_rejects_a_record_mismatching_stored_bytes` 失败：基线在字节已存在时仍返回 201。
+- 本轮修复前的 PR 状态：`test_upload_checks_records_beyond_the_caller_tenant` 失败（跨租户伪造
+  记录不参与上传复核），全租户扫描后转绿。
 
 四、范围与已知缺口
 
 - 构建签名仍只绑定工件 digest，不绑定记录 manifest；要让签名本身覆盖 manifest 需要新的签名格式，
   另行评审。
 - 无工件的元数据记录不受影响；历史已存在的不一致记录不自动修复。
-- 上传端按调用方可见的记录比较（OIDC 模式只看同租户）：跨租户挂同一 digest 的记录由发布端在
-  字节存在时补查；两种顺序都被覆盖。
+- 上传端全租户扫描的代价是每次上传多一次 `tenants()` 与逐租户 `list()` 读取；租户很多时明显。
+- 任一租户发布不匹配记录后，该 digest 的字节上传会一直被拒（fail-closed），直到该记录被处理；
+  当前没有删除记录的接口，只能换一个新建（不同 digest）的工件。
+- 发布端在字节缺失时仍跳过比较，但上传端的全租户扫描覆盖了该顺序。

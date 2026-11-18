@@ -32,7 +32,8 @@
 - `in_process` 记录带工件时还要求 `builder_signature`/`builder_key_id` 能被 `--builder-keys`/`ADK_BUILDER_KEYS` 验证；
   没配置返回 503 `builder_key_unavailable`，验证失败返回 400 `artifact_untrusted`。不带工件的 `in_process` 记录是元数据，不要求构建签名。
 - 工件字节已存在时（先上传后发布的顺序），服务端读取 zip 内的 `manifest.json` 并与记录 manifest 比较；
-  无法解析或不一致返回 400 `artifact_manifest_mismatch`。字节尚未上传时跳过此检查，由上传端补查。
+  无法解析或不一致返回 400 `artifact_manifest_mismatch`。字节尚未上传时跳过此检查，由上传端补查；
+  字节读取失败返回 502 `artifact_store_failed`。
 - 成功返回 201，正文是已存记录。同一版本同 digest 重发返回 201 和已有记录，幂等。
 - 同一版本不同 digest 返回 409 `{"error":"version_conflict"}`。
 - 请求体不是 JSON 返回 400 `invalid_json`；模型或摘要不符返回 400 `invalid_record`。
@@ -47,8 +48,8 @@
 - 再找引用该摘要的已发布记录（OIDC 模式只在 token 租户内找），找不到返回 409 `{"error":"artifact_not_published"}`。
 - 字节的 sha256 与 `digest` 不符返回 400 `digest_mismatch`；大小与记录不符返回 400 `size_mismatch`。
 - 记录签名必须可信，否则 409 `artifact_untrusted`。
-- zip 内的 `manifest.json` 必须与记录 manifest 完全一致；无法解析或不一致返回 400 `artifact_manifest_mismatch`，
-  字节不写入存储。
+- zip 内的 `manifest.json` 必须与所有租户中引用该摘要的记录 manifest 完全一致（不只调用方租户）；
+  无法解析或任一记录不一致返回 400 `artifact_manifest_mismatch`，字节不写入存储。
 - 成功写入 `ArtifactStore` 返回 201 `{"digest": "sha256:<hex>", "size": <n>}`。重复上传同一摘要返回 201，幂等。
 
 ## `GET /v1/agents/{tenant}/{agent_id}/{version}/eval`
@@ -182,7 +183,7 @@
 | 409 | `invalid_transition` | 生命周期转换非法 |
 | 413 | `too_large` | 超过 8 MiB |
 | 415 | `unsupported_media_type` | 工件 Content-Type 不对 |
-| 502 | `artifact_store_failed` | 工件存储写入失败 |
+| 502 | `artifact_store_failed` | 工件存储读写失败 |
 | 502 | `eval_store_unavailable` | 评测报告存储不可用 |
 | 502 | `registry_unavailable` | 注册表存储不可达 |
 | 502 | `registry_integrity_error` | 存储的记录与摘要不符 |

@@ -6,8 +6,9 @@
 
 ## 意图
 
-1. 上传工件字节时，服务端读取 zip 内的 `manifest.json`，必须与引用该 digest 的记录 manifest
-   完全一致；无法解析或不一致返回 400 `artifact_manifest_mismatch`，字节不写入存储。
+1. 上传工件字节时，服务端读取 zip 内的 `manifest.json`，必须与所有租户中引用该 digest 的记录
+   manifest 完全一致（先按调用方可见范围找到记录，再全租户扫描复核）；无法解析或任一记录不一致
+   返回 400 `artifact_manifest_mismatch`，字节不写入存储。
 2. 发布记录时，如果该 digest 的字节已经存在（先上传后发布），同样解析并比较；不一致返回
    400 `artifact_manifest_mismatch`。字节尚未上传时跳过，由上传端补查。
 3. 正常顺序（先发布记录、后上传字节）与 CLI 的既有行为不变；`read_artifact_zip` 的解析逻辑
@@ -22,6 +23,7 @@
 
 - [x] 记录 manifest 与工件内 manifest 不同时上传被拒且不落盘 -> `test_upload_rejects_bytes_with_a_different_manifest`
 - [x] 先上传字节、再发布不匹配的记录被拒 -> `test_publish_rejects_a_record_mismatching_stored_bytes`
+- [x] 其他租户的同 digest 不匹配记录也会阻止上传 -> `test_upload_checks_records_beyond_the_caller_tenant`
 - [x] 匹配路径保持可用 -> `test_upload_artifact`
 - [x] 全量门禁通过
 
@@ -29,6 +31,7 @@
 
 - [x] 基线用真实 zip 上传到一条 manifest 不同的记录返回 201 并写入存储
 - [x] 基线在字节已存在时发布 manifest 不同的记录返回 201
+- [x] 基线只比对调用方租户的记录，跨租户伪造记录可通过上传复核
 
 ## 5 问威胁建模
 

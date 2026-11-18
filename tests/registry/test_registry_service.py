@@ -344,6 +344,33 @@ def test_publish_rejects_a_record_mismatching_stored_bytes():
 
 
 @needs_crypto
+def test_upload_checks_records_beyond_the_caller_tenant():
+    key = _key()
+    artifact, data = _artifact(key)
+    registry = MemoryRegistry()
+    asyncio.run(registry.publish(published_from(_manifest(), artifact=artifact)))
+    asyncio.run(
+        registry.publish(
+            published_from(_manifest(tenant="t2", description="forged"), artifact=artifact)
+        )
+    )
+    store = MemoryStore()
+    provider = FakeProvider(Principal(tenant="t1", subject="alice", kind="human"))
+    with TestClient(
+        _app(registry, store=store, trust=TrustStore({"k1": _raw(key)}), oidc=provider)
+    ) as client:
+        response = client.put(
+            f"/v1/artifacts/{artifact.digest}",
+            content=data,
+            headers={**OIDC_AUTH, "Content-Type": MEDIA_TYPE},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "artifact_manifest_mismatch"}
+    assert store.data == {}
+
+
+@needs_crypto
 def test_upload_without_record():
     key = _key()
     artifact, data = _artifact(key)
