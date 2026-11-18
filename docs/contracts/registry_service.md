@@ -121,6 +121,33 @@
 - 成功写一条 `connector.disable` 审计，`target` 规则同上。
 - 存储错误同上。
 
+## `POST /v1/credentials` -> `CredentialBinding`（不含 `wrapped_secret`）
+
+```json
+{"tenant": "acme", "credential_id": "crm", "secret_ref": "secret://acme/token",
+ "description": "CRM token", "secret": "<单行明文>"}
+```
+
+- 只有 admin 能写，非 admin 返回 403 `forbidden`；admin 可以写任意租户。
+- `secret` 可选。给出时服务端用 `ADK_SECRET_KEKS` 的当前 KEK 做信封加密后只存密文；
+  服务端没有密钥后端返回 503 `key_backend_unavailable`，加密失败返回 500 `encryption_failed`。
+  `secret` 必须是单行、去空白后非空、最长 8192 字符，否则 400 `invalid_credential`。
+- 不给 `secret` 时只登记引用元数据，与 `credentials register` 不带 `--secret-stdin` 相同。
+- 请求体不接受 `wrapped_secret` 等其他密文字段；出现即 400 `invalid_credential`。
+- 同 id 已存在返回 409 `credential_conflict`，重发不会覆盖；需要先停用或换 id。
+- 成功写一条 `credential.register` 审计，`target` 是 `<tenant>/<credential_id>`，
+  `agent_ref.version` 是 `credential.<key id>`（无密文时为 `credential`），不记明文与密文。
+- 存储不可达返回 503 `credential_store_unavailable`。
+- 明文只在请求处理期间存在，不写日志、不进审计、不回响应；加密失败只记异常类型。
+
+## `POST /v1/credentials/{credential_id}/disable?tenant=<name>` -> `CredentialBinding`（不含 `wrapped_secret`）
+
+- 只有 admin 能写，非 admin 返回 403 `forbidden`；admin 可以停用任意租户。
+- `tenant` 缺省取调用方租户；静态 token 没有租户，缺省时返回 400 `invalid_request`。
+- 不存在返回 404 `credential_not_found`；成功返回 200，已停用时重发返回 200，幂等。
+- 成功写一条 `credential.disable` 审计，字段规则同上。
+- 存储不可达返回 503 `credential_store_unavailable`。
+
 ## 错误
 
 | 状态 | 错误码 | 含义 |
@@ -161,6 +188,12 @@
 | 503 | `connector_store_unavailable` | 服务没有配置连接器存储 |
 | 503 | `artifact_trust_unavailable` | 发布带工件但服务没有可信公钥 |
 | 503 | `builder_key_unavailable` | `in_process` 工件发布但服务没有构建公钥 |
+| 400 | `invalid_credential` | 凭据记录非法，或明文不是单行、去空白后为空、超长，或带了 `wrapped_secret` |
+| 404 | `credential_not_found` | 凭据不存在 |
+| 409 | `credential_conflict` | 同 id 已存在 |
+| 500 | `encryption_failed` | 服务端加密明文失败 |
+| 503 | `key_backend_unavailable` | 服务没有配置凭据密钥后端 |
+| 503 | `credential_store_unavailable` | 服务没有配置凭据存储或存储不可达 |
 
 `HttpConnectorStore` 实现 `ConnectorStore` 端口，接同一服务。409 映射为 `ConnectorConflict`，404 映射为 `ConnectorNotFound`，401 和 403 映射为 `ConnectorForbidden`，400 映射为 `ConnectorStoreError`，传输失败和 5xx 映射为 `ConnectorStoreUnavailable`。
 

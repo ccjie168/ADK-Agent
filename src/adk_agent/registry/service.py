@@ -29,6 +29,11 @@ from ..core import (
     ConnectorStore,
     ConnectorStoreError,
     ConnectorStoreUnavailable,
+    CredentialBinding,
+    CredentialConflict,
+    CredentialNotFound,
+    CredentialStore,
+    CredentialStoreError,
     EvalReport,
     EvalReportStore,
     IdentityProvider,
@@ -42,6 +47,7 @@ from ..core import (
 from ..core.artifact import MAX_ARTIFACT_BYTES, MEDIA_TYPE
 from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from ..sandbox.agent import agent_sandbox_available
+from ..secretstore import KeyBackend, KeyBackendError, credential_aad
 from .artifacts import ArtifactStoreError
 from .file import RegistryConflict, RegistryError, RegistryIntegrityError
 from .reports import EvalReportConflict
@@ -51,6 +57,7 @@ from .trust import ArtifactTrustError, TrustStore
 logger = logging.getLogger(__name__)
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
 
 _LIFECYCLE_STATUSES = frozenset({"published", "deprecated", "retired"})
 
@@ -140,6 +147,8 @@ def build_registry_service_app(
     eval_reports: EvalReportStore | None = None,
     lifecycle: AgentLifecycleStore | None = None,
     connectors: ConnectorStore | None = None,
+    credentials: CredentialStore | None = None,
+    key_backend: KeyBackend | None = None,
     audit: AuditSink | None = None,
     trust: TrustStore | None = None,
     builder_keys: TrustStore | None = None,
@@ -417,6 +426,170 @@ def build_registry_service_app(
                 )
             )
         return JSONResponse(disabled.model_dump(mode="json"))
+
+    def _credential_ref(binding: CredentialBinding, version: str) -> AgentRef:
+        payload = binding.model_dump_json(exclude={"wrapped_secret"})
+        return AgentRef(
+            id=binding.credential_id, version=version, digest=f"sha256:{hash_text(payload)}"
+        )
+
+    @app.post("/v1/credentials")
+    async def register_credential(request: Request) -> JSONResponse:
+        try:
+            body: Any = await request.json()
+        except ValueError:
+            return _error("invalid_request", 400)
+        if not isinstance(body, dict):
+            return _error("invalid_request", 400)
+        caller = _principal(request)
+        if caller is not None and "admin" not in caller.roles:
+            return _error("forbidden", 403)
+        unknown = set(body) - {"tenant", "credential_id", "secret_ref", "description", "secret"}
+        if unknown:
+            return _error("invalid_credential", 400)
+        tenant = body.get("tenant")
+        credential_id = body.get("credential_id")
+        secret_ref = body.get("secret_ref")
+        if (
+            not isinstance(tenant, str)
+            or not isinstance(credential_id, str)
+            or not isinstance(secret_ref, str)
+        ):
+            return _error("invalid_credential", 400)
+        if _cross_tenant(caller, tenant):
+            return _error("tenant_forbidden", 403)
+        if credentials is None:
+            return _error("credential_store_unavailable", 503)
+        secret = body.get("secret")
+        wrapped: dict[str, Any] | None = None
+        key_id: str | None = None
+        if secret is not None:
+            if (
+                not isinstance(secret, str)
+                or not secret.strip()
+                or len(secret) > 8192
+                or "\r" in secret
+                or "\n" in secret
+            ):
+                return _error("invalid_credential", 400)
+            if key_backend is None:
+                return _error("key_backend_unavailable", 503)
+            try:
+                wrapped = key_backend.wrap(
+                    secret.encode("utf-8"), credential_aad(tenant, credential_id)
+                )
+                key_id = key_backend.current_key_id()
+            except KeyBackendError as exc:
+                logger.error("credential encryption failed: %s", type(exc).__name__)
+                return _error("encryption_failed", 500)
+        actor = caller or Principal(
+            tenant=tenant, subject="registry_operator", kind="human", roles=["admin"]
+        )
+        try:
+            binding = CredentialBinding(
+                credential_id=credential_id,
+                tenant=tenant,
+                secret_ref=secret_ref,
+                description=body.get("description", ""),
+                created_by=actor.subject,
+                created_at=datetime.now(timezone.utc),
+                wrapped_secret=wrapped,
+                secret_key_id=key_id,
+                secret_version=1 if wrapped is not None else None,
+            )
+        except ValidationError:
+            return _error("invalid_credential", 400)
+        try:
+            stored = await credentials.add(binding)
+        except CredentialConflict:
+            return _error("credential_conflict", 409)
+        except CredentialStoreError:
+            logger.exception("credential register failed")
+            return _error("credential_store_unavailable", 503)
+        if audit is not None:
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=uuid.uuid4().hex,
+                    tenant=actor.tenant,
+                    principal=actor,
+                    agent_ref=_credential_ref(
+                        stored,
+                        f"credential.{stored.secret_key_id}"
+                        if stored.secret_key_id
+                        else "credential",
+                    ),
+                    action="credential.register",
+                    target=f"{stored.tenant}/{stored.credential_id}",
+                    args_hash=hash_text(stored.model_dump_json(exclude={"wrapped_secret"})),
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse(
+            stored.model_dump(mode="json", exclude={"wrapped_secret"}), status_code=201
+        )
+
+    @app.post("/v1/credentials/{credential_id}/disable")
+    async def disable_credential(
+        request: Request, credential_id: str, tenant: str | None = None
+    ) -> JSONResponse:
+        caller = _principal(request)
+        if caller is not None and "admin" not in caller.roles:
+            return _error("forbidden", 403)
+        if credentials is None:
+            return _error("credential_store_unavailable", 503)
+        if tenant is None and caller is None:
+            return _error("invalid_request", 400)
+        if not _SAFE_NAME.fullmatch(credential_id) or (
+            tenant is not None and not _SAFE_NAME.fullmatch(tenant)
+        ):
+            return _error("invalid_request", 400)
+        actor = caller or Principal(
+            tenant=cast("str", tenant), subject="registry_operator", kind="human", roles=["admin"]
+        )
+        target = tenant or actor.tenant
+        if not _SAFE_NAME.fullmatch(target):
+            return _error("invalid_request", 400)
+        if _cross_tenant(caller, target):
+            return _error("tenant_forbidden", 403)
+        try:
+            existing = await credentials.get(target, credential_id)
+        except CredentialStoreError:
+            logger.exception("credential read failed")
+            return _error("credential_store_unavailable", 503)
+        if existing is None:
+            return _error("credential_not_found", 404)
+        try:
+            disabled = await credentials.disable(target, credential_id, by=actor.subject)
+        except CredentialNotFound:
+            return _error("credential_not_found", 404)
+        except CredentialStoreError:
+            logger.exception("credential disable failed")
+            return _error("credential_store_unavailable", 503)
+        if audit is not None and existing.enabled:
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=uuid.uuid4().hex,
+                    tenant=actor.tenant,
+                    principal=actor,
+                    agent_ref=_credential_ref(
+                        disabled,
+                        f"credential.{disabled.secret_key_id}"
+                        if disabled.secret_key_id
+                        else "credential",
+                    ),
+                    action="credential.disable",
+                    target=f"{disabled.tenant}/{disabled.credential_id}",
+                    args_hash=hash_text("enabled->disabled"),
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        return JSONResponse(disabled.model_dump(mode="json", exclude={"wrapped_secret"}))
 
     @app.get("/v1/agents/{tenant}/{agent_id}/{version}/eval")
     async def get_eval_report(
