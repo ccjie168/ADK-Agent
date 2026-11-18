@@ -24,6 +24,8 @@ class KeyBackend(Protocol):
 
     def unwrap(self, wrapped: Mapping[str, Any], aad: bytes) -> bytes: ...
 
+    def rewrap(self, wrapped: Mapping[str, Any], aad: bytes) -> dict[str, Any]: ...
+
     def current_key_id(self) -> str: ...
 
 
@@ -82,6 +84,39 @@ class LocalKeyBackend:
             return AESGCM(dek).decrypt(nonce, ciphertext, aad)
         except InvalidTag as exc:
             raise KeyBackendError("secret payload failed to decrypt") from exc
+
+    def rewrap(self, wrapped: Mapping[str, Any], aad: bytes) -> dict[str, Any]:
+        if wrapped.get("v") != _VERSION:
+            raise KeyBackendError("unsupported secret format")
+        key_id = wrapped.get("key_id")
+        if not isinstance(key_id, str) or key_id not in self._keys:
+            raise KeyBackendError("secret key id is not available")
+        try:
+            dek_nonce = base64.b64decode(wrapped["dek_nonce"], validate=True)
+            wrapped_dek = base64.b64decode(wrapped["wrapped_dek"], validate=True)
+            nonce = wrapped["nonce"]
+            ciphertext = wrapped["ciphertext"]
+        except (KeyError, ValueError, TypeError) as exc:
+            raise KeyBackendError("secret payload is malformed") from exc
+        try:
+            dek = AESGCM(self._keys[key_id]).decrypt(dek_nonce, wrapped_dek, aad)
+        except InvalidTag as exc:
+            raise KeyBackendError("secret payload failed to unwrap") from exc
+        if key_id == self._active:
+            return dict(wrapped)
+        new_nonce = os.urandom(_NONCE)
+        try:
+            new_dek = AESGCM(self._keys[self._active]).encrypt(new_nonce, dek, aad)
+        except InvalidTag as exc:  # pragma: no cover - encrypt cannot fail on a valid KEK
+            raise KeyBackendError("secret payload failed to rewrap") from exc
+        return {
+            "v": _VERSION,
+            "key_id": self._active,
+            "dek_nonce": base64.b64encode(new_nonce).decode("ascii"),
+            "wrapped_dek": base64.b64encode(new_dek).decode("ascii"),
+            "nonce": nonce,
+            "ciphertext": ciphertext,
+        }
 
     @classmethod
     def from_json(cls, text: str) -> LocalKeyBackend:

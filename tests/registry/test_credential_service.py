@@ -207,3 +207,11 @@ def test_disable_rejects_unsafe_path_input(tmp_path):
     for response in (empty_tenant, bad_id, bad_tenant):
         assert response.status_code == 400
         assert response.json() == {"error": "invalid_request"}
+
+
+def test_register_rejects_an_overlong_identifier(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        response = client.post("/v1/credentials", json=_body(credential_id="a" * 300), headers=AUTH)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_credential"}

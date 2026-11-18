@@ -73,6 +73,30 @@ class PostgresCredentialStore:
             )
         return existing
 
+    async def replace(self, binding: CredentialBinding) -> CredentialBinding:
+        try:
+            pool = await self._pool.get()
+            async with pool.acquire() as conn:
+                status = await conn.execute(
+                    "UPDATE adk_credentials SET definition = $3::jsonb, updated_at = $4 "
+                    "WHERE tenant = $1 AND credential_id = $2",
+                    binding.tenant,
+                    binding.credential_id,
+                    binding.model_dump_json(),
+                    datetime.now(timezone.utc),
+                )
+        except CredentialStoreError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise CredentialStoreUnavailable(
+                f"credential write failed ({type(exc).__name__})"
+            ) from exc
+        if status == "UPDATE 0":
+            raise CredentialNotFound(
+                f"credential not found: {binding.tenant}/{binding.credential_id}"
+            )
+        return binding
+
     async def get(self, tenant: str, credential_id: str) -> CredentialBinding | None:
         try:
             pool = await self._pool.get()

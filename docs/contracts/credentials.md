@@ -78,3 +78,7 @@
 - 凭据响应只返回元数据，不返回 `wrapped_secret` 或任何密文载荷。
   输出只含元数据，不含明文。
 - 轮换保留旧 key id 用于解密；keyring 缺失旧 key id 时拒绝解密。
+- `KeyBackend.rewrap(wrapped, aad)` 只把数据密钥换到当前 KEK 下重新包裹，凭据值的密文与 nonce 不变，
+  不解密明文；key id 已是当前值时验证 AAD 后原样返回。
+- `credentials rewrap --tenant T [--dry-run]` 逐条把非当前 key id 的记录换到当前 KEK；
+  已是当前 key id 或没有密文的记录计入 `skipped`；输出 `{tenant, rewrapped, skipped, dry_run}`。

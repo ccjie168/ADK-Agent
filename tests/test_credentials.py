@@ -117,3 +117,15 @@ def test_credential_env_name():
             parse_credential_ref(reference)
         with pytest.raises(ValueError):
             credential_env_name(reference)
+
+
+def test_file_store_replace_requires_an_existing_binding(tmp_path):
+    store = FileCredentialStore(tmp_path)
+    binding = _binding()
+    asyncio.run(store.add(binding))
+    changed = binding.model_copy(update={"description": "rotated"})
+
+    assert asyncio.run(store.replace(changed)) == changed
+    assert asyncio.run(store.get("acme", "crm")) == changed
+    with pytest.raises(CredentialNotFound):
+        asyncio.run(store.replace(_binding(tenant="other", ref="secret://other/token")))
