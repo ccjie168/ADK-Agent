@@ -1693,10 +1693,12 @@ def main(argv: list[str] | None = None) -> None:
     p_ra_register.add_argument("--credential-ref", default=None)
     p_ra_register.add_argument("--label", default="")
     _add_peer_store_args(p_ra_register)
+    _add_credential_store_args(p_ra_register)
 
     p_ra_refresh = remote_sub.add_parser("refresh", help="refresh a remote agent card")
     p_ra_refresh.add_argument("--id", required=True)
     _add_peer_store_args(p_ra_refresh)
+    _add_credential_store_args(p_ra_refresh)
 
     p_ra_disable = remote_sub.add_parser("disable", help="disable a remote agent record")
     p_ra_disable.add_argument("--id", required=True)
@@ -2810,19 +2812,35 @@ def main(argv: list[str] | None = None) -> None:
         from pydantic import ValidationError
 
         from .core import (
+            CredentialStoreError,
             RemoteAgent,
             RemoteAgentError,
             RemoteAgentFetchError,
             RemoteAgentRegistration,
         )
         from .registry import fetch_agent_card
-        from .secretstore import PrefixedEnvSecretProvider, SecretNotFound
+        from .secretstore import (
+            LocalKeyBackend,
+            PrefixedEnvSecretProvider,
+            RoutingSecretProvider,
+            SecretNotFound,
+            TenantScopedSecretProvider,
+            TenantSecretProvider,
+        )
 
         peer_store, _ = _peer_stores(args)
         remote_store = _remote_agent_store(args)
-        secrets = PrefixedEnvSecretProvider()
+        credential_store = (
+            _credential_store(args) if args.remote_cmd in {"register", "refresh"} else None
+        )
+        secrets: Any = PrefixedEnvSecretProvider()
+        if credential_store is not None:
+            secrets = RoutingSecretProvider(
+                TenantSecretProvider(LocalKeyBackend.from_env(), credential_store),
+                secrets,
+            )
 
-        async def run_remote_agents() -> Any:
+        async def _run_remote_agents() -> Any:
             if args.remote_cmd == "list":
                 records = await remote_store.list()
                 if args.tenant is not None:
@@ -2850,7 +2868,9 @@ def main(argv: list[str] | None = None) -> None:
                 if existing is not None and existing.tenant != registration.tenant:
                     raise ValueError(f"remote agent tenant is immutable: {registration.remote_id}")
                 credential = (
-                    await secrets.resolve(registration.credential_ref)
+                    await TenantScopedSecretProvider(secrets, registration.tenant).resolve(
+                        registration.credential_ref
+                    )
                     if registration.credential_ref is not None
                     else None
                 )
@@ -2884,7 +2904,9 @@ def main(argv: list[str] | None = None) -> None:
             refreshed: str | None = None
             try:
                 credential = (
-                    await secrets.resolve(existing.credential_ref)
+                    await TenantScopedSecretProvider(secrets, existing.tenant).resolve(
+                        existing.credential_ref
+                    )
                     if existing.credential_ref is not None
                     else None
                 )
@@ -2910,9 +2932,18 @@ def main(argv: list[str] | None = None) -> None:
                 )
             return await remote_store.put(record)
 
+        async def run_remote_agents() -> Any:
+            try:
+                return await _run_remote_agents()
+            finally:
+                close = getattr(credential_store, "aclose", None)
+                if close is not None:
+                    await close()
+
         try:
             result = asyncio.run(run_remote_agents())
         except (
+            CredentialStoreError,
             RemoteAgentError,
             RemoteAgentFetchError,
             SecretNotFound,
