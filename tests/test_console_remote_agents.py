@@ -310,6 +310,29 @@ def test_register_fails_closed_without_a_key_backend(tmp_path, monkeypatch):
     assert "credential" not in seen
 
 
+def test_console_command_leaves_remote_secrets_to_the_app(tmp_path, monkeypatch):
+    from adk_agent import cli
+
+    captured: dict = {}
+    monkeypatch.setattr("adk_agent.console.run_console", lambda *a, **k: captured.update(k))
+    agents = tmp_path / "agents.py"
+    newline = chr(10)
+    agents.write_text(
+        "from google.adk.agents import LlmAgent"
+        + newline
+        + "agents = {'probe': LlmAgent(name='probe', model='gemini-2.5-pro', instruction='x')}"
+        + newline,
+        encoding="utf-8",
+    )
+
+    cli.main(
+        ["console", "--agents", str(agents), "--credentials-dir", str(tmp_path / "credentials")]
+    )
+
+    assert captured["credentials"] is not None
+    assert captured.get("remote_secrets") is None
+
+
 def test_register_fetch_error_codes(tmp_path, monkeypatch):
     _seed_peer(tmp_path)
     mapping = {

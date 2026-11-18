@@ -78,8 +78,10 @@ class TenantSecretProvider:
             return None
         try:
             bindings = await self._credentials.list(tenant)
-        except (CredentialStoreError, OSError, ValueError):
-            logger.warning("credential store read failed: tenant=%s", tenant, exc_info=True)
+        except (CredentialStoreError, OSError, ValueError) as exc:
+            logger.warning(
+                "credential store read failed: tenant=%s error=%s", tenant, type(exc).__name__
+            )
             raise SecretNotFound(f"secret {reference!r} is unavailable") from None
         matching = [item for item in bindings if item.secret_ref == reference]
         encrypted = [item for item in matching if item.wrapped_secret is not None]

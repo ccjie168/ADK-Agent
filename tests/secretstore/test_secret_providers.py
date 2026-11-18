@@ -237,6 +237,24 @@ def test_store_failure_fails_closed(monkeypatch):
         asyncio.run(provider.resolve("secret://acme/token"))
 
 
+def test_store_failure_logs_no_record_content(monkeypatch, caplog):
+    import logging
+
+    from adk_agent.secretstore import SecretNotFound, TenantSecretProvider
+
+    class _Corrupt:
+        async def list(self, tenant):
+            raise ValueError("record value='sk-live-PLAINTEXT-LEAK' is invalid")
+
+    provider = TenantSecretProvider(credentials=_Corrupt())
+
+    with caplog.at_level(logging.WARNING), pytest.raises(SecretNotFound, match="unavailable"):
+        asyncio.run(provider.resolve("secret://acme/token"))
+
+    assert "credential store read failed" in caplog.text
+    assert "sk-live-PLAINTEXT-LEAK" not in caplog.text
+
+
 def test_routing_provider_rejects_malformed_references():
     from adk_agent.secretstore import (
         PrefixedEnvSecretProvider,

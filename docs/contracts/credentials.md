@@ -72,8 +72,8 @@
 - 记录可带 `wrapped_secret`（对象）、`secret_key_id` 与 `secret_version`；密文用 AES-256-GCM，
   数据密钥由 KEK 包裹，AAD 是 `adk-credential:<tenant>:<credential_id>`。
 - keyring 从 `ADK_SECRET_KEKS` 读取：JSON 对象，含 `active`（当前 key id）与 `keys`（key id 到 base64 编码的 32 字节 KEK）。
-- `TenantSecretProvider` 先按 `secret_ref` 找启用且带密文的记录并解密，失败抛不可用；没有密文时
-  回退 `ADK_SECRET_<TENANT>_<NAME>` 环境变量。
+- `TenantSecretProvider` 先按 `secret_ref` 找启用且带密文的记录并解密，失败抛不可用；凭据库读取失败
+  同样按不可用处理；没有密文时回退 `ADK_SECRET_<TENANT>_<NAME>` 环境变量。
 - `credentials register [--secret-stdin]` 从标准输入读值并加密写入，缺 `ADK_SECRET_KEKS` 退出 1；值必须是单行；
 - 凭据响应只返回元数据，不返回 `wrapped_secret` 或任何密文载荷。
   输出只含元数据，不含明文。
