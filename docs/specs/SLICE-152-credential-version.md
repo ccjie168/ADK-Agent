@@ -14,18 +14,20 @@
 
 ## 契约（先改）
 
-- `docs/contracts/credentials.md` 的 version 规则已覆盖；本切片不改接口。
+- `docs/contracts/credentials.md` 的 version 规则已覆盖解析路径；控制面注册/停用审计的
+  version 规则补进 `docs/contracts/registry_service.md`。本切片不改接口。
 
 ## 完成判据
 
 - [x] 版本号对 None、空串、安全值与不安全值都稳定 -> `test_credential_version_is_always_schema_safe`
 - [x] 不安全 key id 下控制面注册仍审计且不泄露原始 id -> `test_register_with_an_unsafe_key_id_still_audits`
+- [x] 不安全 key id 下停用审计的 version 精确为 12 位哈希形式 -> `test_disable_with_an_unsafe_key_id_still_audits`
 - [x] 全量门禁通过
 
 ## 反例
 
 - [x] 基线控制面对不安全 key id 构造 `AgentRef` 失败，注册可能 500 或丢失审计
-- [x] 基线 providers 与注册表各有一份正则，规则可能漂移
+- [x] 基线 providers 有一份安全字符集正则，注册表直接拼接 `credential.<key id>`，规则已经分叉
 
 ## 5 问威胁建模
 

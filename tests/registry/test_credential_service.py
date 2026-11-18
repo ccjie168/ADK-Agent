@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 
 from fastapi.testclient import TestClient
 
 from adk_agent.audit import ListAuditSink
-from adk_agent.core import Principal
+from adk_agent.core import Principal, credential_version
 from adk_agent.registry import FileCredentialStore
 from adk_agent.registry.service import build_registry_service_app
 from adk_agent.secretstore import LocalKeyBackend, credential_aad
@@ -242,3 +243,22 @@ def test_register_with_an_unsafe_key_id_still_audits(tmp_path):
     [event] = [item for item in sink.recent() if item.action == "credential.register"]
     assert event.agent_ref.version.startswith("credential.")
     assert "prod/key" not in event.agent_ref.version
+
+
+def test_disable_with_an_unsafe_key_id_still_audits(tmp_path):
+    sink = ListAuditSink()
+    store = FileCredentialStore(tmp_path / "credentials")
+    backend = LocalKeyBackend({"prod/key": os.urandom(32)}, "prod/key")
+
+    app = build_registry_service_app(
+        MemoryRegistry(), credentials=store, key_backend=backend, audit=sink, auth_token="secret"
+    )
+    with TestClient(app) as client:
+        registered = client.post("/v1/credentials", json=_body(secret="tok"), headers=AUTH)
+        response = client.post("/v1/credentials/crm/disable?tenant=acme", headers=AUTH)
+
+    assert registered.status_code == 201
+    assert response.status_code == 200
+    [event] = [item for item in sink.recent() if item.action == "credential.disable"]
+    assert event.agent_ref.version == credential_version("prod/key")
+    assert re.fullmatch(r"credential\.[0-9a-f]{12}", event.agent_ref.version)
