@@ -1,0 +1,36 @@
+SLICE-145 v0.1.0 发布说明
+日期: 2026-11-18
+依据: 会话确认“先发布说明，再打 tag”
+基线: dadd75c
+
+一、实现
+
+- 新增 `docs/releases/v0.1.0.md`：包含内容、安装、升级说明、已知缺口、发布验证与后续方向。
+- 升级说明覆盖凭据迁移（128 字符上限、引用首段必须等于记录租户）、轮换步骤与 `publish` 的
+  `in_process` 限制。
+- 已知缺口与 PROGRESS 对齐：KMS、控制台明文写入、`credential.decrypt_failed` 审计、
+  构建签名与 manifest 绑定、跨租户审计链、并发停用审计、demo_seed 未签名工件、Windows 锁重试、
+  沙箱残余风险。
+- 新增 `tests/test_release_notes.py`：发布说明必须与 `pyproject.toml` 的版本一致、章节齐全、
+  没有 `TODO`/`TBD` 占位。
+
+二、绿态
+
+$ pytest tests/test_release_notes.py tests/test_install_guide.py -q
+9 passed
+
+$ pytest -q（Windows）
+1569 passed, 88 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线没有 `docs/releases/`，`test_release_notes_exist_for_the_project_version` 失败；
+未加发布说明前版本升级会让用例失败。
+
+四、范围与已知缺口
+
+- 打 tag、GitHub Release 与镜像推送在本切片合并后单独执行；镜像只在本地构建验证。
+- 没有英文版发布说明。
