@@ -120,6 +120,14 @@ def test_rewrap_rejects_a_malformed_payload():
     with pytest.raises(KeyBackendError):
         rotated.rewrap(bad_nonce, aad)
 
+    short_nonce = dict(wrapped, nonce=base64.b64encode(b"x").decode("ascii"))
+    with pytest.raises(KeyBackendError):
+        rotated.rewrap(short_nonce, aad)
+
+    garbage_nonce = dict(wrapped, nonce="!!!")
+    with pytest.raises(KeyBackendError):
+        rotated.rewrap(garbage_nonce, aad)
+
     short_dek_nonce = dict(wrapped, dek_nonce=base64.b64encode(b"x").decode("ascii"))
     with pytest.raises(KeyBackendError):
         rotated.rewrap(short_dek_nonce, aad)

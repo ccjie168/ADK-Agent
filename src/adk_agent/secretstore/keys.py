@@ -86,6 +86,8 @@ class LocalKeyBackend:
             raise KeyBackendError("secret payload failed to decrypt") from exc
 
     def rewrap(self, wrapped: Mapping[str, Any], aad: bytes) -> dict[str, Any]:
+        if not isinstance(wrapped, Mapping):
+            raise KeyBackendError("secret payload is malformed")
         if wrapped.get("v") != _VERSION:
             raise KeyBackendError("unsupported secret format")
         key_id = wrapped.get("key_id")
@@ -99,6 +101,13 @@ class LocalKeyBackend:
         except (KeyError, ValueError, TypeError) as exc:
             raise KeyBackendError("secret payload is malformed") from exc
         if not isinstance(nonce, str) or not isinstance(ciphertext, str):
+            raise KeyBackendError("secret payload is malformed")
+        try:
+            nonce_bytes = base64.b64decode(nonce, validate=True)
+            value_bytes = base64.b64decode(ciphertext, validate=True)
+        except ValueError as exc:
+            raise KeyBackendError("secret payload is malformed") from exc
+        if len(nonce_bytes) != _NONCE or not value_bytes:
             raise KeyBackendError("secret payload is malformed")
         try:
             dek = AESGCM(self._keys[key_id]).decrypt(dek_nonce, wrapped_dek, aad)

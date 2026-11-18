@@ -82,5 +82,7 @@
   不解密明文；key id 已是当前值时验证 AAD 后原样返回。
 - `CredentialStore.replace_wrapped(tenant, credential_id, wrapped_secret, secret_key_id)` 只更新这两个字段，
   保留 `enabled`、`description` 等并发修改；记录不存在抛 `CredentialNotFound`。
+  文件存储在记录旁创建 `<id>.json.lock` 并用 OS 文件锁串行化读改写，跨进程的 `disable` 不会被覆盖；
+  Postgres 用 `jsonb_set` 只改这两个键，`disable` 也只改 `enabled`。
 - `credentials rewrap --tenant T [--dry-run]` 逐条把非当前 key id 的记录换到当前 KEK；
   已是当前 key id 或没有密文的记录计入 `skipped`；输出 `{tenant, rewrapped, skipped, dry_run}`。

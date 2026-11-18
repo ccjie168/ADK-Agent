@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
+import importlib
 import json
 import os
 import re
 import tempfile
 import threading
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from ..core import (
@@ -19,13 +24,45 @@ from ..core import (
 )
 from .paths import safe_join
 
-_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
 
 
 def _definition(binding: CredentialBinding) -> dict:
     payload = binding.model_dump(mode="json")
     payload.pop("enabled", None)
     return payload
+
+
+@contextmanager
+def _store_lock(path: Path) -> Iterator[None]:
+    """Serialise writers across processes with an OS-level lock on a sibling file."""
+    lock_path = path.with_name(path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        if os.name == "nt":
+            msvcrt = importlib.import_module("msvcrt")
+            while True:
+                try:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+        else:
+            fcntl = importlib.import_module("fcntl")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            if os.name == "nt":
+                msvcrt = importlib.import_module("msvcrt")
+                os.lseek(fd, 0, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl = importlib.import_module("fcntl")
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 class FileCredentialStore:
@@ -68,7 +105,7 @@ class FileCredentialStore:
         secret_key_id: str,
     ) -> CredentialBinding:
         path = self._path(tenant, credential_id)
-        with self._lock:
+        with self._lock, _store_lock(path):
             if not path.is_file():
                 raise CredentialNotFound(f"credential not found: {tenant}/{credential_id}")
             existing = CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
@@ -109,7 +146,7 @@ class FileCredentialStore:
 
     async def disable(self, tenant: str, credential_id: str, *, by: str) -> CredentialBinding:
         path = self._path(tenant, credential_id)
-        with self._lock:
+        with self._lock, _store_lock(path):
             if not path.is_file():
                 raise CredentialNotFound(f"credential not found: {tenant}/{credential_id}")
             binding = CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))

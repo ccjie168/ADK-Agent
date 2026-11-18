@@ -150,16 +150,15 @@ class PostgresCredentialStore:
                 binding = self._parse(row, tenant, credential_id)
                 if not binding.enabled:
                     return binding
-                disabled = binding.model_copy(update={"enabled": False})
                 await conn.execute(
-                    "UPDATE adk_credentials SET definition = $3::jsonb, updated_at = $4 "
+                    "UPDATE adk_credentials SET definition = jsonb_set("
+                    "definition, '{enabled}', 'false'::jsonb), updated_at = $3 "
                     "WHERE tenant = $1 AND credential_id = $2",
                     tenant,
                     credential_id,
-                    disabled.model_dump_json(),
                     datetime.now(timezone.utc),
                 )
-                return disabled
+                return binding.model_copy(update={"enabled": False})
         except CredentialStoreError:
             raise
         except Exception as exc:  # noqa: BLE001

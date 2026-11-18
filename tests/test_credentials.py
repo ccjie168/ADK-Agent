@@ -144,3 +144,66 @@ def test_file_store_replace_wrapped_keeps_a_concurrent_disable(tmp_path):
 
     assert updated.enabled is False
     assert asyncio.run(store.get("acme", "crm")).enabled is False
+
+
+def test_store_lock_blocks_another_writer(tmp_path):
+    import threading
+
+    from adk_agent.registry.credentials import _store_lock
+
+    path = tmp_path / "acme" / "crm.json"
+    held = threading.Event()
+    release = threading.Event()
+    waited = threading.Event()
+
+    def holder() -> None:
+        with _store_lock(path):
+            held.set()
+            release.wait(5)
+
+    def waiter() -> None:
+        with _store_lock(path):
+            waited.set()
+
+    first = threading.Thread(target=holder)
+    second = threading.Thread(target=waiter)
+    first.start()
+    assert held.wait(5)
+    second.start()
+    try:
+        assert not waited.wait(0.3)
+    finally:
+        release.set()
+    second.join(5)
+    first.join(5)
+
+    assert waited.is_set()
+
+
+def test_replace_wrapped_reads_after_taking_the_lock(tmp_path):
+    import threading
+
+    from adk_agent.registry.credentials import _store_lock
+
+    store = FileCredentialStore(tmp_path)
+    asyncio.run(store.add(_binding()))
+    path = store._path("acme", "crm")
+    wrapped = {"v": 1, "key_id": "k2"}
+    done = threading.Event()
+
+    def rewrap() -> None:
+        asyncio.run(store.replace_wrapped("acme", "crm", wrapped, "k2"))
+        done.set()
+
+    with _store_lock(path):
+        worker = threading.Thread(target=rewrap)
+        worker.start()
+        assert not done.wait(0.3)
+        disabled = _binding(enabled=False)
+        path.write_text(disabled.model_dump_json(), encoding="utf-8")
+
+    worker.join(5)
+    assert done.is_set()
+    final = asyncio.run(store.get("acme", "crm"))
+    assert final.enabled is False
+    assert final.secret_key_id == "k2"
