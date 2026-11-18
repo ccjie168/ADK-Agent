@@ -17,10 +17,12 @@
 ## 完成判据
 
 - [x] 配置凭据库后 `register` 用存储密文解析出的值拉取 card -> `test_remote_agents_register_uses_stored_ciphertext`
-- [x] 未配置凭据库时行为不变，环境变量引用照常 -> `test_cli_file_flow`
+- [x] 未配置凭据库时 provider 选择不变，环境变量引用照常 -> `test_cli_file_flow`
 - [x] 缺 `ADK_SECRET_KEKS` 时仍构造路由 provider 且拒绝密文 -> `test_remote_agents_wires_routing_without_a_key_backend`
 - [x] 跨租户引用被拒绝 -> `test_remote_agents_rejects_cross_tenant_credential_ref`
 - [x] `refresh` 按记录租户解析，跨租户引用把状态标成 `unreachable` -> `test_remote_agents_refresh_scopes_to_the_record_tenant`
+- [x] `refresh` 用记录租户的密文解析出的值拉取 card -> `test_remote_agents_refresh_uses_the_record_credential`
+- [x] `list` 与 `disable` 不构造凭据库 -> `test_remote_agents_list_and_disable_ignore_the_credential_store`
 - [x] 全量门禁通过
 
 ## 反例

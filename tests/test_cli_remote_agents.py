@@ -16,6 +16,11 @@ from adk_agent.registry import FileCredentialStore, FileRemoteAgentStore
 from adk_agent.secretstore import LocalKeyBackend, credential_aad
 
 
+@pytest.fixture(autouse=True)
+def _clean_credential_env(monkeypatch):
+    monkeypatch.delenv("CREDENTIAL_DATABASE_URL", raising=False)
+
+
 def _digest(char: str = "a") -> str:
     return "sha256:" + char * 64
 
@@ -227,3 +232,68 @@ def test_remote_agents_refresh_scopes_to_the_record_tenant(tmp_path, capsys, mon
     assert refreshed["status"] == "unreachable"
     assert refreshed["card_digest"] == _digest("a")
     assert "credential" not in seen
+
+
+def test_remote_agents_refresh_uses_the_record_credential(tmp_path, capsys, monkeypatch):
+    root = str(tmp_path / "peer-state")
+    credentials = tmp_path / "credentials"
+    _register_peer(root)
+    capsys.readouterr()
+    raw = os.urandom(32)
+    _keyring(monkeypatch, raw)
+    reference = _seed_ciphertext(credentials, "stored", raw)
+    asyncio.run(
+        FileRemoteAgentStore(root).put(
+            RemoteAgent(
+                remote_id="crm-bot",
+                tenant="acme",
+                peer_id="crm",
+                agent_card_url="https://crm.example.com/card.json",
+                credential_ref=reference,
+                label="CRM bot",
+                card_digest=_digest("a"),
+                checked_at=datetime(2026, 11, 18, tzinfo=timezone.utc),
+                status="pinned",
+            )
+        )
+    )
+    seen: dict = {}
+
+    async def fake(url, credential=None, *, client=None, max_bytes=1048576):
+        seen["credential"] = credential
+        return _digest("b"), {"name": "crm-bot"}
+
+    monkeypatch.setattr("adk_agent.registry.fetch_agent_card", fake)
+
+    cli.main(
+        [
+            "remote-agents",
+            "refresh",
+            "--peer-dir",
+            root,
+            "--id",
+            "crm-bot",
+            "--credentials-dir",
+            str(credentials),
+        ]
+    )
+
+    refreshed = json.loads(_stdout(capsys))
+    assert refreshed["status"] == "changed"
+    assert seen["credential"] == "stored"
+
+
+def test_remote_agents_list_and_disable_ignore_the_credential_store(tmp_path, capsys, monkeypatch):
+    root = str(tmp_path / "peer-state")
+    _register_peer(root)
+    capsys.readouterr()
+    monkeypatch.setenv("CREDENTIAL_DATABASE_URL", "mysql://unreachable")
+
+    cli.main(["remote-agents", "list", "--peer-dir", root])
+    assert json.loads(_stdout(capsys)) == []
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["remote-agents", "disable", "--peer-dir", root, "--id", "missing"])
+
+    assert exc.value.code == 1
+    assert "unknown remote agent" in capsys.readouterr().err
