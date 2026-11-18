@@ -20,7 +20,7 @@
 | 检查 | 位置 |
 | --- | --- |
 | 活跃 spec 有意图、判据、反例、威胁建模、证据 | `scripts/check_specs.py` |
-| spec 引用的 `test_*` 必须真实存在于 `tests/` | `scripts/check_specs.py` |
+| spec 引用的 `test_*` 必须真实存在于 `tests/`（裸名、`test_x()`、`path::test_x` 都校验；SLICE-146 起） | `scripts/check_specs.py`、`tests/test_check_specs.py` |
 | 门禁唯一入口与步骤集合 | `scripts/check.py`、`tests/test_check_gate.py` |
 | 安装手册里的命令与 flag 真实可执行 | `tests/test_install_guide.py` |
 | 发布说明与 `pyproject.toml` 版本一致、无占位 | `tests/test_release_notes.py` |

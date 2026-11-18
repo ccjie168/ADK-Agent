@@ -1,0 +1,39 @@
+SLICE-147 spec 用例名校验加固与合同陈旧描述修正
+日期: 2026-11-18
+依据: SLICE-146 的验证代理留下的非阻断缺口；sandbox.md 陈旧描述
+基线: e8ffd7e
+
+一、实现
+
+- `scripts/check_specs.py` 的引用正则支持裸名、带括号、带路径前缀、带路径与括号四种写法。
+- 测试发现改用 AST：只认模块顶层与 `Test*` 类里的 `def test_*`/`async def test_*`，字符串里的
+  同名定义不再算数。
+- 新增 `REFERENCE_FLOOR = 146`：编号小于 146 的历史 spec 保留当时的引用，不做校验；
+  SLICE-146 起的新切片必须引用真实用例。
+- 补 `test_main_flags_unknown_references`，锁住 `main()` 确实把测试名集合传进校验。
+- `docs/contracts/sandbox.md` 的“工具调用不中转”改为“工具调用经父进程中转，协议见工具中介帧；
+  网络守卫仍拦截工件直接发起的外连”。
+- `docs/guides/slice-checklist.md` 的自动化检查表补上支持的引用写法与生效范围。
+
+二、绿态
+
+$ pytest tests/test_check_specs.py tests/test_slice_checklist.py -q
+10 passed
+
+$ pytest -q（Windows）
+1580 passed, 88 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线只认裸名：带路径与括号的不存在用例名写进 spec 仍通过；AST 用例在基线上把字符串里的
+测试函数定义算作用例、漏掉类方法。SLICE-147 spec 初稿里的无效字面名被新校验当场拦下，
+按提示改写。
+
+四、范围与已知缺口
+
+- 只校验名字存在，不校验用例被收集或通过。
+- 历史 spec（< 146）保留原始引用；如需回溯修正，单独切片处理。
+- `sandbox.md` 的修正没有独立文本守卫，随文档评审人工确认。

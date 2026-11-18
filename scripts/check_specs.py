@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -19,18 +20,37 @@ REQUIRED = (
     ("## 证据", "evidence"),
 )
 STATUS = re.compile(r"^状态:\s*(\w+)", re.MULTILINE)
-TEST_DEF = re.compile(r"^(?:async )?def (test_[A-Za-z0-9_]+)", re.MULTILINE)
-TEST_REF = re.compile(r"`(test_[A-Za-z0-9_]+)`")
+SLICE_NUMBER = re.compile(r"SLICE-(\d+)")
+# SLICE-146 introduced the reference check; earlier specs are historical records and keep their citations.
+REFERENCE_FLOOR = 146
+TEST_NAME = "test_[A-Za-z0-9_]+"
+TEST_REF = re.compile(rf"`(?:[A-Za-z0-9_./-]+::)?({TEST_NAME})(?:\(\))?`")
 
 
 def missing_sections(text: str) -> list[str]:
     return [label for header, label in REQUIRED if header not in text]
 
 
+def _test_functions(nodes: list[ast.stmt]) -> list[str]:
+    return [
+        node.name
+        for node in nodes
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.name.startswith("test_")
+    ]
+
+
 def defined_tests(directory: Path = TESTS) -> set[str]:
     names: set[str] = set()
     for path in directory.rglob("*.py"):
-        names.update(TEST_DEF.findall(path.read_text(encoding="utf-8")))
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        names.update(_test_functions(tree.body))
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+                names.update(_test_functions(node.body))
     return names
 
 
@@ -40,7 +60,8 @@ def check_file(path: Path, known_tests: set[str] | None = None) -> list[str]:
     if match and match.group(1) == "merged":
         return []
     problems = missing_sections(text)
-    if known_tests is not None:
+    number = SLICE_NUMBER.search(path.name)
+    if known_tests is not None and number is not None and int(number.group(1)) >= REFERENCE_FLOOR:
         unknown = sorted(set(TEST_REF.findall(text)) - known_tests)
         problems.extend(f"unknown-test:{name}" for name in unknown)
     return problems

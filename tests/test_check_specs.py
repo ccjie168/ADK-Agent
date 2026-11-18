@@ -75,3 +75,45 @@ def test_missing_sections_are_reported(tmp_path):
     problems = check_specs.check_file(path, set())
 
     assert "threat-model" in problems
+
+
+def test_reference_variants_resolve(tmp_path):
+    path = tmp_path / "SLICE-902-test.md"
+    body = BODY.format(name="tests/test_x.py::test_exists()")
+    path.write_text(body, encoding="utf-8")
+
+    assert check_specs.check_file(path, {"test_exists"}) == []
+    assert check_specs.check_file(path, {"test_other"}) == ["unknown-test:test_exists"]
+
+
+def test_defined_tests_uses_the_ast_not_strings(tmp_path):
+    module = tmp_path / "test_sample.py"
+    module.write_text(
+        'DOC = """\ndef test_in_a_string():\n    pass\n"""\n\n'
+        "def test_real():\n    pass\n\n"
+        "class TestGroup:\n    def test_member(self):\n        pass\n",
+        encoding="utf-8",
+    )
+
+    names = check_specs.defined_tests(tmp_path)
+
+    assert "test_real" in names
+    assert "test_member" in names
+    assert "test_in_a_string" not in names
+
+
+def test_main_flags_unknown_references(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "SLICE-903-test.md"
+    path.write_text(BODY.format(name="test_missing"), encoding="utf-8")
+    monkeypatch.setattr(check_specs, "SPECS", tmp_path)
+    monkeypatch.setattr(check_specs, "defined_tests", lambda: {"test_real"})
+
+    assert check_specs.main() == 1
+    assert "unknown-test:test_missing" in capsys.readouterr().out
+
+
+def test_reference_floor_exempts_historical_specs(tmp_path):
+    path = tmp_path / "SLICE-020-tool-guard.md"
+    path.write_text(BODY.format(name="test_missing"), encoding="utf-8")
+
+    assert check_specs.check_file(path, {"test_real"}) == []
