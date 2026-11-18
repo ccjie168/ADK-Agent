@@ -218,3 +218,15 @@ def test_file_store_accepts_a_128_character_id(tmp_path):
 
     assert asyncio.run(store.get("acme", long_id)) == binding
     assert [item.credential_id for item in asyncio.run(store.list("acme"))] == [long_id]
+
+
+def test_credential_version_is_always_schema_safe():
+    from adk_agent.core import credential_version
+
+    assert credential_version(None) == "credential"
+    assert credential_version("") == "credential"
+    assert credential_version("k1") == "credential.k1"
+    assert credential_version("a.b+c-d_e") == "credential.a.b+c-d_e"
+    unsafe = credential_version("prod/key")
+    assert unsafe.startswith("credential.")
+    assert "prod/key" not in unsafe

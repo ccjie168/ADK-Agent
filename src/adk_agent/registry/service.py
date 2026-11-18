@@ -41,6 +41,7 @@ from ..core import (
     LifecycleTransitionError,
     Principal,
     PublishedAgent,
+    credential_version,
     declared_execution_tier,
     manifest_digest,
 )
@@ -514,12 +515,7 @@ def build_registry_service_app(
                     trace_id=uuid.uuid4().hex,
                     tenant=actor.tenant,
                     principal=actor,
-                    agent_ref=_credential_ref(
-                        stored,
-                        f"credential.{stored.secret_key_id}"
-                        if stored.secret_key_id
-                        else "credential",
-                    ),
+                    agent_ref=_credential_ref(stored, credential_version(stored.secret_key_id)),
                     action="credential.register",
                     target=f"{stored.tenant}/{stored.credential_id}",
                     args_hash=hash_text(stored.model_dump_json(exclude={"wrapped_secret"})),
@@ -576,12 +572,7 @@ def build_registry_service_app(
                     trace_id=uuid.uuid4().hex,
                     tenant=actor.tenant,
                     principal=actor,
-                    agent_ref=_credential_ref(
-                        disabled,
-                        f"credential.{disabled.secret_key_id}"
-                        if disabled.secret_key_id
-                        else "credential",
-                    ),
+                    agent_ref=_credential_ref(disabled, credential_version(disabled.secret_key_id)),
                     action="credential.disable",
                     target=f"{disabled.tenant}/{disabled.credential_id}",
                     args_hash=hash_text("enabled->disabled"),

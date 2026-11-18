@@ -225,3 +225,20 @@ def test_disable_rejects_an_overlong_identifier(tmp_path):
 
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_request"}
+
+
+def test_register_with_an_unsafe_key_id_still_audits(tmp_path):
+    sink = ListAuditSink()
+    store = FileCredentialStore(tmp_path / "credentials")
+    backend = LocalKeyBackend({"prod/key": os.urandom(32)}, "prod/key")
+
+    app = build_registry_service_app(
+        MemoryRegistry(), credentials=store, key_backend=backend, audit=sink, auth_token="secret"
+    )
+    with TestClient(app) as client:
+        response = client.post("/v1/credentials", json=_body(secret="tok"), headers=AUTH)
+
+    assert response.status_code == 201
+    [event] = [item for item in sink.recent() if item.action == "credential.register"]
+    assert event.agent_ref.version.startswith("credential.")
+    assert "prod/key" not in event.agent_ref.version
