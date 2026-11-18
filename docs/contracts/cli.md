@@ -246,14 +246,14 @@
 - `peers revoke --id ID --agent AGENT` 输出 `{"revoked": bool}`，授权不存在也退出 0。
 - 控制台的写操作写 `peer.register`、`peer.disable`、`peer.grant` 或 `peer.revoke` 审计。CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 
-## `adk-agent remote-agents list|register|refresh|disable [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL]`
+## `adk-agent remote-agents list|register|refresh|disable`
 
 管理远端 A2A agent 的目录记录（ADR-0015）。
 
 - 存储参数复用 `--peer-dir DIR` 或 `--peer-db URL`，二选一；记录写在 `<DIR>/remote-agents/<remote_id>.json` 或 `adk_remote_agents` 表。
-- `remote-agents list [--tenant T]` 输出 JSON 数组，按 `remote_id` 排序。
-- `remote-agents register --id ID --tenant T --peer P --card-url URL [--credential-ref REF] [--label L]` 拉取 card、校验名称并输出记录；已存在记录改租户退出 1；其他失败按契约错误退出 1。
-- `remote-agents refresh --id ID` 输出刷新后的记录；`changed` 与 `unreachable` 也退出 0，结论写在记录里。
+- `remote-agents list [--tenant T]` 输出 JSON 数组，按 `remote_id` 排序；`list` 与 `disable` 不读凭据库，也不接受凭据库参数。
+- `remote-agents register --id ID --tenant T --peer P --card-url URL [--credential-ref REF] [--label L] [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL]` 拉取 card、校验名称并输出记录；已存在记录改租户退出 1；其他失败按契约错误退出 1。
+- `remote-agents refresh --id ID [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL]` 输出刷新后的记录；`changed` 与 `unreachable` 也退出 0，结论写在记录里。
 - `remote-agents disable --id ID` 输出停用后的记录，幂等；未知 id 退出 1。
 - 凭据引用按记录租户解析：两段 `secret://tenant/name` 的首段必须等于记录租户，否则按不可用处理。配置凭据库时先解析存储密文（缺 `ADK_SECRET_KEKS`、绑定禁用、解密失败或凭据库读取失败都按不可用拒绝，不回退），没有密文时走 `ADK_SECRET_<TENANT>_<NAME>` 环境变量；未配置凭据库时只走环境变量。命令不打印凭据。
 
