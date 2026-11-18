@@ -1,6 +1,6 @@
 SLICE-148 企业内网身份认证文档：AD / Entra ID / ADFS
 日期: 2026-11-18
-依据: 会话确认内网优先；ADR-0026 范围说明把身份认证与密钥管理分开
+依据: 会话确认内网优先；ADR-0007 管身份认证，ADR-0025 与凭据契约管密钥管理
 基线: d9f0f63
 
 一、实现
@@ -8,10 +8,10 @@ SLICE-148 企业内网身份认证文档：AD / Entra ID / ADFS
 - 新增 `docs/guides/ad-oidc.md`：先决条件（issuer、audience、discovery）、`OidcConfig` 字段表、
   Entra ID 单租户样例、ADFS 样例、控制台 PKCE 浏览器登录块、启动参数、排障表与不支持的方式。
 - 样例中的 `client_secret_env` 只写环境变量名，不写密钥；LDAP/Kerberos/SPNEGO 明确列为未实现，
-  需要时另立 ADR；密钥管理指向 ADR-0026。
+  需要时另立 ADR；密钥管理指向 ADR-0025 与 `docs/contracts/credentials.md`。
 - 安装手册的控制台小节指向这份文档。
 - 新增 `tests/test_ad_oidc_guide.py`：章节齐全、所有 JSON 样例通过 `OidcConfig`/`OidcBrowserConfig`
-  校验、缺 `issuer`/`audience` 会被模型拒绝、文档包含 `--oidc-config`、ADR-0007/0026 与 Kerberos 限制。
+  校验、缺 `issuer`/`audience` 会被模型拒绝、文档包含 `--oidc-config`、ADR-0007、凭据契约与 Kerberos 限制。
 
 二、绿态
 
@@ -33,3 +33,22 @@ ALL PASS
 - 只覆盖 OIDC；LDAP/Kerberos/SPNEGO 与 Windows 集成认证未实现。
 - IdP 侧的组、角色与条件访问不在文档范围内，只给出 claim 要求。
 - 没有针对真实 Entra/ADFS 的联调记录；样例只保证通过本仓库的配置模型校验。
+
+五、第一轮独立验证
+
+结论 DO NOT MERGE。修正：
+
+1. 高：指南引用的 ADR-0026 尚未入库。改为引用已接受的 ADR-0025 与 `docs/contracts/credentials.md`，
+   并让守卫测试断言凭据契约路径而不是一个未存在的 ADR 编号。
+2. 高：Entra v1 token 的租户 claim 写成 SAML 的 URI 形式，JWT 里通常没有。改为始终用 `tid`，
+   并以真实 token 为准。
+3. 高：浏览器登录样例只请求 OIDC scope，拿不到面向 API audience 的访问令牌。补
+   `api://<api-client-id>/.default`，说明控制台应用与 API 应用是两个注册。
+4. 中：OIDC 与 `--auth-token-env` 并非互斥（前者生效时后者被忽略）；只有
+   `--allow-unauthenticated` 冲突。`serve-a2a` peer 模式冲突退出 2。已按代码改正。
+5. 中：“所有服务都支持 `--oidc-config`”不成立。补 `serve-triggers` 不支持、
+   `serve-a2a` 仅 peer 模式、以及网关/审计/注册表的 `principal_mismatch` 规则。
+6. 低：discovery 模板重复 `https://`；排障表里不存在的日志与 cookie 建议；角色 claim 必填的
+   错误前提（缺失按空列表）；多签发方说法；`回调用例` 笔误；`kind=service` 在 Entra 的限制。
+   均已修正。
+7. 低：守卫测试补“至少两个配置样例、恰好一个浏览器样例”，并把先决条件与启动服务纳入章节断言。

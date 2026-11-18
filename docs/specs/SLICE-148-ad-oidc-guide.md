@@ -1,7 +1,7 @@
 # SLICE-148 企业内网身份认证文档：AD / Entra ID / ADFS
 
 状态: gated
-依据: 会话确认内网优先，AD 集成属于身份认证而非密钥管理；ADR-0026 范围说明把两者分开。
+依据: 会话确认内网优先，AD 集成属于身份认证而非密钥管理；ADR-0025 与 `docs/contracts/credentials.md` 把密钥管理分开。
 
 ## 意图
 
@@ -9,7 +9,7 @@
    控制台 PKCE 浏览器登录、启动参数、排障与不支持的方式。
 2. 样例必须能通过 `OidcConfig`/`OidcBrowserConfig` 校验，不能是“看起来像”的配置文件。
 3. 安装手册的控制台小节指向这份文档。
-4. 明确写出：LDAP/Kerberos/SPNEGO 不在当前实现内，需要时另立 ADR；密钥管理见 ADR-0026。
+4. 明确写出：LDAP/Kerberos/SPNEGO 不在当前实现内，需要时另立 ADR；密钥管理见 ADR-0025 与凭据契约。
 
 ## 契约（先改）
 
@@ -20,7 +20,7 @@
 - [x] 文档包含先决条件、配置格式、Entra、ADFS、浏览器登录、排障与不支持的方式 -> `test_guide_covers_the_required_sections`
 - [x] 所有 JSON 样例通过 `OidcConfig`/`OidcBrowserConfig` 校验 -> `test_every_json_example_validates`
 - [x] 缺 `issuer`/`audience` 的样例会被模型拒绝 -> `test_guide_examples_require_the_issuer_and_audience`
-- [x] 文档写明 `--oidc-config`、ADR-0007/0026、Kerberos 限制与 `client_secret_env` -> `test_guide_names_the_limits_and_decisions`
+- [x] 文档写明 `--oidc-config`、ADR-0007、凭据契约、Kerberos 限制与 `client_secret_env` -> `test_guide_names_the_limits_and_decisions`
 - [x] 全量门禁通过
 
 ## 反例

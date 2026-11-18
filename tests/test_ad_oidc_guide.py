@@ -27,10 +27,12 @@ def test_guide_covers_the_required_sections():
 
     for heading in (
         "# 企业内网的身份认证",
+        "## 先决条件",
         "## 配置格式",
         "## Entra ID（Azure AD）",
         "## ADFS",
         "## 控制台浏览器登录（可选）",
+        "## 启动服务",
         "## 排障",
         "## 不支持的方式",
     ):
@@ -40,15 +42,20 @@ def test_guide_covers_the_required_sections():
 def test_every_json_example_validates():
     blocks = _json_blocks()
 
-    assert len(blocks) >= 3
+    kinds = {"config": 0, "browser": 0}
     for block in blocks:
         data = json.loads(block)
         if "issuer" in data:
             OidcConfig.model_validate(data)
+            kinds["config"] += 1
         elif "authorization_endpoint" in data:
             OidcBrowserConfig.model_validate(data)
+            kinds["browser"] += 1
         else:
             pytest.fail(f"unrecognised example: {sorted(data)}")
+
+    assert kinds["config"] >= 2
+    assert kinds["browser"] == 1
 
 
 def test_guide_examples_require_the_issuer_and_audience():
@@ -66,6 +73,6 @@ def test_guide_names_the_limits_and_decisions():
 
     assert "--oidc-config" in text
     assert "ADR-0007" in text
-    assert "ADR-0026" in text
+    assert "docs/contracts/credentials.md" in text
     assert "Kerberos" in text
     assert "client_secret_env" in text
