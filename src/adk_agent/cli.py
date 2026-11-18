@@ -1586,6 +1586,15 @@ def main(argv: list[str] | None = None) -> None:
     p_cr_disable.add_argument("--id", required=True)
     _add_credential_store_args(p_cr_disable)
 
+    p_cr_rewrap = credentials_sub.add_parser(
+        "rewrap", help="re-wrap credential data keys under the active KEK"
+    )
+    p_cr_rewrap.add_argument("--tenant", required=True)
+    p_cr_rewrap.add_argument(
+        "--dry-run", action="store_true", help="report what would change without writing"
+    )
+    _add_credential_store_args(p_cr_rewrap)
+
     p_triggers = sub.add_parser("triggers", help="manage scheduled and webhook trigger definitions")
     triggers_sub = p_triggers.add_subparsers(dest="triggers_cmd", required=True)
 
@@ -3071,6 +3080,37 @@ def main(argv: list[str] | None = None) -> None:
                     return await store.list(args.tenant)
                 if args.credentials_cmd == "disable":
                     return await store.disable(args.tenant, args.id, by="cli")
+                if args.credentials_cmd == "rewrap":
+                    from .secretstore import LocalKeyBackend, credential_aad
+
+                    backend = LocalKeyBackend.from_env()
+                    if backend is None:
+                        raise ValueError("set ADK_SECRET_KEKS to rewrap credentials")
+                    active = backend.current_key_id()
+                    rewrapped = 0
+                    skipped = 0
+                    for binding in await store.list(args.tenant):
+                        wrapped = binding.wrapped_secret
+                        if wrapped is None or (
+                            binding.secret_key_id == active and wrapped.get("key_id") == active
+                        ):
+                            skipped += 1
+                            continue
+                        rewrapped_secret = backend.rewrap(
+                            wrapped,
+                            credential_aad(binding.tenant, binding.credential_id),
+                        )
+                        rewrapped += 1
+                        if not args.dry_run:
+                            await store.replace_wrapped(
+                                binding.tenant, binding.credential_id, rewrapped_secret, active
+                            )
+                    return {
+                        "tenant": args.tenant,
+                        "rewrapped": rewrapped,
+                        "skipped": skipped,
+                        "dry_run": args.dry_run,
+                    }
                 wrapped = None
                 key_id = None
                 version = None
@@ -3113,7 +3153,9 @@ def main(argv: list[str] | None = None) -> None:
             print(f"credentials failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
 
-        if args.credentials_cmd == "list":
+        if args.credentials_cmd == "rewrap":
+            print(json.dumps(result))
+        elif args.credentials_cmd == "list":
             print(
                 json.dumps(
                     [

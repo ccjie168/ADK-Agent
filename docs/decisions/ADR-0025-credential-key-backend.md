@@ -14,7 +14,7 @@ ADR-0022 第 5 条要求“租户凭据存储需要单独的密钥后端设计�
 
 ## 决定
 
-1. **端口。** 新增 `KeyBackend` 端口：`wrap(plaintext, aad) -> wrapped`、`unwrap(wrapped, aad) -> plaintext`、`current_key_id()`。轮换通过重建 keyring（保留旧 key id）完成，端口不提供 `rotate()`。实现放在 `secretstore/`，与 `SecretProvider` 分开：前者管密钥材料，后者按 `secret://` 解析。
+1. **端口。** 新增 `KeyBackend` 端口：`wrap(plaintext, aad) -> wrapped`、`unwrap(wrapped, aad) -> plaintext`、`current_key_id()`。轮换通过重建 keyring（保留旧 key id）完成，端口不提供 `rotate()`，但提供 `rewrap(wrapped, aad) -> wrapped`：只把数据密钥换到当前 KEK 下重新包裹，不解密凭据值。实现放在 `secretstore/`，与 `SecretProvider` 分开：前者管密钥材料，后者按 `secret://` 解析。
 
 2. **信封加密。** 每条凭据用一次性数据密钥（AES-256-GCM）加密，数据密钥由租户主密钥（KEK）包裹。AAD 绑定 `tenant` 与 `credential_id`，密文不能跨租户或跨记录搬运；格式版本与 key id 在 payload 内校验。
 
@@ -54,3 +54,5 @@ ADR-0022 第 5 条要求“租户凭据存储需要单独的密钥后端设计�
 ## 确认记录
 
 2026-11-18 会话确认按草案实现：本地 KEK 信封加密、AAD 绑定租户与凭据 id、环境变量保留兼容回退、KMS 后续走同一端口。
+
+2026-11-18 会话追加确认两项：控制面 `/v1/credentials` 接收明文并由服务端加密后只存密文（要求非回环部署走 TLS）；`KeyBackend` 端口增加 `rewrap(wrapped, aad)`，轮换时不把凭据明文带进内存。

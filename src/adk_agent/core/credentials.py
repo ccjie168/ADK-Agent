@@ -12,8 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-_SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
-_SEGMENT = r"[A-Za-z0-9._-]+"
+_SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$"
+_SEGMENT = r"[A-Za-z0-9._-]{1,128}"
 _SECRET_REF = re.compile(rf"^secret://({_SEGMENT})/({_SEGMENT})$")
 
 

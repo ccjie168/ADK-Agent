@@ -68,3 +68,66 @@ def test_from_json_and_env(monkeypatch):
 def test_bad_keyring_is_rejected():
     with pytest.raises(KeyBackendError):
         LocalKeyBackend.from_json("{}")
+
+
+def test_rewrap_moves_the_data_key_to_the_active_key():
+    old = _keyring()
+    aad = b"adk-credential:acme:crm"
+    wrapped = old.wrap(b"token", aad)
+    rotated = LocalKeyBackend({"k1": old._keys["k1"], "k2": os.urandom(32)}, "k2")
+
+    rewrapped = rotated.rewrap(wrapped, aad)
+
+    assert rewrapped["key_id"] == "k2"
+    assert rewrapped["ciphertext"] == wrapped["ciphertext"]
+    assert rewrapped["nonce"] == wrapped["nonce"]
+    assert rotated.unwrap(rewrapped, aad) == b"token"
+    with pytest.raises(KeyBackendError):
+        old.unwrap(rewrapped, aad)
+
+
+def test_rewrap_is_idempotent_on_the_active_key():
+    backend = _keyring()
+    wrapped = backend.wrap(b"token", b"aad")
+
+    assert backend.rewrap(wrapped, b"aad") == wrapped
+
+
+def test_rewrap_rejects_a_different_aad():
+    backend = _keyring()
+    wrapped = backend.wrap(b"token", b"adk-credential:acme:crm")
+
+    with pytest.raises(KeyBackendError):
+        backend.rewrap(wrapped, b"adk-credential:other:crm")
+
+
+def test_rewrap_rejects_an_unknown_key_id():
+    backend = _keyring()
+    wrapped = backend.wrap(b"token", b"aad")
+    wrapped["key_id"] = "gone"
+
+    with pytest.raises(KeyBackendError):
+        backend.rewrap(wrapped, b"aad")
+
+
+def test_rewrap_rejects_a_malformed_payload():
+    old = _keyring()
+    aad = b"aad"
+    wrapped = old.wrap(b"token", aad)
+    rotated = LocalKeyBackend({"k1": old._keys["k1"], "k2": os.urandom(32)}, "k2")
+
+    bad_nonce = dict(wrapped, nonce=123)
+    with pytest.raises(KeyBackendError):
+        rotated.rewrap(bad_nonce, aad)
+
+    short_nonce = dict(wrapped, nonce=base64.b64encode(b"x").decode("ascii"))
+    with pytest.raises(KeyBackendError):
+        rotated.rewrap(short_nonce, aad)
+
+    garbage_nonce = dict(wrapped, nonce="!!!")
+    with pytest.raises(KeyBackendError):
+        rotated.rewrap(garbage_nonce, aad)
+
+    short_dek_nonce = dict(wrapped, dek_nonce=base64.b64encode(b"x").decode("ascii"))
+    with pytest.raises(KeyBackendError):
+        rotated.rewrap(short_dek_nonce, aad)

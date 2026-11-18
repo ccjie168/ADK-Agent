@@ -57,7 +57,7 @@ from .trust import ArtifactTrustError, TrustStore
 logger = logging.getLogger(__name__)
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
-_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
 
 _LIFECYCLE_STATUSES = frozenset({"published", "deprecated", "retired"})
 

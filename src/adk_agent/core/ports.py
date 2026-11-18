@@ -100,6 +100,14 @@ class ToolGrantStore(Protocol):
 class CredentialStore(Protocol):
     async def add(self, binding: CredentialBinding) -> CredentialBinding: ...
 
+    async def replace_wrapped(
+        self,
+        tenant: str,
+        credential_id: str,
+        wrapped_secret: dict[str, Any],
+        secret_key_id: str,
+    ) -> CredentialBinding: ...
+
     async def get(self, tenant: str, credential_id: str) -> CredentialBinding | None: ...
 
     async def list(self, tenant: str) -> builtins.list[CredentialBinding]: ...

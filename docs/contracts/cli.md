@@ -174,7 +174,7 @@
 - `connectors check --id ID` 输出 `ConnectorHealth` JSON，从 CLI 进程探测第一个路径前缀，不带凭据、不跟随重定向、超时不超过 5 秒。未知 id 退出 1；探测失败也输出结果并退出 0，因为结果本身就是检查结论。
 - 成功写 `connector.register` 或 `connector.disable` 审计；控制面模式下写端要求 admin。
 
-## `adk-agent credentials list|register|disable`
+## `adk-agent credentials list|register|disable|rewrap`
 
 管理租户凭据引用（ADR-0022 决定 5）。记录只含元数据，不存密钥值。
 
@@ -182,6 +182,9 @@
 - `credentials list --tenant TENANT` 输出 JSON 数组。
 - `credentials register` 接受 `--tenant`、`--id`、`--secret-ref`、可选 `--description`。引用的租户段必须等于 `--tenant`，否则退出 1。同 id 已存在退出 1（`credential_conflict`），重发不会覆盖。
 - `credentials disable --tenant TENANT --id ID` 输出停用后的 JSON。未知 id 退出 1，重复停用幂等。
+- `credentials rewrap --tenant TENANT [--dry-run]` 把该租户下非当前 KEK 的凭据数据密钥重新包裹，
+  输出 `{"tenant", "rewrapped", "skipped", "dry_run"}`；缺 `ADK_SECRET_KEKS` 退出 1；
+  已是当前 key id 或没有密文的记录只计入 `skipped`，不解密明文。
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 

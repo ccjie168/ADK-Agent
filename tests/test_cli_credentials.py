@@ -214,3 +214,78 @@ def test_cli_rejects_a_multi_line_secret(tmp_path, capsys, monkeypatch):
 
     assert exc.value.code == 1
     assert "single line" in capsys.readouterr().err
+
+
+def test_cli_rewraps_to_the_active_key(tmp_path, capsys, monkeypatch):
+    import asyncio
+    import base64
+    import io
+    import os
+
+    from adk_agent.registry import FileCredentialStore
+    from adk_agent.secretstore import LocalKeyBackend, credential_aad
+
+    directory = str(tmp_path / "credentials")
+    k1 = os.urandom(32)
+    k2 = os.urandom(32)
+
+    def ring(active: str, keys: dict) -> str:
+        return json.dumps(
+            {
+                "active": active,
+                "keys": {kid: base64.b64encode(raw).decode("ascii") for kid, raw in keys.items()},
+            }
+        )
+
+    monkeypatch.setenv("ADK_SECRET_KEKS", ring("k1", {"k1": k1}))
+    monkeypatch.setattr("sys.stdin", io.StringIO("s3cret\n"))
+    cli.main(
+        [
+            "credentials",
+            "register",
+            "--credentials-dir",
+            directory,
+            "--tenant",
+            "acme",
+            "--id",
+            "crm",
+            "--secret-ref",
+            "secret://acme/token",
+            "--secret-stdin",
+        ]
+    )
+    capsys.readouterr()
+
+    monkeypatch.setenv("ADK_SECRET_KEKS", ring("k2", {"k1": k1, "k2": k2}))
+    rewrap = [
+        "credentials",
+        "rewrap",
+        "--credentials-dir",
+        directory,
+        "--tenant",
+        "acme",
+    ]
+
+    cli.main([*rewrap, "--dry-run"])
+    assert json.loads(capsys.readouterr().out) == {
+        "tenant": "acme",
+        "rewrapped": 1,
+        "skipped": 0,
+        "dry_run": True,
+    }
+    assert asyncio.run(FileCredentialStore(directory).get("acme", "crm")).secret_key_id == "k1"
+
+    cli.main(rewrap)
+    assert json.loads(capsys.readouterr().out)["rewrapped"] == 1
+    binding = asyncio.run(FileCredentialStore(directory).get("acme", "crm"))
+    assert binding.secret_key_id == "k2"
+    backend = LocalKeyBackend({"k1": k1, "k2": k2}, "k2")
+    assert backend.unwrap(binding.wrapped_secret, credential_aad("acme", "crm")) == b"s3cret"
+
+    cli.main(rewrap)
+    assert json.loads(capsys.readouterr().out) == {
+        "tenant": "acme",
+        "rewrapped": 0,
+        "skipped": 1,
+        "dry_run": False,
+    }
