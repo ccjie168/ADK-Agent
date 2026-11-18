@@ -13,13 +13,14 @@
 
 ```bash
 python -m venv .venv
-.venv/Scripts/python.exe -m pip install -e ".[dev,litellm,claude]"
+.venv/Scripts/python.exe -m pip install -e ".[dev,litellm,claude,publish]"
 .venv/Scripts/python.exe scripts/check.py --fast
 ```
 
 Linux/macOS 把 `.venv/Scripts/python.exe` 换成 `.venv/bin/python`。只部署运行时不装 `dev` extra。
-`claude` extra 是 Anthropic 兼容端点（含 DeepSeek 的 `/anthropic`）所需；OIDC 另加 `oidc`；
-Postgres 后端还要单独安装 `asyncpg` 与 `sqlalchemy`（暂未声明为 extra）。
+`claude` extra 是 Anthropic 兼容端点（含 DeepSeek 的 `/anthropic`）所需；`publish` extra 提供
+签名所需的 `cryptography`；OIDC 另加 `oidc`；Postgres 后端还要单独安装 `asyncpg` 与 `sqlalchemy`
+（暂未声明为 extra）。
 
 ## 配置模型
 
@@ -60,9 +61,12 @@ export ADK_MCP_AUTH_TOKEN=change-me
 `--allow-unauthenticated`，不要用在共享网络上。接入 Claude Code 的 `.mcp.json` 写法见 README，
 密钥只用 `${VAR}` 展开。
 
-带审计与配额：
+带审计与配额（`quota.json` 的结构见 `docs/contracts/quota_config.schema.json`）：
 
 ```bash
+cat > quota.json <<'JSON'
+{"tenants": {"acme": {"max_runs": 100, "max_concurrent": 4, "window_seconds": 60}}}
+JSON
 export ADK_AUDIT_AUTH_TOKEN=...
 .venv/Scripts/python.exe -m adk_agent serve --agent examples/minimal/agent.py \
   --audit-url http://127.0.0.1:8010 --quota-config quota.json
@@ -75,13 +79,12 @@ export ADK_CONSOLE_TOKEN=change-me
 .venv/Scripts/python.exe -m adk_agent console \
   --agents examples/minimal/agent.py \
   --auth-token-env ADK_CONSOLE_TOKEN \
-  --registry ./registry \
-  --artifact-dir ./artifacts \
-  --artifact-keys ./trusted-keys.json
+  --registry ./registry
 ```
 
 - 写操作需要 admin 角色；读面板按能力校验（`audit.read`、`registry.read` 等）。
-- `--agent-ref TENANT/ID@VERSION` 改为从注册表加载已经签名的工件。
+- `--agent-ref TENANT/ID@VERSION` 改为从注册表加载已经签名的工件；这时还要给
+  `--artifact-dir` 与 `--artifact-keys`。用 `--agents` 加载本地文件时不需要这两个参数。
 - `--agent-sandbox` 让沙箱执行；`--tool-gateway-url` 让沙箱里的工具调用经工具网关。
 - 回环开发可以用 `--allow-unauthenticated`；共享网络上不要用。
 
@@ -90,7 +93,41 @@ export ADK_CONSOLE_TOKEN=change-me
 `publish` 的 `--key` 是发布签名私钥，`--builder-keys` 是构建公钥信任文件；
 加载时用 `--artifact-keys` 提供发布公钥。
 
-带工件的发布目前只支持 `in_process`，并且必须同时给发布签名与构建签名：
+带工件的发布目前只支持 `in_process`，并且必须同时给发布签名与构建签名。先生成两把
+Ed25519 密钥与两个公钥信任文件（`key_id -> 64 hex 公钥`）：
+
+```bash
+.venv/Scripts/python.exe - <<'PY'
+import json
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+
+def make(name: str) -> str:
+    key = Ed25519PrivateKey.generate()
+    with open(f"{name}.pem", "wb") as handle:
+        handle.write(
+            key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            )
+        )
+    return key.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ).hex()
+
+
+with open("trusted-keys.json", "w", encoding="utf-8") as handle:
+    json.dump({"publisher-1": make("publisher")}, handle)
+with open("builder-keys.json", "w", encoding="utf-8") as handle:
+    json.dump({"builder-1": make("builder")}, handle)
+PY
+```
+
+`./project/manifest.json` 里要写 `"execution_tier": "in_process"`，`./project` 里放入口脚本。
+然后发布与组合：
 
 ```bash
 .venv/Scripts/python.exe -m adk_agent publish ./project/manifest.json \
@@ -108,11 +145,11 @@ export ADK_CONSOLE_TOKEN=change-me
 ```
 
 - 新发布必须声明 `execution_tier`。缺省按 `sandboxed`；`publish` 命令不注册沙箱后端，
-  所以带工件的 `sandboxed` 发布会被拒绝，等沙箱发布接入后再开放。
+  所以任何 `sandboxed` 发布（带不带工件）都会被拒绝，等沙箱发布接入后再开放。
 - `in_process` 只接受构建密钥签名的工件；本地与 HTTP 发布都要求构建公钥信任文件
   （`--builder-keys` 或 `ADK_BUILDER_KEYS`）。
 - 加载时 `--artifact-keys` 提供发布公钥，`serve-registry --builder-keys` 校验构建签名。
-- 没有工件的 manifest-only 发布不做签名校验，只登记元数据。
+- 没有工件的 manifest-only 发布只登记元数据，manifest 同样要写 `"execution_tier": "in_process"`。
 
 ## 服务面
 

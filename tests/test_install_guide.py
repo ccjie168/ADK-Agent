@@ -79,33 +79,46 @@ def test_every_guide_flag_is_accepted_by_its_command(capsys):
 
 
 def test_guide_commands_carry_the_required_flags():
-    invocations = {tuple(command): flags for command, flags in _invocations()}
+    compose_flags = [set(flags) for command, flags in _invocations() if command == ["compose"]]
+    publish_flags = [set(flags) for command, flags in _invocations() if command == ["publish"]]
 
-    compose = set(invocations[("compose",)])
-    assert {
-        "--template",
-        "--tenant",
-        "--id",
-        "--version",
-        "--instruction",
-        "--key",
-        "--key-id",
-        "--builder-key",
-        "--builder-key-id",
-        "--artifact-dir",
-        "--registry",
-    } <= compose
+    assert compose_flags
+    for flags in compose_flags:
+        assert {
+            "--template",
+            "--tenant",
+            "--id",
+            "--version",
+            "--instruction",
+            "--key",
+            "--key-id",
+            "--builder-key",
+            "--builder-key-id",
+            "--artifact-dir",
+            "--registry",
+        } <= flags
 
-    publish = set(invocations[("publish",)])
-    assert {
-        "--key",
-        "--key-id",
-        "--builder-key",
-        "--builder-key-id",
-        "--builder-keys",
-        "--artifact-dir",
-        "--registry",
-    } <= publish
+    assert publish_flags
+    for flags in publish_flags:
+        assert {
+            "--artifact",
+            "--key",
+            "--key-id",
+            "--builder-key",
+            "--builder-key-id",
+            "--builder-keys",
+            "--artifact-dir",
+            "--registry",
+        } <= flags
+
+
+def test_docker_block_supplies_the_auth_token():
+    blocks = re.findall(r"```bash\n(.*?)```", _guide(), re.DOTALL)
+    docker = [block for block in blocks if "docker run" in block]
+
+    assert docker
+    for block in docker:
+        assert "ADK_MCP_AUTH_TOKEN" in block
 
 
 def test_guide_documents_required_auth_and_credential_environment():

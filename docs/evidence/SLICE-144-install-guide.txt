@@ -17,10 +17,10 @@ SLICE-144 稳定的安装与使用手册
 二、绿态
 
 $ pytest tests/test_install_guide.py -q
-5 passed
+6 passed
 
 $ pytest -q（Windows）
-1565 passed, 88 skipped
+1566 passed, 88 skipped
 
 $ python scripts/check.py --full
 ALL PASS
@@ -59,3 +59,20 @@ ALL PASS
 4. 低：服务面段落把限流也归为 `serve-triggers` 不支持，实际它支持限流；`/healthz` 不是所有服务都有。
    已改为按服务列出，`/metrics` 只列实际提供的四个面。
 5. 低：升级说明里的“加列”改为“只做 CREATE TABLE IF NOT EXISTS 与 RLS 变更，没有新增列的迁移路径”。
+
+七、第三轮独立验证
+
+结论 DO NOT MERGE。修正：
+
+1. 中：控制台示例带 `--artifact-keys ./trusted-keys.json`，干净检出没有该文件，命令直接退出 1。
+   该参数只在 `--agent-ref` 从注册表加载时需要；改为 `--agents` 示例不带它，并写明两者的区别。
+2. 中：审计/配额示例引用不存在的 `quota.json`。示例块直接写出最小配置，并指向
+   `quota_config.schema.json`。
+3. 低：发布/组合示例缺密钥生成步骤。补一段生成 Ed25519 私钥与两个公钥信任文件的命令，
+   并说明 manifest 的 `execution_tier: in_process`。
+4. 低：发布说明把 `sandboxed` 限制写成“带工件的”，实际所有 `sandboxed` 发布都被拒绝；
+   manifest-only 发布也要求 `in_process`。已改正。
+5. 低：守卫测试漏掉 Docker 块与 `--artifact`。补 Docker 块的 token 断言，`publish` 必填集合
+   加入 `--artifact`，并按块逐条检查。
+6. 低：安装命令补 `publish` extra。
+7. 低：spec 引用的用例名与实现不一致，已改。
