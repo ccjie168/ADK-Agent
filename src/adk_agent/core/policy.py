@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 DataClass = Literal["public", "internal", "confidential", "restricted"]
+RiskLevel = Literal["L1", "L2", "L3", "L4"]
 
 
 class ToolGrant(BaseModel):
@@ -15,6 +16,7 @@ class ToolGrant(BaseModel):
     tool_id: str = Field(min_length=1)
     data_classes: list[DataClass] = Field(default_factory=list)
     requires_approval: bool = False
+    risk_level: RiskLevel | None = None
 
 
 class PolicyDecision(BaseModel):
