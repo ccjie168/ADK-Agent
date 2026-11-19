@@ -138,6 +138,8 @@ def build_connector_tools(
             handler=_handler(spec, secrets, http),
             data_classes=tuple(spec.data_classes),
             egress="third_party",
+            risk_level=spec.risk_level,
+            delegation=spec.delegation,
         )
         for spec in specs
         if spec.enabled

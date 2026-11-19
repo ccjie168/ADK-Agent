@@ -1,0 +1,32 @@
+SLICE-179 连接器风险/身份模式接入决策点
+日期: 2026-11-20
+依据: ADR-0031（Accepted 2026-11-19）决定 2 / slice 2
+基线: 8d6623f
+
+一、实现
+
+- `ToolSpec`（tools/registry.py）增加 `delegation: DelegationMode = "service"`。
+- `ToolEntry`（tools/catalog.py）增加 `delegation: DelegationMode = "service"`。
+- `build_connector_tools`（tools/connectors.py）把 `ConnectorSpec.risk_level`/`delegation` 传播到 `ToolSpec`。
+- `connector_tool_entries`（tools/catalog.py）把 `ConnectorSpec.risk_level`/`delegation` 传播到 `ToolEntry`。
+- 新增 `tests/test_connector_decision_wiring.py` 四个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1732 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 8d6623f 上 `ToolSpec`/`ToolEntry` 无 `delegation` 字段、连接器工具传播丢弃 `risk_level`/`delegation`：
+四个测试在基线失败（AttributeError / 字段缺失）。
+
+四、范围与已知缺口
+
+- SAP/MES 写模式（slice 3）。
+- OBO 后置说明（slice 4）。
+- 连接器 `risk_level="L4"` 现会随 `ToolSpec.risk_level` 传播，使 `requires_idempotency` 强制幂等；
+  GrantPolicyEngine 的 L4 拒绝仍基于 manifest 授权 `risk_level`（与连接器 spec 独立）。

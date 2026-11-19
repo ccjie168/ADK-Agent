@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from ..core import DataClass, RiskLevel
+from ..core import DataClass, DelegationMode, RiskLevel
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,7 @@ class ToolSpec:
     write: bool = False
     idempotency_required: bool | None = None
     risk_level: RiskLevel | None = None
+    delegation: DelegationMode = "service"
 
     @property
     def requires_idempotency(self) -> bool:
