@@ -170,7 +170,6 @@ _CAPABILITIES_OPERATOR = _CAPABILITIES_BASE | {
     "approvals.read",
     "approvals.decide",
     "grants.read",
-    "grants.decide",
     "audit.read",
     "connectors.read",
     "peers.read",

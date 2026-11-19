@@ -23,9 +23,11 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - 读接口按消费它的面板检查能力：审计 `audit.read`，策略 `policy.read`，注册表与评测 `registry.read`，工具目录 `tools.read`，工具授权 `grants.read`，连接器、连接器申请与凭据 `connectors.read`，对端与远程目录 `peers.read`。
 - 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`。写接口的能力检查先于请求体解析、配置 404 与租户检查。
 - 运行、计划、trace、会话与聊天接口检查基础能力 `runs.read`、`sessions.read`、`chat.run`。这些能力按现有角色表对每个主体都为真，检查用于未来增加受限角色时的防御；租户可见性仍由既有的租户过滤决定。带显式租户参数的读接口保持租户检查先于能力检查。
-- `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`grants.decide`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。
+- `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。
 - `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
-- 其余管理能力只由 `admin` 得到，包括 `connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
+- 其余管理能力只由 `admin` 得到，包括 `grants.decide`、`connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
+- 工具授权的申请与决定分离：有 `grants.request` 的角色可以提交，只有 `admin` 能批准或拒绝；
+  面板上的 Approve/Deny 按钮按 `grants.decide` 显示。
 - 控制台的前端只按 `capabilities` 显示导航与按钮。每个接口仍各自授权，403 语义不变。能力清单不能替代接口检查。
 - 能力清单获取失败时控制台保持现有布局，不阻断使用。
 

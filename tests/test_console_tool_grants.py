@@ -118,6 +118,22 @@ def test_cross_tenant_forbidden(tmp_path):
     assert response.json() == {"error": "tenant_forbidden"}
 
 
+def test_operator_cannot_decide(tmp_path):
+    _registry, record = _record(tmp_path, tenant="local")
+    with TestClient(_app(tmp_path, tenant="local")) as admin:
+        created = _request(admin, record)
+
+    with TestClient(_app(tmp_path, tenant="local", roles=["operator"])) as client:
+        response = client.post(
+            f"/api/tool-grants/{created.json()['request_id']}/decide",
+            json={"approved": True, "reason": "ok"},
+            headers=AUTH,
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
 def test_non_admin_cannot_decide(tmp_path):
     _registry, record = _record(tmp_path, tenant="local")
     with TestClient(_app(tmp_path, tenant="local", roles=["publisher"])) as client:
