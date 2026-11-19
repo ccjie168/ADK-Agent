@@ -1,0 +1,33 @@
+SLICE-182 RagService 端口与 Citation 类型 + ACL 契约
+日期: 2026-11-20
+依据: ADR-0032（Accepted 2026-11-19）决定 1/2 / slice 1
+基线: 8dd6f69
+
+一、实现
+
+- `src/adk_agent/rag/__init__.py` 新增 `Citation`（`source_id`/`snippet` 非空、`acl_checked: bool`、
+  `confidence: float` 0..1）与 `RagService` 协议（`async retrieve(query, principal, data_classes)`）。
+- `docs/contracts/rag_service.md` 记录端口签名与 ACL 契约（检索必须按调用方权限过滤、`acl_checked`
+  置真、ACL 元数据摄取时绑定、同步延迟作为契约字段）。
+- `.importlinter` 把 `adk_agent.rag` 加入 core 禁止导入的适配器清单。
+- 新增 `tests/test_rag_service_port.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1746 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 8dd6f69 上无 `adk_agent.rag`、无 `Citation`/`RagService`、无契约文档：
+测试收集即 ModuleNotFoundError。
+
+四、范围与已知缺口
+
+- 结构化检索实现 + ACL 过滤测试（slice 2）。
+- 提示注入防护 + 低置信度拒答（slice 3）。
+- 向量后端独立 ADR（slice 4/后续）。
+- `RagService` 仅为协议，尚无实现；`acl_checked` 契约由 slice 2 实现并测试。
