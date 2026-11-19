@@ -14,6 +14,8 @@ from .enforcement import declared_tool_ids, install_declared_guards
 from .gateway import FunctionToolGateway, ToolDenied
 from .guard import ToolGuard, install_tool_guard
 from .http_gateway import HttpToolGateway, ToolGatewayError
+from .idempotency import FileToolIdempotencyStore
+from .idempotency_postgres import PostgresToolIdempotencyStore
 from .policy import GrantPolicyEngine
 from .registry import FunctionRegistry, ToolSpec
 from .service import build_tool_gateway_app
@@ -24,10 +26,12 @@ __all__ = [
     "ConnectorResponse",
     "build_connector_tools",
     "connector_tool_entries",
+    "FileToolIdempotencyStore",
     "FunctionRegistry",
     "FunctionToolGateway",
     "GrantPolicyEngine",
     "HttpToolGateway",
+    "PostgresToolIdempotencyStore",
     "ToolCatalog",
     "ToolCatalogError",
     "ToolDenied",

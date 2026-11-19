@@ -20,11 +20,12 @@ from .lifecycle import AgentLifecycle, LifecycleStatus
 from .manifest import AgentRef, ModelPolicy, PublishedAgent
 from .model import ModelRequest, ModelResponse
 from .peers import PeerGrant, PeerIdentity
-from .policy import PolicyDecision
+from .policy import DataClass, PolicyDecision
 from .quota import QuotaPolicy
 from .remote_agents import RemoteAgent
 from .tool import ToolRequest, ToolResponse
 from .tool_grants import GrantStatus, ToolGrantRequest
+from .tool_idempotency import ToolExecutionRecord, ToolExecutionStatus
 from .trigger_runs import TriggerFire, TriggerFireStatus
 from .triggers import AgentTrigger
 
@@ -144,6 +145,29 @@ class TriggerFireStore(Protocol):
     async def get(
         self, tenant: str, trigger_id: str, idempotency_key: str
     ) -> TriggerFire | None: ...
+
+
+class ToolIdempotencyStore(Protocol):
+    async def claim(self, record: ToolExecutionRecord) -> ToolExecutionRecord: ...
+
+    async def finish(
+        self,
+        tenant: str,
+        tool_id: str,
+        idempotency_key: str,
+        *,
+        status: ToolExecutionStatus,
+        output: Any = None,
+        data_classes: builtins.list[DataClass] | None = None,
+        error_code: str | None = None,
+        finished_at: datetime | None = None,
+    ) -> ToolExecutionRecord: ...
+
+    async def get(
+        self, tenant: str, tool_id: str, idempotency_key: str
+    ) -> ToolExecutionRecord | None: ...
+
+    async def aclose(self) -> None: ...
 
 
 class ConnectorRequestStore(Protocol):
