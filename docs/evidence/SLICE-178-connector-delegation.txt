@@ -1,0 +1,33 @@
+SLICE-178 连接器 delegation 字段
+日期: 2026-11-20
+依据: ADR-0031（Accepted 2026-11-19）决定 1 / slice 1
+基线: ed2c07c
+
+一、实现
+
+- `ConnectorSpec`（core/connectors.py）增加 `delegation: Literal["service", "controlled-service",
+  "obo-later"]`，缺省 `service`。
+- 新增并导出 `DelegationMode` 字面量（core/connectors.py、core/__init__.py）。
+- `docs/contracts/connector_requests.md` 示例与字段说明增加 `delegation`。
+- 新增 `tests/test_connector_delegation.py` 三个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1728 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 ed2c07c 上 `ConnectorSpec` 无 `delegation` 字段：
+`test_connector_accepts_delegation`、`test_connector_delegation_defaults_service` 失败（extra_forbidden /
+AttributeError）；`test_connector_rejects_unknown_delegation` 因 extra_forbidden 巧合通过。
+
+四、范围与已知缺口
+
+- 授权决策点接线（ADR-0031 slice 2）。
+- SAP/MES 写模式（slice 3）。
+- OBO 后置说明（slice 4）。
+- `delegation` 缺省 `service`（只读语义），写连接器需显式 `controlled-service`（slice 2/3 落地联动）。

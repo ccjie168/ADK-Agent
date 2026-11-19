@@ -15,7 +15,8 @@
     "base_url": "https://crm.example.com",
     "methods": ["GET"],
     "path_prefixes": ["/v1/crm/"],
-    "data_classes": ["internal"]
+    "data_classes": ["internal"],
+    "delegation": "service"
   },
   "reason": "Need CRM read access",
   "status": "pending",
@@ -29,6 +30,8 @@
 ```
 
 - `spec.tenant` 必须等于 `tenant`。全局连接器只能由管理员直接登记，不能走申请。
+- `delegation` 描述执行身份模式，取 `service`（缺省，服务身份）、`controlled-service`（受控服务身份，
+  高风险写需 HITL/审批）或 `obo-later`（OBO 委托，后置）。
 - 示例省略了可选的 `auth_ref`，它只接受 `secret://` 引用，形状见 `credentials.md`。
 - `status` 取 `pending`、`approved`、`denied`。终态不可再变。
 - pending 时决定字段为空；approved 必须有 `decided_by`、`decided_at` 与 `registered_connector`。

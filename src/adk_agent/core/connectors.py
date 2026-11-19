@@ -11,6 +11,7 @@ from .policy import DataClass, RiskLevel
 
 ConnectorKind = Literal["http", "openapi", "mcp"]
 HttpMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
+DelegationMode = Literal["service", "controlled-service", "obo-later"]
 
 _SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
 _AUTH_REFERENCE = r"^secret://[A-Za-z0-9._/-]+$"
@@ -52,6 +53,7 @@ class ConnectorSpec(BaseModel):
     timeout_seconds: int = Field(default=10, ge=1, le=60)
     max_response_bytes: int = Field(default=1024 * 1024, ge=1, le=_MAX_RESPONSE)
     risk_level: RiskLevel | None = None
+    delegation: DelegationMode = "service"
     enabled: bool = True
 
     @field_validator("base_url")
@@ -84,5 +86,6 @@ __all__ = [
     "ConnectorSpec",
     "ConnectorStoreError",
     "ConnectorStoreUnavailable",
+    "DelegationMode",
     "HttpMethod",
 ]
