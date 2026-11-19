@@ -1,0 +1,35 @@
+SLICE-170 授权决策点 L4 默认拒绝
+日期: 2026-11-20
+依据: ADR-0029（Accepted 2026-11-19）决定 5 / slice 4
+基线: 7410a0a
+
+一、实现
+
+- `GrantPolicyEngine` 在构造时计算每个 tool_id 的最高风险等级（`_highest_risk`，
+  L1 < L2 < L3 < L4，同一工具多个授权取最高，fail-closed）。
+- `decide` 对 manifest 授权中 `risk_level="L4"` 的工具返回 `decision="deny"`、
+  `error_code="l4_default_deny"`、`reason="L4 default deny"`。
+- 非 L4（L1/L2/L3/None）授权维持 allow；临时授权（overlay）路径不变。
+- `docs/contracts/tool_gateway.md` 记录 L4 默认拒绝语义（拒绝仍映射 403 `tool_denied`）。
+- 新增 `tests/test_l4_default_deny.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1689 passed, 90 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 7410a0a 上 `GrantPolicyEngine` 忽略 `risk_level`：
+`test_l4_grant_is_denied_by_default`、`test_l4_wins_over_lower_risk`、
+`test_gateway_denies_l4_tool` 三个测试在基线失败（allow / 200）。
+
+四、范围与已知缺口
+
+- L4 特批流程与特批审计（ADR-0029 slice 4 后置部分，需独立特批流程与审计）。
+- 临时授权（`ToolGrantStore.active()`）只返回 bool，无 risk_level，无法在决策点分级，另行切片。
+- 拒绝原因经工具网关仍映射为通用 403 `tool_denied`，不向调用方暴露 `l4_default_deny`
+  错误码（与既有 `ToolDenied` 语义一致）。
