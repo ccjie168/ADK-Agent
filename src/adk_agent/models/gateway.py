@@ -12,6 +12,7 @@ from ..audit.hashing import hash_json, hash_text
 from ..core import (
     AuditEvent,
     AuditSink,
+    DataClass,
     Invocation,
     ModelPolicy,
     ModelProvider,
@@ -103,6 +104,39 @@ class PolicyModelGateway:
         self.guardrails = guardrails
 
     async def complete(
+        self,
+        invocation: Invocation,
+        request: ModelRequest,
+        policy: ModelPolicy,
+        *,
+        alias: str | None = None,
+        data_classes: list[DataClass] | None = None,
+    ) -> ModelResponse:
+        """Complete through the direct provider/model, or through an alias's candidates.
+
+        With an alias, candidates are tried in order and a failed candidate falls
+        over to the next one; only a policy denial stops routing (ADR-0033).
+        """
+        if alias is None:
+            return await self._complete_once(invocation, request, policy)
+        # Imported here: routing imports ModelDenied from this module.
+        from .routing import resolve_candidates
+
+        candidates = resolve_candidates(policy, alias, data_classes or [])
+        last_error: Exception | None = None
+        for candidate in candidates:
+            routed = request.model_copy(
+                update={"provider": candidate.provider, "model": candidate.model}
+            )
+            try:
+                return await self._complete_once(invocation, routed, policy)
+            except ModelDenied:
+                raise
+            except Exception as exc:
+                last_error = exc
+        raise ModelUnavailable(f"every candidate for alias {alias!r} failed") from last_error
+
+    async def _complete_once(
         self,
         invocation: Invocation,
         request: ModelRequest,
