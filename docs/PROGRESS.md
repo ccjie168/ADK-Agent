@@ -2,16 +2,16 @@
 
 更新日期: 2026-11-19
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `3979a7d` docs: cover the Vault key backend in the install and operations guides (SLICE-161) (#76)
+最新提交: `71b98a5` feat: migrate local KEK credentials to Vault Transit (SLICE-162) (#78)
 状态: 可交接暂停；v0.1.0 已发布，Vault 密钥后端已接入，迁移命令待做
 
 ## 本次暂停交接
 
-- 代码在 `master`，`3979a7d`。SLICE-113 到 SLICE-161 已通过 PR #22 到 #76 合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
-- 最近门禁: `--full` 9 步全 PASS，1649 passed, 90 skipped（`docs/evidence/SLICE-161-vault-docs.txt`）。
+- 代码在 `master`，`71b98a5`。SLICE-113 到 SLICE-162 已通过 PR #22 到 #78 合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
+- 最近门禁: `--full` 9 步全 PASS，1657 passed, 90 skipped（`docs/evidence/SLICE-162-credential-migration.txt`）。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
-- 下一刀: ADR-0027 的迁移命令已由 SLICE-162 交付；其余为缺口清单第 8 条的审计归属与低风险项。
+- 下一刀: ADR-0027 已全部交付；剩余的缺口清单项都需要先定方向（审计归属、Postgres 重复审计、解密失败审计的主体归因）或属于已披露的低风险残余。
 - 恢复顺序: 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件，跑 `./.venv/Scripts/python.exe scripts/check.py --fast`，再从缺口清单挑一项。
 
 ## 一句话
@@ -170,6 +170,7 @@
 | SLICE-159 | 工具授权决定收紧到 admin | `94e9855` |
 | SLICE-160 | Vault/OpenBao Transit 密钥后端 | `37520fc` |
 | SLICE-161 | Vault 安装与运维文档 | `3979a7d` |
+| SLICE-162 | 本地 KEK 到 Vault 的凭据迁移 | `71b98a5` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
