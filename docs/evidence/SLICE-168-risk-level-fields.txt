@@ -1,0 +1,35 @@
+SLICE-168 risk_level 字段扩展到 ToolEntry/PlanStep/ConnectorSpec
+日期: 2026-11-19
+依据: ADR-0029（Accepted 2026-11-19）决定 1
+基线: 74026e9
+
+一、实现
+
+- `ToolEntry`（tools/catalog.py）、`PlanStep`（core/orchestration.py）、`ConnectorSpec`
+  （core/connectors.py）各增加可选 `risk_level: RiskLevel | None = None`。
+- 重生成契约 schema；本刀净变更仅 `docs/contracts/orchestration_plan.schema.json`（PlanStep 带
+  risk_level）。`manifest.schema.json` 与 `tool_gateway_request.schema.json` 已在 SLICE-167 带
+  risk_level，本刀无净变更；ToolEntry/ConnectorSpec 是内部类型，无契约 schema。
+- `docs/contracts/cli.md` 的 ToolEntry 字段列表补 `risk_level`。
+- 新增 `tests/test_risk_level_fields.py` 四个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1679 passed, 90 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 74026e9 上三个类型无 `risk_level` 字段：`test_tool_entry_accepts_risk_level`、
+`test_plan_step_accepts_risk_level`、`test_connector_spec_accepts_risk_level` 在基线因
+`extra="forbid"` 拒绝未知字段（ValidationError `extra_forbidden`）失败。`test_risk_level_fields_reject_unknown`
+在基线因 `extra="forbid"` 已绿，实现后由 Literal 约束继续拒绝非法值。
+
+四、范围与已知缺口
+
+- `PlanExecutor` 审批门按 risk_level 驱动（ADR-0029 slice 3）。
+- L4 默认拒绝（slice 4）。
+- ADR-0034 写工具幂等（Gate 4 另一半）。

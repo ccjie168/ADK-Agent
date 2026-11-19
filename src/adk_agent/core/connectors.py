@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .policy import DataClass
+from .policy import DataClass, RiskLevel
 
 ConnectorKind = Literal["http", "openapi", "mcp"]
 HttpMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
@@ -51,6 +51,7 @@ class ConnectorSpec(BaseModel):
     data_classes: list[DataClass] = Field(default_factory=list)
     timeout_seconds: int = Field(default=10, ge=1, le=60)
     max_response_bytes: int = Field(default=1024 * 1024, ge=1, le=_MAX_RESPONSE)
+    risk_level: RiskLevel | None = None
     enabled: bool = True
 
     @field_validator("base_url")

@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .manifest import AgentRef
+from .policy import RiskLevel
 
 PlanStrategy = Literal["single", "sequential", "routing", "fan_out", "supervisor"]
 
@@ -70,6 +71,7 @@ class PlanStep(BaseModel):
     retry_backoff_seconds: float = Field(default=0.0, ge=0, le=60)
     requires_approval: bool = False
     approval_reason: str = ""
+    risk_level: RiskLevel | None = None
 
     @field_validator("depends_on", "inputs_from")
     @classmethod
