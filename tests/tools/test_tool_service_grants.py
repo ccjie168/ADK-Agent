@@ -81,3 +81,10 @@ def test_tool_gateway_fails_closed_without_resolver():
         response = client.post("/v1/invoke", json=_body("add"), headers=AUTH)
     assert response.status_code == 403
     assert response.json() == {"error": "grant_unavailable"}
+
+
+def test_tool_gateway_trust_caller_policy():
+    app = build_tool_gateway_app(_gateway(), auth_token="secret", trust_caller_policy=True)
+    with TestClient(app) as client:
+        response = client.post("/v1/invoke", json=_body("add", grants=("add",)), headers=AUTH)
+    assert response.status_code == 200

@@ -59,7 +59,7 @@
 - 未知模板退出 1。
 - 成功时逐行输出 `created <path>`，退出 0。
 
-## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--breaker-failures N] [--breaker-reset SECONDS] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent serve-model-gateway [--provider NAME]... [--vllm-url URL] [--breaker-failures N] [--breaker-reset SECONDS] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS] [--registry DIR | --registry-url URL] [--trust-caller-policy]`
 
 把模型网关作为独立服务运行。
 
@@ -77,6 +77,8 @@
 - 审计 token 从 `--audit-token-env` 指定的环境变量读，默认 `ADK_AUDIT_AUTH_TOKEN`。非回环 URL 没有 token 拒绝启动，退出 1。
 - 给了 `--oidc-config` 就改用 OIDC 鉴权，忽略 `--auth-token-env`。和 `--allow-unauthenticated` 互斥，同时给退出 1。
 - OIDC 模式下，请求体的 `invocation.principal` 的 `tenant` 和 `subject` 必须与 token 一致，否则返回 403 `principal_mismatch`。角色、kind、attributes 以 token 为准。
+- `--registry` 或 `--registry-url` 提供服务端策略权威（ADR-0028）：网关按 `agent_ref` 从注册表解析 `manifest.model_policy`，忽略请求体 policy；缺权威 403 `policy_unavailable`，权威不可达 503 `policy_store_unavailable`。
+- `--trust-caller-policy` 是回环开发逃生门：不配注册表时回退到信任请求体 policy，仅允许回环地址，非回环启动退出 1。
 
 ## `adk-agent serve-audit (--out FILE | --audit-db URL) [--audit-max-records N] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
@@ -299,13 +301,15 @@
 - 设置了 `ADK_AUDIT_KEYRING` 时按记录的 `kid` 选密钥验签：未知 `kid` 退出 1；没有 `kid` 的记录用 `legacy` 指定的密钥，没给 `legacy` 时退出 1。`ADK_AUDIT_SIGNING_KEY` 单密钥模式要求每条记录都没有 `kid` 且签名匹配。两个变量同时设置时退出 1。都设置时以外的缺失签名也退出 1。没设置任何密钥时只验哈希链。
 - 轮换步骤：把新密钥加进 `keys`，把 `active` 指向它，保留旧密钥；如果旧历史没有 `kid`，把 `legacy` 指向旧密钥。全部旧记录验完之前不要删掉旧密钥。
 
-## `adk-agent serve-tool-gateway [--tools FILE] [--connectors-dir DIR | $CONNECTOR_URL] [--connector-tenant TENANT] [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent serve-tool-gateway [--tools FILE] [--connectors-dir DIR | $CONNECTOR_URL] [--connector-tenant TENANT] [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--oidc-config FILE] [--rate-limit N --rate-limit-window SECONDS] [--registry DIR | --registry-url URL] [--tool-grants-dir DIR] [--trust-caller-policy]`
 
 把工具网关作为独立服务运行。
 
 - `FILE` 定义 `tools` 映射，值是 callable 或 `ToolSpec`。
 - 只有 `/healthz` 开放。`POST /v1/invoke` 需要 bearer token，非回环地址没 token 拒绝启动。
 - 授权以 grants 过线，服务端用 `GrantPolicyEngine` 判定。拒绝和未注册工具返回 403 `{"error":"tool_denied"}`。
+- `--registry` 或 `--registry-url` 提供服务端授权权威（ADR-0028）：网关按 `agent_ref` 从注册表解析 manifest `tool_grants`，`--tool-grants-dir`/`GRANT_URL` 提供临时授权 overlay；忽略请求体 grants，缺权威 403 `grant_unavailable`，权威不可达 503 `grant_store_unavailable`。
+- `--trust-caller-policy` 是回环开发逃生门：不配注册表时回退到信任请求体 grants，仅允许回环地址，非回环启动退出 1。
 - 执行失败返回 502 `{"error":"tool_call_failed"}`，输出不可 JSON 序列化返回 502 `{"error":"tool_output_invalid"}`。
 - `--credentials-dir`、`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 只能给一个，冲突退出 2；配置后连接器的两段凭据先解析存储密文，失败按 `secret_unavailable` 拒绝。
 - 凭据参数只在配置了连接器（`--connectors-dir` 或 `CONNECTOR_URL`）时有意义；只有 `--tools` 时给出凭据参数退出 1，这个检查先于凭据来源冲突的退出 2。keyring 非法时启动退出 1。

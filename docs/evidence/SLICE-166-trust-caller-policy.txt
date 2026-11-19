@@ -1,0 +1,35 @@
+SLICE-166 本地开发逃生门 --trust-caller-policy
+日期: 2026-11-19
+依据: ADR-0028（Accepted 2026-11-19）决定 5
+基线: d302d1c
+
+一、实现
+
+- `build_model_gateway_app` 与 `build_tool_gateway_app` 新增 `trust_caller_policy: bool = False`。
+- 打开且未配置注册表时，模型网关回退到信任请求体 `policy`、工具网关回退到信任请求体
+  `grants`；缺请求体 policy/grants 仍 403。
+- `serve-model-gateway` 与 `serve-tool-gateway` 新增 `--trust-caller-policy`；
+  `cli._trust_caller_policy` 校验回环，非回环启动退出 1，与 `--registry`/`--registry-url`
+  同时给退出 1（硬互斥，验证代理发现的 spec/实现分歧已修）。
+- `docs/contracts/cli.md` 两处网关段补 `--registry`/`--trust-caller-policy` 说明。
+- 新增测试：test_model_service_policy、test_tool_service_grants、test_cli_trust_caller_policy。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1671 passed, 90 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 d302d1c 上无 `--trust-caller-policy`，未配置注册表的网关 fail-closed 403；
+`test_model_gateway_trust_caller_policy` / `test_tool_gateway_trust_caller_policy` 在基线失败
+（基线无逃生门，缺 resolver 即 403），实现后回退到信任请求体 policy/grants 返回 200。
+
+四、范围与已知缺口
+
+- ADR-0028 四个切片全部交付（slice 2 模型网关、slice 3 工具网关、slice 4 逃生门；slice 1 契约
+  折叠进 2/3）。
+- 后续 Gate 4：ADR-0029 风险分级 L1–L4 + ADR-0034 写工具幂等。

@@ -64,6 +64,7 @@ def build_model_gateway_app(
     metrics: MetricsRegistry | None = None,
     rate_limit: RateLimit | None = None,
     policy_resolver: ModelPolicyResolver | None = None,
+    trust_caller_policy: bool = False,
 ) -> FastAPI:
     """Build the gateway app. Every path except /healthz needs the token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -97,14 +98,19 @@ def build_model_gateway_app(
             return JSONResponse({"error": "principal_mismatch"}, status_code=403)
         invocation = invocation.model_copy(update={"principal": bound})
 
-        if policy_resolver is None:
-            return JSONResponse({"error": "policy_unavailable"}, status_code=403)
-        try:
-            policy = await policy_resolver(invocation)
-        except Exception:  # noqa: BLE001  # policy authority is down
-            logger.exception("model gateway policy resolution failure")
-            return JSONResponse({"error": "policy_store_unavailable"}, status_code=503)
-        if policy is None:
+        if policy_resolver is not None:
+            try:
+                policy = await policy_resolver(invocation)
+            except Exception:  # noqa: BLE001  # policy authority is down
+                logger.exception("model gateway policy resolution failure")
+                return JSONResponse({"error": "policy_store_unavailable"}, status_code=503)
+            if policy is None:
+                return JSONResponse({"error": "policy_unavailable"}, status_code=403)
+        elif trust_caller_policy:
+            policy = call.policy
+            if policy is None:
+                return JSONResponse({"error": "policy_unavailable"}, status_code=403)
+        else:
             return JSONResponse({"error": "policy_unavailable"}, status_code=403)
 
         provider = call.request.provider

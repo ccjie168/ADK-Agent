@@ -103,3 +103,10 @@ def test_gateway_fails_closed_on_missing_policy():
         response = client.post("/v1/complete", json=_body("fake"), headers=AUTH)
     assert response.status_code == 403
     assert response.json() == {"error": "policy_unavailable"}
+
+
+def test_model_gateway_trust_caller_policy():
+    app = build_model_gateway_app(_gateway(), auth_token="secret", trust_caller_policy=True)
+    with TestClient(app) as client:
+        response = client.post("/v1/complete", json=_body("fake"), headers=AUTH)
+    assert response.status_code == 200
