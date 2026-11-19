@@ -12,8 +12,9 @@ SLICE-154 工件内 manifest 与发布记录的绑定
 - `POST /v1/agents`：如果该 digest 的字节已存在，读取并比较，不一致返回 400
   `artifact_manifest_mismatch`；字节尚未上传时跳过，由上传端补查。
 - 加载时再比较一次：`registry.loader.verify_published_artifact` 读取存储字节内的 manifest 并与
-  记录比较，`load_agent`、控制台按需加载与触发服务都调用它，不一致抛 `ArtifactLoadError`
-  （控制台映射为 500 `load_failed`）。这关闭了全租户扫描与写入之间的并发窗口。
+  记录比较，`load_agent`、控制台按需加载、触发服务的 in-process 与 sandboxed 两条分支都调用它，
+  不一致抛 `ArtifactLoadError`（控制台映射为 500 `load_failed`，触发服务映射为
+  `agent_load_failed`）。这关闭了全租户扫描与写入之间的并发窗口。
 - 契约的发布、上传、加载与错误表同步；测试夹具改为生成真实 zip，既有断言未改。
 
 二、绿态
@@ -25,7 +26,7 @@ $ pytest tests/registry/test_artifact_loader.py -q
 17 passed
 
 $ pytest -q（Windows）
-1610 passed, 89 skipped
+1611 passed, 89 skipped
 
 $ python scripts/check.py --full
 ALL PASS
@@ -39,7 +40,7 @@ ALL PASS
 - 本轮修复前的 PR 状态：`test_upload_checks_records_beyond_the_caller_tenant` 失败（跨租户伪造
   记录不参与上传复核），全租户扫描后转绿。
 - `test_load_rejects_bytes_that_do_not_match_the_record` 在 0d91b74 上失败（DID NOT RAISE），
-  加载时比较后转绿。
+  加载时比较后转绿；`test_sandboxed_trigger_refuses_mismatched_bytes` 覆盖触发服务的沙箱分支。
 
 四、范围与已知缺口
 

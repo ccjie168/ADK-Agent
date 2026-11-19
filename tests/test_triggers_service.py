@@ -516,6 +516,24 @@ def _sandboxed_client(
     return client, runner, trust, loader, published
 
 
+def test_sandboxed_trigger_refuses_mismatched_bytes():
+    published = _published(tier="sandboxed")
+    sandbox = FakeSandbox()
+    client, _, _, _ = _client(
+        [_webhook(digest=f"sha256:{published.digest}")],
+        published=published,
+        sandbox=sandbox,
+        artifact_store=FakeArtifactStore(_zip_for(_PUBLISHED)),
+    )
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 502
+    assert response.json() == {"error": "agent_load_failed"}
+    assert sandbox.calls == []
+
+
 def test_sandboxed_trigger_uses_the_backend(tmp_path):
     audit = ListAuditSink()
     fire_store = FileTriggerFireStore(tmp_path)
