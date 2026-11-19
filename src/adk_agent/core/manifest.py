@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .artifact import AgentArtifact
 from .policy import DataClass, ToolGrant
@@ -19,6 +19,21 @@ ExecutionTier = Literal["in_process", "sandboxed"]
 _SAFE_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
 
 
+class ModelCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    allowed_data_classes: list[DataClass] = Field(default_factory=list)
+
+
+class ModelAlias(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    alias: str = Field(pattern=_SAFE_NAME_PATTERN)
+    candidates: list[ModelCandidate] = Field(min_length=1)
+
+
 class ModelPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -26,6 +41,14 @@ class ModelPolicy(BaseModel):
     model_allowlist: list[str] = Field(default_factory=list)
     max_output_tokens: int | None = Field(default=None, gt=0)
     budget_usd: float | None = Field(default=None, ge=0)
+    model_aliases: list[ModelAlias] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _unique_aliases(self) -> ModelPolicy:
+        names = [entry.alias for entry in self.model_aliases]
+        if len(set(names)) != len(names):
+            raise ValueError("model_aliases must have unique alias names")
+        return self
 
 
 class EvalSuite(BaseModel):
@@ -59,6 +82,8 @@ class AgentManifest(BaseModel):
     slo: Slo | None = None
     # None only appears on records published before ADR-0024; it reads as in_process.
     execution_tier: ExecutionTier | None = None
+    # Alias the agent's business code references instead of a provider model name (ADR-0033).
+    model_alias: str | None = Field(default=None, pattern=_SAFE_NAME_PATTERN)
 
 
 class AgentRef(BaseModel):
@@ -88,10 +113,20 @@ class PublishedAgent(BaseModel):
 
 
 def manifest_digest(manifest: AgentManifest) -> str:
-    """Hash the manifest's canonical JSON. The digest is not part of the manifest."""
+    """Hash the manifest's canonical JSON. The digest is not part of the manifest.
+
+    Fields added after a record was published are dropped while at their default,
+    so an unchanged manifest keeps its digest (ADR-0024 execution_tier, ADR-0033
+    model_alias/model_aliases).
+    """
     payload = manifest.model_dump(mode="json")
     if payload.get("execution_tier") is None:
         payload.pop("execution_tier", None)
+    if payload.get("model_alias") is None:
+        payload.pop("model_alias", None)
+    policy = payload.get("model_policy")
+    if isinstance(policy, dict) and not policy.get("model_aliases"):
+        policy.pop("model_aliases", None)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 

@@ -24,8 +24,11 @@ def _manifest(**overrides) -> AgentManifest:
 
 
 def _digest_without_tier(manifest: AgentManifest) -> str:
+    """Digest of the payload without the fields added after a record was published."""
     payload = manifest.model_dump(mode="json")
     payload.pop("execution_tier", None)
+    payload.pop("model_alias", None)
+    payload["model_policy"].pop("model_aliases", None)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
