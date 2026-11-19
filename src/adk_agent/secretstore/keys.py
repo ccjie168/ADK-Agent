@@ -334,6 +334,15 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _validate_token(token: str, label: str) -> str:
+    token = token.strip()
+    if not token:
+        raise KeyBackendError(f"{label} is empty")
+    if any(char.isspace() or ord(char) < 0x20 or ord(char) == 0x7F for char in token):
+        raise KeyBackendError(f"{label} must be a single line without spaces")
+    return token
+
+
 def _vault_transport(
     addr: str,
     token: str,
@@ -370,6 +379,8 @@ def _vault_transport(
             raise KeyBackendError(f"vault returned HTTP {code}") from None
         except (urllib.error.URLError, TimeoutError, OSError):
             raise KeyBackendError("vault is unreachable") from None
+        except ValueError:
+            raise KeyBackendError("vault request is invalid") from None
         try:
             parsed = json.loads(body)
         except ValueError:
@@ -410,15 +421,13 @@ def _load_vault_backend(variable: str, file_variable: str) -> VaultKeyBackend:
     if token is None and token_file is None:
         raise KeyBackendError("set ADK_VAULT_TOKEN_FILE or ADK_VAULT_TOKEN")
     if token_file is not None:
-        token = _read_secret_file(token_file, "ADK_VAULT_TOKEN_FILE")
+        token = _validate_token(
+            _read_secret_file(token_file, "ADK_VAULT_TOKEN_FILE"), "ADK_VAULT_TOKEN_FILE"
+        )
     else:
         if token is None:
             raise KeyBackendError("ADK_VAULT_TOKEN is empty")
-        token = token.strip()
-        if not token:
-            raise KeyBackendError("ADK_VAULT_TOKEN is empty")
-        if "\r" in token or "\n" in token:
-            raise KeyBackendError("ADK_VAULT_TOKEN must be a single line")
+        token = _validate_token(token, "ADK_VAULT_TOKEN")
     raw_timeout = os.environ.get("ADK_VAULT_TIMEOUT") or "5"
     try:
         timeout = float(raw_timeout)

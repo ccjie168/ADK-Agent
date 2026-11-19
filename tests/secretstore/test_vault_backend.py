@@ -200,8 +200,23 @@ def test_load_key_backend_rejects_a_multiline_token(monkeypatch, tmp_path):
     _vault_env(monkeypatch, tmp_path)
     monkeypatch.delenv("ADK_VAULT_TOKEN_FILE")
     monkeypatch.setenv("ADK_VAULT_TOKEN", "line1\nline2")
-    with pytest.raises(KeyBackendError):
+    with pytest.raises(KeyBackendError) as exc:
         load_key_backend()
+
+    assert "line1" not in str(exc.value)
+
+
+def test_load_key_backend_rejects_a_multiline_token_file(monkeypatch, tmp_path):
+    _vault_env(monkeypatch, tmp_path)
+    token_file = tmp_path / "vault-token"
+    token_file.write_text("REAL-TOKEN\nstray-second-line\n", encoding="utf-8")
+    if os.name != "nt":
+        token_file.chmod(0o600)
+
+    with pytest.raises(KeyBackendError) as exc:
+        load_key_backend()
+
+    assert "REAL-TOKEN" not in str(exc.value)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
@@ -216,10 +231,12 @@ class _VaultHandler(http.server.BaseHTTPRequestHandler):
     status = 200
     body = b'{"data": {"ciphertext": "vault:v1:x"}}'
     delay = 0.0
+    hits: list[str] = []
 
     def do_POST(self) -> None:  # noqa: N802
         length = int(self.headers.get("content-length") or 0)
         self.rfile.read(length)
+        type(self).hits.append(self.path)
         if self.delay:
             time.sleep(self.delay)
         self.send_response(self.status)
@@ -248,7 +265,7 @@ def _send(addr: str, *, timeout: float = 2.0):
 def test_transport_maps_403_without_echoing_the_token():
     class Handler(_VaultHandler):
         status = 403
-        body = b'{"errors": ["denied"]}'
+        body = b"BODY-MARKER"
 
     server, addr = _serve(Handler)
     try:
@@ -258,6 +275,7 @@ def test_transport_maps_403_without_echoing_the_token():
         server.shutdown()
 
     assert "denied" in str(exc.value)
+    assert "BODY-MARKER" not in str(exc.value)
     assert "secret-token" not in str(exc.value)
 
 
@@ -288,6 +306,7 @@ def test_transport_times_out():
 def test_transport_does_not_follow_redirects():
     class Handler(_VaultHandler):
         status = 302
+        hits: list[str] = []
 
     server, addr = _serve(Handler)
     try:
@@ -297,6 +316,19 @@ def test_transport_does_not_follow_redirects():
         server.shutdown()
 
     assert "302" in str(exc.value)
+    assert Handler.hits == ["/v1/transit/encrypt/key"]
+
+
+def test_transport_rejects_an_oversized_response():
+    class Handler(_VaultHandler):
+        body = b"x" * 70000
+
+    server, addr = _serve(Handler)
+    try:
+        with pytest.raises(KeyBackendError):
+            _send(addr)("transit/encrypt/key", {"plaintext": "x"})
+    finally:
+        server.shutdown()
 
 
 def test_local_backend_still_reads_v1_records():

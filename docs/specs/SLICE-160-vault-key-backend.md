@@ -31,7 +31,8 @@
 - [x] 令牌冲突/本地 keyring 冲突/非回环 http/超时非法/未知后端被拒 -> `test_load_key_backend_rejects_conflicting_vault_config`、`test_load_key_backend_rejects_plain_http_off_loopback`、`test_load_key_backend_rejects_an_invalid_timeout`、`test_load_key_backend_rejects_an_unknown_backend`
 - [x] 本地 `v: 1` 记录仍可读写 -> `test_local_backend_still_reads_v1_records`
 - [x] 畸形地址/坏 CA/多行令牌/POSIX 令牌权限被拒 -> `test_load_key_backend_rejects_invalid_addresses`、`test_load_key_backend_rejects_a_missing_ca_file`、`test_load_key_backend_rejects_a_multiline_token`、`test_token_file_permissions_are_checked`
-- [x] 传输层 403/非法 JSON/超时/重定向映射为固定错误 -> `test_transport_maps_403_without_echoing_the_token`、`test_transport_maps_invalid_json`、`test_transport_times_out`、`test_transport_does_not_follow_redirects`
+- [x] 传输层 403/非法 JSON/超时/重定向/超大响应映射为固定错误 -> `test_transport_maps_403_without_echoing_the_token`、`test_transport_maps_invalid_json`、`test_transport_times_out`、`test_transport_does_not_follow_redirects`、`test_transport_rejects_an_oversized_response`
+- [x] 多行令牌文件被拒且不回显令牌 -> `test_load_key_backend_rejects_a_multiline_token_file`、`test_vault_token_file_with_newlines_does_not_leak`
 - [x] vault 模式的 CLI 错误前缀 -> `test_vault_mode_reports_vault_configuration`
 - [x] 全量门禁通过（Windows 与 Linux CI）
 

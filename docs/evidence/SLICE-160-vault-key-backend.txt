@@ -18,13 +18,13 @@ SLICE-160 Vault/OpenBao Transit 密钥后端
 二、绿态
 
 $ pytest tests/secretstore -q
-57 passed, 2 skipped（POSIX 权限用例在 Windows 跳过）
+59 passed, 2 skipped（POSIX 权限用例在 Windows 跳过）
 
 $ pytest tests/secretstore/test_vault_backend.py -q
-18 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
+20 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
 
 $ pytest -q（Windows）
-1643 passed, 90 skipped
+1646 passed, 90 skipped
 
 $ python scripts/check.py --full
 ALL PASS
@@ -33,6 +33,8 @@ ALL PASS
 权限用例。配置校验补上畸形 URL、非法端口、坏 CA、多行令牌；传输层用回环 HTTP 服务覆盖
 403、非法 JSON、超时、重定向（不跟随、不转发令牌），并给响应体加 64 KiB 上限；vault 模式的
 CLI 错误前缀改为 `invalid Vault key backend configuration (ADK_VAULT_*)`。
+第二轮验证发现令牌文件多行会把令牌打进错误文案：令牌校验现在覆盖文件与环境变量两条路径，
+拒绝空白/控制字符且不回显内容；传输层同时把头值类 `ValueError` 映射为固定错误。
 
 三、红态
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 import pytest
 
@@ -162,6 +163,35 @@ def test_vault_mode_reports_vault_configuration(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc:
         cli.main(
             [
+                "console",
+                "--agents",
+                str(_agents_file(tmp_path)),
+                "--credentials-dir",
+                str(tmp_path / "credentials"),
+                "--allow-unauthenticated",
+            ]
+        )
+
+    assert exc.value.code == 1
+    assert "invalid Vault key backend configuration" in capsys.readouterr().err
+
+
+def test_vault_token_file_with_newlines_does_not_leak(tmp_path, monkeypatch, capsys):
+    token_file = tmp_path / "vault-token"
+    token_file.write_text("REAL-TOKEN-VALUE\nstray-second-line\n", encoding="utf-8")
+    if os.name != "nt":
+        token_file.chmod(0o600)
+    monkeypatch.setenv("ADK_SECRET_BACKEND", "vault")
+    monkeypatch.setenv("ADK_VAULT_ADDR", "https://vault.example.com")
+    monkeypatch.setenv("ADK_VAULT_KEY", "credential")
+    monkeypatch.setenv("ADK_VAULT_TOKEN_FILE", str(token_file))
+    monkeypatch.delenv("ADK_VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.delenv("ADK_SECRET_KEKS_FILE", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            [
                 "credentials",
                 "rewrap",
                 "--tenant",
@@ -172,7 +202,9 @@ def test_vault_mode_reports_vault_configuration(tmp_path, monkeypatch, capsys):
         )
 
     assert exc.value.code == 1
-    assert "ADK_VAULT_" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "REAL-TOKEN-VALUE" not in err
+    assert "single line" in err
 
 
 def test_credential_db_conflicts_with_the_environment(tmp_path, monkeypatch, capsys):
