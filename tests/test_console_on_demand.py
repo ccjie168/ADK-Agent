@@ -127,7 +127,7 @@ def _app(
     trust_key=None,
     store: bool = True,
     audit=None,
-    roles=None,
+    roles=("admin",),
 ):
     key = trust_key if trust_key is not None else _key()
     trust = TrustStore({"k1": _raw(key)}) if trust_key is not False else None

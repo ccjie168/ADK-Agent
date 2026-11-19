@@ -33,7 +33,7 @@ def _grant(**overrides) -> PeerGrant:
     return PeerGrant(**data)
 
 
-def _app(tmp_path, *, roles=None, peers=True, grants=True, audit=None):
+def _app(tmp_path, *, roles=("admin",), peers=True, grants=True, audit=None):
     return build_console_app(
         {"probe": LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")},
         auth_token="secret",

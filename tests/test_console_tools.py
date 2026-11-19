@@ -51,7 +51,7 @@ def _manifest(tenant: str = "acme", tool_ids=("crm.read",)) -> AgentManifest:
     )
 
 
-def _app(tmp_path, *, catalog=True, registry=None, roles=None, connectors=None):
+def _app(tmp_path, *, catalog=True, registry=None, roles=("admin",), connectors=None):
     probe = LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")
     return build_console_app(
         {"probe": probe},
@@ -103,7 +103,11 @@ def test_no_catalog(tmp_path):
 def test_grants_empty_without_registry(tmp_path):
     probe = LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")
     app = build_console_app(
-        {"probe": probe}, auth_token="secret", registry=None, tool_catalog=_catalog()
+        {"probe": probe},
+        auth_token="secret",
+        roles=["admin"],
+        registry=None,
+        tool_catalog=_catalog(),
     )
     with TestClient(app) as client:
         response = _tools(client)

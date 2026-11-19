@@ -70,7 +70,7 @@ def _app(
     registry: bool = True,
     eval_reports: bool = True,
     remote_agents=None,
-    roles=None,
+    roles=("admin",),
 ):
     kwargs = {}
     if registry:
@@ -157,7 +157,7 @@ def test_eval_report_endpoint(tmp_path):
 
 
 def test_registry_not_configured():
-    with TestClient(build_console_app(_agents(), auth_token="secret")) as client:
+    with TestClient(build_console_app(_agents(), auth_token="secret", roles=["admin"])) as client:
         for path in (
             "/api/tenants",
             "/api/registry",

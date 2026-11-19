@@ -82,6 +82,7 @@ def _app(tmp_path, key, *, agents=None, audit=None, oidc=None):
         artifact_loader=InProcessArtifactLoader(),
         artifact_trust=TrustStore({"k1": _raw(key)}),
         audit_sink=audit,
+        roles=["admin"],
     )
 
 

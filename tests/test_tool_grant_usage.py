@@ -115,7 +115,7 @@ def _event(tenant: str, target: str, status: str, version: str | None) -> AuditE
     )
 
 
-def _app(sink: ListAuditSink, roles=None):
+def _app(sink: ListAuditSink, roles=("admin",)):
     return build_console_app(
         {"probe": LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")},
         auth_token="secret",

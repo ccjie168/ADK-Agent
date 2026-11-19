@@ -445,7 +445,7 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - `--rate-limit` 和 `--rate-limit-window` 启用入口限流，语义见下面的「入口限流」一节。不给 `--rate-limit` 时不限流。
 - 配置文件缺失或非法退出 1。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
-- `--role` 可重复，设置控制台 principal 的角色。默认 `admin`。
+- `--role` 可重复，设置控制台 principal 的角色。默认 `requester`（最低权限）；admin 能力必须显式 `--role admin` 或由 OIDC claim 映射。
 - `--agent-sandbox` 注册 `ProcessAgentSandbox(model=build_model())`，`--agent-ref` 与按需加载都可运行 `sandboxed` 记录；
   非 POSIX 平台默认退出 1，`--allow-unsandboxed` 才降级并在 stderr 提示。
 - `GET /api/policy` 返回当前策略。`PUT /api/policy` 校验、原子落盘、热替换并写 `policy.update` 审计。

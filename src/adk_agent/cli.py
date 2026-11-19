@@ -1437,7 +1437,7 @@ def main(argv: list[str] | None = None) -> None:
         action="append",
         dest="roles",
         default=None,
-        help="role for the console principal (repeatable; default: admin)",
+        help="role for the console principal (repeatable; default: requester)",
     )
     p_console.add_argument(
         "--registry",

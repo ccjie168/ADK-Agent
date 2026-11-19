@@ -27,7 +27,7 @@ def test_chat_writes_audit_event(monkeypatch):
             yield
 
     monkeypatch.setattr("google.adk.runners.Runner.run_async", empty_run)
-    with TestClient(build_console_app(_agents(), auth_token="secret")) as client:
+    with TestClient(build_console_app(_agents(), auth_token="secret", roles=["admin"])) as client:
         chat = client.post(
             "/api/chat",
             json={"agent": "probe", "message": "hi"},
@@ -45,7 +45,7 @@ def test_chat_writes_audit_event(monkeypatch):
 
 
 def test_audit_requires_token():
-    with TestClient(build_console_app(_agents(), auth_token="secret")) as client:
+    with TestClient(build_console_app(_agents(), auth_token="secret", roles=["admin"])) as client:
         assert client.get("/api/audit").status_code == 401
 
 
