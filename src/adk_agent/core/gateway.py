@@ -14,4 +14,6 @@ class ModelGatewayRequest(BaseModel):
 
     invocation: Invocation
     request: ModelRequest
-    policy: ModelPolicy
+    # Deprecated: the gateway resolves policy server-side from the registry (ADR-0028).
+    # Retained as optional so old callers do not break validation, but it is ignored.
+    policy: ModelPolicy | None = None

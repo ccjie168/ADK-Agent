@@ -60,11 +60,22 @@ def _payload() -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
+def _resolver(policy):
+    async def resolve(_invocation):
+        return policy
+
+    return resolve
+
+
 def test_gateway_returns_503_when_open():
     inner = FailingProvider()
     breaker = CircuitBreaker(failure_threshold=2, reset_seconds=30.0, clock=Clock())
     provider = BreakerProvider(inner, breaker)
-    app = build_model_gateway_app(PolicyModelGateway({"fake": provider}), auth_token="secret")
+    app = build_model_gateway_app(
+        PolicyModelGateway({"fake": provider}),
+        auth_token="secret",
+        policy_resolver=_resolver(ModelPolicy(provider_allowlist=["fake"])),
+    )
 
     async def scenario() -> list[httpx.Response]:
         async with httpx.AsyncClient(

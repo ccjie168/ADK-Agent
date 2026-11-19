@@ -62,6 +62,13 @@ def _gateway(provider: FakeProvider | None = None) -> PolicyModelGateway:
     return PolicyModelGateway({"fake": provider or FakeProvider()})
 
 
+def _resolver(policy):
+    async def resolve(_invocation):
+        return policy
+
+    return resolve
+
+
 def test_request_contract_roundtrip():
     request = ModelGatewayRequest.model_validate(_body())
     assert ModelGatewayRequest.model_validate_json(request.model_dump_json()) == request
@@ -86,7 +93,11 @@ def test_network_bind_requires_token():
 
 
 def test_healthz_open_and_rpc_protected():
-    app = build_model_gateway_app(_gateway(), auth_token="secret")
+    app = build_model_gateway_app(
+        _gateway(),
+        auth_token="secret",
+        policy_resolver=_resolver(ModelPolicy(provider_allowlist=["fake"])),
+    )
     with TestClient(app) as client:
         assert client.get("/healthz").status_code == 200
         assert client.post("/v1/complete", json=_body()).status_code == 401
@@ -97,7 +108,11 @@ def test_healthz_open_and_rpc_protected():
 
 
 def test_policy_denied_maps_to_403():
-    app = build_model_gateway_app(_gateway(), auth_token="secret")
+    app = build_model_gateway_app(
+        _gateway(),
+        auth_token="secret",
+        policy_resolver=_resolver(ModelPolicy(provider_allowlist=["fake"])),
+    )
     with TestClient(app) as client:
         response = client.post("/v1/complete", json=_body("other"), headers=AUTH)
     assert response.status_code == 403
@@ -108,6 +123,7 @@ def test_provider_failure_maps_to_502_without_details():
     app = build_model_gateway_app(
         _gateway(FakeProvider(error=RuntimeError("secret upstream url"))),
         auth_token="secret",
+        policy_resolver=_resolver(ModelPolicy(provider_allowlist=["fake"])),
     )
     with TestClient(app) as client:
         response = client.post("/v1/complete", json=_body(), headers=AUTH)

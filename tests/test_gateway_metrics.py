@@ -76,10 +76,20 @@ def _tool_payload(grants: list[ToolGrant]) -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
+def _resolver(policy):
+    async def resolve(_invocation):
+        return policy
+
+    return resolve
+
+
 def test_model_gateway_counts_calls():
     metrics = MetricsRegistry()
     app = build_model_gateway_app(
-        PolicyModelGateway({"fake": FakeProvider()}), auth_token="secret", metrics=metrics
+        PolicyModelGateway({"fake": FakeProvider()}),
+        auth_token="secret",
+        metrics=metrics,
+        policy_resolver=_resolver(ModelPolicy(provider_allowlist=["fake"])),
     )
 
     async def scenario() -> httpx.Response:
@@ -101,7 +111,10 @@ def test_model_gateway_counts_calls():
 def test_model_gateway_counts_denials():
     metrics = MetricsRegistry()
     app = build_model_gateway_app(
-        PolicyModelGateway({"fake": FakeProvider()}), auth_token="secret", metrics=metrics
+        PolicyModelGateway({"fake": FakeProvider()}),
+        auth_token="secret",
+        metrics=metrics,
+        policy_resolver=_resolver(ModelPolicy(provider_allowlist=["litellm"])),
     )
 
     async def scenario() -> httpx.Response:

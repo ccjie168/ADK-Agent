@@ -165,9 +165,20 @@ def test_model_gateway_rejects_principal_mismatch():
     assert gateway.invocation is None
 
 
+def _resolver(policy):
+    async def resolve(_invocation):
+        return policy
+
+    return resolve
+
+
 def test_model_gateway_uses_token_principal():
     gateway = CapturingModelGateway()
-    app = build_model_gateway_app(gateway, oidc=_provider())
+    app = build_model_gateway_app(
+        gateway,
+        oidc=_provider(),
+        policy_resolver=_resolver(ModelPolicy(provider_allowlist=["fake"])),
+    )
 
     with TestClient(app) as client:
         response = client.post("/v1/complete", json=_model_body(), headers=AUTH)
