@@ -10,7 +10,8 @@
 2. 迁移逐条把 `v: 1` 记录的数据密钥用本地 KEK 解封（`LocalKeyBackend.unwrap_dek`），再用
    Transit 封装（`VaultKeyBackend.wrap_dek`），凭据值密文与 nonce 不变；用 `unwrap_dek` 复核
    迁移后的数据密钥一致，不解密凭据值。
-3. 没有密文或已是 `v: 2` 的记录计入 `skipped`；任一记录失败立即停止，已迁移的保持 v2，
+3. 没有 `wrapped_secret` 或已是合法 `v: 2` 的记录计入 `skipped`；结构损坏（含 v2 非 vault）
+   与后端失败一样立即停止，失败时 stderr 输出部分计数；已迁移的保持 v2，
    未处理的保持 v1；重跑幂等。
 4. `--dry-run` 只计数不写入；输出 `{tenant, migrated, skipped, dry_run}`。
 5. 只有该命令允许本地 keyring 与 Vault 配置共存（`load_key_backend(allow_local=True)` 与
@@ -28,12 +29,14 @@
 - [x] `--dry-run` 不写入 -> `test_migrate_dry_run_does_not_write`
 - [x] 无密文记录计入 skipped -> `test_migrate_skips_records_without_ciphertext`
 - [x] Vault 失败即停且保留原记录 -> `test_migrate_stops_on_a_vault_failure`
+- [x] 部分失败后重跑补齐且幂等 -> `test_migrate_partial_failure_then_rerun`
+- [x] v2 但 backend 非 vault 的记录被拒绝 -> `test_migrate_rejects_a_v2_record_from_another_backend`
 - [x] 缺本地 keyring 或非 vault 模式被拒 -> `test_migrate_requires_the_local_keyring`、`test_migrate_requires_vault_mode`
 - [x] 全量门禁通过
 
 ## 反例
 
-- [x] 基线没有 `credentials migrate` 子命令，六个用例在基线上失败
+- [x] 基线没有 `credentials migrate` 子命令，八个用例在基线上失败
 
 ## 5 问威胁建模
 

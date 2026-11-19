@@ -184,8 +184,11 @@
 - `credentials disable --tenant TENANT --id ID` 输出停用后的 JSON。未知 id 退出 1，重复停用幂等。
 - `credentials migrate --to vault --tenant TENANT [--dry-run] [--credentials-dir DIR | --credential-db URL]`
   把该租户的 `v: 1` 本地 KEK 记录转到 Vault Transit：用本地 KEK 解封数据密钥、再用 Transit 封装，
-  凭据值密文与 nonce 不变；没有密文或已是 `v: 2` 的记录计入 `skipped`；任一记录失败立即停止并
-  保留未处理记录，重跑幂等；`--dry-run` 只计数不写入；输出 `{tenant, migrated, skipped, dry_run}`。
+  凭据值密文与 nonce 不变；没有 `wrapped_secret` 或已是 `v: 2`（`backend: vault`）的记录计入
+  `skipped`；结构损坏（缺 nonce/ciphertext 或 `v: 2` 但 backend 不是 vault）与后端失败一样立即
+  停止，保留未处理记录，重跑幂等；失败时 stderr 输出带 `error: migration_failed` 的部分计数
+  `{tenant, migrated, skipped, dry_run, error}`；`--dry-run` 只计数不写入；成功输出
+  `{tenant, migrated, skipped, dry_run}`。
   该命令是唯一允许同时给出 `ADK_SECRET_KEKS`/`ADK_SECRET_KEKS_FILE` 与 Vault 配置的入口
   （`ADK_SECRET_BACKEND=vault` 必须有），其他命令与服务仍要求二者互斥。失败不打印明文或令牌。
 - `credentials rewrap --tenant TENANT [--dry-run]` 把该租户下非当前 KEK 的凭据数据密钥重新包裹，

@@ -23,14 +23,17 @@ AAD = credential_aad("acme", "crm")
 
 
 class FakeVault:
-    def __init__(self, fail: bool = False) -> None:
+    def __init__(self, fail: bool = False, fail_at: int | None = None) -> None:
         self.version = 1
         self.fail = fail
+        self.fail_at = fail_at
+        self.encrypts = 0
         self.blobs: dict[str, bytes] = {}
 
     def _store(self, data: bytes) -> str:
-        if self.fail:
+        if self.fail or (self.fail_at is not None and self.encrypts + 1 == self.fail_at):
             raise KeyBackendError("vault is unreachable")
+        self.encrypts += 1
         token = f"{len(self.blobs):04d}"
         self.blobs[token] = data
         return f"vault:v{self.version}:{token}"
@@ -177,6 +180,77 @@ def test_migrate_stops_on_a_vault_failure(tmp_path, monkeypatch, capsys):
     assert unchanged is not None
     assert unchanged.wrapped_secret is not None
     assert unchanged.wrapped_secret["v"] == 1
+
+
+def test_migrate_partial_failure_then_rerun(tmp_path, monkeypatch, capsys):
+    local = _env(monkeypatch, tmp_path)
+    fake = FakeVault(fail_at=2)
+    monkeypatch.setattr("adk_agent.secretstore.keys._vault_transport", lambda *a, **k: fake)
+    store = FileCredentialStore(tmp_path / "credentials")
+    _seed(store, local)
+    asyncio.run(
+        store.add(
+            CredentialBinding(
+                credential_id="erp",
+                tenant="acme",
+                secret_ref="secret://acme/erp",
+                created_by="admin",
+                created_at="2026-11-18T00:00:00Z",
+                wrapped_secret=local.wrap(b"erp-value", credential_aad("acme", "erp")),
+                secret_key_id="k1",
+                secret_version=1,
+            )
+        )
+    )
+
+    with pytest.raises(SystemExit):
+        _migrate(tmp_path, capsys)
+    err = capsys.readouterr().err
+    assert "migration_failed" in err
+    states = {
+        binding.credential_id: binding.wrapped_secret["v"]
+        for binding in asyncio.run(store.list("acme"))
+    }
+    assert sorted(states.values()) == [1, 2]
+
+    fake.fail_at = None
+    capsys.readouterr()
+    result = _migrate(tmp_path, capsys)
+
+    assert result["migrated"] == 1
+    assert result["skipped"] == 1
+    final = {
+        binding.credential_id: binding.wrapped_secret["v"]
+        for binding in asyncio.run(store.list("acme"))
+    }
+    assert final == {"crm": 2, "erp": 2}
+
+
+def test_migrate_rejects_a_v2_record_from_another_backend(tmp_path, monkeypatch, capsys):
+    _env(monkeypatch, tmp_path)
+    store = FileCredentialStore(tmp_path / "credentials")
+    asyncio.run(
+        store.add(
+            CredentialBinding(
+                credential_id="crm",
+                tenant="acme",
+                secret_ref="secret://acme/token",
+                created_by="admin",
+                created_at="2026-11-18T00:00:00Z",
+                wrapped_secret={"v": 2, "backend": "local"},
+                secret_key_id="k1",
+                secret_version=1,
+            )
+        )
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        _migrate(tmp_path, capsys)
+
+    assert exc.value.code == 1
+    unchanged = asyncio.run(store.get("acme", "crm"))
+    assert unchanged is not None
+    assert unchanged.wrapped_secret == {"v": 2, "backend": "local"}
 
 
 def test_migrate_requires_the_local_keyring(tmp_path, monkeypatch, capsys):

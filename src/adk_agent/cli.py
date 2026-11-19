@@ -3199,28 +3199,50 @@ def main(argv: list[str] | None = None) -> None:
                         raise ValueError("set ADK_SECRET_BACKEND=vault for credentials migrate")
                     migrated = 0
                     skipped = 0
-                    for binding in await store.list(args.tenant):
-                        wrapped = binding.wrapped_secret
-                        if wrapped is None or wrapped.get("v") == 2:
-                            skipped += 1
-                            continue
-                        nonce = wrapped.get("nonce")
-                        ciphertext = wrapped.get("ciphertext")
-                        if not isinstance(nonce, str) or not isinstance(ciphertext, str):
-                            raise KeyBackendError("secret payload is malformed")
-                        aad = credential_aad(binding.tenant, binding.credential_id)
-                        dek = local.unwrap_dek(wrapped, aad)
-                        migrated_secret = target.wrap_dek(dek, nonce=nonce, ciphertext=ciphertext)
-                        if target.unwrap_dek(migrated_secret, aad) != dek:
-                            raise KeyBackendError("migrated credential failed verification")
-                        migrated += 1
-                        if not args.dry_run:
-                            await store.replace_wrapped(
-                                binding.tenant,
-                                binding.credential_id,
-                                migrated_secret,
-                                migrated_secret["key_id"],
+                    try:
+                        for binding in await store.list(args.tenant):
+                            wrapped = binding.wrapped_secret
+                            if wrapped is None:
+                                skipped += 1
+                                continue
+                            if wrapped.get("v") == 2:
+                                if wrapped.get("backend") != "vault":
+                                    raise KeyBackendError("secret payload is malformed")
+                                skipped += 1
+                                continue
+                            nonce = wrapped.get("nonce")
+                            ciphertext = wrapped.get("ciphertext")
+                            if not isinstance(nonce, str) or not isinstance(ciphertext, str):
+                                raise KeyBackendError("secret payload is malformed")
+                            aad = credential_aad(binding.tenant, binding.credential_id)
+                            dek = local.unwrap_dek(wrapped, aad)
+                            migrated_secret = target.wrap_dek(
+                                dek, nonce=nonce, ciphertext=ciphertext
                             )
+                            if target.unwrap_dek(migrated_secret, aad) != dek:
+                                raise KeyBackendError("migrated credential failed verification")
+                            migrated += 1
+                            if not args.dry_run:
+                                await store.replace_wrapped(
+                                    binding.tenant,
+                                    binding.credential_id,
+                                    migrated_secret,
+                                    migrated_secret["key_id"],
+                                )
+                    except KeyBackendError:
+                        print(
+                            json.dumps(
+                                {
+                                    "tenant": args.tenant,
+                                    "migrated": migrated,
+                                    "skipped": skipped,
+                                    "dry_run": args.dry_run,
+                                    "error": "migration_failed",
+                                }
+                            ),
+                            file=sys.stderr,
+                        )
+                        raise
                     return {
                         "tenant": args.tenant,
                         "migrated": migrated,
