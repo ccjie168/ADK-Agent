@@ -169,6 +169,12 @@ def _connector_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _key_backend_message(exc: Exception) -> str:
+    if os.environ.get("ADK_SECRET_BACKEND") == "vault":
+        return f"invalid Vault key backend configuration (ADK_VAULT_*): {exc}"
+    return f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}"
+
+
 def _credential_store(args: argparse.Namespace) -> Any:
     """Build the credential store from ``--credentials-dir`` or ``--credential-db``."""
     from .registry import FileCredentialStore, PostgresCredentialStore
@@ -2206,7 +2212,7 @@ def main(argv: list[str] | None = None) -> None:
                     key_backend = load_key_backend()
                 except KeyBackendError as exc:
                     print(
-                        f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}",
+                        _key_backend_message(exc),
                         file=sys.stderr,
                     )
                     raise SystemExit(1) from None
@@ -2476,7 +2482,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             key_backend = load_key_backend()
         except KeyBackendError as exc:
-            print(f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}", file=sys.stderr)
+            print(_key_backend_message(exc), file=sys.stderr)
             raise SystemExit(1) from None
         app = build_registry_service_app(
             registry,
@@ -2618,7 +2624,7 @@ def main(argv: list[str] | None = None) -> None:
             try:
                 load_key_backend()
             except KeyBackendError as exc:
-                print(f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}", file=sys.stderr)
+                print(_key_backend_message(exc), file=sys.stderr)
                 raise SystemExit(1) from None
         console_connector_requests: Any = _connector_request_store(args)
         console_peers: Any = None
@@ -2916,7 +2922,7 @@ def main(argv: list[str] | None = None) -> None:
             try:
                 key_backend = load_key_backend()
             except KeyBackendError as exc:
-                print(f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}", file=sys.stderr)
+                print(_key_backend_message(exc), file=sys.stderr)
                 raise SystemExit(1) from None
             secrets = RoutingSecretProvider(
                 TenantSecretProvider(key_backend, credential_store),

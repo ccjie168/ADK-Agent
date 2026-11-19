@@ -1,0 +1,49 @@
+SLICE-160 Vault/OpenBao Transit 密钥后端
+日期: 2026-11-19
+依据: ADR-0027（会话确认）
+基线: 6573747
+
+一、实现
+
+- `secretstore/keys.py` 新增 `VaultKeyBackend`：`wrap` 生成每记录 DEK、用 AES-256-GCM 加密值
+  （AAD 不变），DEK 交 Transit `encrypt`；`unwrap` 先 `decrypt` DEK 再解值；`rewrap` 调
+  Transit `rewrap`，只换 `wrapped_dek` 与 `key_id`；`current_key_id` 由一次加密探测取版本。
+- payload 为 `{v: 2, backend: "vault", key_id, wrapped_dek, nonce, ciphertext}`；`v: 1` 本地记录
+  保持原格式；两种 payload 各自校验，跨后端报 `unsupported secret format`。
+- `load_key_backend` 按 `ADK_SECRET_BACKEND` 分派；vault 模式校验地址（https，http 仅回环）、
+  密钥名、挂载点、令牌来源二选一、超时与本地 keyring 互斥；传输层用标准库 urllib + ssl，
+  403/不可达/超时/非法响应映射为固定 `KeyBackendError`。
+- 契约的密钥后端段与 CLI 的 keyring 段同步；`secretstore` 导出 `VaultKeyBackend`。
+
+二、绿态
+
+$ pytest tests/secretstore -q
+59 passed, 2 skipped（POSIX 权限用例在 Windows 跳过）
+
+$ pytest tests/secretstore/test_vault_backend.py -q
+20 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
+
+$ pytest -q（Windows）
+1646 passed, 90 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+附加（验证代理发现）：首轮在 Linux CI 失败，原因是令牌测试文件未 chmod 0600；已修复并补 POSIX
+权限用例。配置校验补上畸形 URL、非法端口、坏 CA、多行令牌；传输层用回环 HTTP 服务覆盖
+403、非法 JSON、超时、重定向（不跟随、不转发令牌），并给响应体加 64 KiB 上限；vault 模式的
+CLI 错误前缀改为 `invalid Vault key backend configuration (ADK_VAULT_*)`。
+第二轮验证发现令牌文件多行会把令牌打进错误文案：令牌校验现在覆盖文件与环境变量两条路径，
+拒绝空白/控制字符且不回显内容；传输层同时把头值类 `ValueError` 映射为固定错误。
+
+三、红态
+
+基线 6573747 没有 `VaultKeyBackend`，`ADK_SECRET_BACKEND` 不被识别，Vault 配置全部被忽略；
+新用例在基线上导入失败/走本地分支。
+
+四、范围与已知缺口
+
+- 迁移命令 `credentials migrate --to vault` 未做，需要单独评审（ADR-0027 切片 4）。
+- AppRole/Kubernetes 认证、Vault Agent 注入、错误码细分与安装手册更新随后续切片。
+- 没有 live Vault 集成测试；传输层用伪实现覆盖，真实 HTTP/TLS 行为需在有 Vault 的环境验证。
+- `current_key_id` 每次调用一次加密探测；只在 rewrap/巡检里使用，暂不缓存。

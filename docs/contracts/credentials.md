@@ -95,3 +95,24 @@
   `error_code` 是 `decrypt_failed` 或 `key_backend_unavailable`；不记明文与密文。
 - `credentials rewrap --tenant T [--dry-run]` 逐条把非当前 key id 的记录换到当前 KEK；
   已是当前 key id 或没有密文的记录计入 `skipped`；输出 `{tenant, rewrapped, skipped, dry_run}`。
+
+## 密钥后端（ADR-0026 / ADR-0027）
+
+- `ADK_SECRET_BACKEND` 选择后端，缺省 `local`；`vault` 使用 HashiCorp Vault / OpenBao 的
+  Transit 引擎。其他取值启动退出 1。
+- `vault` 模式配置：
+  - `ADK_VAULT_ADDR` 必填，必须是 `https://`；`http://` 只允许 `127.0.0.1`、`localhost` 或 `[::1]`。
+  - `ADK_VAULT_KEY` 必填；`ADK_VAULT_TRANSIT_MOUNT` 默认 `transit`；可选 `ADK_VAULT_NAMESPACE`、
+    `ADK_VAULT_CACERT`、`ADK_VAULT_TIMEOUT`（秒，默认 5）。
+  - 令牌取 `ADK_VAULT_TOKEN_FILE`（首选，POSIX 上不得被组或其他用户读取，通常 0600/0400）
+    或 `ADK_VAULT_TOKEN`，二选一；
+    同时设置或都缺失时退出 1。令牌不进日志与错误文案。
+  - 与 `ADK_SECRET_KEKS`/`ADK_SECRET_KEKS_FILE` 同时设置时退出 1。
+- payload：vault 写入 `{"v": 2, "backend": "vault", "key_id": "vault:vN",
+  "wrapped_dek": "vault:vN:...", "nonce": ..., "ciphertext": ...}`，凭据值仍是本地 AES-256-GCM；
+  本地 KEK 记录保持 `v: 1`。读取时按 `backend` 校验，跨后端记录直接拒绝（fail-closed），
+  不自动迁移。
+- `current_key_id` 取 Transit 当前版本（形如 `vault:vN`）；`rewrap` 调用 Transit rewrap，
+  凭据值密文与 nonce 不变；密钥轮换由运维执行 Vault rotate。
+- 不可达、403、密钥版本禁用或解密失败都映射为 `KeyBackendError`，按上面的失败语义写
+  `credential.decrypt_failed` 审计并 fail-closed，没有本地回退，DEK 不缓存。
