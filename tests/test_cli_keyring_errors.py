@@ -61,6 +61,27 @@ def test_tool_gateway_rejects_credentials_without_connectors(tmp_path, monkeypat
     assert "require --connectors-dir or CONNECTOR_URL" in capsys.readouterr().err
 
 
+def test_tool_gateway_rejection_precedes_store_construction(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.delenv("ADK_SECRET_KEKS_FILE", raising=False)
+    monkeypatch.delenv("CREDENTIAL_DATABASE_URL", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            [
+                "serve-tool-gateway",
+                "--tools",
+                str(tmp_path / "tools.py"),
+                "--credential-db",
+                "sqlite:///x.db",
+                *AUTH,
+            ]
+        )
+
+    assert exc.value.code == 1
+    assert "require --connectors-dir or CONNECTOR_URL" in capsys.readouterr().err
+
+
 def test_tool_gateway_exits_on_an_invalid_keyring(tmp_path, monkeypatch, capsys):
     _connector(tmp_path)
     monkeypatch.setenv("ADK_SECRET_KEKS", "not-json")
@@ -124,6 +145,7 @@ def test_console_exits_on_an_invalid_keyring(tmp_path, monkeypatch, capsys):
                 str(_agents_file(tmp_path)),
                 "--credentials-dir",
                 str(tmp_path / "credentials"),
+                "--allow-unauthenticated",
             ]
         )
 

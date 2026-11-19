@@ -22,6 +22,7 @@
 ## 完成判据
 
 - [x] 只有 `--tools` 时给凭据参数退出 1 -> `test_tool_gateway_rejects_credentials_without_connectors`
+- [x] 该拒绝先于存储构造，非法 DSN 也不 traceback -> `test_tool_gateway_rejection_precedes_store_construction`
 - [x] 工具网关 keyring 非法退出 1 -> `test_tool_gateway_exits_on_an_invalid_keyring`
 - [x] `remote-agents` keyring 非法退出 1 -> `test_remote_agents_exit_on_an_invalid_keyring`
 - [x] 控制台 keyring 非法退出 1 -> `test_console_exits_on_an_invalid_keyring`

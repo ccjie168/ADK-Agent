@@ -2150,6 +2150,7 @@ def main(argv: list[str] | None = None) -> None:
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "serve-tool-gateway":
         rate_limit = _rate_limit(args)
+        from .core import CredentialStoreError
         from .mcp.http import resolve_port
         from .registry import FileConnectorStore
         from .registry.connectors_postgres import PostgresConnectorStore
@@ -2175,13 +2176,22 @@ def main(argv: list[str] | None = None) -> None:
             print("provide --tools, --connectors-dir or CONNECTOR_URL", file=sys.stderr)
             raise SystemExit(1)
 
-        credential_store: Any = _credential_store(args)
-        if credential_store is not None and connector_source == 0:
+        credential_flags = bool(
+            getattr(args, "credentials_dir", None)
+            or getattr(args, "credential_db", None)
+            or os.environ.get("CREDENTIAL_DATABASE_URL")
+        )
+        if credential_flags and connector_source == 0:
             print(
                 "--credentials-dir and --credential-db require --connectors-dir or CONNECTOR_URL",
                 file=sys.stderr,
             )
             raise SystemExit(1)
+        try:
+            credential_store: Any = _credential_store(args)
+        except CredentialStoreError as exc:
+            print(f"invalid credential store: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
         if connector_source:
             specs = _load_tools(args.tools).specs() if args.tools else []
             connector_store = (
