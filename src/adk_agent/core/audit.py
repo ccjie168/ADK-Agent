@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .identity import Principal
 from .manifest import AgentRef
-from .policy import DataClass
+from .policy import DataClass, RiskLevel
 
 
 class AuditEvent(BaseModel):
@@ -35,6 +35,7 @@ class AuditEvent(BaseModel):
     egress: Literal["none", "third_party"] = "none"
     status: Literal["ok", "error", "denied"]
     error_code: str | None = None
+    risk_level: RiskLevel | None = None
     timestamp: datetime
 
     @field_validator("timestamp")
