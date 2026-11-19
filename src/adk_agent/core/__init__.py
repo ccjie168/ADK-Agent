@@ -73,7 +73,7 @@ from .peers import (
     PeerStoreError,
     PeerStoreUnavailable,
 )
-from .policy import DataClass, PolicyDecision, ToolGrant
+from .policy import DataClass, PolicyDecision, RiskLevel, ToolGrant
 from .ports import (
     AgentLifecycleStore,
     AgentRegistry,
@@ -183,6 +183,7 @@ __all__ = [
     "CredentialStoreError",
     "CredentialStoreUnavailable",
     "DataClass",
+    "RiskLevel",
     "EvalCase",
     "EvalCaseResult",
     "EvalReport",

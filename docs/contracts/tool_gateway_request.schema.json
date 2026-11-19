@@ -168,6 +168,24 @@
           "title": "Requires Approval",
           "type": "boolean"
         },
+        "risk_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "L1",
+                "L2",
+                "L3",
+                "L4"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Risk Level"
+        },
         "tool_id": {
           "minLength": 1,
           "title": "Tool Id",
