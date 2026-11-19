@@ -1,0 +1,33 @@
+SLICE-184 提示注入防护与低置信度拒答
+日期: 2026-11-20
+依据: ADR-0032（Accepted 2026-11-19）决定 4 / slice 3
+基线: 165d6a1
+
+一、实现
+
+- `src/adk_agent/rag/guard.py` 新增 `detect_prompt_injection(text, patterns=None)`：按内置正则模式
+  （ignore/disregard previous instructions、system prompt、pretend you are、you are now）检测。
+- 同文件新增 `RagGuard(min_confidence=0.5, injection_patterns=None)`：`filter(citations)` 丢弃
+  低置信度（`confidence < min_confidence`）或片段命中注入模式的引用。
+- `InMemoryRagService` 增加可选 `guard` 参数，`retrieve` 末尾应用守卫。
+- `adk_agent.rag` 导出 `RagGuard`/`detect_prompt_injection`。
+- 新增 `tests/test_rag_guard.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1757 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 165d6a1 上无 `RagGuard`/`detect_prompt_injection`：测试收集即 ImportError。
+
+四、范围与已知缺口
+
+- 真实 SQL/API 后端（后续）。
+- 向量后端独立 ADR。
+- 注入检测是内置正则启发式，不是模型级检测；更复杂的注入变体在后续切片/真实后端再增强。
+- 「无来源或低置信度不得生成确定性业务结论」由守卫过滤保证引用为空，拒答文案由上层调用方决定。
