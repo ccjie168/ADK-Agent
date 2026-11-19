@@ -140,6 +140,7 @@ def test_console_load_refuses_retired(tmp_path):
     app = build_console_app(
         {"probe": probe},
         auth_token="secret",
+        roles=["admin"],
         registry=registry,
         artifact_store=store,
         artifact_loader=InProcessArtifactLoader(),
@@ -165,6 +166,7 @@ def test_registry_listing_includes_lifecycle(tmp_path):
     app = build_console_app(
         {"probe": LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")},
         auth_token="secret",
+        roles=["admin"],
         registry=registry,
         lifecycle=_lifecycle(tmp_path),
     )

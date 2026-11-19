@@ -33,7 +33,7 @@ def _body(**overrides):
     return body
 
 
-def _app(tmp_path, *, roles=None, connectors=True, audit=None):
+def _app(tmp_path, *, roles=("admin",), connectors=True, audit=None):
     return build_console_app(
         {"probe": LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")},
         auth_token="secret",

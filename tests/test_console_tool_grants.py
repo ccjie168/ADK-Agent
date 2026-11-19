@@ -39,7 +39,7 @@ def _record(tmp_path, tenant: str = "acme"):
     return registry, record
 
 
-def _app(tmp_path, *, tenant="acme", roles=None, grants=True, audit=None):
+def _app(tmp_path, *, tenant="acme", roles=("admin",), grants=True, audit=None):
     registry, _record_value = _record(tmp_path, tenant)
     return build_console_app(
         {"probe": LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")},

@@ -136,7 +136,7 @@ def _agents() -> dict[str, LlmAgent]:
 
 def test_console_reads_from_query():
     query = _RecordingQuery([_event(0), _event(1, tenant="t2")])
-    app = build_console_app(_agents(), auth_token="secret", audit_query=query)
+    app = build_console_app(_agents(), auth_token="secret", roles=["admin"], audit_query=query)
 
     with TestClient(app) as client:
         response = client.get("/api/audit?limit=10", headers=AUTH)
@@ -176,7 +176,9 @@ def test_console_admin_query():
 def test_console_reads_jsonl_sink_without_query(tmp_path):
     path = tmp_path / "audit.jsonl"
     _write(path, [_event(0)])
-    app = build_console_app(_agents(), auth_token="secret", audit_sink=JsonlAuditSink(path))
+    app = build_console_app(
+        _agents(), auth_token="secret", roles=["admin"], audit_sink=JsonlAuditSink(path)
+    )
 
     with TestClient(app) as client:
         response = client.get("/api/audit", headers=AUTH)
@@ -186,7 +188,7 @@ def test_console_reads_jsonl_sink_without_query(tmp_path):
 
 def test_console_maps_outage():
     query = _RecordingQuery(error=AuditQueryUnavailable("down"))
-    app = build_console_app(_agents(), auth_token="secret", audit_query=query)
+    app = build_console_app(_agents(), auth_token="secret", roles=["admin"], audit_query=query)
 
     with TestClient(app) as client:
         audit = client.get("/api/audit", headers=AUTH)

@@ -47,7 +47,7 @@ def _record(**overrides) -> RemoteAgent:
 def _app(
     tmp_path,
     *,
-    roles=None,
+    roles=("admin",),
     peers=True,
     remote_agents=True,
     audit=None,

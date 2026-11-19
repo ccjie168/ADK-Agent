@@ -82,6 +82,7 @@ def _app(tmp_path, *, trust: TrustStore | None = None):
             )
         },
         auth_token="secret",
+        roles=["admin"],
         registry=FileAgentRegistry(tmp_path),
         artifact_trust=trust,
     )

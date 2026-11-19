@@ -1,0 +1,38 @@
+SLICE-163 控制台角色默认收紧到 requester
+日期: 2026-11-19
+依据: ADR-0030（Accepted 2026-11-19）与 docs/review/m6-enterprise-trust-chain.md 的 Gate 1
+基线: 7cf1398
+
+一、实现
+
+- `build_console_app` 的 `roles` 缺省从 `["admin"]` 改为 `["requester"]`（console.py:2619）。
+- `--role` 帮助文本（cli.py）与 `docs/contracts/cli.md` 的默认说明从 admin 改为 requester。
+- 新增 `tests/test_console_role_default.py` 两个反例测试。
+- 15 个既有测试文件把 `build_console_app`/`_app` 的默认角色显式化为 admin
+  （只改输入数据，不改断言）：test_console_audit、connector_requests、connectors、
+  credentials、marketplace、on_demand、peers、registry、remote_agents、shared_audit、
+  tool_grants、tools、unload、lifecycle_enforcement、tool_grant_usage。
+
+二、绿态
+
+$ pytest tests/test_console_role_default.py -q
+2 passed
+
+$ python scripts/check.py --fast
+1659 passed, 90 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit；pip-audit 无已知漏洞）
+
+三、红态
+
+基线 7cf1398 上 `build_console_app(..., roles=None)` 得到 `["admin"]`；
+`test_default_role_is_requester` 与 `test_default_role_is_not_admin` 两个新用例失败：
+`assert ['admin'] == ['requester']`。
+
+四、范围与已知缺口
+
+- OIDC claim → 角色映射（identity/oidc.py）已实现，本次不动。
+- 能力表 `_CAPABILITIES_*` 去硬编码为 policy 驱动：ADR-0030 后续切片。
+- `deploy/k8s/multi-replica.yaml` 的 `--role admin` 移除：后续切片（清单显式声明）。
+- 非回环 + 无 OIDC 场景禁用 `--role`：后续切片。

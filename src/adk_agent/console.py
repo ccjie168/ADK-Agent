@@ -2616,7 +2616,7 @@ def build_console_app(
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
     metrics = metrics if metrics is not None else MetricsRegistry()
     principal = Principal(
-        tenant="local", subject=_USER_ID, kind="human", roles=list(roles or ["admin"])
+        tenant="local", subject=_USER_ID, kind="human", roles=list(roles or ["requester"])
     )
 
     def _principal_for(request: Request) -> Principal:

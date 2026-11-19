@@ -75,7 +75,9 @@ def _record(tenant: str, request_id: str) -> ConnectorRequest:
     )
 
 
-def _app(tmp_path, *, roles=None, connectors=True, credentials=True, requests=True, audit=None):
+def _app(
+    tmp_path, *, roles=("admin",), connectors=True, credentials=True, requests=True, audit=None
+):
     return build_console_app(
         {"probe": LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")},
         auth_token="secret",
