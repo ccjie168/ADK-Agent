@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..core import DataClass, Principal
+from .guard import RagGuard
 from .service import Citation
 
 
@@ -21,8 +22,9 @@ class RagSource(BaseModel):
 class InMemoryRagService:
     """Structured retrieval over an in-memory source list, ACL-filtered."""
 
-    def __init__(self, sources: list[RagSource]) -> None:
+    def __init__(self, sources: list[RagSource], guard: RagGuard | None = None) -> None:
         self._sources = list(sources)
+        self._guard = guard
 
     async def retrieve(
         self, query: str, principal: Principal, data_classes: list[DataClass]
@@ -44,6 +46,8 @@ class InMemoryRagService:
                     confidence=1.0,
                 )
             )
+        if self._guard is not None:
+            return self._guard.filter(results)
         return results
 
     @staticmethod
