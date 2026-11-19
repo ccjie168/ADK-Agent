@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -16,13 +17,17 @@ from ..auth import (
     bind_principal,
     resolve_http_auth,
 )
-from ..core import IdentityProvider, ToolGatewayRequest
+from ..core import IdentityProvider, Invocation, ToolGatewayRequest, ToolGrant, ToolGrantStore
 from ..metrics import MetricsRegistry
 from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .gateway import FunctionToolGateway, ToolDenied
 from .policy import GrantPolicyEngine
 
 logger = logging.getLogger(__name__)
+
+# Resolves the server-side manifest tool grants for an invocation (ADR-0028).
+# Returning ``None`` means "no record"; raising means the authority is down.
+ToolGrantResolver = Callable[[Invocation], Awaitable[list[ToolGrant] | None]]
 
 
 def build_tool_gateway_app(
@@ -34,6 +39,8 @@ def build_tool_gateway_app(
     oidc: IdentityProvider | None = None,
     metrics: MetricsRegistry | None = None,
     rate_limit: RateLimit | None = None,
+    grant_resolver: ToolGrantResolver | None = None,
+    tool_grants: ToolGrantStore | None = None,
 ) -> FastAPI:
     """Build the tool gateway app. Every path except /healthz needs the token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -67,7 +74,20 @@ def build_tool_gateway_app(
             return JSONResponse({"error": "principal_mismatch"}, status_code=403)
         invocation = invocation.model_copy(update={"principal": bound})
 
-        policy = GrantPolicyEngine(call.grants)
+        if grant_resolver is None and tool_grants is None:
+            return JSONResponse({"error": "grant_unavailable"}, status_code=403)
+        server_grants: list[ToolGrant] = []
+        if grant_resolver is not None:
+            try:
+                resolved = await grant_resolver(invocation)
+            except Exception:  # noqa: BLE001  # grant authority is down
+                logger.exception("tool gateway grant resolution failure")
+                return JSONResponse({"error": "grant_store_unavailable"}, status_code=503)
+            if resolved is None:
+                return JSONResponse({"error": "grant_unavailable"}, status_code=403)
+            server_grants = resolved
+
+        policy = GrantPolicyEngine(server_grants, overlay=tool_grants)
         tool_id = call.request.tool_id
         started = time.perf_counter()
         try:

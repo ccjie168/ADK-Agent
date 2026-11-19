@@ -7,6 +7,10 @@
 请求体是 `ToolGatewayRequest`（`invocation`、`request.tool_id`、`request.args`、`grants`），结构见
 `tool_gateway_request.schema.json`。客户端带 `Authorization: Bearer <token>`，token 由调用方从环境变量读取。
 
+自 ADR-0028 起，`grants` 字段被忽略：服务端按 `invocation.agent_ref` 从注册表解析 manifest
+`tool_grants` 并从 `ToolGrantStore` 读取临时授权，缺授权权威 fail-closed 403 `grant_unavailable`，
+权威不可达 503 `grant_store_unavailable`。
+
 - 200：响应是 `ToolResponse`，客户端返回 `output`。
 - 403：抛 `ToolDenied`，执行器映射为 `tool_denied`。
 - 5xx 或非 200：抛 `ToolGatewayError`，执行器映射为 `tool_gateway_unavailable`。

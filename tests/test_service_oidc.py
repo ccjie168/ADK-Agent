@@ -214,7 +214,11 @@ def test_tool_gateway_rejects_principal_mismatch():
 
 def test_tool_gateway_uses_token_principal():
     gateway = CapturingToolGateway()
-    app = build_tool_gateway_app(gateway, oidc=_provider())
+    app = build_tool_gateway_app(
+        gateway,
+        oidc=_provider(),
+        grant_resolver=_resolver([ToolGrant(tool_id="add")]),
+    )
 
     with TestClient(app) as client:
         response = client.post("/v1/invoke", json=_tool_body(), headers=AUTH)

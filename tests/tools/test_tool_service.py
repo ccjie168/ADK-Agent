@@ -53,6 +53,24 @@ def _body(tool_id: str = "add", grants=("add",), args=None) -> dict:
     return request.model_dump(mode="json")
 
 
+def _resolver(grants):
+    async def resolve(_invocation):
+        return grants
+
+    return resolve
+
+
+_GRANTS = [ToolGrant(tool_id="add"), ToolGrant(tool_id="secret"), ToolGrant(tool_id="binary")]
+
+
+def _app(grants=_GRANTS):
+    return build_tool_gateway_app(
+        _gateway(),
+        auth_token="secret",
+        grant_resolver=_resolver(list(grants)),
+    )
+
+
 def test_request_contract_roundtrip():
     request = ToolGatewayRequest.model_validate(_body())
     assert ToolGatewayRequest.model_validate_json(request.model_dump_json()) == request
@@ -64,7 +82,7 @@ def test_network_bind_requires_token():
 
 
 def test_healthz_open_and_invoke_protected():
-    app = build_tool_gateway_app(_gateway(), auth_token="secret")
+    app = _app()
     with TestClient(app) as client:
         assert client.get("/healthz").status_code == 200
         assert client.post("/v1/invoke", json=_body()).status_code == 401
@@ -74,14 +92,14 @@ def test_healthz_open_and_invoke_protected():
 
 
 def test_invoke_returns_output():
-    app = build_tool_gateway_app(_gateway(), auth_token="secret")
+    app = _app()
     with TestClient(app) as client:
         response = client.post("/v1/invoke", json=_body(), headers=AUTH)
     assert response.json() == {"output": 3, "data_classes": ["internal"]}
 
 
 def test_denied_grant_maps_to_403():
-    app = build_tool_gateway_app(_gateway(), auth_token="secret")
+    app = _app([])
     with TestClient(app) as client:
         response = client.post("/v1/invoke", json=_body(grants=()), headers=AUTH)
     assert response.status_code == 403
@@ -89,7 +107,7 @@ def test_denied_grant_maps_to_403():
 
 
 def test_unknown_tool_maps_to_403():
-    app = build_tool_gateway_app(_gateway(), auth_token="secret")
+    app = _app()
     with TestClient(app) as client:
         response = client.post(
             "/v1/invoke", json=_body(tool_id="nope", grants=("nope",)), headers=AUTH
@@ -98,7 +116,7 @@ def test_unknown_tool_maps_to_403():
 
 
 def test_approval_required_maps_to_403():
-    app = build_tool_gateway_app(_gateway(), auth_token="secret")
+    app = _app()
     with TestClient(app) as client:
         response = client.post(
             "/v1/invoke", json=_body(tool_id="secret", grants=("secret",)), headers=AUTH
@@ -107,7 +125,7 @@ def test_approval_required_maps_to_403():
 
 
 def test_unserializable_output_maps_to_502():
-    app = build_tool_gateway_app(_gateway(), auth_token="secret")
+    app = _app()
     with TestClient(app) as client:
         response = client.post(
             "/v1/invoke",

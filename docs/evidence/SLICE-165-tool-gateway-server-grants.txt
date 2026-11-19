@@ -1,0 +1,42 @@
+SLICE-165 工具网关服务端授权
+日期: 2026-11-19
+依据: ADR-0028（Accepted 2026-11-19）与 docs/review/m6-enterprise-trust-chain.md 的 Gate 2
+基线: e071e40
+
+一、实现
+
+- `ToolGatewayRequest.grants` 保留为可选（schema 未变，`grants` 本就不在 required），但网关忽略它。
+- `build_tool_gateway_app` 新增 `grant_resolver`（按 agent_ref 从注册表解析 manifest `tool_grants`）
+  与 `tool_grants`（`ToolGrantStore` overlay）。`invoke()` 用 `GrantPolicyEngine(server_grants,
+  overlay=tool_grants)` 决策，不再 `GrantPolicyEngine(call.grants)`。缺授权权威 403
+  `grant_unavailable`；解析器抛异常 503 `grant_store_unavailable`。
+- `serve-tool-gateway` 新增 `--registry-url`/`--registry`（manifest 授权）与
+  `--tool-grants-dir`/`GRANT_URL`（临时授权 overlay）；`cli._tool_grant_resolver` 从注册表解析
+  `manifest.tool_grants`。
+- `docs/contracts/tool_gateway.md` 标注 `grants` 服务端忽略。
+- 新增 `tests/tools/test_tool_service_grants.py` 三个测试。
+- 5 个既有测试文件注入 `grant_resolver`（改输入不改断言）：test_tool_service、
+  test_http_tool_gateway、test_gateway_metrics、test_service_oidc、test_tool_service_grants。
+
+二、绿态
+
+$ pytest tests/tools/ tests/test_gateway_metrics.py tests/test_service_oidc.py tests/test_ratelimit.py -q
+115 passed
+
+$ python scripts/check.py --fast
+1666 passed, 90 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 e071e40 上 `build_tool_gateway_app` 用请求体 `call.grants` 决策：`test_tool_gateway_ignores_caller_grants`
+在基线失败（伪造 grants 放行工具），且依赖调用方 grants 的既有测试在实现后从 200 变 403，
+证明网关不再信任请求体 grants。
+
+四、范围与已知缺口
+
+- 逃生门 `--trust-caller-policy`（ADR-0028 slice 4）。
+- 写工具幂等（ADR-0034）与风险分级（ADR-0029，Gate 4）。
+- 授权解析缓存按 digest 绑定 + TTL（ADR-0028 决定 4）本刀未实现。
