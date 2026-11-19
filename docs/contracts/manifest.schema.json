@@ -28,6 +28,64 @@
       "title": "EvalSuite",
       "type": "object"
     },
+    "ModelAlias": {
+      "additionalProperties": false,
+      "properties": {
+        "alias": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+          "title": "Alias",
+          "type": "string"
+        },
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ModelCandidate"
+          },
+          "minItems": 1,
+          "title": "Candidates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "alias",
+        "candidates"
+      ],
+      "title": "ModelAlias",
+      "type": "object"
+    },
+    "ModelCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_data_classes": {
+          "items": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed Data Classes",
+          "type": "array"
+        },
+        "model": {
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "provider": {
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "model"
+      ],
+      "title": "ModelCandidate",
+      "type": "object"
+    },
     "ModelPolicy": {
       "additionalProperties": false,
       "properties": {
@@ -56,6 +114,13 @@
           ],
           "default": null,
           "title": "Max Output Tokens"
+        },
+        "model_aliases": {
+          "items": {
+            "$ref": "#/$defs/ModelAlias"
+          },
+          "title": "Model Aliases",
+          "type": "array"
         },
         "model_allowlist": {
           "items": {
@@ -227,6 +292,19 @@
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
       "title": "Id",
       "type": "string"
+    },
+    "model_alias": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model Alias"
     },
     "model_policy": {
       "$ref": "#/$defs/ModelPolicy"

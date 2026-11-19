@@ -1,0 +1,41 @@
+SLICE-185 模型别名与路由策略 schema
+日期: 2026-11-20
+依据: ADR-0033（Accepted 2026-11-19）决定 1/2 / slice 1
+基线: bc8dc1b
+
+一、实现
+
+- `core/manifest.py` 新增 `ModelCandidate`（`provider`/`model`/`allowed_data_classes`）与
+  `ModelAlias`（`alias` + 有序 `candidates`，至少一个）。
+- `ModelPolicy` 增加 `model_aliases: list[ModelAlias]`，并校验 alias 名唯一。
+- `AgentManifest` 增加 `model_alias: str | None`。
+- `manifest_digest` 对缺省新字段向后兼容：`model_alias` 为 None、`model_policy.model_aliases` 为空时
+  从哈希载荷剔除，存量记录 digest 不变（与 ADR-0024 的 `execution_tier` 同模式）。
+- 重生成 `manifest.schema.json` 与 `model_gateway_request.schema.json`（后者内嵌 `ModelPolicy`）。
+- 新增 `tests/test_model_alias_schema.py` 五个测试。
+
+二、测试判据演进（用户已确认）
+
+`tests/core/test_execution_tier.py` 的辅助函数 `_digest_without_tier` 原先只剔除 `execution_tier`，
+无法表达「后续新增的默认字段都不参与 digest」。按用户确认，辅助函数改为同时剔除
+`model_alias`/`model_policy.model_aliases`；测试意图（缺省字段不改变存量 digest）与断言不变。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1762 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 bc8dc1b 上 `AgentManifest` 无 `model_alias`、`ModelPolicy` 无 `model_aliases`：
+测试收集即 ImportError（`ModelAlias` 无法导入）。
+
+五、范围与已知缺口
+
+- 路由器与 fallback 执行（slice 2）。
+- 预算执行（slice 3）。
+- 审计字段扩展（slice 4）。
+- 本切片只承载 schema 与 digest 绑定；`allowed_data_classes` 的执行在 slice 2。
