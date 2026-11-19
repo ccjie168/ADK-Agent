@@ -1,0 +1,31 @@
+SLICE-177 工具网关幂等存储 CLI 接线
+日期: 2026-11-20
+依据: ADR-0034 决定 3 的收尾
+基线: 1e05b8b
+
+一、实现
+
+- `cli.py` 增加 `_idempotency_store(args)`：从 `--idempotency-dir` 或 `--idempotency-db` 构建
+  `FileToolIdempotencyStore`/`PostgresToolIdempotencyStore`，两者互斥（同时给退出 1），都不给返回 None。
+- `serve-tool-gateway` 增加 `--idempotency-dir`/`--idempotency-db` 参数，并把 store 传给
+  `FunctionToolGateway(idempotency=...)`。
+- 新增 `tests/test_cli_idempotency.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1725 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 1e05b8b 上 `cli.py` 无 `_idempotency_store`、`serve-tool-gateway` 无幂等参数：
+五个测试在基线失败（AttributeError / help 缺参数）。
+
+四、范围与已知缺口
+
+- `idempotency_ttl_seconds` 的 CLI 开关（沿用默认 86400）。
+- 记录归档与过期清理。
+- 至此 ADR-0034 交付完毕（字段 / 缺 key 拒绝 / 存储 / 重放 / 风险联动 / 回滚 / CLI 接线）。
