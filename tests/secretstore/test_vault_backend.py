@@ -162,6 +162,13 @@ def test_load_key_backend_rejects_plain_http_off_loopback(monkeypatch, tmp_path)
         load_key_backend()
 
 
+def test_load_key_backend_rejects_an_invalid_timeout(monkeypatch, tmp_path):
+    _vault_env(monkeypatch, tmp_path)
+    monkeypatch.setenv("ADK_VAULT_TIMEOUT", "0")
+    with pytest.raises(KeyBackendError):
+        load_key_backend()
+
+
 def test_load_key_backend_rejects_an_unknown_backend(monkeypatch):
     monkeypatch.setenv("ADK_SECRET_BACKEND", "kms")
     with pytest.raises(KeyBackendError):

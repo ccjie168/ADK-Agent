@@ -28,7 +28,7 @@
 - [x] `current_key_id` 取 Transit 版本 -> `test_current_key_id_uses_the_transit_version`
 - [x] `v: 1` 与 `backend: local` 的 payload 被拒绝 -> `test_payload_validation`
 - [x] 配置构造与令牌文件读取 -> `test_load_key_backend_builds_the_vault_backend`
-- [x] 令牌冲突/本地 keyring 冲突/非回环 http/未知后端被拒 -> `test_load_key_backend_rejects_conflicting_vault_config`、`test_load_key_backend_rejects_plain_http_off_loopback`、`test_load_key_backend_rejects_an_unknown_backend`
+- [x] 令牌冲突/本地 keyring 冲突/非回环 http/超时非法/未知后端被拒 -> `test_load_key_backend_rejects_conflicting_vault_config`、`test_load_key_backend_rejects_plain_http_off_loopback`、`test_load_key_backend_rejects_an_invalid_timeout`、`test_load_key_backend_rejects_an_unknown_backend`
 - [x] 本地 `v: 1` 记录仍可读写 -> `test_local_backend_still_reads_v1_records`
 - [x] 全量门禁通过
 

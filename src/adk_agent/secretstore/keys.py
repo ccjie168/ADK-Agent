@@ -400,8 +400,8 @@ def _load_vault_backend(variable: str, file_variable: str) -> VaultKeyBackend:
         timeout = float(raw_timeout)
     except ValueError:
         raise KeyBackendError("ADK_VAULT_TIMEOUT must be a number") from None
-    if timeout <= 0:
-        raise KeyBackendError("ADK_VAULT_TIMEOUT must be positive")
+    if not 0 < timeout < 3600:
+        raise KeyBackendError("ADK_VAULT_TIMEOUT must be between 0 and 3600 seconds")
     namespace = os.environ.get("ADK_VAULT_NAMESPACE") or None
     cacert = os.environ.get("ADK_VAULT_CACERT") or None
     transport = _vault_transport(addr, token, namespace=namespace, timeout=timeout, cacert=cacert)

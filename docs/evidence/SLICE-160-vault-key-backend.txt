@@ -21,10 +21,10 @@ $ pytest tests/secretstore -q
 49 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
 
 $ pytest tests/secretstore/test_vault_backend.py -q
-10 passed
+11 passed
 
 $ pytest -q（Windows）
-1634 passed, 89 skipped
+1635 passed, 89 skipped
 
 $ python scripts/check.py --full
 ALL PASS
