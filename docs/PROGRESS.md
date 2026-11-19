@@ -2,12 +2,12 @@
 
 更新日期: 2026-11-19
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `37520fc` feat: add the Vault Transit key backend (SLICE-160) (#75)
+最新提交: `3979a7d` docs: cover the Vault key backend in the install and operations guides (SLICE-161) (#76)
 状态: 可交接暂停；v0.1.0 已发布，Vault 密钥后端已接入，迁移命令待做
 
 ## 本次暂停交接
 
-- 代码在 `master`，`37520fc`。SLICE-113 到 SLICE-160 已通过 PR #22 到 #75 合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
+- 代码在 `master`，`3979a7d`。SLICE-113 到 SLICE-161 已通过 PR #22 到 #76 合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
 - 最近门禁: `--full` 9 步全 PASS，1649 passed, 90 skipped（`docs/evidence/SLICE-161-vault-docs.txt`）。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
@@ -169,6 +169,7 @@
 | SLICE-158 | 控制台凭据列表的非法租户参数 | `af3cc60` |
 | SLICE-159 | 工具授权决定收紧到 admin | `94e9855` |
 | SLICE-160 | Vault/OpenBao Transit 密钥后端 | `37520fc` |
+| SLICE-161 | Vault 安装与运维文档 | `3979a7d` |
 
 每个切片的详细验收、反例和威胁建模在 `docs/specs/SLICE-0xx-*.md`，证据在 `docs/evidence/`。
 
