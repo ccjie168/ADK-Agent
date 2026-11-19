@@ -18,7 +18,7 @@ SLICE-160 Vault/OpenBao Transit 密钥后端
 二、绿态
 
 $ pytest tests/secretstore -q
-49 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
+50 passed, 1 skipped（POSIX 权限用例在 Windows 跳过）
 
 $ pytest tests/secretstore/test_vault_backend.py -q
 11 passed
