@@ -43,6 +43,11 @@ class ToolEntry(BaseModel):
             return self.idempotency_required
         return self.write
 
+    @property
+    def needs_approval(self) -> bool:
+        """True when the tool requires HITL, from the flag or L3/L4 risk (ADR-0031)."""
+        return self.requires_approval or self.risk_level in ("L3", "L4")
+
 
 class ToolCatalog(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)

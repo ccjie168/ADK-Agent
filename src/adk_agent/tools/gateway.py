@@ -101,7 +101,7 @@ class FunctionToolGateway:
             )
             raise ToolIdempotencyMissing("idempotency key required")
 
-        if spec.requires_approval:
+        if spec.needs_approval:
             await self._audit(
                 invocation,
                 request,

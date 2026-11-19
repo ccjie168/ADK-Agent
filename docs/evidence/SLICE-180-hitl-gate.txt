@@ -1,0 +1,32 @@
+SLICE-180 SAP/MES 写 HITL 门（按风险分级推导审批）
+日期: 2026-11-20
+依据: ADR-0031（Accepted 2026-11-19）决定 1/2 / slice 3
+基线: d72ccd6
+
+一、实现
+
+- `ToolSpec`（tools/registry.py）增加计算属性 `needs_approval`：`requires_approval or risk_level in ("L3","L4")`。
+- `ToolEntry`（tools/catalog.py）增加同义属性（控制台目录展示一致）。
+- `FunctionToolGateway.invoke`（tools/gateway.py）审批门改用 `spec.needs_approval`（原 `spec.requires_approval`）。
+- 新增 `tests/test_hitl_gate.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1737 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 d72ccd6 上 `ToolSpec`/`ToolEntry` 无 `needs_approval`：
+四个属性测试失败（AttributeError）；网关测试因 L3 写强制幂等先返回 400 `idempotency_missing`
+（需传 `idempotency_key` 才能到达审批门）。
+
+四、范围与已知缺口
+
+- 高风险写审计含 user+approver+agent+service identity（ADR-0031 决定 4，随后切片）。
+- MES 双人审批（后续）。
+- OBO 后置说明（slice 4）。
+- L3 写同时强制幂等（缺 key 先 400）与审批（403），顺序上缺 key 在前（请求不完整先于 HITL）。
