@@ -22,6 +22,7 @@ from .connectors import (
     ConnectorSpec,
     ConnectorStoreError,
     ConnectorStoreUnavailable,
+    DelegationMode,
     HttpMethod,
 )
 from .credentials import (
@@ -166,6 +167,7 @@ __all__ = [
     "ConnectorStore",
     "ConnectorStoreError",
     "ConnectorStoreUnavailable",
+    "DelegationMode",
     "HttpMethod",
     "AccessPolicy",
     "AgentArtifact",
