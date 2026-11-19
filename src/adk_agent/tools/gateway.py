@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -15,12 +16,15 @@ from ..core import (
     Invocation,
     PolicyEngine,
     ToolExecutionRecord,
+    ToolIdempotencyError,
     ToolIdempotencyStore,
     ToolRequest,
     ToolResponse,
 )
 from ..sandbox import ToolSandbox
 from .registry import FunctionRegistry, ToolSpec
+
+logger = logging.getLogger(__name__)
 
 
 class ToolDenied(Exception):
@@ -159,6 +163,13 @@ class FunctionToolGateway:
                 if inspect.isawaitable(output):
                     output = await output
         except Exception as exc:
+            if record is not None and store is not None and idempotency_key is not None:
+                try:
+                    await store.release(
+                        invocation.principal.tenant, request.tool_id, idempotency_key
+                    )
+                except ToolIdempotencyError:
+                    logger.warning("failed to release idempotency claim for %s", request.tool_id)
             await self._audit(
                 invocation,
                 request,

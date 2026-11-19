@@ -114,6 +114,11 @@ class FileToolIdempotencyStore:
             return None
         return self._read(path)
 
+    async def release(self, tenant: str, tool_id: str, idempotency_key: str) -> None:
+        path = self._path(tenant, tool_id, idempotency_key)
+        with self._lock:
+            path.unlink(missing_ok=True)
+
     async def aclose(self) -> None:
         return None
 

@@ -142,6 +142,24 @@ class PostgresToolIdempotencyStore:
             return None
         return self._parse(stored, tenant, tool_id, idempotency_key)
 
+    async def release(self, tenant: str, tool_id: str, idempotency_key: str) -> None:
+        try:
+            pool = await self._pool.get()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "DELETE FROM adk_tool_idempotency "
+                    "WHERE tenant = $1 AND tool_id = $2 AND idempotency_key = $3",
+                    tenant,
+                    tool_id,
+                    idempotency_key,
+                )
+        except ToolIdempotencyError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise ToolIdempotencyUnavailable(
+                f"tool idempotency delete failed ({type(exc).__name__})"
+            ) from exc
+
     async def aclose(self) -> None:
         await self._pool.close()
 
