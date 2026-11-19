@@ -22,7 +22,7 @@ ALL PASS（9 步，含 bandit / pip-audit）
 三、红态
 
 基线 ce6a7e3 上 `ToolSpec`/`ToolEntry` 无 `write`/`idempotency_required`/`requires_idempotency`：
-五个测试在基线失败（AttributeError / extra_forbidden）。
+五个测试在基线失败（`ToolSpec` 传未知 kwarg 抛 TypeError，`ToolEntry` 抛 extra_forbidden）。
 
 四、范围与已知缺口
 
