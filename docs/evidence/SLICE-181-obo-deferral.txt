@@ -1,0 +1,27 @@
+SLICE-181 OBO 后置说明文档
+日期: 2026-11-20
+依据: ADR-0031（Accepted 2026-11-19）决定 3 / slice 4
+基线: eca02bf
+
+一、实现
+
+- `docs/guides/obo-deferral.md` 说明 OBO 后置的现状（service/controlled-service/obo-later）、原因、
+  引入条件（写量大 / 无接触自动化）与新 ADR 门槛。
+- 新增 `tests/test_obo_deferral_doc.py` 四个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1741 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 eca02bf 上无 `docs/guides/obo-deferral.md`，测试读取失败。
+
+四、范围与已知缺口
+
+- OBO 实现、委托凭据生命周期、principal propagation（需新 ADR）。
+- 至此 ADR-0031 四个切片全部交付。
