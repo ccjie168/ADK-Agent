@@ -15,7 +15,7 @@ from adk_agent.core import (
     AgentTrigger,
     hash_webhook_token,
 )
-from adk_agent.registry import FileTriggerFireStore
+from adk_agent.registry import FileTriggerFireStore, pack_files
 from adk_agent.registry.manifest import published_from
 from adk_agent.triggers_service import (
     TriggerExecution,
@@ -183,6 +183,19 @@ def _agent() -> LlmAgent:
     return LlmAgent(name="assistant", model="gemini-2.5-pro", instruction="x")
 
 
+class FakeArtifactStore:
+    def __init__(self) -> None:
+        self.data = pack_files(
+            {
+                "manifest.json": _PUBLISHED.manifest.model_dump_json().encode("utf-8"),
+                "agent.py": b"",
+            }
+        )
+
+    async def get(self, digest: str) -> bytes:
+        return self.data
+
+
 def _app(
     *,
     triggers: list[AgentTrigger],
@@ -198,7 +211,7 @@ def _app(
     app = build_triggers_app(
         triggers=FakeTriggerStore(triggers),
         registry=FakeRegistry(_PUBLISHED),
-        artifact_store=object(),
+        artifact_store=FakeArtifactStore(),
         trust=trust,
         loader=loader,
         session_service=InMemorySessionService(),

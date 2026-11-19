@@ -17,6 +17,7 @@ from ..sandbox.agent import (
     require_execution_supported,
 )
 from ..sandbox.proxy import build_sandbox_agent
+from .packaging import PackagingError, read_artifact_manifest
 from .trust import TrustStore
 
 _ALLOWED = frozenset({"manifest.json", "README.md", "requirements.txt"})
@@ -117,10 +118,25 @@ async def load_sandbox_agent(published: Any, *, store: ArtifactStore) -> Any:
         and not getattr(backend, "supports_tools", False)
     ):
         raise SandboxToolsUnavailable("sandboxed agents cannot use tool grants yet")
-    data = await store.get(published.artifact.digest)
+    data = await verify_published_artifact(published, store=store)
+    return build_sandbox_agent(manifest, published.artifact, data, backend)
+
+
+async def verify_published_artifact(published: Any, *, store: ArtifactStore) -> bytes:
+    """Require the stored bytes' manifest to equal the record's manifest."""
+    artifact = getattr(published, "artifact", None)
+    if artifact is None:
+        raise ArtifactLoadError("agent version has no artifact")
+    data = await store.get(artifact.digest)
     if data is None:
         raise ArtifactLoadError("artifact bytes not found")
-    return build_sandbox_agent(manifest, published.artifact, data, backend)
+    try:
+        inner = read_artifact_manifest(data)
+    except PackagingError as exc:
+        raise ArtifactLoadError("artifact manifest is invalid") from exc
+    if inner != published.manifest:
+        raise ArtifactLoadError("artifact manifest does not match the record")
+    return data
 
 
 async def load_agent(
@@ -142,6 +158,7 @@ async def load_agent(
     trust.verify(published.artifact)
     if published.manifest.execution_tier == "sandboxed":
         return await load_sandbox_agent(published, store=store)
+    await verify_published_artifact(published, store=store)
     return await loader.load(published.artifact, store)
 
 
@@ -151,4 +168,5 @@ __all__ = [
     "load_agent",
     "load_artifact_agent",
     "load_sandbox_agent",
+    "verify_published_artifact",
 ]

@@ -18,6 +18,7 @@ from ..auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from ..core import (
     AgentLifecycle,
     AgentLifecycleStore,
+    AgentManifest,
     AgentRef,
     AgentRegistry,
     ArtifactStore,
@@ -51,6 +52,7 @@ from ..sandbox.agent import agent_sandbox_available
 from ..secretstore import KeyBackend, KeyBackendError, credential_aad
 from .artifacts import ArtifactStoreError
 from .file import RegistryConflict, RegistryError, RegistryIntegrityError
+from .packaging import PackagingError, read_artifact_manifest
 from .reports import EvalReportConflict
 from .signing import PublishUnavailable
 from .trust import ArtifactTrustError, TrustStore
@@ -689,6 +691,20 @@ def build_registry_service_app(
             except PublishUnavailable:
                 return _error("builder_key_unavailable", 503)
 
+        if artifact is not None and artifact_store is not None:
+            try:
+                stored_bytes = await artifact_store.get(artifact.digest)
+            except ArtifactStoreError:
+                logger.exception("artifact read failed: digest=%s", artifact.digest)
+                return _error("artifact_store_failed", 502)
+            if stored_bytes is not None:
+                try:
+                    stored_manifest = read_artifact_manifest(stored_bytes)
+                except PackagingError:
+                    return _error("artifact_manifest_mismatch", 400)
+                if stored_manifest != record.manifest:
+                    return _error("artifact_manifest_mismatch", 400)
+
         try:
             stored = await registry.publish(record)
         except RegistryConflict:
@@ -750,6 +766,20 @@ def build_registry_service_app(
         if artifact_store is None:
             return _error("artifact_store_unavailable", 503)
         try:
+            inner = read_artifact_manifest(data)
+        except PackagingError:
+            return _error("artifact_manifest_mismatch", 400)
+        if inner != record.manifest:
+            return _error("artifact_manifest_mismatch", 400)
+        try:
+            conflict = await _digest_manifest_conflict(
+                registry, await registry.tenants(), digest, inner
+            )
+        except RegistryError as exc:
+            return _read_error(exc)
+        if conflict:
+            return _error("artifact_manifest_mismatch", 400)
+        try:
             await artifact_store.put(artifact, data)
         except ArtifactStoreError:
             return _error("artifact_store_failed", 502)
@@ -776,6 +806,20 @@ async def _record_for_digest(
             if record.artifact is not None and record.artifact.digest == digest:
                 return record
     return None
+
+
+async def _digest_manifest_conflict(
+    registry: AgentRegistry, tenants: list[str], digest: str, inner: AgentManifest
+) -> bool:
+    for tenant in tenants:
+        for record in await registry.list(tenant):
+            if (
+                record.artifact is not None
+                and record.artifact.digest == digest
+                and record.manifest != inner
+            ):
+                return True
+    return False
 
 
 __all__ = ["build_registry_service_app"]

@@ -23,7 +23,7 @@ from adk_agent.core import (
     TriggerFire,
     hash_webhook_token,
 )
-from adk_agent.registry import FileTriggerFireStore
+from adk_agent.registry import FileTriggerFireStore, pack_files
 from adk_agent.registry.manifest import published_from
 from adk_agent.runtime.quota import InMemoryQuotaManager
 from adk_agent.sandbox.agent import SandboxResult
@@ -125,6 +125,15 @@ class FakeLifecycle:
         return AgentLifecycle(status=self.status)
 
 
+def _zip_for(published) -> bytes:
+    return pack_files(
+        {
+            "manifest.json": published.manifest.model_dump_json().encode("utf-8"),
+            "agent.py": b"",
+        }
+    )
+
+
 def _published(*, grants: list[ToolGrant] | None = None, tier: str | None = None):
     manifest = AgentManifest(
         id="assistant",
@@ -203,7 +212,7 @@ def _client(
     app = build_triggers_app(
         triggers=FakeTriggerStore(triggers),
         registry=registry or FakeRegistry(published or _PUBLISHED),
-        artifact_store=artifact_store or object(),
+        artifact_store=artifact_store or FakeArtifactStore(_zip_for(published or _PUBLISHED)),
         trust=trust,
         loader=loader,
         lifecycle=lifecycle,
@@ -499,12 +508,30 @@ def _sandboxed_client(
         published=published,
         audit=audit,
         sandbox=sandbox,
-        artifact_store=FakeArtifactStore(),
+        artifact_store=FakeArtifactStore(_zip_for(published)),
         fire_store=fire_store,
         quota=quota,
         quota_config=quota_config,
     )
     return client, runner, trust, loader, published
+
+
+def test_sandboxed_trigger_refuses_mismatched_bytes():
+    published = _published(tier="sandboxed")
+    sandbox = FakeSandbox()
+    client, _, _, _ = _client(
+        [_webhook(digest=f"sha256:{published.digest}")],
+        published=published,
+        sandbox=sandbox,
+        artifact_store=FakeArtifactStore(_zip_for(_PUBLISHED)),
+    )
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 502
+    assert response.json() == {"error": "agent_load_failed"}
+    assert sandbox.calls == []
 
 
 def test_sandboxed_trigger_uses_the_backend(tmp_path):
@@ -528,7 +555,7 @@ def test_sandboxed_trigger_uses_the_backend(tmp_path):
     assert sandbox.manifests[0].execution_tier == "sandboxed"
     artifact, data, text = sandbox.calls[0]
     assert artifact.digest == published.artifact.digest
-    assert data == b"zip-bytes"
+    assert data == _zip_for(published)
     assert text == "hello"
 
     events = audit.recent(20)

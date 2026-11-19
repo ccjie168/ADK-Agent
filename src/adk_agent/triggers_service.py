@@ -42,6 +42,7 @@ from .core import (
 )
 from .metrics import MetricsRegistry
 from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
+from .registry.loader import verify_published_artifact
 from .runtime.execution import AgentRuntime
 from .sandbox.agent import AgentSandboxBackend, AgentSandboxUnavailable, require_execution_supported
 from .sandbox.errors import SandboxCrashed, SandboxTimeout, SandboxViolation
@@ -398,7 +399,7 @@ def build_triggers_app(
                 return TriggerExecution("error", "agent_load_failed", run_id, trace_id)
             try:
                 trust.verify(artifact)
-                data = await artifact_store.get(artifact.digest)
+                data = await verify_published_artifact(published, store=artifact_store)
             except Exception:  # noqa: BLE001
                 logger.exception("trigger %s/%s artifact fetch failed", tenant, trigger_id)
                 data = None
@@ -458,6 +459,7 @@ def build_triggers_app(
                 if published.artifact is None:
                     raise ValueError("published agent has no artifact")
                 trust.verify(published.artifact)
+                await verify_published_artifact(published, store=artifact_store)
                 agent = await loader.load(published.artifact, artifact_store)
                 break
             except Exception:  # noqa: BLE001

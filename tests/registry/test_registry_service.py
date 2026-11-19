@@ -21,6 +21,7 @@ from adk_agent.registry import (
     RegistryConflict,
     TrustStore,
     artifact_digest,
+    pack_files,
     published_from,
     sign_digest,
 )
@@ -107,7 +108,18 @@ def _raw(key) -> bytes:
     return key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
 
 
-def _artifact(key, data: bytes = b"zip-bytes"):
+def _zip_bytes(manifest: AgentManifest) -> bytes:
+    return pack_files(
+        {
+            "manifest.json": manifest.model_dump_json().encode("utf-8"),
+            "agent.py": b"# agent\n",
+        }
+    )
+
+
+def _artifact(key, manifest: AgentManifest | None = None, data: bytes | None = None):
+    if data is None:
+        data = _zip_bytes(manifest or _manifest())
     digest = artifact_digest(data)
     return (
         AgentArtifact(
@@ -265,6 +277,97 @@ def test_upload_artifact():
     assert response.status_code == 201
     assert response.json() == {"digest": artifact.digest, "size": len(data)}
     assert store.data[artifact.digest] == data
+
+
+@needs_crypto
+def test_upload_rejects_bytes_with_a_different_manifest():
+    key = _key()
+    data = _zip_bytes(_manifest())
+    digest = artifact_digest(data)
+    artifact = AgentArtifact(
+        digest=digest,
+        size=len(data),
+        signature=sign_digest(digest, key),
+        key_id="k1",
+    )
+    registry = MemoryRegistry()
+    forged = published_from(_manifest(description="forged"), artifact=artifact)
+    asyncio.run(registry.publish(forged))
+    store = MemoryStore()
+    with TestClient(_app(registry, store=store, trust=TrustStore({"k1": _raw(key)}))) as client:
+        response = client.put(
+            f"/v1/artifacts/{digest}",
+            content=data,
+            headers={**AUTH, "Content-Type": MEDIA_TYPE},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "artifact_manifest_mismatch"}
+    assert store.data == {}
+
+
+@needs_crypto
+def test_publish_rejects_a_record_mismatching_stored_bytes():
+    key = _key()
+    builder = _key()
+    artifact, data = _artifact(key)
+    artifact = artifact.model_copy(
+        update={
+            "builder_signature": sign_digest(artifact.digest, builder),
+            "builder_key_id": "b1",
+        }
+    )
+    registry = MemoryRegistry()
+    asyncio.run(registry.publish(published_from(_manifest(), artifact=artifact)))
+    store = MemoryStore()
+    with TestClient(
+        _app(
+            registry,
+            store=store,
+            trust=TrustStore({"k1": _raw(key)}),
+            builder_keys=TrustStore({"b1": _raw(builder)}),
+        )
+    ) as client:
+        uploaded = client.put(
+            f"/v1/artifacts/{artifact.digest}",
+            content=data,
+            headers={**AUTH, "Content-Type": MEDIA_TYPE},
+        )
+        forged = _post(
+            client,
+            published_from(_manifest(version="2.0.0", description="forged"), artifact=artifact),
+        )
+
+    assert uploaded.status_code == 201
+    assert forged.status_code == 400
+    assert forged.json() == {"error": "artifact_manifest_mismatch"}
+
+
+@needs_crypto
+def test_upload_checks_records_beyond_the_caller_tenant():
+    key = _key()
+    artifact, data = _artifact(key)
+    registry = MemoryRegistry()
+    asyncio.run(registry.publish(published_from(_manifest(), artifact=artifact)))
+    asyncio.run(
+        registry.publish(
+            published_from(_manifest(tenant="t2", description="forged"), artifact=artifact)
+        )
+    )
+    store = MemoryStore()
+    provider = FakeProvider(Principal(tenant="t1", subject="alice", kind="human"))
+    with TestClient(
+        _app(registry, store=store, trust=TrustStore({"k1": _raw(key)}), oidc=provider)
+    ) as client:
+        response = client.put(
+            f"/v1/artifacts/{artifact.digest}",
+            content=data,
+            headers={**OIDC_AUTH, "Content-Type": MEDIA_TYPE},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "artifact_manifest_mismatch"}
+    assert store.data == {}
 
 
 @needs_crypto
