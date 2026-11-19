@@ -20,7 +20,13 @@ from ..auth import (
 from ..core import IdentityProvider, Invocation, ToolGatewayRequest, ToolGrant, ToolGrantStore
 from ..metrics import MetricsRegistry
 from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
-from .gateway import FunctionToolGateway, ToolDenied, ToolIdempotencyMissing
+from .gateway import (
+    FunctionToolGateway,
+    ToolDenied,
+    ToolIdempotencyInProgress,
+    ToolIdempotencyMissing,
+    ToolResultUnknown,
+)
 from .policy import GrantPolicyEngine
 
 logger = logging.getLogger(__name__)
@@ -99,6 +105,12 @@ def build_tool_gateway_app(
         except ToolIdempotencyMissing:
             _record_tool_call(metrics, tool_id, "denied", started)
             return JSONResponse({"error": "idempotency_missing"}, status_code=400)
+        except ToolIdempotencyInProgress:
+            _record_tool_call(metrics, tool_id, "denied", started)
+            return JSONResponse({"error": "idempotency_in_progress"}, status_code=409)
+        except ToolResultUnknown:
+            _record_tool_call(metrics, tool_id, "error", started)
+            return JSONResponse({"error": "tool_result_unknown"}, status_code=502)
         except ToolDenied:
             _record_tool_call(metrics, tool_id, "denied", started)
             return JSONResponse({"error": "tool_denied"}, status_code=403)
