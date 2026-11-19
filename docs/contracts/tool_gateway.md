@@ -11,6 +11,9 @@
 `tool_grants` 并从 `ToolGrantStore` 读取临时授权，缺授权权威 fail-closed 403 `grant_unavailable`，
 权威不可达 503 `grant_store_unavailable`。
 
+自 ADR-0029 起，manifest 授权中 `risk_level="L4"` 的工具在授权决策点默认拒绝（`error_code=
+l4_default_deny`），同一 `tool_id` 取最高风险等级；拒绝仍映射为 403 `tool_denied`。L4 特批流程另行切片。
+
 - 200：响应是 `ToolResponse`，客户端返回 `output`。
 - 403：抛 `ToolDenied`，执行器映射为 `tool_denied`。
 - 5xx 或非 200：抛 `ToolGatewayError`，执行器映射为 `tool_gateway_unavailable`。
