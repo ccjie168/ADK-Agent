@@ -16,6 +16,13 @@ class ToolSpec:
     data_classes: tuple[DataClass, ...] = ()
     requires_approval: bool = False
     egress: Literal["none", "third_party"] = "none"
+    write: bool = False
+    idempotency_required: bool = False
+
+    @property
+    def requires_idempotency(self) -> bool:
+        """Write tools require idempotency by default (ADR-0034)."""
+        return self.write or self.idempotency_required
 
 
 class FunctionRegistry:
