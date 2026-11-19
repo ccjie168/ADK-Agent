@@ -253,11 +253,8 @@ class VaultKeyBackend:
         return wrapped
 
     def _payload(self, wrapped: Mapping[str, Any]) -> tuple[str, str, str]:
-        if (
-            not isinstance(wrapped, Mapping)
-            or wrapped.get("v") != _V2
-            or wrapped.get("backend") != "vault"
-        ):
+        version = wrapped.get("v") if isinstance(wrapped, Mapping) else None
+        if type(version) is not int or version != _V2 or wrapped.get("backend") != "vault":
             raise KeyBackendError("unsupported secret format")
         wrapped_dek = wrapped.get("wrapped_dek")
         nonce = wrapped.get("nonce")
@@ -326,6 +323,13 @@ def _read_secret_file(path: str, label: str) -> str:
     return text
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects so the Vault token is never forwarded elsewhere."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
 def _vault_transport(
     addr: str,
     token: str,
@@ -335,7 +339,9 @@ def _vault_transport(
     cacert: str | None,
 ) -> Callable[[str, dict[str, Any]], dict[str, Any]]:
     context = ssl.create_default_context(cafile=cacert)
-    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=context), _NoRedirect()
+    )
 
     def send(path: str, payload: dict[str, Any]) -> dict[str, Any]:
         headers = {"X-Vault-Token": token, "Content-Type": "application/json"}
@@ -349,7 +355,9 @@ def _vault_transport(
         )
         try:
             with opener.open(request, timeout=timeout) as response:
-                body = response.read()
+                body = response.read(65537)
+            if len(body) > 65536:
+                raise KeyBackendError("vault returned an invalid response")
         except urllib.error.HTTPError as exc:
             code = exc.code
             exc.close()
@@ -375,12 +383,18 @@ def _load_vault_backend(variable: str, file_variable: str) -> VaultKeyBackend:
     addr = (os.environ.get("ADK_VAULT_ADDR") or "").strip().rstrip("/")
     if not addr:
         raise KeyBackendError("ADK_VAULT_ADDR is required")
-    parts = urllib.parse.urlsplit(addr)
+    try:
+        parts = urllib.parse.urlsplit(addr)
+        _port = parts.port
+    except ValueError:
+        raise KeyBackendError("ADK_VAULT_ADDR is not a valid URL") from None
     if parts.scheme == "http":
         if parts.hostname not in _LOOPBACK:
             raise KeyBackendError("ADK_VAULT_ADDR must use https unless it is loopback")
     elif parts.scheme != "https":
         raise KeyBackendError("ADK_VAULT_ADDR must be an https URL")
+    if not parts.hostname:
+        raise KeyBackendError("ADK_VAULT_ADDR must include a host")
     key = (os.environ.get("ADK_VAULT_KEY") or "").strip()
     if not key:
         raise KeyBackendError("ADK_VAULT_KEY is required")
@@ -393,8 +407,14 @@ def _load_vault_backend(variable: str, file_variable: str) -> VaultKeyBackend:
         raise KeyBackendError("set ADK_VAULT_TOKEN_FILE or ADK_VAULT_TOKEN")
     if token_file is not None:
         token = _read_secret_file(token_file, "ADK_VAULT_TOKEN_FILE")
-    elif not token:
-        raise KeyBackendError("ADK_VAULT_TOKEN is empty")
+    else:
+        if token is None:
+            raise KeyBackendError("ADK_VAULT_TOKEN is empty")
+        token = token.strip()
+        if not token:
+            raise KeyBackendError("ADK_VAULT_TOKEN is empty")
+        if "\r" in token or "\n" in token:
+            raise KeyBackendError("ADK_VAULT_TOKEN must be a single line")
     raw_timeout = os.environ.get("ADK_VAULT_TIMEOUT") or "5"
     try:
         timeout = float(raw_timeout)
@@ -404,7 +424,12 @@ def _load_vault_backend(variable: str, file_variable: str) -> VaultKeyBackend:
         raise KeyBackendError("ADK_VAULT_TIMEOUT must be between 0 and 3600 seconds")
     namespace = os.environ.get("ADK_VAULT_NAMESPACE") or None
     cacert = os.environ.get("ADK_VAULT_CACERT") or None
-    transport = _vault_transport(addr, token, namespace=namespace, timeout=timeout, cacert=cacert)
+    try:
+        transport = _vault_transport(
+            addr, token, namespace=namespace, timeout=timeout, cacert=cacert
+        )
+    except (OSError, ValueError):
+        raise KeyBackendError("ADK_VAULT_CACERT cannot be read") from None
     return VaultKeyBackend(transport, key, mount=mount)
 
 

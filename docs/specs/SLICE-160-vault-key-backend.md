@@ -30,7 +30,10 @@
 - [x] 配置构造与令牌文件读取 -> `test_load_key_backend_builds_the_vault_backend`
 - [x] 令牌冲突/本地 keyring 冲突/非回环 http/超时非法/未知后端被拒 -> `test_load_key_backend_rejects_conflicting_vault_config`、`test_load_key_backend_rejects_plain_http_off_loopback`、`test_load_key_backend_rejects_an_invalid_timeout`、`test_load_key_backend_rejects_an_unknown_backend`
 - [x] 本地 `v: 1` 记录仍可读写 -> `test_local_backend_still_reads_v1_records`
-- [x] 全量门禁通过
+- [x] 畸形地址/坏 CA/多行令牌/POSIX 令牌权限被拒 -> `test_load_key_backend_rejects_invalid_addresses`、`test_load_key_backend_rejects_a_missing_ca_file`、`test_load_key_backend_rejects_a_multiline_token`、`test_token_file_permissions_are_checked`
+- [x] 传输层 403/非法 JSON/超时/重定向映射为固定错误 -> `test_transport_maps_403_without_echoing_the_token`、`test_transport_maps_invalid_json`、`test_transport_times_out`、`test_transport_does_not_follow_redirects`
+- [x] vault 模式的 CLI 错误前缀 -> `test_vault_mode_reports_vault_configuration`
+- [x] 全量门禁通过（Windows 与 Linux CI）
 
 ## 反例
 
@@ -51,7 +54,8 @@
 - 迁移命令 `credentials migrate --to vault`（ADR-0027 切片 4，需要单独评审）。
 - AppRole/Kubernetes 认证与 Vault Agent 注入（令牌模式先行）。
 - 错误码细分（`vault_unavailable`/`vault_denied`）与安装手册更新。
-- live Vault 集成测试（默认跳过，需 `TEST_VAULT_ADDR`）。
+- live Vault 集成测试（默认跳过，需 `TEST_VAULT_ADDR`）；传输层用回环 HTTP 服务覆盖，
+  真实 TLS 与 Transit 语义仍需在有 Vault 的环境验证。
 
 ## 证据
 

@@ -153,6 +153,28 @@ def test_console_exits_on_an_invalid_keyring(tmp_path, monkeypatch, capsys):
     assert "ADK_SECRET_KEKS" in capsys.readouterr().err
 
 
+def test_vault_mode_reports_vault_configuration(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ADK_SECRET_BACKEND", "vault")
+    monkeypatch.delenv("ADK_VAULT_ADDR", raising=False)
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    monkeypatch.delenv("ADK_SECRET_KEKS_FILE", raising=False)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            [
+                "credentials",
+                "rewrap",
+                "--tenant",
+                "acme",
+                "--credentials-dir",
+                str(tmp_path / "credentials"),
+            ]
+        )
+
+    assert exc.value.code == 1
+    assert "ADK_VAULT_" in capsys.readouterr().err
+
+
 def test_credential_db_conflicts_with_the_environment(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("CREDENTIAL_DATABASE_URL", "postgresql://localhost/adk")
 

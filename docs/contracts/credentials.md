@@ -104,7 +104,8 @@
   - `ADK_VAULT_ADDR` 必填，必须是 `https://`；`http://` 只允许 `127.0.0.1`、`localhost` 或 `[::1]`。
   - `ADK_VAULT_KEY` 必填；`ADK_VAULT_TRANSIT_MOUNT` 默认 `transit`；可选 `ADK_VAULT_NAMESPACE`、
     `ADK_VAULT_CACERT`、`ADK_VAULT_TIMEOUT`（秒，默认 5）。
-  - 令牌取 `ADK_VAULT_TOKEN_FILE`（首选，POSIX 0600/0400）或 `ADK_VAULT_TOKEN`，二选一；
+  - 令牌取 `ADK_VAULT_TOKEN_FILE`（首选，POSIX 上不得被组或其他用户读取，通常 0600/0400）
+    或 `ADK_VAULT_TOKEN`，二选一；
     同时设置或都缺失时退出 1。令牌不进日志与错误文案。
   - 与 `ADK_SECRET_KEKS`/`ADK_SECRET_KEKS_FILE` 同时设置时退出 1。
 - payload：vault 写入 `{"v": 2, "backend": "vault", "key_id": "vault:vN",
