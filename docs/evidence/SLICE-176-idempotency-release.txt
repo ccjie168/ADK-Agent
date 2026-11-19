@@ -1,0 +1,33 @@
+SLICE-176 执行失败回滚幂等 claim
+日期: 2026-11-20
+依据: ADR-0034 决定 3 的收尾
+基线: d43accb
+
+一、实现
+
+- `ToolIdempotencyStore` 协议增加 `release(tenant, tool_id, idempotency_key) -> None`。
+- `FileToolIdempotencyStore.release` 删除记录文件（`unlink(missing_ok=True)`，幂等）。
+- `PostgresToolIdempotencyStore.release` 删除对应行（幂等）。
+- `FunctionToolGateway.invoke` 在工具执行抛异常时，若本次赢得 claim，则 best-effort 释放 claim
+  （`ToolIdempotencyError` 记日志不掩盖原始异常），使瞬时失败可重试。
+- 新增 `tests/test_idempotency_release.py` 四个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1720 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 d43accb 上存储无 `release` 方法（AttributeError），执行失败的写工具重试命中滞留的 `claimed`
+返回 409 而非 200：三个测试在基线失败。
+
+四、范围与已知缺口
+
+- CLI 的 `--idempotency-dir`/`--idempotency-db` 接线（随后切片）。
+- 记录归档与过期清理。
+- `release` 失败时 claim 仍滞留到 TTL（与修复前一致），仅记日志。
+- 序列化失败仍走 `finish("unknown")` 而非 `release`（已执行但结果未知，重试返回 unknown，不重执行）。
