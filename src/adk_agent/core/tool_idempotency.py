@@ -37,6 +37,7 @@ class ToolExecutionRecord(BaseModel):
     tenant: str = Field(pattern=_SAFE_NAME)
     tool_id: str = Field(min_length=1)
     idempotency_key: str = Field(min_length=1, max_length=128)
+    claim_id: str | None = None
     status: ToolExecutionStatus = "claimed"
     output: Any = None
     data_classes: list[DataClass] = Field(default_factory=list)

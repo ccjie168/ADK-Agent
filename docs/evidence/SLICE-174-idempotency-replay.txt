@@ -1,0 +1,37 @@
+SLICE-174 网关幂等重放与序列化失败语义
+日期: 2026-11-20
+依据: ADR-0034（Accepted 2026-11-19）决定 3/5 / slice 3
+基线: 7db22ea
+
+一、实现
+
+- `ToolExecutionRecord` 增加 `claim_id: str | None = None`（区分 claim 赢家与并发在途）。
+- `FunctionToolGateway`（tools/gateway.py）增加 `idempotency: ToolIdempotencyStore | None` 与
+  `idempotency_ttl_seconds: int = 86400`；写工具且配置存储时：claim → 非我方终态重放（`completed`
+  返回旧结果、`unknown` 抛「结果未知」）、非我方 `claimed` 抛「在途冲突」；赢家执行后 `finish`。
+- 输出无法 JSON 序列化时 `finish("unknown")` 并抛 `ToolResultUnknown`；重试返回「结果未知」不再执行。
+- 新增 `ToolResultUnknown`/`ToolIdempotencyInProgress` 异常；`build_tool_gateway_app` 映射为
+  502 `tool_result_unknown` 与 409 `idempotency_in_progress`。
+- 新增 `tests/test_idempotency_replay.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1710 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 7db22ea 上 `FunctionToolGateway` 无 `idempotency` 参数（TypeError）、无重放/序列化失败语义：
+五个测试在基线失败。
+
+四、范围与已知缺口
+
+- CLI 的 `--idempotency-dir`/`--idempotency-db` 接线（随后切片）。
+- 与 ADR-0029 风险分级联动（L3/L4 强制幂等，slice 4）。
+- 记录归档与过期清理（TTL 字段已落地，清理策略另行切片）。
+- 执行中抛异常的写工具不会 `finish`，已 `claim` 的 `claimed` 记录会滞留到 TTL；重试会命中该
+  `claimed` 记录返回 409（并发在途），需在 slice 4 或后续处理「执行失败回滚 claim」。
+- `claim_id` 为内部字段，不进契约 schema。
