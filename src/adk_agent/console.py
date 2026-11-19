@@ -135,6 +135,7 @@ _USER_ID = "console_user"
 _OPEN_PATHS = frozenset({"/", "/healthz", "/auth/config", "/auth/token", "/auth/callback"})
 _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
+_SAFE_TENANT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}")
 _GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})
 _CONNECTOR_REQUEST_STATUSES = frozenset({"pending", "approved", "denied"})
 
@@ -3553,7 +3554,7 @@ def build_console_app(
         target = tenant or caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
-        if tenant and not _SAFE_NAME.fullmatch(tenant):
+        if tenant is not None and not _SAFE_TENANT.fullmatch(tenant):
             return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
         denied = _forbidden_if_missing(caller, "connectors.read")
         if denied is not None:

@@ -17,7 +17,8 @@
 
 ## 完成判据
 
-- [x] 非法 `tenant` 返回 400 `unsafe_tenant` -> `test_list_rejects_an_unsafe_tenant`
+- [x] 非法、空与超长 `tenant` 返回 400 `unsafe_tenant` -> `test_list_rejects_an_unsafe_tenant`
+- [x] 128 字符的合法 `tenant` 仍可读取 -> `test_list_accepts_a_128_character_tenant`
 - [x] 既有列表、能力与非法记录用例保持通过
 - [x] 全量门禁通过
 
