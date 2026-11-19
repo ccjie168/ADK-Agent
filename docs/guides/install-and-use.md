@@ -197,6 +197,43 @@ printf '%s' "$CRM_TOKEN" | .venv/Scripts/python.exe -m adk_agent credentials reg
 - 吊销：`credentials disable` 或控制面停用端点。带密文的绑定立即 fail-closed；仅靠环境变量的值
   还需要同时清除对应的 `ADK_SECRET_*` 环境变量。
 
+### 使用 Vault / OpenBao 保管数据密钥（ADR-0027）
+
+内网已有 Vault 或 OpenBao 时，让 Transit 引擎封装每条凭据的数据密钥；凭据值仍是本机
+AES-256-GCM，密钥材料不进进程。
+
+```bash
+# 1. 启用 Transit 并创建密钥（只需一次）
+vault secrets enable transit
+vault write -f transit/keys/adk-credentials
+
+# 2. 应用侧配置；令牌放 0600 的只读文件，不要写进镜像或命令行
+export ADK_SECRET_BACKEND=vault
+export ADK_VAULT_ADDR=https://vault.example.com
+export ADK_VAULT_KEY=adk-credentials
+export ADK_VAULT_TOKEN_FILE=/run/secrets/vault-token
+# 令牌也可以放 ADK_VAULT_TOKEN（二选一，不推荐写进命令行历史）
+# 可选：ADK_VAULT_TRANSIT_MOUNT（默认 transit）、ADK_VAULT_NAMESPACE、
+#       ADK_VAULT_CACERT、ADK_VAULT_TIMEOUT（秒，默认 5）
+```
+
+应用令牌只需要这三个路径的 `update` 权限：
+
+```hcl
+path "transit/encrypt/adk-credentials" { capabilities = ["update"] }
+path "transit/decrypt/adk-credentials" { capabilities = ["update"] }
+path "transit/rewrap/adk-credentials"  { capabilities = ["update"] }
+```
+
+- `ADK_SECRET_BACKEND=vault` 与 `ADK_SECRET_KEKS`/`ADK_SECRET_KEKS_FILE` 互斥，同时设置启动退出 1；
+  `ADK_VAULT_ADDR` 必须是 `https://`（回环地址可用 `http://`）。
+- 新写入的记录是 `v: 2`（`backend: vault`），本地 KEK 记录仍是 `v: 1`；两种后端不会互相解封，
+  切换后端需要迁移，未迁移的旧记录会 fail-closed。
+- 轮换：`vault write -f transit/keys/adk-credentials/rotate`，然后
+  `credentials rewrap --tenant acme --credentials-dir ./credentials`（先 `--dry-run`）。
+- Vault 不可达、令牌被拒或版本低于 `min_decryption_version` 时，解析与写入都 fail-closed，
+  不会回退到本地 KEK。
+
 ## Docker
 
 镜像默认以 `serve --transport streamable-http --host 0.0.0.0` 启动，鉴权 token 与模型凭据都由环境注入：
