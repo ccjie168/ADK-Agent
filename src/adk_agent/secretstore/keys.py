@@ -5,8 +5,13 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
+import ssl
 import stat
-from collections.abc import Mapping
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -14,7 +19,11 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 _VERSION = 1
+_V2 = 2
 _NONCE = 12
+_SAFE_VAULT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+_VAULT_CIPHERTEXT = re.compile(r"vault:(v[0-9]+):[A-Za-z0-9+/_=-]+")
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
 class KeyBackendError(RuntimeError):
@@ -176,10 +185,238 @@ class LocalKeyBackend:
         return cls.from_json(text)
 
 
+def _b64encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _b64decode(text: str) -> bytes:
+    try:
+        return base64.b64decode(text + "=" * (-len(text) % 4), altchars=b"-_", validate=True)
+    except (ValueError, TypeError):
+        raise KeyBackendError("secret payload is malformed") from None
+
+
+def _vault_field(data: Any, name: str) -> str:
+    if not isinstance(data, dict):
+        raise KeyBackendError("vault returned an invalid response")
+    body = data.get("data")
+    if not isinstance(body, dict):
+        raise KeyBackendError("vault returned an invalid response")
+    value = body.get(name)
+    if not isinstance(value, str) or not value:
+        raise KeyBackendError("vault returned an invalid response")
+    return value
+
+
+def _vault_version(ciphertext: str) -> str:
+    found = _VAULT_CIPHERTEXT.fullmatch(ciphertext)
+    if found is None:
+        raise KeyBackendError("vault returned an invalid response")
+    return f"vault:{found.group(1)}"
+
+
+class VaultKeyBackend:
+    """Wrap data keys with the Vault/OpenBao Transit engine (ADR-0027)."""
+
+    def __init__(
+        self,
+        transport: Callable[[str, dict[str, Any]], dict[str, Any]],
+        key: str,
+        *,
+        mount: str = "transit",
+    ) -> None:
+        if _SAFE_VAULT_NAME.fullmatch(key) is None:
+            raise KeyBackendError("ADK_VAULT_KEY is invalid")
+        if _SAFE_VAULT_NAME.fullmatch(mount) is None:
+            raise KeyBackendError("ADK_VAULT_TRANSIT_MOUNT is invalid")
+        self._send = transport
+        self._key = key
+        self._mount = mount
+
+    def _path(self, operation: str) -> str:
+        return f"{self._mount}/{operation}/{self._key}"
+
+    def _encrypt_dek(self, dek: bytes) -> str:
+        data = self._send(self._path("encrypt"), {"plaintext": _b64encode(dek)})
+        ciphertext = _vault_field(data, "ciphertext")
+        _vault_version(ciphertext)
+        return ciphertext
+
+    def _decrypt_dek(self, ciphertext: str) -> bytes:
+        data = self._send(self._path("decrypt"), {"ciphertext": ciphertext})
+        return _b64decode(_vault_field(data, "plaintext"))
+
+    def _rewrap_dek(self, ciphertext: str) -> str:
+        data = self._send(self._path("rewrap"), {"ciphertext": ciphertext})
+        wrapped = _vault_field(data, "ciphertext")
+        _vault_version(wrapped)
+        return wrapped
+
+    def _payload(self, wrapped: Mapping[str, Any]) -> tuple[str, str, str]:
+        if (
+            not isinstance(wrapped, Mapping)
+            or wrapped.get("v") != _V2
+            or wrapped.get("backend") != "vault"
+        ):
+            raise KeyBackendError("unsupported secret format")
+        wrapped_dek = wrapped.get("wrapped_dek")
+        nonce = wrapped.get("nonce")
+        ciphertext = wrapped.get("ciphertext")
+        if (
+            not isinstance(wrapped_dek, str)
+            or not isinstance(nonce, str)
+            or not isinstance(ciphertext, str)
+        ):
+            raise KeyBackendError("secret payload is malformed")
+        if len(_b64decode(nonce)) != _NONCE or not _b64decode(ciphertext):
+            raise KeyBackendError("secret payload is malformed")
+        return wrapped_dek, nonce, ciphertext
+
+    def current_key_id(self) -> str:
+        return _vault_version(self._encrypt_dek(os.urandom(32)))
+
+    def wrap(self, plaintext: bytes, aad: bytes) -> dict[str, Any]:
+        dek = os.urandom(32)
+        nonce = os.urandom(_NONCE)
+        try:
+            ciphertext = AESGCM(dek).encrypt(nonce, plaintext, aad)
+        except (InvalidTag, ValueError) as exc:  # pragma: no cover - encrypt cannot fail
+            raise KeyBackendError("secret payload failed to wrap") from exc
+        wrapped_dek = self._encrypt_dek(dek)
+        return {
+            "v": _V2,
+            "backend": "vault",
+            "key_id": _vault_version(wrapped_dek),
+            "wrapped_dek": wrapped_dek,
+            "nonce": _b64encode(nonce),
+            "ciphertext": _b64encode(ciphertext),
+        }
+
+    def unwrap(self, wrapped: Mapping[str, Any], aad: bytes) -> bytes:
+        wrapped_dek, nonce, ciphertext = self._payload(wrapped)
+        dek = self._decrypt_dek(wrapped_dek)
+        try:
+            return AESGCM(dek).decrypt(_b64decode(nonce), _b64decode(ciphertext), aad)
+        except (InvalidTag, ValueError) as exc:
+            raise KeyBackendError("secret payload failed to unwrap") from exc
+
+    def rewrap(self, wrapped: Mapping[str, Any], aad: bytes) -> dict[str, Any]:
+        wrapped_dek, _nonce, _ciphertext = self._payload(wrapped)
+        new_wrapped = self._rewrap_dek(wrapped_dek)
+        updated = dict(wrapped)
+        updated["key_id"] = _vault_version(new_wrapped)
+        updated["wrapped_dek"] = new_wrapped
+        return updated
+
+
+def _read_secret_file(path: str, label: str) -> str:
+    file = Path(path)
+    try:
+        if os.name != "nt":
+            mode = file.stat().st_mode
+            if mode & (stat.S_IRWXG | stat.S_IRWXO):
+                raise KeyBackendError(f"{label} must not be group or world readable")
+        text = file.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise KeyBackendError(f"cannot read {label}") from exc
+    except UnicodeDecodeError as exc:
+        raise KeyBackendError(f"{label} is not valid UTF-8") from exc
+    if not text:
+        raise KeyBackendError(f"{label} is empty")
+    return text
+
+
+def _vault_transport(
+    addr: str,
+    token: str,
+    *,
+    namespace: str | None,
+    timeout: float,
+    cacert: str | None,
+) -> Callable[[str, dict[str, Any]], dict[str, Any]]:
+    context = ssl.create_default_context(cafile=cacert)
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+
+    def send(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        headers = {"X-Vault-Token": token, "Content-Type": "application/json"}
+        if namespace is not None:
+            headers["X-Vault-Namespace"] = namespace
+        request = urllib.request.Request(
+            f"{addr}/v1/{path}",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                body = response.read()
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+            exc.close()
+            if code == 403:
+                raise KeyBackendError("vault denied the request") from None
+            raise KeyBackendError(f"vault returned HTTP {code}") from None
+        except (urllib.error.URLError, TimeoutError, OSError):
+            raise KeyBackendError("vault is unreachable") from None
+        try:
+            parsed = json.loads(body)
+        except ValueError:
+            raise KeyBackendError("vault returned an invalid response") from None
+        if not isinstance(parsed, dict):
+            raise KeyBackendError("vault returned an invalid response")
+        return parsed
+
+    return send
+
+
+def _load_vault_backend(variable: str, file_variable: str) -> VaultKeyBackend:
+    if os.environ.get(variable) is not None or os.environ.get(file_variable) is not None:
+        raise KeyBackendError(f"vault mode cannot be combined with {variable} or {file_variable}")
+    addr = (os.environ.get("ADK_VAULT_ADDR") or "").strip().rstrip("/")
+    if not addr:
+        raise KeyBackendError("ADK_VAULT_ADDR is required")
+    parts = urllib.parse.urlsplit(addr)
+    if parts.scheme == "http":
+        if parts.hostname not in _LOOPBACK:
+            raise KeyBackendError("ADK_VAULT_ADDR must use https unless it is loopback")
+    elif parts.scheme != "https":
+        raise KeyBackendError("ADK_VAULT_ADDR must be an https URL")
+    key = (os.environ.get("ADK_VAULT_KEY") or "").strip()
+    if not key:
+        raise KeyBackendError("ADK_VAULT_KEY is required")
+    mount = (os.environ.get("ADK_VAULT_TRANSIT_MOUNT") or "transit").strip()
+    token = os.environ.get("ADK_VAULT_TOKEN")
+    token_file = os.environ.get("ADK_VAULT_TOKEN_FILE") or None
+    if token is not None and token_file is not None:
+        raise KeyBackendError("set only one of ADK_VAULT_TOKEN or ADK_VAULT_TOKEN_FILE")
+    if token is None and token_file is None:
+        raise KeyBackendError("set ADK_VAULT_TOKEN_FILE or ADK_VAULT_TOKEN")
+    if token_file is not None:
+        token = _read_secret_file(token_file, "ADK_VAULT_TOKEN_FILE")
+    elif not token:
+        raise KeyBackendError("ADK_VAULT_TOKEN is empty")
+    raw_timeout = os.environ.get("ADK_VAULT_TIMEOUT") or "5"
+    try:
+        timeout = float(raw_timeout)
+    except ValueError:
+        raise KeyBackendError("ADK_VAULT_TIMEOUT must be a number") from None
+    if timeout <= 0:
+        raise KeyBackendError("ADK_VAULT_TIMEOUT must be positive")
+    namespace = os.environ.get("ADK_VAULT_NAMESPACE") or None
+    cacert = os.environ.get("ADK_VAULT_CACERT") or None
+    transport = _vault_transport(addr, token, namespace=namespace, timeout=timeout, cacert=cacert)
+    return VaultKeyBackend(transport, key, mount=mount)
+
+
 def load_key_backend(
     *, variable: str = "ADK_SECRET_KEKS", file_variable: str = "ADK_SECRET_KEKS_FILE"
-) -> LocalKeyBackend | None:
-    """Pick the keyring from the environment or a read-only file, never both."""
+) -> KeyBackend | None:
+    """Pick the local keyring or the Vault backend from the environment."""
+    selected = os.environ.get("ADK_SECRET_BACKEND") or "local"
+    if selected == "vault":
+        return _load_vault_backend(variable, file_variable)
+    if selected != "local":
+        raise KeyBackendError("ADK_SECRET_BACKEND must be local or vault")
     value = os.environ.get(variable)
     path = os.environ.get(file_variable) or None
     if value is not None and path is not None:
@@ -189,4 +426,10 @@ def load_key_backend(
     return None if value is None else LocalKeyBackend.from_json(value)
 
 
-__all__ = ["KeyBackend", "KeyBackendError", "LocalKeyBackend", "load_key_backend"]
+__all__ = [
+    "KeyBackend",
+    "KeyBackendError",
+    "LocalKeyBackend",
+    "VaultKeyBackend",
+    "load_key_backend",
+]

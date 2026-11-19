@@ -187,6 +187,8 @@
   已是当前 key id 或没有密文的记录只计入 `skipped`，不解密明文。
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
 - 以下命令在读取 keyring 时（`credentials register --secret-stdin`、`credentials rewrap`、配置了凭据存储的控制台、`serve-registry`、配置了连接器与凭据存储的 `serve-tool-gateway`、`remote-agents register|refresh`）遇到 keyring 格式非法或同时设置 `ADK_SECRET_KEKS` 与 `ADK_SECRET_KEKS_FILE` 时退出 1，错误文案同时提到两个变量名，不回显内容。不使用 keyring 的子命令（`credentials list|disable`、不带 `--secret-stdin` 的 register、`remote-agents list|disable` 等）不受影响。
+- `ADK_SECRET_BACKEND=vault` 时改为校验 Vault 配置（见 `credentials.md` 的密钥后端段），
+  配置缺失、令牌来源冲突或与本地 keyring 同时设置同样退出 1；错误文案只给变量名与固定原因。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 
 ## `adk-agent serve-triggers`
