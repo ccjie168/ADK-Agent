@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 
@@ -134,6 +136,29 @@ def test_invalid_credential_and_forbidden(tmp_path):
     assert invalid.json() == {"error": "invalid_credential"}
     assert not_object.status_code == 400
     assert not_object.json() == {"error": "invalid_request"}
+
+
+def test_list_reports_an_invalid_record_as_unavailable(tmp_path):
+    directory = tmp_path / "credentials" / "local"
+    directory.mkdir(parents=True)
+    (directory / "bad.json").write_text(
+        json.dumps(
+            {
+                "credential_id": "a" * 200,
+                "tenant": "local",
+                "secret_ref": "secret://local/token",
+                "created_by": "admin",
+                "created_at": "2026-11-16T08:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with TestClient(_app(tmp_path)) as client:
+        response = client.get("/api/credentials?tenant=local", headers=AUTH)
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "credential_store_unavailable"}
 
 
 def test_register_rejects_body_supplied_ciphertext(tmp_path):

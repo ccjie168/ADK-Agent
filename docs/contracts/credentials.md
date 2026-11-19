@@ -34,6 +34,9 @@
 - 文件布局：`<root>/<tenant>/<credential_id>.json`。重复登记相同内容幂等，不同内容冲突。
 - Postgres：`adk_credentials(tenant text, credential_id text, definition jsonb, updated_at timestamptz, PRIMARY KEY (tenant, credential_id))`。
 - 停用把 `enabled` 改成 `false`，重复停用幂等。
+- 存储中的记录无法解析或不可读时按存储错误处理（fail-closed），不回退到环境变量：
+  控制台读接口返回 503 `credential_store_unavailable`，CLI 退出 1。文件存储的跨进程锁在
+  约 5 秒内拿不到时同样按存储错误处理，不会无限重试（Windows 使用非阻塞尝试）。
 
 ## 控制台
 
