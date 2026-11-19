@@ -1,0 +1,33 @@
+SLICE-171 写工具幂等字段（write / idempotency_required）
+日期: 2026-11-20
+依据: ADR-0034（Accepted 2026-11-19）决定 1 / slice 1
+基线: ce6a7e3
+
+一、实现
+
+- `ToolSpec`（tools/registry.py）增加 `write: bool = False` 与 `idempotency_required: bool = False`，
+  以及计算属性 `requires_idempotency`（`write or idempotency_required`）。
+- `ToolEntry`（tools/catalog.py）增加同名字段与 `requires_idempotency` 属性。
+- 无对外 schema 变更（`ToolSpec`/`ToolEntry` 为内部类型，不进入 `export_contracts.py`）。
+- 新增 `tests/test_write_idempotency_fields.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1694 passed, 90 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 ce6a7e3 上 `ToolSpec`/`ToolEntry` 无 `write`/`idempotency_required`/`requires_idempotency`：
+五个测试在基线失败（AttributeError / extra_forbidden）。
+
+四、范围与已知缺口
+
+- `ToolRequest.idempotency_key` 字段与 schema（slice 2）。
+- 缺 key 拒绝、幂等存储（文件 + Postgres）、重复 key 重放、序列化失败语义（slice 2/3）。
+- 与 ADR-0029 风险分级联动（L3/L4 强制幂等，slice 4）。
+- `requires_idempotency` 用 `write or idempotency_required` 表达「写工具默认要求幂等」；显式
+  opt-out 的三种状态（None sentinel）留待 slice 4 需要时再引入。
