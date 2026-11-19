@@ -1,0 +1,36 @@
+SLICE-161 Vault 密钥后端的安装与运维文档
+日期: 2026-11-19
+依据: ADR-0027 切片 3
+基线: 37520fc
+
+一、实现
+
+- `docs/guides/install-and-use.md` 凭据段新增 Vault/OpenBao 小节：`vault secrets enable transit`、
+  创建密钥、`ADK_SECRET_BACKEND=vault` 与 `ADK_VAULT_*` 变量、令牌只读文件、三个 Transit 路径
+  的最小权限策略、与本地 keyring 互斥、`v: 2`/`v: 1` 兼容与 fail-closed、rotate 后 rewrap。
+- `docs/guides/operations.md` 的密钥轮换补 Vault 条目、环境变量段落与故障模式行；写明
+  Vault 不可达时 `secret_unavailable`/503 且不回退本地 KEK。
+- `tests/test_vault_guide.py`：从 `secretstore/keys.py` 提取 `ADK_VAULT_*` 变量，要求安装手册
+  全部覆盖；校验 Transit 初始化、三条策略路径、rotate 与 rewrap 命令；校验运维手册的轮换、
+  故障与关键变量。
+
+二、绿态
+
+$ pytest tests/test_vault_guide.py tests/test_install_guide.py -q
+9 passed
+
+$ pytest -q（Windows）
+1649 passed, 90 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线 37520fc 的两份手册没有 Vault 小节；三个新用例分别因缺少变量名、Transit 命令与
+运维条目而失败。
+
+四、范围与已知缺口
+
+- `credentials migrate --to vault` 未做，迁移文档随该切片。
+- 文档未承诺 live Vault/TLS 验证；real Vault 的 `min_decryption_version` 行为需在部署环境复核。

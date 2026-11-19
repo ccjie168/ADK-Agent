@@ -183,6 +183,16 @@
 - **Bearer token**：共享 token 轮换需要客户端同步换值，做不到零停机。需要零停机就用 OIDC。
 - **工件验签**：新增 key id 并发布新版本，旧公钥保留到所有旧版本退役。
 - **数据库口令**：在 Postgres 改角色口令，更新 Secret，滚动重启。连接池会重连。
+- **凭据数据密钥（Vault Transit，ADR-0027）**：应用令牌只需要 `transit/encrypt|decrypt|rewrap/<key>`
+  的 `update` 权限；轮换执行 `vault write -f transit/keys/<key>/rotate`，再对各租户跑
+  `credentials rewrap`。不要删除旧版本密钥，除非确认所有记录都已 rewrap；低于
+  `min_decryption_version` 的旧记录会 fail-closed。Vault 不可达时凭据解析返回
+  `secret_unavailable`，控制面 503，不回退本地 KEK，按 fail-closed 处理并恢复 Vault。
+
+凭据密钥后端相关变量：`ADK_SECRET_BACKEND`（`local`|`vault`）、`ADK_VAULT_ADDR`、
+`ADK_VAULT_KEY`、`ADK_VAULT_TOKEN_FILE` 或 `ADK_VAULT_TOKEN`、`ADK_VAULT_TRANSIT_MOUNT`、
+`ADK_VAULT_NAMESPACE`、`ADK_VAULT_CACERT`、`ADK_VAULT_TIMEOUT`。vault 模式与
+`ADK_SECRET_KEKS`/`ADK_SECRET_KEKS_FILE` 互斥；令牌文件在 POSIX 上不得被组或其他用户读取。
 
 ## 时钟
 
@@ -195,6 +205,7 @@
 | 故障 | 表现 | 处理 |
 | --- | --- | --- |
 | Postgres 不可达 | 审批接口 503 `approval_unavailable`；注册表与配额请求失败；审计写入失败 | 恢复数据库，Pod 自动重连；不要切回文件模式 |
+| Vault 不可达或令牌过期 | 凭据解析 `secret_unavailable`；控制面 503；`rewrap` 退出 1 | 恢复 Vault 或续令牌；不要切回本地 KEK，旧记录会 fail-closed |
 | Redis 不可达 | 限流回退到每进程计数 | 容量按单副本上限估算，恢复后自动回到共享计数 |
 | `SESSION_URL` 误设为 `memory://` | 会话在副本间不共享 | 改成 Postgres DSN 并滚动 |
 | 会话 RLS 策略缺失 | 带 `--session-rls` 启动退出 1，提示 `sessions enable-rls` | 以属主角色重跑命令，再重启 |

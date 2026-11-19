@@ -1591,7 +1591,7 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help=(
             "read the secret from stdin and store it encrypted "
-            "(needs ADK_SECRET_KEKS or ADK_SECRET_KEKS_FILE)"
+            "(needs ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE, or ADK_SECRET_BACKEND=vault)"
         ),
     )
     _add_credential_store_args(p_cr_register)
@@ -1604,8 +1604,8 @@ def main(argv: list[str] | None = None) -> None:
     p_cr_rewrap = credentials_sub.add_parser(
         "rewrap",
         help=(
-            "re-wrap credential data keys under the active KEK "
-            "(needs ADK_SECRET_KEKS or ADK_SECRET_KEKS_FILE)"
+            "re-wrap credential data keys under the active key backend "
+            "(needs ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE, or ADK_SECRET_BACKEND=vault)"
         ),
     )
     p_cr_rewrap.add_argument("--tenant", required=True)
