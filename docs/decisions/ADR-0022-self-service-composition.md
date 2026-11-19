@@ -27,7 +27,7 @@
 7. **组合结果就是普通已发布版本。** 版本按 digest 固定，评测门禁、生命周期与市场规则原样适用。不提供热替换或绕过发布的快捷路径。
 8. **能力清单的初始映射。** 能力名稳定，角色映射可调整。
    - 终端用户：`chat.run`、`runs.read`、`sessions.read`。
-   - 运营或审批人：上述加 `approvals.read`、`approvals.decide`、`grants.read`、`grants.decide`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`。
+   - 运营或审批人：上述加 `approvals.read`、`approvals.decide`、`grants.read`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`。（`grants.decide` 已于 2026-11-19 收紧到 `admin`，见确认记录。）
    - Agent 开发者或发布者：`registry.read`、`registry.publish`、`eval.read`、`tools.read`、`lifecycle.read`。
    - 平台管理员：全部能力，另有 `policy.write` 与 `ops.status`。
    - `admin` 角色继续隐含全部能力，与现有服务端判断一致。
@@ -64,3 +64,5 @@
 ## 确认记录
 
 2026-11-15 会话确认六条边界：能力驱动的单一控制台、部署操作留在 CLI、只做声明式组合、agent 级沙箱前不开放租户代码、凭据只用 `secret://` 引用、自动化作为独立服务。切片顺序为角色视图、审批历史、运行详情下钻之后，再按凭据绑定、声明式组合器、触发服务、agent 沙箱推进；编号在进入时分配。
+
+2026-11-19 会话确认修订第 8 条的角色映射：`grants.decide` 收紧到 `admin`，`operator`/`ops`/`approver` 不再映射该能力；工具授权的申请（`grants.request`）与决定分离，界面按钮按 `grants.decide` 显示。

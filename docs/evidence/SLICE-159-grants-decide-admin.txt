@@ -1,0 +1,31 @@
+SLICE-159 工具授权决定收紧到 admin
+日期: 2026-11-19
+依据: PROGRESS 缺口清单第 6 条与 2026-11-19 会话确认
+基线: af3cc60
+
+一、实现
+
+- `_CAPABILITIES_OPERATOR` 移除 `grants.decide`；admin 仍隐含全部能力。
+- 界面 Approve/Deny 按钮按 `grants.decide` 显示，operator 不再看到；服务端决定接口保持 admin-only。
+- `docs/contracts/console.md` 的角色映射与工具授权段、ADR-0022 的确认记录同步。
+
+二、绿态
+
+$ pytest tests/test_console_me.py tests/test_console_tool_grants.py -q
+19 passed
+
+$ pytest -q（Windows）
+1624 passed, 89 skipped
+
+$ python scripts/check.py --full
+ALL PASS
+
+三、红态
+
+基线 af3cc60 的 `/api/me` 给 operator 返回 `grants.decide`，界面显示决定按钮；
+`test_operator_capabilities` 在基线源码上失败（新映射断言不成立）。
+
+四、范围与已知缺口
+
+- 工具授权申请（`grants.request`）的角色不变；publisher 仍可提交。
+- 站内角色分配接口仍属控制面能力，另立 ADR。
