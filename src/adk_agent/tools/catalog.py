@@ -31,12 +31,16 @@ class ToolEntry(BaseModel):
     risk_level: RiskLevel | None = None
     tenant: str | None = Field(default=None, pattern=_SAFE_NAME)
     write: bool = False
-    idempotency_required: bool = False
+    idempotency_required: bool | None = None
 
     @property
     def requires_idempotency(self) -> bool:
-        """Write tools require idempotency by default (ADR-0034)."""
-        return self.write or self.idempotency_required
+        """L3/L4 force idempotency, otherwise default to write (ADR-0034)."""
+        if self.risk_level in ("L3", "L4"):
+            return True
+        if self.idempotency_required is not None:
+            return self.idempotency_required
+        return self.write
 
 
 class ToolCatalog(BaseModel):
