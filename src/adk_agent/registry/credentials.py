@@ -10,7 +10,7 @@ import re
 import tempfile
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -20,11 +20,35 @@ from ..core import (
     CredentialConflict,
     CredentialNotFound,
     CredentialStore,
+    CredentialStoreError,
     parse_credential_ref,
 )
 from .paths import safe_join
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
+
+
+def _read_binding(path: Path) -> CredentialBinding:
+    try:
+        return CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise CredentialStoreError("credential store contains an unreadable record") from exc
+
+
+def _acquire_lock(
+    fd: int,
+    lock: Callable[[int], None],
+    *,
+    attempts: int = 100,
+    delay: float = 0.05,
+) -> None:
+    for _ in range(attempts):
+        try:
+            lock(fd)
+            return
+        except OSError:
+            time.sleep(delay)
+    raise CredentialStoreError("credential store lock unavailable")
 
 
 def _definition(binding: CredentialBinding) -> dict:
@@ -42,13 +66,12 @@ def _store_lock(path: Path) -> Iterator[None]:
     try:
         if os.name == "nt":
             msvcrt = importlib.import_module("msvcrt")
-            while True:
-                try:
-                    os.lseek(fd, 0, os.SEEK_SET)
-                    msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
-                    break
-                except OSError:
-                    time.sleep(0.05)
+
+            def _lock_windows(handle: int) -> None:
+                os.lseek(handle, 0, os.SEEK_SET)
+                msvcrt.locking(handle, msvcrt.LK_LOCK, 1)
+
+            _acquire_lock(fd, _lock_windows)
         else:
             fcntl = importlib.import_module("fcntl")
             fcntl.flock(fd, fcntl.LOCK_EX)
@@ -109,7 +132,7 @@ class FileCredentialStore:
         with self._lock, _store_lock(path):
             if not path.is_file():
                 raise CredentialNotFound(f"credential not found: {tenant}/{credential_id}")
-            existing = CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
+            existing = _read_binding(path)
             updated = existing.model_copy(
                 update={"wrapped_secret": wrapped_secret, "secret_key_id": secret_key_id}
             )
@@ -130,16 +153,13 @@ class FileCredentialStore:
         path = self._path(tenant, credential_id)
         if not path.is_file():
             return None
-        return CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
+        return _read_binding(path)
 
     async def list(self, tenant: str) -> list[CredentialBinding]:
         directory = safe_join(self.root, tenant, pattern=_NAME.pattern)
         if not directory.is_dir():
             return []
-        bindings = [
-            CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
-            for path in directory.glob("*.json")
-        ]
+        bindings = [_read_binding(path) for path in directory.glob("*.json")]
         return sorted(
             (binding for binding in bindings if binding.tenant == tenant),
             key=lambda binding: binding.credential_id,
@@ -150,7 +170,7 @@ class FileCredentialStore:
         with self._lock, _store_lock(path):
             if not path.is_file():
                 raise CredentialNotFound(f"credential not found: {tenant}/{credential_id}")
-            binding = CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
+            binding = _read_binding(path)
             if not binding.enabled:
                 return binding
             disabled = binding.model_copy(update={"enabled": False})
@@ -166,7 +186,7 @@ class FileCredentialStore:
             return disabled
 
     def _resolve_existing(self, path: Path, binding: CredentialBinding) -> CredentialBinding:
-        existing = CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
+        existing = _read_binding(path)
         if _definition(existing) != _definition(binding):
             raise CredentialConflict(
                 f"credential {binding.tenant}/{binding.credential_id} "

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -12,6 +13,7 @@ from adk_agent.core import (
     CredentialBinding,
     CredentialConflict,
     CredentialNotFound,
+    CredentialStoreError,
     credential_env_name,
     parse_credential_ref,
 )
@@ -56,6 +58,37 @@ def test_file_store_roundtrip_and_tenant_isolation(tmp_path):
 
     assert [binding.tenant for binding in listed] == ["acme"]
     assert [binding.credential_id for binding in listed] == ["crm"]
+
+
+def test_store_reads_fail_closed_on_an_invalid_record(tmp_path):
+    store = FileCredentialStore(tmp_path)
+    directory = tmp_path / "acme"
+    directory.mkdir(parents=True)
+    (directory / "bad.json").write_text(
+        json.dumps(
+            {
+                "credential_id": "a" * 200,
+                "tenant": "acme",
+                "secret_ref": "secret://acme/token",
+                "created_by": "admin",
+                "created_at": "2026-11-16T08:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CredentialStoreError):
+        asyncio.run(store.list("acme"))
+
+
+def test_file_lock_gives_up_after_bounded_attempts():
+    from adk_agent.registry.credentials import _acquire_lock
+
+    def always_busy(handle: int) -> None:
+        raise OSError("busy")
+
+    with pytest.raises(CredentialStoreError):
+        _acquire_lock(0, always_busy, attempts=3, delay=0)
 
 
 def test_file_store_conflict_and_disable(tmp_path):
