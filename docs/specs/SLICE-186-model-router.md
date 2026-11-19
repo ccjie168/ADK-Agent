@@ -25,6 +25,7 @@
 - [ ] 无放行候选拒绝 -> `test_resolve_no_permitted_candidate_denied`
 - [ ] 网关按 alias 选主候选 -> `test_gateway_routes_alias_to_primary`
 - [ ] 主候选失败降级到后备 -> `test_gateway_falls_back_to_next_candidate`
+- [ ] 策略拒绝不降级 -> `test_policy_denial_does_not_fall_over`
 - [ ] 全部候选失败抛 unavailable -> `test_gateway_all_candidates_fail`
 - [ ] 直接 provider/model 路径不变 -> `test_direct_path_unchanged`
 - [ ] 全量门禁通过

@@ -141,6 +141,23 @@ def test_gateway_all_candidates_fail():
         asyncio.run(gateway.complete(_invocation(), _request(), _policy(), alias="primary"))
 
 
+def test_policy_denial_does_not_fall_over():
+    backup = FakeProvider("backup")
+    policy = _policy(
+        allowlist=("litellm", "backup"),
+        candidates=[
+            ModelCandidate(provider="litellm", model="deepseek/deepseek-v4-pro"),
+            ModelCandidate(provider="backup", model="gemini/gemini-2.5-pro"),
+        ],
+    )
+    # litellm is allowed by policy but not configured here: the denial must surface
+    # instead of silently degrading to the backup candidate.
+    gateway = PolicyModelGateway({"backup": backup})
+    with pytest.raises(ModelDenied):
+        asyncio.run(gateway.complete(_invocation(), _request(), policy, alias="primary"))
+    assert backup.requests == []
+
+
 def test_direct_path_unchanged():
     direct = FakeProvider("direct")
     gateway = _gateway(direct)

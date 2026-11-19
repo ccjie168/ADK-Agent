@@ -12,12 +12,12 @@ SLICE-186 模型别名路由器与降级
   下一候选，全部失败抛 `ModelUnavailable`；策略拒绝（`ModelDenied`）不降级。原单次调用体抽出为
   `_complete_once`，不给 alias 时行为不变。
 - `routing.py` 从 `.gateway` 导入 `ModelDenied`；网关在函数内延迟导入 `resolve_candidates` 以避免循环导入。
-- 新增 `tests/models/test_model_router.py` 八个测试。
+- 新增 `tests/models/test_model_router.py` 九个测试（含验证代理指出的「策略拒绝不降级」用例）。
 
 二、绿态
 
 $ python scripts/check.py --fast
-1770 passed, 91 skipped（ALL PASS，7 步）
+1771 passed, 91 skipped（ALL PASS，7 步）
 
 $ python scripts/check.py --full
 ALL PASS（9 步，含 bandit / pip-audit）
