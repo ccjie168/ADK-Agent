@@ -25,6 +25,10 @@ class ToolDenied(Exception):
     """The tool call is not allowed."""
 
 
+class ToolIdempotencyMissing(Exception):
+    """A write tool was called without the required idempotency key."""
+
+
 class FunctionToolGateway:
     def __init__(
         self,
@@ -66,6 +70,18 @@ class FunctionToolGateway:
                 args_hash=args_hash,
             )
             raise ToolDenied(decision.reason)
+
+        if spec.requires_idempotency and not request.idempotency_key:
+            await self._audit(
+                invocation,
+                request,
+                spec=spec,
+                status="denied",
+                error_code="idempotency_missing",
+                started=started,
+                args_hash=args_hash,
+            )
+            raise ToolIdempotencyMissing("idempotency key required")
 
         if spec.requires_approval:
             await self._audit(

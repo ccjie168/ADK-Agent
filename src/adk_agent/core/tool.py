@@ -15,6 +15,7 @@ class ToolRequest(BaseModel):
 
     tool_id: str = Field(min_length=1)
     args: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class ToolResponse(BaseModel):

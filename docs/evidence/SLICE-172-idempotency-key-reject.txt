@@ -1,0 +1,39 @@
+SLICE-172 写工具缺 idempotency_key 拒绝
+日期: 2026-11-20
+依据: ADR-0034（Accepted 2026-11-19）决定 2 / slice 2（前半）
+基线: ef2ea4c
+
+一、实现
+
+- `ToolRequest`（core/tool.py）增加 `idempotency_key: str | None`（min_length=1、max_length=128，
+  缺省 None）。
+- 重生成 `tool_gateway_request.schema.json`（仅 `ToolRequest` 新增可选 `idempotency_key`）。
+- `FunctionToolGateway.invoke`（tools/gateway.py）在策略放行后、审批检查前，对
+  `spec.requires_idempotency` 且缺 key 的调用审计 `idempotency_missing`（status=denied）并抛
+  `ToolIdempotencyMissing`。
+- `build_tool_gateway_app`（tools/service.py）捕获该异常返回 400 `{"error": "idempotency_missing"}`。
+- 新增 `tests/test_idempotency_key_reject.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1699 passed, 90 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 ef2ea4c 上 `ToolRequest` 无 `idempotency_key` 字段：
+`test_tool_request_accepts_idempotency_key`、`test_gateway_rejects_missing_idempotency_key`、
+`test_gateway_allows_read_tool_without_key`、`test_gateway_allows_write_tool_with_key` 四个测试失败
+（extra_forbidden）；`test_tool_request_rejects_empty_idempotency_key` 在基线上因 extra_forbidden
+也抛 ValidationError 而巧合通过。
+
+四、范围与已知缺口
+
+- 幂等存储（文件 + Postgres）、重复 key 重放（slice 3）。
+- 序列化失败语义（slice 3）。
+- 与 ADR-0029 风险分级联动（L3/L4 强制幂等，slice 4）。
+- 父进程沙箱执行器为写工具注入 key：当前无工具标记 write=true，slice 4 落地时一并接入。
+- `idempotency_key` 用 min_length=1/max_length=128，未限定字符集（存储时按 sha256 哈希，任意字符安全）。
