@@ -297,7 +297,7 @@
 - 授权以 grants 过线，服务端用 `GrantPolicyEngine` 判定。拒绝和未注册工具返回 403 `{"error":"tool_denied"}`。
 - 执行失败返回 502 `{"error":"tool_call_failed"}`，输出不可 JSON 序列化返回 502 `{"error":"tool_output_invalid"}`。
 - `--credentials-dir`、`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 只能给一个，冲突退出 2；配置后连接器的两段凭据先解析存储密文，失败按 `secret_unavailable` 拒绝。
-- 凭据参数只在配置了连接器（`--connectors-dir` 或 `CONNECTOR_URL`）时有意义；只有 `--tools` 时给出凭据参数退出 1。keyring 非法时启动退出 1。
+- 凭据参数只在配置了连接器（`--connectors-dir` 或 `CONNECTOR_URL`）时有意义；只有 `--tools` 时给出凭据参数退出 1，这个检查先于凭据来源冲突的退出 2。keyring 非法时启动退出 1。
 - `GET /metrics` 需要 token，指标见 `metrics.md`。
 - 给了 `--audit-file` 时每个 `tool.call` 事件追加一行 JSON。
 - 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。
