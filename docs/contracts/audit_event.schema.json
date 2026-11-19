@@ -226,6 +226,24 @@
       "default": null,
       "title": "Result Hash"
     },
+    "risk_level": {
+      "anyOf": [
+        {
+          "enum": [
+            "L1",
+            "L2",
+            "L3",
+            "L4"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Risk Level"
+    },
     "run_id": {
       "minLength": 1,
       "title": "Run Id",

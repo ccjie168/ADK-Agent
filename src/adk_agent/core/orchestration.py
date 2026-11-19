@@ -73,6 +73,11 @@ class PlanStep(BaseModel):
     approval_reason: str = ""
     risk_level: RiskLevel | None = None
 
+    @property
+    def needs_approval(self) -> bool:
+        """True when the step requires HITL, from the flag or L3/L4 risk."""
+        return self.requires_approval or self.risk_level in ("L3", "L4")
+
     @field_validator("depends_on", "inputs_from")
     @classmethod
     def _valid_references(cls, value: list[str]) -> list[str]:

@@ -270,7 +270,7 @@ class PlanExecutor:
                 self._check_cancelled(cancel)
                 self._check_deadline(invocation)
                 self._check_budget(invocation, spent_usd)
-                if step.requires_approval:
+                if step.needs_approval:
                     await self._save_checkpoint(
                         invocation,
                         plan,
@@ -844,7 +844,7 @@ class PlanExecutor:
             )
             raise UnknownAgent(f"agent {step.agent_ref.id!r} is not registered")
 
-        if step.requires_approval:
+        if step.needs_approval:
             await self._require_approval(
                 step, child, input_text, approvals, remaining, cancel, step_started
             )
@@ -1246,6 +1246,7 @@ class PlanExecutor:
             egress="none",
             status=status,
             error_code=error_code,
+            risk_level=step.risk_level,
             timestamp=datetime.now(timezone.utc),
         )
         await self.audit.emit(event)
