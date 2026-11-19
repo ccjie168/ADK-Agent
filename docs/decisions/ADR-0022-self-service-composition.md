@@ -27,7 +27,7 @@
 7. **组合结果就是普通已发布版本。** 版本按 digest 固定，评测门禁、生命周期与市场规则原样适用。不提供热替换或绕过发布的快捷路径。
 8. **能力清单的初始映射。** 能力名稳定，角色映射可调整。
    - 终端用户：`chat.run`、`runs.read`、`sessions.read`。
-   - 运营或审批人：上述加 `approvals.read`、`approvals.decide`、`grants.read`、`grants.decide`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`。
+   - 运营或审批人：上述加 `approvals.read`、`approvals.decide`、`grants.read`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`。（`grants.decide` 已于 2026-11-19 收紧到 `admin`，见确认记录。）
    - Agent 开发者或发布者：`registry.read`、`registry.publish`、`eval.read`、`tools.read`、`lifecycle.read`。
    - 平台管理员：全部能力，另有 `policy.write` 与 `ops.status`。
    - `admin` 角色继续隐含全部能力，与现有服务端判断一致。
