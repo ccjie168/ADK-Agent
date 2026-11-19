@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from adk_agent.core import AgentArtifact, AgentManifest, AgentRef, PublishedAgent
-from adk_agent.registry import published_from
+from adk_agent.registry import pack_files, published_from
 from adk_agent.registry.loader import load_agent
 from adk_agent.registry.service import build_registry_service_app
 from adk_agent.sandbox.agent import (
@@ -131,22 +131,29 @@ class _Loader:
 
 
 class _Store:
-    def __init__(self) -> None:
+    def __init__(self, data: bytes) -> None:
         self.calls = 0
+        self.data = data
 
     async def get(self, digest: str) -> bytes:
         self.calls += 1
-        return b"zip!"
+        return self.data
 
 
 def _load(record: PublishedAgent, trust: _Trust, loader: _Loader) -> object:
+    data = pack_files(
+        {
+            "manifest.json": record.manifest.model_dump_json().encode("utf-8"),
+            "agent.py": b"",
+        }
+    )
     ref = AgentRef(id="bot", version="1.0.0", digest=record.digest)
     return asyncio.run(
         load_agent(
             registry=_Registry(record),
             ref=ref,
             tenant="acme",
-            store=_Store(),
+            store=_Store(data),
             loader=loader,
             trust=trust,
         )

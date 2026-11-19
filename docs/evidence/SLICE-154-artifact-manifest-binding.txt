@@ -11,16 +11,21 @@ SLICE-154 工件内 manifest 与发布记录的绑定
   `artifact_manifest_mismatch`，不写入存储。
 - `POST /v1/agents`：如果该 digest 的字节已存在，读取并比较，不一致返回 400
   `artifact_manifest_mismatch`；字节尚未上传时跳过，由上传端补查。
-- 契约的发布、上传与错误表同步；测试的 `_artifact` 夹具改为生成真实 zip（manifest.json +
-  agent.py），既有断言未改。
+- 加载时再比较一次：`registry.loader.verify_published_artifact` 读取存储字节内的 manifest 并与
+  记录比较，`load_agent`、控制台按需加载与触发服务都调用它，不一致抛 `ArtifactLoadError`
+  （控制台映射为 500 `load_failed`）。这关闭了全租户扫描与写入之间的并发窗口。
+- 契约的发布、上传、加载与错误表同步；测试夹具改为生成真实 zip，既有断言未改。
 
 二、绿态
 
 $ pytest tests/registry/test_registry_service.py -q
 24 passed
 
+$ pytest tests/registry/test_artifact_loader.py -q
+17 passed
+
 $ pytest -q（Windows）
-1609 passed, 89 skipped
+1610 passed, 89 skipped
 
 $ python scripts/check.py --full
 ALL PASS
@@ -33,6 +38,8 @@ ALL PASS
 - `test_publish_rejects_a_record_mismatching_stored_bytes` 失败：基线在字节已存在时仍返回 201。
 - 本轮修复前的 PR 状态：`test_upload_checks_records_beyond_the_caller_tenant` 失败（跨租户伪造
   记录不参与上传复核），全租户扫描后转绿。
+- `test_load_rejects_bytes_that_do_not_match_the_record` 在 0d91b74 上失败（DID NOT RAISE），
+  加载时比较后转绿。
 
 四、范围与已知缺口
 
@@ -42,4 +49,5 @@ ALL PASS
 - 上传端全租户扫描的代价是每次上传多一次 `tenants()` 与逐租户 `list()` 读取；租户很多时明显。
 - 任一租户发布不匹配记录后，该 digest 的字节上传会一直被拒（fail-closed），直到该记录被处理；
   当前没有删除记录的接口，只能换一个新建（不同 digest）的工件。
-- 发布端在字节缺失时仍跳过比较，但上传端的全租户扫描覆盖了该顺序。
+- 发布端在字节缺失时仍跳过比较，但上传端的全租户扫描与加载时的比较覆盖了该顺序。
+- 加载时多一次 `store.get`（控制台/触发/CLI 每条加载路径各一次）。

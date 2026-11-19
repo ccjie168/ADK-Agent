@@ -324,6 +324,32 @@ def test_load_agent(tmp_path):
 
 
 @needs_crypto
+def test_load_rejects_bytes_that_do_not_match_the_record(tmp_path):
+    key = _key()
+    data = pack_agent(_project(tmp_path))
+    artifact = _signed(data, key)
+    store = FileArtifactStore(tmp_path / "store")
+    asyncio.run(store.put(artifact, data))
+    forged = AgentManifest.model_validate({**MANIFEST, "description": "forged"})
+    published = published_from(forged, artifact=artifact)
+    registry = FileAgentRegistry(tmp_path / "registry")
+    asyncio.run(registry.publish(published))
+    ref = AgentRef(id="bot", version="1.0.0", digest=published.digest)
+
+    with pytest.raises(ArtifactLoadError):
+        asyncio.run(
+            load_agent(
+                registry=registry,
+                ref=ref,
+                tenant="acme",
+                store=store,
+                loader=InProcessArtifactLoader(),
+                trust=_trust(key),
+            )
+        )
+
+
+@needs_crypto
 def test_load_agent_without_artifact(tmp_path):
     manifest = AgentManifest.model_validate(MANIFEST)
     published = published_from(manifest)

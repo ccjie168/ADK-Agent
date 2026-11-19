@@ -65,10 +65,17 @@ def _manifest(
     return AgentManifest.model_validate(data)
 
 
-def _project(tmp_path, version: str = "1.0.0", body: str = "support bot"):
+def _project(
+    tmp_path,
+    version: str = "1.0.0",
+    body: str = "support bot",
+    *,
+    execution_tier: str | None = None,
+    tool_grants: list[dict] | None = None,
+):
     project = tmp_path / f"project-{version}"
     project.mkdir(parents=True, exist_ok=True)
-    manifest = _manifest(version)
+    manifest = _manifest(version, execution_tier=execution_tier, tool_grants=tool_grants)
     (project / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     (project / "agent.py").write_text(
         "from google.adk.agents import LlmAgent\n"
@@ -91,7 +98,14 @@ def _publish(
 ):
     manifest = _manifest(version, execution_tier=execution_tier, tool_grants=tool_grants)
     if data is None:
-        data = pack_agent(_project(tmp_path, version))
+        data = pack_agent(
+            _project(
+                tmp_path,
+                version,
+                execution_tier=execution_tier,
+                tool_grants=tool_grants,
+            )
+        )
     digest = artifact_digest(data)
     signed = sign_digest(digest, key)
     artifact_meta = None

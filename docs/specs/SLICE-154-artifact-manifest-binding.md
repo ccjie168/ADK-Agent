@@ -11,7 +11,10 @@
    返回 400 `artifact_manifest_mismatch`，字节不写入存储。
 2. 发布记录时，如果该 digest 的字节已经存在（先上传后发布），同样解析并比较；不一致返回
    400 `artifact_manifest_mismatch`。字节尚未上传时跳过，由上传端补查。
-3. 正常顺序（先发布记录、后上传字节）与 CLI 的既有行为不变；`read_artifact_zip` 的解析逻辑
+3. 加载时再比较一次：`verify_published_artifact` 读取存储字节内的 manifest 并与记录比较，
+   控制台按需加载、触发服务与 `load_agent` 都调用它；不一致按 `ArtifactLoadError` 处理。
+   这关闭了上传扫描与写入之间的并发窗口。
+4. 正常顺序（先发布记录、后上传字节）与 CLI 的既有行为不变；`read_artifact_zip` 的解析逻辑
    抽成 `read_artifact_manifest`，行为不变。
 4. 契约先更新 `POST /v1/agents`、`PUT /v1/artifacts/{digest}` 与错误表。
 
@@ -24,6 +27,7 @@
 - [x] 记录 manifest 与工件内 manifest 不同时上传被拒且不落盘 -> `test_upload_rejects_bytes_with_a_different_manifest`
 - [x] 先上传字节、再发布不匹配的记录被拒 -> `test_publish_rejects_a_record_mismatching_stored_bytes`
 - [x] 其他租户的同 digest 不匹配记录也会阻止上传 -> `test_upload_checks_records_beyond_the_caller_tenant`
+- [x] 加载时工件内 manifest 与记录不一致被拒 -> `test_load_rejects_bytes_that_do_not_match_the_record`
 - [x] 匹配路径保持可用 -> `test_upload_artifact`
 - [x] 全量门禁通过
 

@@ -100,6 +100,7 @@ from .registry import (
     credential_is_bound,
     fetch_agent_card,
     load_sandbox_agent,
+    verify_published_artifact,
 )
 from .runtime import AgentRuntime, dev_agent_ref
 from .runtime.quota_postgres import QuotaStoreUnavailable
@@ -3039,6 +3040,7 @@ def build_console_app(
                 if record.manifest.execution_tier == "sandboxed":
                     agent = await load_sandbox_agent(record, store=artifact_store)
                 else:
+                    await verify_published_artifact(record, store=artifact_store)
                     agent = await loader.load(artifact, artifact_store)
             except SandboxToolsUnavailable:
                 return JSONResponse({"error": "tool_mediation_unavailable"}, status_code=409)

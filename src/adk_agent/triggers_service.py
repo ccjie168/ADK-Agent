@@ -458,6 +458,9 @@ def build_triggers_app(
                 if published.artifact is None:
                     raise ValueError("published agent has no artifact")
                 trust.verify(published.artifact)
+                from .registry.loader import verify_published_artifact
+
+                await verify_published_artifact(published, store=artifact_store)
                 agent = await loader.load(published.artifact, artifact_store)
                 break
             except Exception:  # noqa: BLE001

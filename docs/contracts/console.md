@@ -294,6 +294,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 非 `admin` 身份加载其他租户返回 403 `tenant_forbidden`。
 - 版本不存在返回 404 `not_found`。
 - 该版本没有工件返回 409 `artifact_missing`；签名缺失或不可信返回 409 `artifact_untrusted`。
+- 加载前比较工件内 `manifest.json` 与记录 manifest；不一致或字节缺失返回 500 `load_failed`。
 - 记录声明 `sandboxed` 而控制台没有 agent 沙箱后端时返回 409 `sandbox_unavailable`（ADR-0024）。
 - 记录声明 `sandboxed` 且声明了工具授权、而进程沙箱没有工具执行器时返回 409 `tool_mediation_unavailable`。
 - 同名 agent 已按另一版本按需加载返回 409 `name_conflict`。
