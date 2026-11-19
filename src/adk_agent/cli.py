@@ -674,6 +674,36 @@ def _model_policy_resolver(args: argparse.Namespace) -> Any:
     return resolve
 
 
+def _tool_grant_resolver(args: argparse.Namespace) -> Any:
+    """Resolve manifest tool grants from the registry by agent_ref (ADR-0028).
+
+    Returns ``None`` when no registry is configured, so the gateway fails closed.
+    """
+    from .registry import FileAgentRegistry, HttpAgentRegistry
+
+    url = getattr(args, "registry_url", None)
+    registry: Any
+    if url:
+        if not url.startswith(("http://", "https://")):
+            print(
+                f"invalid --registry-url {url!r}: expected http:// or https://",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        registry = HttpAgentRegistry(url, auth_token=_registry_token(args))
+    else:
+        registry_dir = getattr(args, "registry", None)
+        if not registry_dir:
+            return None
+        registry = FileAgentRegistry(registry_dir)
+
+    async def resolve(invocation: Any) -> Any:
+        record = await registry.get(invocation.agent_ref, invocation.principal.tenant)
+        return record.manifest.tool_grants if record is not None else None
+
+    return resolve
+
+
 def _rate_limit(args: argparse.Namespace) -> RateLimit | None:
     limit = getattr(args, "rate_limit", None)
     window = getattr(args, "rate_limit_window", None)
@@ -1283,6 +1313,13 @@ def main(argv: list[str] | None = None) -> None:
         help="tenant whose connectors are loaded (default: local)",
     )
     _add_credential_store_args(p_tools)
+    _add_registry_client_args(p_tools)
+    p_tools.add_argument(
+        "--registry",
+        default=None,
+        help="registry directory for server-side tool grants (file backend)",
+    )
+    _add_tool_grant_args(p_tools)
     tools_audit = p_tools.add_mutually_exclusive_group()
     tools_audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
     tools_audit.add_argument(
@@ -2293,6 +2330,8 @@ def main(argv: list[str] | None = None) -> None:
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
             rate_limit=rate_limit,
+            grant_resolver=_tool_grant_resolver(args),
+            tool_grants=_tool_grant_store(args),
         )
 
         import uvicorn

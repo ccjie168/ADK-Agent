@@ -48,13 +48,13 @@ def add(a: int, b: int) -> int:
     return a + b
 
 
-def _invocation() -> Invocation:
+def _invocation(input: str = "hi") -> Invocation:
     return Invocation(
         run_id="r1",
         trace_id="tr1",
         principal=Principal(tenant="t1", subject="alice", kind="human"),
         agent_ref=AgentRef(id="bot", version="1", digest="d" * 64),
-        input="hi",
+        input=input,
     )
 
 
@@ -68,9 +68,9 @@ def _model_payload(allowlist: list[str]) -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
-def _tool_payload(grants: list[ToolGrant]) -> dict[str, Any]:
+def _tool_payload(grants: list[ToolGrant], input: str = "hi") -> dict[str, Any]:
     return ToolGatewayRequest(
-        invocation=_invocation(),
+        invocation=_invocation(input),
         request=ToolRequest(tool_id="add", args={"a": 1, "b": 2}),
         grants=grants,
     ).model_dump(mode="json")
@@ -151,8 +151,15 @@ def test_model_metrics_require_token():
 def test_tool_gateway_counts_calls():
     metrics = MetricsRegistry()
     registry = FunctionRegistry([ToolSpec(tool_id="add", handler=add)])
+
+    async def resolver(invocation):
+        return [ToolGrant(tool_id="add")] if invocation.input == "allow" else []
+
     app = build_tool_gateway_app(
-        FunctionToolGateway(registry), auth_token="secret", metrics=metrics
+        FunctionToolGateway(registry),
+        auth_token="secret",
+        metrics=metrics,
+        grant_resolver=resolver,
     )
 
     async def scenario() -> httpx.Response:
@@ -160,9 +167,13 @@ def test_tool_gateway_counts_calls():
             transport=httpx.ASGITransport(app=app), base_url="http://gateway"
         ) as client:
             ok = await client.post(
-                "/v1/invoke", json=_tool_payload([ToolGrant(tool_id="add")]), headers=AUTH
+                "/v1/invoke",
+                json=_tool_payload([ToolGrant(tool_id="add")], input="allow"),
+                headers=AUTH,
             )
-            denied = await client.post("/v1/invoke", json=_tool_payload([]), headers=AUTH)
+            denied = await client.post(
+                "/v1/invoke", json=_tool_payload([], input="deny"), headers=AUTH
+            )
             assert ok.status_code == 200
             assert denied.status_code == 403
             return await client.get("/metrics", headers=AUTH)

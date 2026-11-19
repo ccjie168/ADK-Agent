@@ -45,9 +45,24 @@ def _invocation() -> Invocation:
     )
 
 
-def _client(*, auth_token: str = "secret") -> tuple[HttpToolGateway, httpx.AsyncClient]:
+def _resolver(grants):
+    async def resolve(_invocation):
+        return grants
+
+    return resolve
+
+
+def _client(
+    *, auth_token: str = "secret", resolver_grants: list[ToolGrant] | None = None
+) -> tuple[HttpToolGateway, httpx.AsyncClient]:
     registry = FunctionRegistry([ToolSpec(tool_id="add", handler=add)])
-    app = build_tool_gateway_app(FunctionToolGateway(registry), auth_token="secret")
+    app = build_tool_gateway_app(
+        FunctionToolGateway(registry),
+        auth_token="secret",
+        grant_resolver=_resolver(
+            resolver_grants if resolver_grants is not None else [ToolGrant(tool_id="add")]
+        ),
+    )
     http_client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://gateway"
     )
@@ -74,7 +89,7 @@ def test_client_roundtrip():
 
 
 def test_client_maps_denial():
-    client, http_client = _client()
+    client, http_client = _client(resolver_grants=[])
     try:
         with pytest.raises(ToolDenied):
             _invoke(client, GrantPolicyEngine([]))
