@@ -7,8 +7,9 @@ SLICE-168 risk_level 字段扩展到 ToolEntry/PlanStep/ConnectorSpec
 
 - `ToolEntry`（tools/catalog.py）、`PlanStep`（core/orchestration.py）、`ConnectorSpec`
   （core/connectors.py）各增加可选 `risk_level: RiskLevel | None = None`。
-- 重生成 `docs/contracts/manifest.schema.json`、`orchestration_plan.schema.json`、
-  `tool_gateway_request.schema.json`（ToolEntry/ConnectorSpec 不是契约 schema，内部类型）。
+- 重生成契约 schema；本刀净变更仅 `docs/contracts/orchestration_plan.schema.json`（PlanStep 带
+  risk_level）。`manifest.schema.json` 与 `tool_gateway_request.schema.json` 已在 SLICE-167 带
+  risk_level，本刀无净变更；ToolEntry/ConnectorSpec 是内部类型，无契约 schema。
 - `docs/contracts/cli.md` 的 ToolEntry 字段列表补 `risk_level`。
 - 新增 `tests/test_risk_level_fields.py` 四个测试。
 
