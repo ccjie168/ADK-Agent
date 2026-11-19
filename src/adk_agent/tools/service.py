@@ -41,6 +41,7 @@ def build_tool_gateway_app(
     rate_limit: RateLimit | None = None,
     grant_resolver: ToolGrantResolver | None = None,
     tool_grants: ToolGrantStore | None = None,
+    trust_caller_policy: bool = False,
 ) -> FastAPI:
     """Build the tool gateway app. Every path except /healthz needs the token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -74,9 +75,6 @@ def build_tool_gateway_app(
             return JSONResponse({"error": "principal_mismatch"}, status_code=403)
         invocation = invocation.model_copy(update={"principal": bound})
 
-        if grant_resolver is None and tool_grants is None:
-            return JSONResponse({"error": "grant_unavailable"}, status_code=403)
-        server_grants: list[ToolGrant] = []
         if grant_resolver is not None:
             try:
                 resolved = await grant_resolver(invocation)
@@ -86,6 +84,12 @@ def build_tool_gateway_app(
             if resolved is None:
                 return JSONResponse({"error": "grant_unavailable"}, status_code=403)
             server_grants = resolved
+        elif trust_caller_policy:
+            server_grants = list(call.grants)
+        elif tool_grants is not None:
+            server_grants = []
+        else:
+            return JSONResponse({"error": "grant_unavailable"}, status_code=403)
 
         policy = GrantPolicyEngine(server_grants, overlay=tool_grants)
         tool_id = call.request.tool_id

@@ -490,6 +490,19 @@ def _auth_token(args: argparse.Namespace) -> str | None:
     return os.environ.get(env_name) if env_name else None
 
 
+def _trust_caller_policy(args: argparse.Namespace) -> bool:
+    """Return the loopback-only escape-hatch flag, rejecting non-loopback use."""
+    flag = bool(getattr(args, "trust_caller_policy", False))
+    if not flag:
+        return False
+    from .auth import LOOPBACK_HOSTS
+
+    if args.host not in LOOPBACK_HOSTS:
+        print("--trust-caller-policy is only allowed on a loopback host", file=sys.stderr)
+        raise SystemExit(1)
+    return True
+
+
 def _add_peer_store_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--peer-dir", default=None, help="peer and grant file store root")
     parser.add_argument("--peer-db", default=None, help="Postgres URL for peers and grants")
@@ -1287,6 +1300,12 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="registry directory for server-side model policy (file backend)",
     )
+    p_gateway.add_argument(
+        "--trust-caller-policy",
+        action="store_true",
+        default=False,
+        help="trust the caller-supplied policy (loopback dev only)",
+    )
 
     p_gateway.add_argument(
         "--guardrails",
@@ -1320,6 +1339,12 @@ def main(argv: list[str] | None = None) -> None:
         help="registry directory for server-side tool grants (file backend)",
     )
     _add_tool_grant_args(p_tools)
+    p_tools.add_argument(
+        "--trust-caller-policy",
+        action="store_true",
+        default=False,
+        help="trust the caller-supplied grants (loopback dev only)",
+    )
     tools_audit = p_tools.add_mutually_exclusive_group()
     tools_audit.add_argument("--audit-file", default=None, help="append JSONL audit events here")
     tools_audit.add_argument(
@@ -2229,6 +2254,7 @@ def main(argv: list[str] | None = None) -> None:
         except GuardrailConfigError as exc:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from None
+        trust_caller_policy = _trust_caller_policy(args)
         app = build_model_gateway_app(
             PolicyModelGateway(providers, audit=sink, guardrails=guardrails),
             host=args.host,
@@ -2237,7 +2263,8 @@ def main(argv: list[str] | None = None) -> None:
             oidc=oidc,
             metrics=metrics,
             rate_limit=rate_limit,
-            policy_resolver=_model_policy_resolver(args),
+            policy_resolver=None if trust_caller_policy else _model_policy_resolver(args),
+            trust_caller_policy=trust_caller_policy,
         )
 
         import uvicorn
@@ -2323,6 +2350,7 @@ def main(argv: list[str] | None = None) -> None:
         else:
             tool_registry = _load_tools(args.tools)
         oidc = _identity_provider(args)
+        trust_caller_policy = _trust_caller_policy(args)
         app = build_tool_gateway_app(
             FunctionToolGateway(tool_registry, audit=sink),
             host=args.host,
@@ -2330,8 +2358,9 @@ def main(argv: list[str] | None = None) -> None:
             allow_unauthenticated=args.allow_unauthenticated,
             oidc=oidc,
             rate_limit=rate_limit,
-            grant_resolver=_tool_grant_resolver(args),
-            tool_grants=_tool_grant_store(args),
+            grant_resolver=None if trust_caller_policy else _tool_grant_resolver(args),
+            tool_grants=None if trust_caller_policy else _tool_grant_store(args),
+            trust_caller_policy=trust_caller_policy,
         )
 
         import uvicorn
