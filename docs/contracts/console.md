@@ -404,6 +404,8 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 - 只有 `admin` 能登记，非 admin 403 `forbidden`。
 - 请求体不是 JSON 或不是对象 400 `invalid_request`；`CredentialBinding` 校验失败（含跨租户引用）400 `invalid_credential`。
+- 请求体不接受 `wrapped_secret`、`secret_key_id`、`secret_version` 等密文字段；出现即 400 `invalid_credential`。
+  密文只由控制面在写入 `secret` 明文时加密产生，控制台只登记引用元数据。
 - `created_by` 与 `created_at` 由服务端覆盖为调用主体与当前时间。
 - 同键同定义重发 201，幂等；不同定义 409 `credential_conflict`。
 - 成功 201，写 `credential.register` 审计，`target` 是 `<tenant>/<credential_id>`。

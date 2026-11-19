@@ -3576,6 +3576,8 @@ def build_console_app(
             return JSONResponse({"error": "invalid_request"}, status_code=400)
         if not isinstance(body, dict):
             return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if any(key in body for key in ("wrapped_secret", "secret_key_id", "secret_version")):
+            return JSONResponse({"error": "invalid_credential"}, status_code=400)
         body["created_by"] = caller.subject
         body["created_at"] = datetime.now(timezone.utc)
         try:

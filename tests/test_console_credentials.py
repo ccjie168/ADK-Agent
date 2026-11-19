@@ -136,6 +136,25 @@ def test_invalid_credential_and_forbidden(tmp_path):
     assert not_object.json() == {"error": "invalid_request"}
 
 
+def test_register_rejects_body_supplied_ciphertext(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        response = client.post(
+            "/api/credentials",
+            json=_credential(
+                wrapped_secret={"kek": "k1", "nonce": "a" * 12, "ciphertext": "a" * 64},
+                secret_key_id="k1",
+                secret_version=1,
+            ),
+            headers=AUTH,
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_credential"}
+    credentials_dir = tmp_path / "credentials"
+    written = list(credentials_dir.glob("*.json")) if credentials_dir.is_dir() else []
+    assert written == []
+
+
 def test_not_configured(tmp_path):
     with TestClient(_app(tmp_path, credentials=False)) as client:
         listed = client.get("/api/credentials?tenant=local", headers=AUTH)
