@@ -1,0 +1,32 @@
+SLICE-183 结构化检索实现 + ACL 过滤
+日期: 2026-11-20
+依据: ADR-0032（Accepted 2026-11-19）决定 3 / slice 2
+基线: 3feb8cc
+
+一、实现
+
+- `src/adk_agent/rag/memory.py` 新增 `RagSource`（`source_id`/`snippet`/`data_classes`/
+  `allowed_tenants`/`allowed_subjects`）与 `InMemoryRagService`（实现 `RagService`，按 ACL +
+  data_classes 子集 + 查询子串匹配过滤，返回 `acl_checked=True` 的 `Citation`）。
+- `Citation`/`RagService` 移到 `rag/service.py`（消除循环导入），`rag/__init__.py` 导出四个符号。
+- 新增 `tests/test_structured_rag.py` 六个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1752 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 3feb8cc 上无 `RagSource`/`InMemoryRagService`：测试收集即 ImportError。
+
+四、范围与已知缺口
+
+- 提示注入防护 + 低置信度拒答（slice 3）。
+- 真实 SQL/API 后端（后续）。
+- 向量后端独立 ADR。
+- `InMemoryRagService` 用子串匹配与固定 `confidence=1.0`，是 MVP 占位；检索质量与置信度在 slice 3
+  及后续真实后端再细化。
