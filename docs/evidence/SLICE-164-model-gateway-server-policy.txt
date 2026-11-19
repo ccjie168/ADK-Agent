@@ -1,0 +1,41 @@
+SLICE-164 模型网关服务端策略解析
+日期: 2026-11-19
+依据: ADR-0028（Accepted 2026-11-19）与 docs/review/m6-enterprise-trust-chain.md 的 Gate 3
+基线: cdb4181
+
+一、实现
+
+- `ModelGatewayRequest.policy` 改为可选（core/gateway.py），契约 schema 重生成，`policy` 从
+  required 移除。
+- `build_model_gateway_app` 新增 `policy_resolver`；`/v1/complete` 按 invocation 从解析器取
+  `manifest.model_policy`，忽略请求体 policy。缺解析器或查不到记录 fail-closed 403
+  `policy_unavailable`；解析器抛异常（注册表不可达）503 `policy_store_unavailable`。
+- `serve-model-gateway` 新增 `--registry-url`/`--registry`，`_model_policy_resolver` 从注册表按
+  `agent_ref` 解析 `model_policy`。
+- 新增 `tests/models/test_model_service_policy.py` 四个测试。
+- 9 个既有测试注入 `policy_resolver`（改输入不改断言）：test_model_service、test_service_breaker、
+  test_http_gateway、test_gateway_metrics、test_service_oidc。
+
+二、绿态
+
+$ pytest tests/models/ tests/test_gateway_metrics.py tests/test_ratelimit.py -q
+59 passed
+
+$ python scripts/check.py --fast
+1663 passed, 90 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 cdb4181 上 `build_model_gateway_app` 用请求体 `call.policy` 决策：`test_gateway_ignores_caller_policy`
+在基线失败（伪造 allowlist 放行 provider），且依赖调用方 policy 的既有测试在实现后从 200 变 403，
+证明网关不再信任请求体 policy。
+
+四、范围与已知缺口
+
+- 工具网关 grants 服务端化（ADR-0028 slice 3）是下一刀。
+- 逃生门 `--trust-caller-policy`（ADR-0028 slice 4）。
+- 策略缓存按 digest 绑定 + TTL（ADR-0028 决定 4）本刀未实现，resolver 每次读注册表。
+- 模型别名/路由/降级（ADR-0033）后续。

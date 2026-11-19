@@ -644,6 +644,36 @@ def _agent_registry(args: argparse.Namespace) -> Any:
     return HttpAgentRegistry(url, auth_token=_registry_token(args))
 
 
+def _model_policy_resolver(args: argparse.Namespace) -> Any:
+    """Resolve the model policy from the registry by agent_ref (ADR-0028).
+
+    Returns ``None`` when no registry is configured, so the gateway fails closed.
+    """
+    from .registry import FileAgentRegistry, HttpAgentRegistry
+
+    url = getattr(args, "registry_url", None)
+    registry: Any
+    if url:
+        if not url.startswith(("http://", "https://")):
+            print(
+                f"invalid --registry-url {url!r}: expected http:// or https://",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
+        registry = HttpAgentRegistry(url, auth_token=_registry_token(args))
+    else:
+        registry_dir = getattr(args, "registry", None)
+        if not registry_dir:
+            return None
+        registry = FileAgentRegistry(registry_dir)
+
+    async def resolve(invocation: Any) -> Any:
+        record = await registry.get(invocation.agent_ref, invocation.principal.tenant)
+        return record.manifest.model_policy if record is not None else None
+
+    return resolve
+
+
 def _rate_limit(args: argparse.Namespace) -> RateLimit | None:
     limit = getattr(args, "rate_limit", None)
     window = getattr(args, "rate_limit_window", None)
@@ -1219,6 +1249,13 @@ def main(argv: list[str] | None = None) -> None:
         help=(
             "JSON OidcConfig file; when set, use OIDC auth and ignore --auth-token-env and --role"
         ),
+    )
+
+    _add_registry_client_args(p_gateway)
+    p_gateway.add_argument(
+        "--registry",
+        default=None,
+        help="registry directory for server-side model policy (file backend)",
     )
 
     p_gateway.add_argument(
@@ -2163,6 +2200,7 @@ def main(argv: list[str] | None = None) -> None:
             oidc=oidc,
             metrics=metrics,
             rate_limit=rate_limit,
+            policy_resolver=_model_policy_resolver(args),
         )
 
         import uvicorn

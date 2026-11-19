@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -18,13 +18,17 @@ from ..auth import (
     bind_principal,
     resolve_http_auth,
 )
-from ..core import IdentityProvider, ModelGatewayRequest, ModelProvider
+from ..core import IdentityProvider, Invocation, ModelGatewayRequest, ModelPolicy, ModelProvider
 from ..metrics import MetricsRegistry
 from ..ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .gateway import ModelDenied, ModelUnavailable, PolicyModelGateway
 from .providers import LiteLlmProvider, VllmProvider
 
 logger = logging.getLogger(__name__)
+
+# Resolves the server-side model policy for an invocation (ADR-0028). Returning
+# ``None`` means "no policy record"; raising means the policy authority is down.
+ModelPolicyResolver = Callable[[Invocation], Awaitable[ModelPolicy | None]]
 
 
 def build_providers(
@@ -59,6 +63,7 @@ def build_model_gateway_app(
     oidc: IdentityProvider | None = None,
     metrics: MetricsRegistry | None = None,
     rate_limit: RateLimit | None = None,
+    policy_resolver: ModelPolicyResolver | None = None,
 ) -> FastAPI:
     """Build the gateway app. Every path except /healthz needs the token."""
     token = resolve_http_auth(host, auth_token, allow_unauthenticated) if oidc is None else None
@@ -92,10 +97,20 @@ def build_model_gateway_app(
             return JSONResponse({"error": "principal_mismatch"}, status_code=403)
         invocation = invocation.model_copy(update={"principal": bound})
 
+        if policy_resolver is None:
+            return JSONResponse({"error": "policy_unavailable"}, status_code=403)
+        try:
+            policy = await policy_resolver(invocation)
+        except Exception:  # noqa: BLE001  # policy authority is down
+            logger.exception("model gateway policy resolution failure")
+            return JSONResponse({"error": "policy_store_unavailable"}, status_code=503)
+        if policy is None:
+            return JSONResponse({"error": "policy_unavailable"}, status_code=403)
+
         provider = call.request.provider
         started = time.perf_counter()
         try:
-            response = await gateway.complete(invocation, call.request, call.policy)
+            response = await gateway.complete(invocation, call.request, policy)
         except ModelUnavailable:
             _record_model_call(metrics, provider, "error", started)
             return JSONResponse({"error": "model_unavailable"}, status_code=503)

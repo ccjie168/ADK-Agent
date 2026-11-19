@@ -55,14 +55,23 @@ def _request(provider: str = "fake") -> ModelRequest:
     return ModelRequest(provider=provider, model="m", messages=[Message(role="user", content="hi")])
 
 
+def _resolver(policy):
+    async def resolve(_invocation):
+        return policy
+
+    return resolve
+
+
 def _client(
     provider: FakeProvider | None = None,
     *,
     auth_token: str = "secret",
+    resolver_policy: ModelPolicy | None = None,
 ) -> tuple[HttpModelGateway, httpx.AsyncClient]:
     app = build_model_gateway_app(
         PolicyModelGateway({"fake": provider or FakeProvider()}),
         auth_token="secret",
+        policy_resolver=_resolver(resolver_policy or ModelPolicy(provider_allowlist=["fake"])),
     )
     http_client = httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://gateway"
@@ -90,10 +99,10 @@ def test_client_roundtrip():
 
 
 def test_client_maps_denied():
-    client, http_client = _client()
+    client, http_client = _client(resolver_policy=ModelPolicy(provider_allowlist=["litellm"]))
     try:
         with pytest.raises(ModelDenied):
-            _complete(client, ModelPolicy(provider_allowlist=["litellm"]))
+            _complete(client)
     finally:
         asyncio.run(http_client.aclose())
 

@@ -286,7 +286,15 @@
       "$ref": "#/$defs/Invocation"
     },
     "policy": {
-      "$ref": "#/$defs/ModelPolicy"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModelPolicy"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "request": {
       "$ref": "#/$defs/ModelRequest"
@@ -294,8 +302,7 @@
   },
   "required": [
     "invocation",
-    "request",
-    "policy"
+    "request"
   ],
   "title": "ModelGatewayRequest",
   "type": "object"
