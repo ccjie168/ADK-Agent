@@ -138,6 +138,25 @@ def test_invalid_credential_and_forbidden(tmp_path):
     assert not_object.json() == {"error": "invalid_request"}
 
 
+def test_list_rejects_an_unsafe_tenant(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        unsafe = client.get("/api/credentials?tenant=bad%2Fname", headers=AUTH)
+        empty = client.get("/api/credentials?tenant=", headers=AUTH)
+        overlong = client.get("/api/credentials?tenant=" + "a" * 129, headers=AUTH)
+
+    for response in (unsafe, empty, overlong):
+        assert response.status_code == 400
+        assert response.json() == {"error": "unsafe_tenant"}
+
+
+def test_list_accepts_a_128_character_tenant(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        response = client.get("/api/credentials?tenant=" + "a" * 128, headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_list_reports_an_invalid_record_as_unavailable(tmp_path):
     directory = tmp_path / "credentials" / "local"
     directory.mkdir(parents=True)

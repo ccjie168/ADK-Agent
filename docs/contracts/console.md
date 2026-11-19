@@ -398,6 +398,8 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 需要 `connectors.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
 - 由 `console --credentials-dir DIR` 或 `--credential-db URL`（都未给时读 `CREDENTIAL_DATABASE_URL`）提供；未配置返回 404 `credentials_not_configured`。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
+- `tenant` 不符合安全字符集（`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`）返回 400 `unsafe_tenant`；
+  这个检查先于能力检查，与注册表列表一致。
 - 存储不可达返回 503 `credential_store_unavailable`。
 
 ## `POST /api/credentials` -> `CredentialBinding`
