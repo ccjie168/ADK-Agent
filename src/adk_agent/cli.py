@@ -1614,6 +1614,20 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_credential_store_args(p_cr_rewrap)
 
+    p_cr_migrate = credentials_sub.add_parser(
+        "migrate",
+        help=(
+            "move local KEK records to the Vault backend "
+            "(needs ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE and ADK_SECRET_BACKEND=vault)"
+        ),
+    )
+    p_cr_migrate.add_argument("--to", required=True, choices=["vault"])
+    p_cr_migrate.add_argument("--tenant", required=True)
+    p_cr_migrate.add_argument(
+        "--dry-run", action="store_true", help="report what would migrate without writing"
+    )
+    _add_credential_store_args(p_cr_migrate)
+
     p_triggers = sub.add_parser("triggers", help="manage scheduled and webhook trigger definitions")
     triggers_sub = p_triggers.add_subparsers(dest="triggers_cmd", required=True)
 
@@ -3171,6 +3185,70 @@ def main(argv: list[str] | None = None) -> None:
                         "skipped": skipped,
                         "dry_run": args.dry_run,
                     }
+                if args.credentials_cmd == "migrate":
+                    from .secretstore import credential_aad
+                    from .secretstore.keys import (
+                        VaultKeyBackend,
+                        load_key_backend,
+                        load_local_backend,
+                    )
+
+                    local = load_local_backend()
+                    target = load_key_backend(allow_local=True)
+                    if not isinstance(target, VaultKeyBackend):
+                        raise ValueError("set ADK_SECRET_BACKEND=vault for credentials migrate")
+                    migrated = 0
+                    skipped = 0
+                    try:
+                        for binding in await store.list(args.tenant):
+                            wrapped = binding.wrapped_secret
+                            if wrapped is None:
+                                skipped += 1
+                                continue
+                            if wrapped.get("v") == 2:
+                                if wrapped.get("backend") != "vault":
+                                    raise KeyBackendError("secret payload is malformed")
+                                skipped += 1
+                                continue
+                            nonce = wrapped.get("nonce")
+                            ciphertext = wrapped.get("ciphertext")
+                            if not isinstance(nonce, str) or not isinstance(ciphertext, str):
+                                raise KeyBackendError("secret payload is malformed")
+                            aad = credential_aad(binding.tenant, binding.credential_id)
+                            dek = local.unwrap_dek(wrapped, aad)
+                            migrated_secret = target.wrap_dek(
+                                dek, nonce=nonce, ciphertext=ciphertext
+                            )
+                            if target.unwrap_dek(migrated_secret, aad) != dek:
+                                raise KeyBackendError("migrated credential failed verification")
+                            migrated += 1
+                            if not args.dry_run:
+                                await store.replace_wrapped(
+                                    binding.tenant,
+                                    binding.credential_id,
+                                    migrated_secret,
+                                    migrated_secret["key_id"],
+                                )
+                    except KeyBackendError:
+                        print(
+                            json.dumps(
+                                {
+                                    "tenant": args.tenant,
+                                    "migrated": migrated,
+                                    "skipped": skipped,
+                                    "dry_run": args.dry_run,
+                                    "error": "migration_failed",
+                                }
+                            ),
+                            file=sys.stderr,
+                        )
+                        raise
+                    return {
+                        "tenant": args.tenant,
+                        "migrated": migrated,
+                        "skipped": skipped,
+                        "dry_run": args.dry_run,
+                    }
                 wrapped = None
                 key_id = None
                 version = None
@@ -3215,7 +3293,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"credentials failed: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
 
-        if args.credentials_cmd == "rewrap":
+        if args.credentials_cmd in {"rewrap", "migrate"}:
             print(json.dumps(result))
         elif args.credentials_cmd == "list":
             print(

@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from .keys import KeyBackend, KeyBackendError, LocalKeyBackend, VaultKeyBackend, load_key_backend
+from .keys import (
+    KeyBackend,
+    KeyBackendError,
+    LocalKeyBackend,
+    VaultKeyBackend,
+    load_key_backend,
+    load_local_backend,
+)
 from .providers import (
     EnvSecretProvider,
     MappingSecretProvider,
@@ -29,5 +36,6 @@ __all__ = [
     "credential_aad",
     "TenantSecretProvider",
     "load_key_backend",
+    "load_local_backend",
     "secret_header_provider",
 ]

@@ -74,6 +74,22 @@ class LocalKeyBackend:
             "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
         }
 
+    def unwrap_dek(self, wrapped: Mapping[str, Any], aad: bytes) -> bytes:
+        if not isinstance(wrapped, Mapping) or wrapped.get("v") != _VERSION:
+            raise KeyBackendError("unsupported secret format")
+        key_id = wrapped.get("key_id")
+        if not isinstance(key_id, str) or key_id not in self._keys:
+            raise KeyBackendError("secret key id is not available")
+        try:
+            dek_nonce = base64.b64decode(wrapped["dek_nonce"], validate=True)
+            wrapped_dek = base64.b64decode(wrapped["wrapped_dek"], validate=True)
+        except (KeyError, ValueError, TypeError) as exc:
+            raise KeyBackendError("secret payload is malformed") from exc
+        try:
+            return AESGCM(self._keys[key_id]).decrypt(dek_nonce, wrapped_dek, aad)
+        except (InvalidTag, ValueError) as exc:
+            raise KeyBackendError("secret payload failed to unwrap") from exc
+
     def unwrap(self, wrapped: Mapping[str, Any], aad: bytes) -> bytes:
         if wrapped.get("v") != _VERSION:
             raise KeyBackendError("unsupported secret format")
@@ -289,6 +305,23 @@ class VaultKeyBackend:
             "ciphertext": _b64encode(ciphertext),
         }
 
+    def wrap_dek(self, dek: bytes, *, nonce: str, ciphertext: str) -> dict[str, Any]:
+        if len(dek) != 32 or len(_b64decode(nonce)) != _NONCE or not _b64decode(ciphertext):
+            raise KeyBackendError("secret payload is malformed")
+        wrapped_dek = self._encrypt_dek(dek)
+        return {
+            "v": _V2,
+            "backend": "vault",
+            "key_id": _vault_version(wrapped_dek),
+            "wrapped_dek": wrapped_dek,
+            "nonce": nonce,
+            "ciphertext": ciphertext,
+        }
+
+    def unwrap_dek(self, wrapped: Mapping[str, Any], aad: bytes) -> bytes:
+        wrapped_dek, _nonce, _ciphertext = self._payload(wrapped)
+        return self._decrypt_dek(wrapped_dek)
+
     def unwrap(self, wrapped: Mapping[str, Any], aad: bytes) -> bytes:
         wrapped_dek, nonce, ciphertext = self._payload(wrapped)
         dek = self._decrypt_dek(wrapped_dek)
@@ -392,8 +425,12 @@ def _vault_transport(
     return send
 
 
-def _load_vault_backend(variable: str, file_variable: str) -> VaultKeyBackend:
-    if os.environ.get(variable) is not None or os.environ.get(file_variable) is not None:
+def _load_vault_backend(
+    variable: str, file_variable: str, *, allow_local: bool = False
+) -> VaultKeyBackend:
+    if not allow_local and (
+        os.environ.get(variable) is not None or os.environ.get(file_variable) is not None
+    ):
         raise KeyBackendError(f"vault mode cannot be combined with {variable} or {file_variable}")
     addr = (os.environ.get("ADK_VAULT_ADDR") or "").strip().rstrip("/")
     if not addr:
@@ -446,13 +483,31 @@ def _load_vault_backend(variable: str, file_variable: str) -> VaultKeyBackend:
     return VaultKeyBackend(transport, key, mount=mount)
 
 
-def load_key_backend(
+def load_local_backend(
     *, variable: str = "ADK_SECRET_KEKS", file_variable: str = "ADK_SECRET_KEKS_FILE"
+) -> LocalKeyBackend:
+    """Load the local keyring, requiring exactly one source."""
+    value = os.environ.get(variable)
+    path = os.environ.get(file_variable) or None
+    if value is not None and path is not None:
+        raise KeyBackendError(f"set only one of {variable} or {file_variable}")
+    if path:
+        return LocalKeyBackend.from_file(path)
+    if value is None:
+        raise KeyBackendError(f"set {variable} or {file_variable}")
+    return LocalKeyBackend.from_json(value)
+
+
+def load_key_backend(
+    *,
+    variable: str = "ADK_SECRET_KEKS",
+    file_variable: str = "ADK_SECRET_KEKS_FILE",
+    allow_local: bool = False,
 ) -> KeyBackend | None:
     """Pick the local keyring or the Vault backend from the environment."""
     selected = os.environ.get("ADK_SECRET_BACKEND") or "local"
     if selected == "vault":
-        return _load_vault_backend(variable, file_variable)
+        return _load_vault_backend(variable, file_variable, allow_local=allow_local)
     if selected != "local":
         raise KeyBackendError("ADK_SECRET_BACKEND must be local or vault")
     value = os.environ.get(variable)
@@ -470,4 +525,5 @@ __all__ = [
     "LocalKeyBackend",
     "VaultKeyBackend",
     "load_key_backend",
+    "load_local_backend",
 ]

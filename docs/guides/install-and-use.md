@@ -231,6 +231,9 @@ path "transit/rewrap/adk-credentials"  { capabilities = ["update"] }
   切换后端需要迁移，未迁移的旧记录会 fail-closed。
 - 轮换：`vault write -f transit/keys/adk-credentials/rotate`，然后
   `credentials rewrap --tenant acme --credentials-dir ./credentials`（先 `--dry-run`）。
+- 从本地 KEK 迁移：同时保留 `ADK_SECRET_KEKS`/`ADK_SECRET_KEKS_FILE` 与上面的 Vault 配置
+  （只有 `migrate` 允许共存），先试跑再执行：
+  `credentials migrate --to vault --tenant acme --credentials-dir ./credentials --dry-run`。
 - Vault 不可达或令牌被拒时，解析与写入都 fail-closed，不会回退到本地 KEK；记录版本低于
   `min_decryption_version` 时解析与 rewrap 失败，新写入不受影响（encrypt 总是用最新版本）。
 
