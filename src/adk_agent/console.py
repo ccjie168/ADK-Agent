@@ -3553,6 +3553,8 @@ def build_console_app(
         target = tenant or caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        if tenant and not _SAFE_NAME.fullmatch(tenant):
+            return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
         denied = _forbidden_if_missing(caller, "connectors.read")
         if denied is not None:
             return denied
