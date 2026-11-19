@@ -298,12 +298,16 @@ class VaultKeyBackend:
             raise KeyBackendError("secret payload failed to unwrap") from exc
 
     def rewrap(self, wrapped: Mapping[str, Any], aad: bytes) -> dict[str, Any]:
-        wrapped_dek, _nonce, _ciphertext = self._payload(wrapped)
+        wrapped_dek, nonce, ciphertext = self._payload(wrapped)
         new_wrapped = self._rewrap_dek(wrapped_dek)
-        updated = dict(wrapped)
-        updated["key_id"] = _vault_version(new_wrapped)
-        updated["wrapped_dek"] = new_wrapped
-        return updated
+        return {
+            "v": _V2,
+            "backend": "vault",
+            "key_id": _vault_version(new_wrapped),
+            "wrapped_dek": new_wrapped,
+            "nonce": nonce,
+            "ciphertext": ciphertext,
+        }
 
 
 def _read_secret_file(path: str, label: str) -> str:
