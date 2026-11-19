@@ -116,3 +116,7 @@
   凭据值密文与 nonce 不变；密钥轮换由运维执行 Vault rotate。
 - 不可达、403、密钥版本禁用或解密失败都映射为 `KeyBackendError`，按上面的失败语义写
   `credential.decrypt_failed` 审计并 fail-closed，没有本地回退，DEK 不缓存。
+- 从本地 KEK 切到 Vault 用 `credentials migrate --to vault --tenant T`：逐条把 `v: 1` 记录的
+  数据密钥用本地 KEK 解封、再用 Transit 封装，凭据值密文与 nonce 保持不变；迁移期间命令同时
+  读取本地 keyring 与 Vault 配置，其他路径仍要求互斥。失败即停，已迁移记录保持 `v: 2`，
+  未处理的保持 `v: 1`，重跑跳过已完成项。
