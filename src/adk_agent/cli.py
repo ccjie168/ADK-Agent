@@ -150,6 +150,22 @@ def _tool_grant_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _idempotency_store(args: argparse.Namespace) -> Any:
+    """Build the tool idempotency store from ``--idempotency-dir`` or ``--idempotency-db``."""
+    from .tools import FileToolIdempotencyStore, PostgresToolIdempotencyStore
+
+    directory = getattr(args, "idempotency_dir", None)
+    url = getattr(args, "idempotency_db", None)
+    if directory and url:
+        print("set exactly one of --idempotency-dir or --idempotency-db", file=sys.stderr)
+        raise SystemExit(1)
+    if directory:
+        return FileToolIdempotencyStore(directory)
+    if url:
+        return PostgresToolIdempotencyStore(url)
+    return None
+
+
 def _connector_store(args: argparse.Namespace) -> Any:
     """Build the connector store from ``--connectors-dir`` or ``--registry-url``."""
     from .registry import FileConnectorStore, HttpConnectorStore
@@ -482,6 +498,19 @@ def _add_tool_grant_args(parser: argparse.ArgumentParser) -> None:
         "--tool-grants-dir",
         default=None,
         help="directory of temporary tool grant requests (or set GRANT_URL)",
+    )
+
+
+def _add_idempotency_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--idempotency-dir",
+        default=None,
+        help="directory of tool idempotency records (file backend)",
+    )
+    parser.add_argument(
+        "--idempotency-db",
+        default=None,
+        help="Postgres URL of tool idempotency records (shared backend)",
     )
 
 
@@ -1345,6 +1374,7 @@ def main(argv: list[str] | None = None) -> None:
         help="registry directory for server-side tool grants (file backend)",
     )
     _add_tool_grant_args(p_tools)
+    _add_idempotency_args(p_tools)
     p_tools.add_argument(
         "--trust-caller-policy",
         action="store_true",
@@ -2358,7 +2388,7 @@ def main(argv: list[str] | None = None) -> None:
         oidc = _identity_provider(args)
         trust_caller_policy = _trust_caller_policy(args)
         app = build_tool_gateway_app(
-            FunctionToolGateway(tool_registry, audit=sink),
+            FunctionToolGateway(tool_registry, audit=sink, idempotency=_idempotency_store(args)),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,
