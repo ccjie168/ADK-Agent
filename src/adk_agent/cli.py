@@ -500,6 +500,12 @@ def _trust_caller_policy(args: argparse.Namespace) -> bool:
     if args.host not in LOOPBACK_HOSTS:
         print("--trust-caller-policy is only allowed on a loopback host", file=sys.stderr)
         raise SystemExit(1)
+    if getattr(args, "registry_url", None) or getattr(args, "registry", None):
+        print(
+            "--trust-caller-policy cannot be combined with --registry or --registry-url",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     return True
 
 

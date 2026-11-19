@@ -21,6 +21,7 @@
 - [x] 模型网关 `--trust-caller-policy` 且无注册表时用调用方 policy -> `test_model_gateway_trust_caller_policy`
 - [x] 工具网关 `--trust-caller-policy` 且无注册表时用调用方 grants -> `test_tool_gateway_trust_caller_policy`
 - [x] 非回环地址打开 `--trust-caller-policy` 被拒 -> `test_trust_caller_policy_requires_loopback`
+- [x] 与 `--registry`/`--registry-url` 同时给被拒 -> `test_trust_caller_policy_rejects_registry`
 - [x] 全量门禁通过
 
 ## 反例

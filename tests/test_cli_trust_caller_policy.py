@@ -22,3 +22,11 @@ def test_trust_caller_policy_loopback_ok():
 def test_trust_caller_policy_off_by_default():
     args = SimpleNamespace(host="0.0.0.0", trust_caller_policy=False)
     assert _trust_caller_policy(args) is False
+
+
+def test_trust_caller_policy_rejects_registry():
+    args = SimpleNamespace(
+        host="127.0.0.1", trust_caller_policy=True, registry="/tmp/reg", registry_url=None
+    )
+    with pytest.raises(SystemExit):
+        _trust_caller_policy(args)
