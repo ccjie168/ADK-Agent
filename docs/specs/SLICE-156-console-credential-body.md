@@ -7,7 +7,8 @@
 ## 意图
 
 1. `POST /api/credentials` 的请求体出现 `wrapped_secret`、`secret_key_id` 或 `secret_version` 时
-   返回 400 `invalid_credential`，不写存储。
+   返回 400 `invalid_credential`，不写存储。未配置凭据存储时仍先返回 404
+   `credentials_not_configured`（既有顺序）。
 2. 密文只能由控制面在写入明文时加密产生；控制台只登记引用元数据。
 3. 契约先更新 `docs/contracts/console.md` 的登记段。
 

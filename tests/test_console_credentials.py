@@ -150,6 +150,9 @@ def test_register_rejects_body_supplied_ciphertext(tmp_path):
 
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_credential"}
+    credentials_dir = tmp_path / "credentials"
+    written = list(credentials_dir.glob("*.json")) if credentials_dir.is_dir() else []
+    assert written == []
 
 
 def test_not_configured(tmp_path):
