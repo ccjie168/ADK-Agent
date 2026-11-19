@@ -97,6 +97,7 @@ from .ports import (
     TemplateSource,
     ToolGateway,
     ToolGrantStore,
+    ToolIdempotencyStore,
     TriggerFireStore,
     TriggerStore,
 )
@@ -124,6 +125,13 @@ from .tool_grants import (
     ToolGrantRequest,
     effective_status,
     is_active,
+)
+from .tool_idempotency import (
+    ToolExecutionRecord,
+    ToolExecutionStatus,
+    ToolIdempotencyConflict,
+    ToolIdempotencyError,
+    ToolIdempotencyUnavailable,
 )
 from .trigger_runs import (
     TriggerFire,
@@ -248,10 +256,16 @@ __all__ = [
     "TemplateSource",
     "TraceNode",
     "ToolGateway",
+    "ToolExecutionRecord",
+    "ToolExecutionStatus",
     "ToolGatewayRequest",
     "ToolGrant",
     "ToolGrantRequest",
     "ToolGrantStore",
+    "ToolIdempotencyConflict",
+    "ToolIdempotencyError",
+    "ToolIdempotencyStore",
+    "ToolIdempotencyUnavailable",
     "ToolRequest",
     "ToolResponse",
     "TriggerConflict",

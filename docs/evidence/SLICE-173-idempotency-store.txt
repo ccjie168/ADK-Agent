@@ -1,0 +1,40 @@
+SLICE-173 工具幂等存储（文件 + Postgres）
+日期: 2026-11-20
+依据: ADR-0034（Accepted 2026-11-19）决定 3 / slice 2（后半）
+基线: ed56961
+
+一、实现
+
+- `core/tool_idempotency.py` 新增 `ToolExecutionRecord`：`(tenant, tool_id, idempotency_key)` 唯一，
+  状态 `claimed`/`completed`/`unknown`，带 `output`/`data_classes`/`error_code`/`created_at`/
+  `expires_at`/`finished_at`；时间戳必须 timezone-aware，`expires_at > created_at`，终态需要
+  `finished_at`、`claimed` 不得有 `finished_at`。错误类型 `ToolIdempotencyError`/`Conflict`/
+  `Unavailable`。
+- `core/ports.py` 新增 `ToolIdempotencyStore` 协议（`claim`/`finish`/`get`/`aclose`）。
+- `tools/idempotency.py` 新增 `FileToolIdempotencyStore`：`<root>/<tenant>/<tool_id>/<sha256(key)>.json`，
+  `os.link` 单赢家、`safe_join` 校验路径段。
+- `tools/idempotency_postgres.py` 新增 `PostgresToolIdempotencyStore`：`adk_tool_idempotency` 表，
+  `(tenant, tool_id, idempotency_key)` 主键，`ON CONFLICT DO NOTHING` 单赢家。
+- 类型从 `core` 与 `tools` 导出；无对外 schema 变更（内部存储）。
+- 新增 `tests/test_tool_idempotency_store.py` 七个测试（一个 Postgres 用例需 `TEST_POSTGRES_URL`）。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1705 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 ed56961 上无 `ToolExecutionRecord`/`FileToolIdempotencyStore`/`PostgresToolIdempotencyStore`：
+测试收集即 ImportError。
+
+四、范围与已知缺口
+
+- 网关接线（claim→execute→finish、重复 key 返回旧结果、序列化失败「已执行但结果未知」语义，slice 4）。
+- 记录归档与过期清理（TTL 字段已落地，清理策略另行切片）。
+- 与 ADR-0029 风险分级联动（L3/L4 强制幂等，slice 4/后续）。
+- Postgres 用例本地因未设 `TEST_POSTGRES_URL` 跳过；CI 同样跳过，与既有 Postgres 集成用例一致。
+- `tools/idempotency.py` 从 `registry.paths` 复用 `safe_join`（叶子辅助模块，import-linter 契约允许）。
