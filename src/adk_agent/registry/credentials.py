@@ -31,8 +31,8 @@ _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
 def _read_binding(path: Path) -> CredentialBinding:
     try:
         return CredentialBinding.model_validate_json(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise CredentialStoreError("credential store contains an unreadable record") from exc
+    except (OSError, ValueError):
+        raise CredentialStoreError("credential store contains an unreadable record") from None
 
 
 def _acquire_lock(
@@ -42,12 +42,13 @@ def _acquire_lock(
     attempts: int = 100,
     delay: float = 0.05,
 ) -> None:
-    for _ in range(attempts):
+    for attempt in range(attempts):
         try:
             lock(fd)
             return
         except OSError:
-            time.sleep(delay)
+            if attempt + 1 < attempts:
+                time.sleep(delay)
     raise CredentialStoreError("credential store lock unavailable")
 
 
@@ -69,7 +70,7 @@ def _store_lock(path: Path) -> Iterator[None]:
 
             def _lock_windows(handle: int) -> None:
                 os.lseek(handle, 0, os.SEEK_SET)
-                msvcrt.locking(handle, msvcrt.LK_LOCK, 1)
+                msvcrt.locking(handle, msvcrt.LK_NBLCK, 1)
 
             _acquire_lock(fd, _lock_windows)
         else:

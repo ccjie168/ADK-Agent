@@ -6,9 +6,10 @@ SLICE-157 文件凭据存储的读取与加锁健壮性
 一、实现
 
 - `registry/credentials.py` 新增 `_read_binding`：解析失败或文件不可读时抛 `CredentialStoreError`
-  （固定文案），`add`、`get`、`list`、`disable`、`replace_wrapped` 与冲突比较统一走它。
-- Windows 锁改为 `_acquire_lock`：默认 100 次、50 ms，拿不到抛 `CredentialStoreError`，
-  不再 `while True`。
+  （固定文案，`from None` 不带异常链），`add`、`get`、`list`、`disable`、`replace_wrapped`
+  与冲突比较统一走它。
+- Windows 锁改为 `_acquire_lock` + `msvcrt.LK_NBLCK`（非阻塞尝试）：默认 100 次、50 ms，
+  拿不到抛 `CredentialStoreError`，不再 `while True`，最坏约 5 秒。
 - 控制台 `GET /api/credentials` 对无法解析的记录返回 503 `credential_store_unavailable`；CLI 退出 1。
 - `docs/contracts/credentials.md` 写明 fail-closed 与锁超时语义。
 - `.secrets.baseline` 为两个新测试里的 `secret://` 引用增加已审条目（detect-secrets 的

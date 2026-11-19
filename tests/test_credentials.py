@@ -84,11 +84,16 @@ def test_store_reads_fail_closed_on_an_invalid_record(tmp_path):
 def test_file_lock_gives_up_after_bounded_attempts():
     from adk_agent.registry.credentials import _acquire_lock
 
+    calls: list[int] = []
+
     def always_busy(handle: int) -> None:
+        calls.append(handle)
         raise OSError("busy")
 
     with pytest.raises(CredentialStoreError):
         _acquire_lock(0, always_busy, attempts=3, delay=0)
+
+    assert calls == [0, 0, 0]
 
 
 def test_file_store_conflict_and_disable(tmp_path):
