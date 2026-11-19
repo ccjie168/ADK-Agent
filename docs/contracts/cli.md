@@ -178,7 +178,7 @@
 
 管理租户凭据引用（ADR-0022 决定 5）。记录只含元数据，不存密钥值。
 
-- 后端二选一：`--credentials-dir DIR`（文件）或 `--credential-db URL`（Postgres）。都未显式给出时读 `CREDENTIAL_DATABASE_URL`。显式文件与数据库同时给出，或显式参数与环境变量冲突，退出 2。
+- 后端二选一：`--credentials-dir DIR`（文件）或 `--credential-db URL`（Postgres）。都未显式给出时读 `CREDENTIAL_DATABASE_URL`。显式文件与数据库同时给出，或显式参数（目录或数据库）与环境变量同时给出，退出 2。
 - `credentials list --tenant TENANT` 输出 JSON 数组。
 - `credentials register` 接受 `--tenant`、`--id`、`--secret-ref`、可选 `--description`。引用的租户段必须等于 `--tenant`，否则退出 1。同 id 已存在退出 1（`credential_conflict`），重发不会覆盖。
 - `credentials disable --tenant TENANT --id ID` 输出停用后的 JSON。未知 id 退出 1，重复停用幂等。
@@ -186,6 +186,7 @@
   输出 `{"tenant", "rewrapped", "skipped", "dry_run"}`；缺 `ADK_SECRET_KEKS` 与 `ADK_SECRET_KEKS_FILE` 退出 1；
   已是当前 key id 或没有密文的记录只计入 `skipped`，不解密明文。
 - 成功输出记录 JSON；失败 stderr 输出原因并退出 1。错误消息不回显环境变量值。
+- 所有需要 keyring 的命令（`credentials register|rewrap`、控制台、`serve-registry`、`serve-tool-gateway`、`remote-agents`）在 keyring 格式非法或同时设置 `ADK_SECRET_KEKS` 与 `ADK_SECRET_KEKS_FILE` 时退出 1，错误文案同时提到两个变量名，不回显内容。
 - CLI 直接写存储，不产生审计，与现有 `connectors`、`lifecycle` 命令一致。
 
 ## `adk-agent serve-triggers`
@@ -255,7 +256,7 @@
 
 - 存储参数复用 `--peer-dir DIR` 或 `--peer-db URL`，二选一；记录写在 `<DIR>/remote-agents/<remote_id>.json` 或 `adk_remote_agents` 表。
 - `remote-agents list [--tenant T]` 输出 JSON 数组，按 `remote_id` 排序；`list` 与 `disable` 不读凭据库，也不接受凭据库参数。
-- `remote-agents register --id ID --tenant T --peer P --card-url URL [--credential-ref REF] [--label L] [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL]` 拉取 card、校验名称并输出记录；已存在记录改租户退出 1；其他失败按契约错误退出 1。
+- `remote-agents register --id ID --tenant T --peer P --card-url URL [--credential-ref REF] [--label L] [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL]` 拉取 card、校验名称并输出记录；已存在记录改租户退出 1；其他失败按契约错误退出 1；keyring 非法时退出 1。
 - `remote-agents refresh --id ID [--credentials-dir DIR | --credential-db URL | $CREDENTIAL_DATABASE_URL]` 输出刷新后的记录；`changed` 与 `unreachable` 也退出 0，结论写在记录里。
 - `remote-agents disable --id ID` 输出停用后的记录，幂等；未知 id 退出 1。
 - 凭据引用按记录租户解析：两段 `secret://tenant/name` 的首段必须等于记录租户，否则按不可用处理。配置凭据库时先解析存储密文（缺 keyring、绑定禁用、解密失败或凭据库读取失败都按不可用拒绝，不回退），没有密文时走 `ADK_SECRET_<TENANT>_<NAME>` 环境变量；未配置凭据库时只走环境变量。命令不打印凭据。
@@ -296,6 +297,7 @@
 - 授权以 grants 过线，服务端用 `GrantPolicyEngine` 判定。拒绝和未注册工具返回 403 `{"error":"tool_denied"}`。
 - 执行失败返回 502 `{"error":"tool_call_failed"}`，输出不可 JSON 序列化返回 502 `{"error":"tool_output_invalid"}`。
 - `--credentials-dir`、`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 只能给一个，冲突退出 2；配置后连接器的两段凭据先解析存储密文，失败按 `secret_unavailable` 拒绝。
+- 凭据参数只在配置了连接器（`--connectors-dir` 或 `CONNECTOR_URL`）时有意义；只有 `--tools` 时给出凭据参数退出 1。keyring 非法时启动退出 1。
 - `GET /metrics` 需要 token，指标见 `metrics.md`。
 - 给了 `--audit-file` 时每个 `tool.call` 事件追加一行 JSON。
 - 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。

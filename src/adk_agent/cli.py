@@ -185,6 +185,12 @@ def _credential_store(args: argparse.Namespace) -> Any:
             file=sys.stderr,
         )
         raise SystemExit(2)
+    if url and env_url:
+        print(
+            "--credential-db conflicts with CREDENTIAL_DATABASE_URL",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     if directory:
         return FileCredentialStore(directory)
     if url:
@@ -2148,6 +2154,7 @@ def main(argv: list[str] | None = None) -> None:
         from .registry import FileConnectorStore
         from .registry.connectors_postgres import PostgresConnectorStore
         from .secretstore import (
+            KeyBackendError,
             PrefixedEnvSecretProvider,
             RoutingSecretProvider,
             TenantScopedSecretProvider,
@@ -2168,7 +2175,13 @@ def main(argv: list[str] | None = None) -> None:
             print("provide --tools, --connectors-dir or CONNECTOR_URL", file=sys.stderr)
             raise SystemExit(1)
 
-        credential_store: Any = None
+        credential_store: Any = _credential_store(args)
+        if credential_store is not None and connector_source == 0:
+            print(
+                "--credentials-dir and --credential-db require --connectors-dir or CONNECTOR_URL",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
         if connector_source:
             specs = _load_tools(args.tools).specs() if args.tools else []
             connector_store = (
@@ -2178,10 +2191,17 @@ def main(argv: list[str] | None = None) -> None:
             )
             connector_specs = asyncio.run(connector_store.list(args.connector_tenant))
             inner: Any = PrefixedEnvSecretProvider()
-            credential_store = _credential_store(args)
             if credential_store is not None:
+                try:
+                    key_backend = load_key_backend()
+                except KeyBackendError as exc:
+                    print(
+                        f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}",
+                        file=sys.stderr,
+                    )
+                    raise SystemExit(1) from None
                 inner = RoutingSecretProvider(
-                    TenantSecretProvider(load_key_backend(), credential_store, audit=sink),
+                    TenantSecretProvider(key_backend, credential_store, audit=sink),
                     inner,
                 )
             specs.extend(
@@ -2582,6 +2602,14 @@ def main(argv: list[str] | None = None) -> None:
         else:
             console_connectors = None
         console_credentials: Any = _credential_store(args)
+        if console_credentials is not None:
+            from .secretstore import KeyBackendError, load_key_backend
+
+            try:
+                load_key_backend()
+            except KeyBackendError as exc:
+                print(f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}", file=sys.stderr)
+                raise SystemExit(1) from None
         console_connector_requests: Any = _connector_request_store(args)
         console_peers: Any = None
         console_peer_grants: Any = None
@@ -2859,6 +2887,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         from .registry import fetch_agent_card
         from .secretstore import (
+            KeyBackendError,
             PrefixedEnvSecretProvider,
             RoutingSecretProvider,
             SecretNotFound,
@@ -2874,8 +2903,13 @@ def main(argv: list[str] | None = None) -> None:
         )
         secrets: Any = PrefixedEnvSecretProvider()
         if credential_store is not None:
+            try:
+                key_backend = load_key_backend()
+            except KeyBackendError as exc:
+                print(f"invalid ADK_SECRET_KEKS/ADK_SECRET_KEKS_FILE: {exc}", file=sys.stderr)
+                raise SystemExit(1) from None
             secrets = RoutingSecretProvider(
-                TenantSecretProvider(load_key_backend(), credential_store),
+                TenantSecretProvider(key_backend, credential_store),
                 secrets,
             )
 
