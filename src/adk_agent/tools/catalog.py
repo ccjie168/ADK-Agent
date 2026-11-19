@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ..core import ConnectorSpec, RiskLevel
+from ..core import ConnectorSpec, DelegationMode, RiskLevel
 
 _SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
 
@@ -32,6 +32,7 @@ class ToolEntry(BaseModel):
     tenant: str | None = Field(default=None, pattern=_SAFE_NAME)
     write: bool = False
     idempotency_required: bool | None = None
+    delegation: DelegationMode = "service"
 
     @property
     def requires_idempotency(self) -> bool:
@@ -74,6 +75,8 @@ def connector_tool_entries(specs: Iterable[ConnectorSpec]) -> list[ToolEntry]:
             data_classes=list(spec.data_classes),
             requires_approval=False,
             tenant=spec.tenant,
+            risk_level=spec.risk_level,
+            delegation=spec.delegation,
         )
         for spec in specs
         if spec.enabled
