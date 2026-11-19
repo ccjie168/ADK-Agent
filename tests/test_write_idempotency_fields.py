@@ -13,7 +13,7 @@ def _spec(**overrides) -> ToolSpec:
 def test_tool_spec_write_fields_default_false():
     spec = _spec()
     assert spec.write is False
-    assert spec.idempotency_required is False
+    assert spec.idempotency_required is None
 
 
 def test_tool_spec_write_requires_idempotency():

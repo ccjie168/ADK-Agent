@@ -1,0 +1,35 @@
+SLICE-175 风险分级联动：L3/L4 强制幂等
+日期: 2026-11-20
+依据: ADR-0034（Accepted 2026-11-19）决定 4 / slice 4
+基线: c760091
+
+一、实现
+
+- `ToolSpec`（tools/registry.py）增加 `risk_level: RiskLevel | None = None`。
+- `ToolSpec`/`ToolEntry` 的 `idempotency_required` 由 `bool = False` 改为 `bool | None = None`（三态）。
+- `requires_idempotency` 推导：`risk_level in ("L3","L4")` 强制 True；否则 `idempotency_required` 非
+  None 取该值；否则回落 `write`。
+- 无对外 schema 变更（`ToolSpec`/`ToolEntry` 为内部类型）。
+- 新增 `tests/test_risk_idempotency_linkage.py` 六个测试；更新 SLICE-171 测试的默认值断言
+  （`idempotency_required` 默认 False → None）。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1716 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 c760091 上 `ToolSpec` 无 `risk_level` 字段，`idempotency_required` 默认 False：
+五个测试在基线失败（TypeError / 断言 False 而非 None）。
+
+四、范围与已知缺口
+
+- CLI 的 `--idempotency-dir`/`--idempotency-db` 接线（随后切片）。
+- 执行失败回滚 claim（`release`/`delete`，随后切片，见 SLICE-174 证据的已知缺口）。
+- 记录归档与过期清理。
+- `idempotency_required` 三态使 L2 写可 opt-out（`idempotency_required=False` 且非 L3/L4）；L3/L4
+  强制优先于 opt-out。

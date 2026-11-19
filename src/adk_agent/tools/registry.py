@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from ..core import DataClass
+from ..core import DataClass, RiskLevel
 
 
 @dataclass(frozen=True)
@@ -17,12 +17,17 @@ class ToolSpec:
     requires_approval: bool = False
     egress: Literal["none", "third_party"] = "none"
     write: bool = False
-    idempotency_required: bool = False
+    idempotency_required: bool | None = None
+    risk_level: RiskLevel | None = None
 
     @property
     def requires_idempotency(self) -> bool:
-        """Write tools require idempotency by default (ADR-0034)."""
-        return self.write or self.idempotency_required
+        """L3/L4 force idempotency, otherwise default to write (ADR-0034)."""
+        if self.risk_level in ("L3", "L4"):
+            return True
+        if self.idempotency_required is not None:
+            return self.idempotency_required
+        return self.write
 
 
 class FunctionRegistry:
