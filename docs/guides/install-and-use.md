@@ -211,7 +211,7 @@ vault write -f transit/keys/adk-credentials
 export ADK_SECRET_BACKEND=vault
 export ADK_VAULT_ADDR=https://vault.example.com
 export ADK_VAULT_KEY=adk-credentials
-export ADK_VAULT_TOKEN_FILE=/run/secrets/vault-token
+export ADK_VAULT_TOKEN_FILE=/run/secrets/vault-token   # 属主可读的 0600 文件
 # 令牌也可以放 ADK_VAULT_TOKEN（二选一，不推荐写进命令行历史）
 # 可选：ADK_VAULT_TRANSIT_MOUNT（默认 transit）、ADK_VAULT_NAMESPACE、
 #       ADK_VAULT_CACERT、ADK_VAULT_TIMEOUT（秒，默认 5）
@@ -231,8 +231,8 @@ path "transit/rewrap/adk-credentials"  { capabilities = ["update"] }
   切换后端需要迁移，未迁移的旧记录会 fail-closed。
 - 轮换：`vault write -f transit/keys/adk-credentials/rotate`，然后
   `credentials rewrap --tenant acme --credentials-dir ./credentials`（先 `--dry-run`）。
-- Vault 不可达、令牌被拒或版本低于 `min_decryption_version` 时，解析与写入都 fail-closed，
-  不会回退到本地 KEK。
+- Vault 不可达或令牌被拒时，解析与写入都 fail-closed，不会回退到本地 KEK；记录版本低于
+  `min_decryption_version` 时解析与 rewrap 失败，新写入不受影响（encrypt 总是用最新版本）。
 
 ## Docker
 

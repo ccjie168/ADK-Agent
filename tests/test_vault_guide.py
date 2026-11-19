@@ -36,16 +36,11 @@ def test_install_guide_has_the_transit_setup_and_policy():
 
 
 def test_operations_guide_covers_rotation_and_failure():
+    source = _read("src/adk_agent/secretstore/keys.py")
     guide = _read("docs/guides/operations.md")
 
-    for name in (
-        "ADK_SECRET_BACKEND",
-        "ADK_VAULT_ADDR",
-        "ADK_VAULT_KEY",
-        "ADK_VAULT_TOKEN_FILE",
-        "ADK_VAULT_TIMEOUT",
-    ):
-        assert name in guide
+    assert set(VAULT_ENV.findall(source)) <= set(VAULT_ENV.findall(guide))
+    assert "ADK_SECRET_BACKEND" in guide
     assert "transit/keys/" in guide
     assert "credentials rewrap" in guide
     assert "Vault 不可达" in guide

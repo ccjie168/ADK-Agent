@@ -3,15 +3,15 @@
 更新日期: 2026-11-19
 分支: master（工作区干净，只留本地工具目录未跟踪）
 最新提交: `37520fc` feat: add the Vault Transit key backend (SLICE-160) (#75)
-状态: 可交接暂停；v0.1.0 已发布，凭据密钥后端等待选型
+状态: 可交接暂停；v0.1.0 已发布，Vault 密钥后端已接入，迁移命令待做
 
 ## 本次暂停交接
 
-- 代码在 `master`，`672caab`。SLICE-113 到 SLICE-152 已通过 PR #22 到 #65 合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
-- 最近门禁: `--full` 9 步全 PASS，1646 passed, 90 skipped（`docs/evidence/SLICE-160-vault-key-backend.txt`）。
+- 代码在 `master`，`37520fc`。SLICE-113 到 SLICE-160 已通过 PR #22 到 #75 合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 是本地工具，不入库。
+- 最近门禁: `--full` 9 步全 PASS，1649 passed, 90 skipped（`docs/evidence/SLICE-161-vault-docs.txt`）。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
-- 下一刀: 凭据密钥后端（ADR-0026 的框架已接受，具体 KMS/Vault/PKCS#11/KMIP 后端要等基础设施选型）；其余可自治项见缺口清单第 8 条。
+- 下一刀: ADR-0027 的迁移命令 `credentials migrate --to vault`（需要单独评审迁移语义）；其余可自治项见缺口清单第 8 条。
 - 恢复顺序: 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件，跑 `./.venv/Scripts/python.exe scripts/check.py --fast`，再从缺口清单挑一项。
 
 ## 一句话
