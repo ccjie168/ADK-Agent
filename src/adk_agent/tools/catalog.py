@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from ..core import ConnectorSpec
+from ..core import ConnectorSpec, RiskLevel
 
 _SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
 
@@ -28,6 +28,7 @@ class ToolEntry(BaseModel):
     source: ToolSource
     data_classes: list[str] = Field(default_factory=list)
     requires_approval: bool = False
+    risk_level: RiskLevel | None = None
     tenant: str | None = Field(default=None, pattern=_SAFE_NAME)
 
 

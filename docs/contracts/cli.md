@@ -435,7 +435,7 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 启动私有控制台。
 
 - `--registry` 指向注册表根目录，默认 `$ADK_REGISTRY_DIR`，否则 `./registry`。只读运营视图从这里读已发布 agent 和评测报告。
-- `--tool-catalog` 指向只读工具目录 JSON，结构是 `{"version": 1, "tools": [ToolEntry...]}`。`ToolEntry` 字段：`tool_id`、`description`、`source`（`function`/`openapi`/`mcp`/`connector`）、`data_classes`、`requires_approval`、可选 `tenant`。重复 `tool_id` 或非法字段退出 1。不给时工具面板返回 404。
+- `--tool-catalog` 指向只读工具目录 JSON，结构是 `{"version": 1, "tools": [ToolEntry...]}`。`ToolEntry` 字段：`tool_id`、`description`、`source`（`function`/`openapi`/`mcp`/`connector`）、`data_classes`、`requires_approval`、可选 `risk_level`（`L1`/`L2`/`L3`/`L4`）、可选 `tenant`。重复 `tool_id` 或非法字段退出 1。不给时工具面板返回 404。
 - `--oidc-config` 指向一个 `OidcConfig` JSON，见 `oidc_config.schema.json`。给了就改用 OIDC 鉴权，忽略 `--auth-token-env` 和 `--role`。
 - `--oidc-config` 和 `--allow-unauthenticated` 互斥，同时给退出 1。OIDC 模式允许绑定非回环地址，因为每个请求都验证 token。
 - `--quota-config` 指向一个 `QuotaConfig` JSON，见 `quota_config.schema.json`。只有列出的租户受配额限制，没列出的不限额。
