@@ -1,0 +1,37 @@
+SLICE-191 RAG 摄取管线
+日期: 2026-11-20
+依据: ADR-0035（Accepted 2026-11-20）决定 4 / slice 3
+基线: 33fa995
+
+一、实现
+
+- `rag/ingest.py` 新增 `split_text(text, *, max_chars)`：按空白切词装箱，块长不超过 `max_chars`，
+  超长单词硬切；空白输入返回空列表。
+- 新增 `IngestionPipeline(store, embedder, *, provider, model, chunk_chars=800)`：
+  `ingest(invocation, tenant, source_id, text, data_classes, policy, allowed_subjects=None)` 分块 →
+  `Embedder.embed`（`EmbeddingGateway` 满足该协议）→ 校验向量数与分块数一致 → 组装带 ACL 的
+  `RagChunk` → `store.upsert`，返回块数。
+- 空文本抛 `ValueError`；embedding 失败直接上抛且不写存储（fail-closed，无部分写入）。
+- 新增 `tests/test_rag_ingest.py` 四个测试（假 store 与假 embedder，无外部依赖）。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1790 passed, 95 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 33fa995 上无 `adk_agent.rag.ingest`：测试收集即 ModuleNotFoundError。
+
+四、范围与已知缺口
+
+- CLI 命令接线（后续）。
+- 重排、引用拼接与 `PgVectorRagService` 检索服务（下一刀）。
+- 运维手册更新（收尾切片）。
+- `chunk_id` 为位置序号（`c0`、`c1`…），源文本变化后旧块不自动删除；需要清理时由调用方按
+  `(tenant, source_id)` 处理，后续切片可加 delete。
+- `ingest` 的 `tenant` 是存储租户，embedding 审计与预算记在 invocation 的 principal 租户；跨租户代摄入时
+  两者必须由调用方保持一致（已在 `ingest` docstring 写明）。`allowed_subjects=None` 表示租户内所有 subject 可见。
