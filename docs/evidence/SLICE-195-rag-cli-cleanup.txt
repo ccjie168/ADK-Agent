@@ -6,46 +6,78 @@ SLICE-195 RAG CLI 收尾：安装提示、分级单一来源、目录摄取
 一、契约（先改）
 
 - `docs/contracts/cli.md` 的 `rag ingest` 一节：`--text` 与 `--dir` 互斥；`--source-id` 只在
-  `--text` 模式必填，与 `--dir` 同时给出退出 2；目录模式的 `source_id`（根目录相对路径、`/` 分隔）、
-  排序、空文件跳过、符号链接跳过、失败语义与重跑幂等；汇总输出 `{"tenant","sources","chunks"}`；
+  `--text` 模式必填，与 `--dir` 同时给出退出 2（空串也算给出）；目录模式按相对路径字符串排序，
+  `source_id` 取根目录相对路径（`/` 分隔），符号链接跳过，空文件跳过并记 stderr，读取失败与非 UTF-8
+  文件退出 1，失败时之前的文件已写入且重跑幂等；汇总输出 `{"tenant","sources","chunks"}`；
   缺 `litellm` extra 时的安装提示；`--data-class` 取值来源改为 `core.policy.DataClass`。
 
 二、实现
 
 - `src/adk_agent/cli.py`：
   - `_DATA_CLASSES = get_args(DataClass)`，从 `core.policy.DataClass` 推导，不再手写元组。
-  - `_run_rag` 在通用兜底之前捕获 `ImportError`，输出
-    `litellm is not installed; install it with: pip install 'adk-agent[litellm]'` 并退出 1。
+  - `_run_rag` 只对 `ModuleNotFoundError` 且 `exc.name == "litellm"` 输出安装提示，其余缺依赖回落为
+    `rag failed: ModuleNotFoundError`。
   - `rag ingest` 增加 `--dir DIR`（与 `--text` 互斥），`--source-id` 改为可选：`--text`/stdin 模式
-    缺失退出 1，与 `--dir` 同时给出退出 2。
-  - `_rag_ingest_directory`：解析根目录，按相对路径排序遍历普通文件，跳过符号链接；空文件打印
-    `skipped <相对路径>: empty text` 后继续；读取失败按 `could not read <相对路径>: <异常类型>` 退出 1；
-    每个文件调用一次 `IngestionPipeline.ingest`，`source_id` 用相对路径的 POSIX 形式；`finally` 关闭存储；
-    汇总输出 `{"tenant","sources","chunks"}`。
-  - `_rag_files` 只产出根目录下解析后的普通文件，不跟随符号链接。
-- `tests/test_cli_rag.py` 增加五个用例（共 18 个）。
+    缺失退出 1，与 `--dir` 同时给出（含空串）退出 2。
+  - `_rag_ingest_directory`：解析根目录并按相对路径字符串排序遍历普通文件，跳过符号链接；空文件打印
+    `skipped <相对路径>: empty text` 后继续；`OSError` 与 `UnicodeDecodeError` 都按
+    `could not read <相对路径>: <异常类型>` 退出 1；每个文件调用一次 `IngestionPipeline.ingest`，
+    `source_id` 用相对路径的 POSIX 形式；`finally` 关闭存储；汇总输出 `{"tenant","sources","chunks"}`。
+  - `_rag_files` 只产出根目录下解析后的普通文件，`rglob` 不跟随符号链接目录。
+- `tests/test_cli_rag.py` 增加十个用例（共 23 个：本地 22 passed、1 skipped，跳过项是 Windows 无符号
+  链接权限的用例，Linux CI 上会执行）。
 
 三、绿态
 
 $ python scripts/check.py --fast
-1817 passed, 95 skipped（ALL PASS，7 步）
+1821 passed, 96 skipped（ALL PASS，7 步；多出的 1 个 skip 是本地 Windows 无法建符号链接）
 
 $ python scripts/check.py --full
 ALL PASS（9 步，含 bandit / pip-audit）
 
 四、红态
 
-基线 00c2d2c 上先写后跑：`pytest tests/test_cli_rag.py` → `5 failed, 13 passed`。
-五个新用例分别是缺 `litellm` 提示、目录相对路径、空文件跳过、缺 `--source-id`、`--dir` 与
-`--source-id` 冲突；前两个因 `--dir` 不是合法参数（argparse 退出 2），第三个因空文件让整批退出 1，
-后两个因基线 `--source-id` 必填。
+基线 00c2d2c 上先写后跑：`pytest tests/test_cli_rag.py` → `5 failed, 13 passed`。逐个成因：
+
+- `test_rag_ingest_reports_missing_litellm_extra`：基线输出 `rag failed: ModuleNotFoundError`，没有安装提示。
+- `test_rag_ingest_directory_ingests_relative_source_ids` 与 `test_rag_ingest_directory_skips_empty_files`：
+  基线不认 `--dir`，argparse 退出 2。
+- `test_rag_ingest_requires_source_id_without_dir`：基线 `--source-id` 是必填参数，argparse 退出 2。
+- `test_rag_ingest_rejects_source_id_with_dir`：基线里 `--dir` 不合法先退出 2，退出码碰巧相符，但 stderr
+  没有 `--source-id` 文案，断言失败。
+
+第二轮补的五个边界用例（不可读文件、符号链接、空目录、`--text`+`--dir`、空串 `--source-id`）在同一
+基线上同样不通过：前四个因 `--dir` 非法退出 2，最后一个因基线 `--source-id` 必填退出 2。
 
 单独说明「分级单一来源」一项：基线手写元组与新推导取值完全相同，写不出红态断言。按切片规则不写绿于
 基线的测试，改为人工核对：`_DATA_CLASSES` 现在等于 `typing.get_args(DataClass)`，改枚举即同步。
 
-五、范围与已知缺口
+五、验证与修订
 
-- 目录模式不做增量同步与删除消失来源；重跑靠主键覆盖保证幂等。
-- 目录很小时一次性读取全部文件，没有并发或流式处理。
+第一轮独立只读验证判 MERGE（无阻塞项），另提七条非阻塞项，已修的五条：
+
+- 非 UTF-8 文件只抛 `UnicodeDecodeError`，原先不按 `could not read` 映射。已把捕获扩到
+  `(OSError, UnicodeDecodeError)` 并补 `test_rag_ingest_directory_reports_unreadable_file`。
+- `except ImportError` 过宽，会把任何缺依赖误报成 litellm。已收窄为 `ModuleNotFoundError` 且
+  `exc.name == "litellm"`。
+- `sorted(Path)` 不是相对路径字符串排序，且 Windows 上大小写不敏感。已改为按
+  `relative_to(root).as_posix()` 排序，与契约措辞一致。
+- `--source-id ""` 被真值判断当成没给。已改为 `is not None`，并补
+  `test_rag_ingest_rejects_empty_source_id_with_dir`。
+- 安全声明缺回归测试。已补符号链接跳过、空目录、`--text`+`--dir` 互斥三个用例。
+
+记录未修的两条：
+
+- `is_symlink`/`is_file` 检查与 `read_text` 之间存在 TOCTOU 窗口，读取不带 `O_NOFOLLOW`。目录由运维
+  提供，接受该风险，需要时另行切片。
+- 文件变短时旧分块残留：主键覆盖只更新现存 `chunk_id`，不删除尾部分块。契约只承诺同一输入的幂等，
+  不承诺差量更新。
+
+同时修正了原证据的红态归因错误（原先把五个用例笼统归到 `--dir` 非法与空文件两条成因）。
+
+六、范围与已知缺口
+
+- 目录模式不做增量同步与删除消失来源；文件变短会留下尾部分块。
+- 一次性读取每个文件，没有并发或流式处理；TOCTOU 窗口见上。
 - 真实 Postgres + pgvector 与真实 LiteLLM embedding 仍未在本机验证（运维验收项）。
-- 检索接入 agent 运行路径另立 ADR。
+- 检索接入 agent 运行路径另立 ADR（ADR-0036 草案）。

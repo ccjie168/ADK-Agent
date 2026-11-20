@@ -170,7 +170,7 @@ def test_rag_ingest_rejects_invalid_data_class(tmp_path, capsys):
 def test_rag_ingest_reports_missing_litellm_extra(tmp_path, monkeypatch, capsys):
     class _NoLitellm(_FakeProvider):
         async def embed(self, request):
-            raise ModuleNotFoundError("No module named 'litellm'")
+            raise ModuleNotFoundError("No module named 'litellm'", name="litellm")
 
     monkeypatch.setattr("adk_agent.models.providers.LiteLlmProvider", _NoLitellm)
     with pytest.raises(SystemExit) as exc:
@@ -239,6 +239,55 @@ def test_rag_ingest_rejects_source_id_with_dir(tmp_path, capsys):
     root.mkdir()
     with pytest.raises(SystemExit) as exc:
         cli.main(_dir_args(root, "--source-id", "doc"))
+    assert exc.value.code == 2
+    assert "--source-id" in capsys.readouterr().err
+
+
+def test_rag_ingest_directory_reports_unreadable_file(tmp_path, capsys):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    (root / "broken.txt").write_bytes(b"\xff\xfe\x00bad")
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_dir_args(root))
+    assert exc.value.code == 1
+    assert "could not read broken.txt: UnicodeDecodeError" in capsys.readouterr().err
+
+
+def test_rag_ingest_directory_skips_symlinks(tmp_path, capsys):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    (root / "real.txt").write_text("alpha", encoding="utf-8")
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    try:
+        (root / "link.txt").symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are not available on this platform")
+    cli.main(_dir_args(root))
+    chunks = _FakeStore.instances[-1].chunks
+    assert [chunk.source_id for chunk in chunks] == ["real.txt"]
+
+
+def test_rag_ingest_directory_with_no_files(tmp_path, capsys):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    cli.main(_dir_args(root))
+    assert json.loads(capsys.readouterr().out) == {"tenant": "t1", "sources": 0, "chunks": 0}
+
+
+def test_rag_ingest_rejects_text_with_dir(tmp_path, capsys):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_dir_args(root, "--text", str(tmp_path / "doc.txt")))
+    assert exc.value.code == 2
+
+
+def test_rag_ingest_rejects_empty_source_id_with_dir(tmp_path, capsys):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_dir_args(root, "--source-id", ""))
     assert exc.value.code == 2
     assert "--source-id" in capsys.readouterr().err
 

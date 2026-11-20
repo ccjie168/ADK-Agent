@@ -1177,7 +1177,7 @@ async def _rag_ingest_directory(args: argparse.Namespace) -> None:
             relative = path.relative_to(root).as_posix()
             try:
                 text = path.read_text(encoding="utf-8")
-            except OSError as exc:
+            except (OSError, UnicodeDecodeError) as exc:
                 print(f"could not read {relative}: {type(exc).__name__}", file=sys.stderr)
                 raise SystemExit(1) from None
             if not text.strip():
@@ -1199,7 +1199,7 @@ async def _rag_ingest_directory(args: argparse.Namespace) -> None:
 
 
 def _rag_files(root: Path):
-    for path in sorted(root.rglob("*")):
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
         if path.is_symlink() or not path.is_file():
             continue
         yield path
@@ -1213,7 +1213,7 @@ async def _rag_ingest(args: argparse.Namespace) -> None:
         print("--chunk-chars must be greater than 0", file=sys.stderr)
         raise SystemExit(1)
     if args.dir is not None:
-        if args.source_id:
+        if args.source_id is not None:
             print("--source-id cannot be combined with --dir", file=sys.stderr)
             raise SystemExit(2)
         await _rag_ingest_directory(args)
@@ -1295,11 +1295,14 @@ def _run_rag(args: argparse.Namespace) -> None:
     except (RagStoreUnavailable, ModelDenied, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from None
-    except ImportError:
-        print(
-            "litellm is not installed; install it with: pip install 'adk-agent[litellm]'",
-            file=sys.stderr,
-        )
+    except ModuleNotFoundError as exc:
+        if exc.name == "litellm":
+            print(
+                "litellm is not installed; install it with: pip install 'adk-agent[litellm]'",
+                file=sys.stderr,
+            )
+        else:
+            print("rag failed: ModuleNotFoundError", file=sys.stderr)
         raise SystemExit(1) from None
     except Exception as exc:  # noqa: BLE001 - provider errors must not print a traceback
         print(f"rag failed: {type(exc).__name__}", file=sys.stderr)

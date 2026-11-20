@@ -24,6 +24,11 @@
 - [x] 目录模式按相对路径写入各来源 -> `test_rag_ingest_directory_ingests_relative_source_ids`
 - [x] 目录模式跳过空文件并继续 -> `test_rag_ingest_directory_skips_empty_files`
 - [x] `--text` 缺 `--source-id` 退出 1 -> `test_rag_ingest_requires_source_id_without_dir`
+- [x] 目录模式报告不可读文件（非 UTF-8）-> `test_rag_ingest_directory_reports_unreadable_file`
+- [x] 目录模式跳过符号链接 -> `test_rag_ingest_directory_skips_symlinks`
+- [x] 空目录输出 0/0 并退出 0 -> `test_rag_ingest_directory_with_no_files`
+- [x] `--text` 与 `--dir` 互斥 -> `test_rag_ingest_rejects_text_with_dir`
+- [x] `--source-id` 空串与 `--dir` 同给退出 2 -> `test_rag_ingest_rejects_empty_source_id_with_dir`
 - [x] `--dir` 与 `--source-id` 同时给出退出 2 -> `test_rag_ingest_rejects_source_id_with_dir`
 - [x] 全量门禁通过
 
