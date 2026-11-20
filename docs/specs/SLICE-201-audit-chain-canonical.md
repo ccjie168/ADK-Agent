@@ -21,6 +21,7 @@
 
 - [x] `record_hash` 对文本与对象给同一结果 -> `test_record_hash_accepts_stored_event_json`
 - [x] 键顺序不同的 JSON 规范形式相同 -> `test_canonical_form_is_key_order_independent`
+- [x] 非有限浮点下三种输入口径一致 -> `test_record_hash_matches_for_non_finite_floats`
 - [x] 缺后加字段的历史记录仍可验签 -> `test_legacy_record_without_new_fields_verifies`
 - [x] 在历史记录后继续追加，整链仍可验 -> `test_append_after_legacy_record_keeps_chain`
 - [x] 篡改事件内容断链 -> `test_tampering_event_content_breaks_chain`

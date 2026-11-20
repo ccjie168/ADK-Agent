@@ -44,7 +44,7 @@ def canonical_event_json(payload: str | Mapping[str, Any]) -> str:
 def record_hash(event: AuditEvent | str | Mapping[str, Any], prev_hash: str) -> str:
     """Hash the event as stored, never as the current model would serialize it."""
     payload: str | Mapping[str, Any] = (
-        event.model_dump(mode="json") if isinstance(event, AuditEvent) else event
+        json.loads(event.model_dump_json()) if isinstance(event, AuditEvent) else event
     )
     canonical = canonical_event_json(payload)
     return hashlib.sha256(f"{prev_hash}\n{canonical}".encode()).hexdigest()
@@ -81,9 +81,16 @@ def _read_segment(file: Path) -> list[AuditRecord]:
     return [AuditRecord.model_validate_json(line) for line in lines if line.strip()]
 
 
-def _read_stored_events(file: Path) -> list[Mapping[str, Any]]:
+def _read_segment_pairs(file: Path) -> list[tuple[AuditRecord, Mapping[str, Any]]]:
+    """Parse each line once into the record and its stored event object."""
     lines = file.read_text(encoding="utf-8").splitlines()
-    return [json.loads(line)["event"] for line in lines if line.strip()]
+    pairs: list[tuple[AuditRecord, Mapping[str, Any]]] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        pairs.append((AuditRecord.model_validate(payload), payload["event"]))
+    return pairs
 
 
 def load_records(path: str | Path) -> list[AuditRecord]:
@@ -163,9 +170,9 @@ def _scan_segments(
     index = 0
     current_count = 0
     for segment in _segment_paths(file):
-        records = _read_segment(segment)
-        stored = _read_stored_events(segment)
-        for record, event_obj in zip(records, stored, strict=True):
+        pairs = _read_segment_pairs(segment)
+        records = [record for record, _ in pairs]
+        for record, event_obj in pairs:
             tenant = record.event.tenant
             if record.prev_hash != last.get(tenant, ""):
                 raise AuditChainBroken(index, tenant)
@@ -291,6 +298,7 @@ __all__ = [
     "AuditChainBroken",
     "AuditPipeline",
     "AuditSignatureInvalid",
+    "canonical_event_json",
     "load_records",
     "query_events",
     "record_hash",

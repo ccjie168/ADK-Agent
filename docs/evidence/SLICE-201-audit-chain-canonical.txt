@@ -17,15 +17,15 @@ SLICE-201 审计链以存储内容为准（文件模式）
     函数，不再单独依赖 `model_dump`。
   - `AuditPipeline.append` 只序列化一次：先得到事件文本，用同一文本算哈希，再按
     `{"event", "prev_hash", "hash", "signature", "kid"}` 写出，存什么就哈希什么。
-  - `_scan_segments` 从每行的 `event` 原始对象重算哈希（新增 `_read_stored_events`），不再用当前模型
-    重新序列化。
-- 新增 `tests/audit/test_audit_chain_canonical.py` 六个用例：文本/对象同一结果、键序无关、
-  缺后加字段的历史记录可验、历史之后追加仍成链、篡改断链、写入记录哈希等于存储事件哈希。
+  - `_scan_segments` 一次读取每行，产出「记录 + 存储事件对象」对（`_read_segment_pairs`），从事件对象
+    重算哈希，不再用当前模型重新序列化。
+- 新增 `tests/audit/test_audit_chain_canonical.py` 七个用例：文本/对象同一结果、非有限浮点一致、
+  键序无关、缺后加字段的历史记录可验、历史之后追加仍成链、篡改断链、写入记录哈希等于存储事件哈希。
 
 三、绿态
 
 $ python scripts/check.py --fast
-1886 passed, 96 skipped（ALL PASS，7 步）
+1887 passed, 96 skipped（ALL PASS，7 步）
 
 $ python scripts/check.py --full
 ALL PASS（9 步，含 bandit / pip-audit）
@@ -39,7 +39,21 @@ ALL PASS（9 步，含 bandit / pip-audit）
   `AuditChainBroken: audit chain broken at record 0 for tenant 'acme'`；同一份记录在新代码下验证通过。
   这就是 ADR-0037 要修的行为。
 
-五、范围与已知缺口
+五、验证与修订
+
+独立只读验证判 MERGE，四条非阻塞项，三条已修：
+
+- 非有限浮点口径不一致：`cost_usd=inf` 时 `model_dump` 保留 `inf`、`model_dump_json` 变 `null`，
+  `record_hash(AuditEvent)` 与文本路径不同。已改为用 `json.loads(event.model_dump_json())` 取对象，
+  三种输入完全一致，并补 `test_record_hash_matches_for_non_finite_floats`。
+- `_scan_segments` 原来把同一文件读两次，并发追加时 `zip(strict=True)` 可能抛裸 `ValueError`。已改为
+  一次读取产出「记录 + 存储事件对象」对（`_read_segment_pairs`）。
+- `canonical_event_json` 未进 `__all__`，已补；`core/audit.py` 里关于 `exclude_if` 的注释仍归因于
+  ADR-0036 的链兼容，已改为 ADR-0037 的口径说明。
+- 未修并记录：`AuditEvent` 的 `extra="forbid"` 让 `event` 里出现未知字段时以 `ValidationError` 失败，
+  不是断链异常，但同样是「验证不通过」，且基线行为相同。
+
+六、范围与已知缺口
 
 - 本切片只改文件模式；Postgres 的校验路径仍用模型重算，历史行仍会失败，切片 2 处理并补 live 用例。
 - 签名口径不变，仍是 HMAC over 记录 hash。

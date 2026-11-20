@@ -42,8 +42,8 @@ class AuditEvent(BaseModel):
     risk_level: RiskLevel | None = None
     model_alias: str | None = None
     fallback_count: int = Field(default=0, ge=0)
-    # Omitted while unused so the canonical JSON (and the chain hash) of events
-    # written before this field existed is unchanged (ADR-0036).
+    # Omitted while unused to keep payloads small; chain hashes no longer depend on
+    # field presence, they hash the stored event JSON (ADR-0037).
     rag_top_k: int | None = Field(default=None, ge=0, exclude_if=_is_none)
     rag_returned: int | None = Field(default=None, ge=0, exclude_if=_is_none)
     rag_filtered: int | None = Field(default=None, ge=0, exclude_if=_is_none)
