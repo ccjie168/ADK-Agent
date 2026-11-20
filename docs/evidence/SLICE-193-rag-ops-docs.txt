@@ -1,0 +1,43 @@
+SLICE-193 RAG 运维文档与多副本说明
+日期: 2026-11-20
+依据: ADR-0035（Accepted 2026-11-20）决定 / slice 5
+基线: d45cf56
+
+一、实现
+
+- `docs/guides/operations.md` 新增「RAG 向量存储（pgvector，ADR-0035）」一节，位置在「模型护栏」与
+  「扩缩容」之间，内容与 `rag/vector_store.py` 的实际 schema 对齐：
+  - 安装与建表：`CREATE EXTENSION IF NOT EXISTS vector`、首连建表、DBA 预建与应用角色 DML 两种模式，
+    首连缺 CREATE 权限按 `RagStoreUnavailable` 处理。
+  - 租户隔离：`adk_rag_chunks` 启用并强制 RLS、策略 `adk_rag_chunks_tenant`、事务内 `set_config`、
+    属主角色要求、禁止临时关闭 RLS。
+  - 维度与重建索引：`dimensions=N` 必须等于 embedding 输出；`vector(N)` 写在列定义里，换模型要新建列或
+    新建表并重新摄取；摄取与检索必须同一 provider/model。
+  - 索引：schema 不自动建 ANN 索引，给出 `hnsw (embedding vector_cosine_ops)` 建索引语句、2000 维上限、
+    `ANALYZE` 与 `REINDEX INDEX CONCURRENTLY`。
+  - fail-closed：扩展缺失、维度不符、驱动错误统一抛 `RagStoreUnavailable`，不退化为无 ACL 路径；
+    空结果与故障分开处理；`RagGuard` 过滤低置信度与注入引用。
+  - 多副本：共享同一库、无本地状态、提交即可见；扩容前确认指向同一库；并发首启的幂等 schema；
+    `pg_dump` 范围；并写明 `PgVectorRagStore` 目前由部署代码构造、CLI 接线待后续切片。
+- `tests/test_rag_operations_guide.py` 四个断言测试，分别校验安装步骤、维度与重建索引、fail-closed、
+  多副本与技术表名。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1799 passed, 95 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 d45cf56 上 `operations.md` 无 pgvector 内容：
+`pytest tests/test_rag_operations_guide.py` → 4 failed（`AssertionError`，基线文本中既无
+`CREATE EXTENSION IF NOT EXISTS vector` 也无 `adk_rag_chunks`）。
+
+四、范围与已知缺口
+
+- 纯文档切片，无代码与契约变更。
+- CLI 接线（`serve-*` 自带 RAG 存储与维度配置）不在本切片。
+- 真实环境安装演练（扩展安装、RLS 策略安装、HNSW 建索引与重建）属运维验收项，本地未执行。
