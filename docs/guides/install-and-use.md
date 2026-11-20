@@ -185,8 +185,8 @@ serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有�
 
 2. 装语料。单文件、stdin 或整个目录都可以，`source_id` 在目录模式下取相对路径。下面的示例假设
    已激活虚拟环境（未激活时用 `.venv/Scripts/python.exe -m adk_agent` 代替 `adk-agent`），当前目录
-   有 `manual.txt` 与 `handbook/`，`RAG_DB` 指向装了 pgvector 的库，且已按「配置模型」一节设置
-   嵌入后端的凭据（LiteLLM 通道读 `LITELLM_API_KEY`，直连 OpenAI 读 `OPENAI_API_KEY`）：
+   有 `manual.txt` 与 `handbook/`，`RAG_DB` 指向装了 pgvector 的库，且已设置嵌入后端的凭据
+   （LiteLLM 通道读 `LITELLM_API_KEY`，直连 OpenAI 读 `OPENAI_API_KEY`）：
 
    ```bash
    adk-agent rag ingest --database-url "$RAG_DB" --dimensions 1536 \

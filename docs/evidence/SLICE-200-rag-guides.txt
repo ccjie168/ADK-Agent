@@ -48,6 +48,6 @@ ALL PASS（9 步，含 bandit / pip-audit）
 
 六、范围与已知缺口
 
-- 手册示例用占位 DSN 与模型名，没有在真实环境执行；`rag ingest` 的两条命令需要 `RAG_DB` 与网络模型。
+- 手册示例用占位 DSN 与真实模型名，没有在真实环境执行；`rag ingest` 的两条命令需要 `RAG_DB` 与网络模型。
 - 手册如实写了四项现状缺口：沙箱触发不检索、MCP/A2A 未接线、预算进程内、`--rag-dimensions 0` 未捕获。
 - 真实 pgvector 安装演练仍属运维验收项。
