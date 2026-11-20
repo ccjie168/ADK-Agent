@@ -69,6 +69,13 @@ class IngestionPipeline:
         policy: ModelPolicy,
         allowed_subjects: list[str] | None = None,
     ) -> int:
+        """Chunk, embed, and store one source.
+
+        ``tenant`` is the storage tenant; the embedding call is audited and budgeted
+        under the invocation's principal tenant, so a caller ingesting on behalf of
+        another tenant must keep those two aligned. ``allowed_subjects=None`` stores a
+        chunk visible to every subject in the tenant; pass the list to restrict it.
+        """
         pieces = split_text(text, max_chars=self.chunk_chars)
         if not pieces:
             raise ValueError("text has no content to ingest")

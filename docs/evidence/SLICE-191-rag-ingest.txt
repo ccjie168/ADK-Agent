@@ -33,3 +33,5 @@ ALL PASS（9 步，含 bandit / pip-audit）
 - 运维手册更新（收尾切片）。
 - `chunk_id` 为位置序号（`c0`、`c1`…），源文本变化后旧块不自动删除；需要清理时由调用方按
   `(tenant, source_id)` 处理，后续切片可加 delete。
+- `ingest` 的 `tenant` 是存储租户，embedding 审计与预算记在 invocation 的 principal 租户；跨租户代摄入时
+  两者必须由调用方保持一致（已在 `ingest` docstring 写明）。`allowed_subjects=None` 表示租户内所有 subject 可见。
