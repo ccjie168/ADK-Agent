@@ -36,6 +36,7 @@ class RagChunkRow(BaseModel):
     chunk_id: str
     text: str
     data_classes: list[DataClass]
+    distance: float = 0.0
 
 
 _SCHEMA = """
@@ -137,7 +138,8 @@ class PgVectorRagStore:
             async with pool.acquire() as conn, conn.transaction():
                 await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant)
                 rows = await conn.fetch(
-                    "SELECT source_id, chunk_id, body, data_classes FROM adk_rag_chunks "
+                    "SELECT source_id, chunk_id, body, data_classes, "
+                    "embedding <=> $4::vector AS distance FROM adk_rag_chunks "
                     "WHERE tenant = $1 "
                     "AND data_classes <@ $2::text[] "
                     "AND (allowed_subjects IS NULL OR $3::text = ANY(allowed_subjects)) "
@@ -159,6 +161,7 @@ class PgVectorRagStore:
                 chunk_id=row["chunk_id"],
                 text=row["body"],
                 data_classes=list(row["data_classes"]),
+                distance=float(row["distance"]),
             )
             for row in rows
         ]

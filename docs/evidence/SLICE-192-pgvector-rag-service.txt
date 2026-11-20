@@ -1,0 +1,34 @@
+SLICE-192 PgVectorRagService 检索服务
+日期: 2026-11-20
+依据: ADR-0035（Accepted 2026-11-20）决定 3 / slice 4
+基线: 3a29060
+
+一、实现
+
+- `rag/vector_store.py`：`RagChunkRow` 增加 `distance: float = 0.0`，`search` 选择
+  `embedding <=> $4::vector AS distance` 并回填。
+- `rag/pgvector_service.py` 新增 `PgVectorRagService(store, embedder, *, provider, model, guard=None,
+  limit=10)`：`retrieve(query, principal, data_classes, *, invocation=None, policy=None)` 先嵌入查询
+  （缺 invocation/policy 抛 `ValueError`），按 principal 的租户/subject 与 data_classes 搜索，把余弦距离
+  映射为置信度（`1 - distance/2`，夹在 0..1），生成 `acl_checked=True` 的 `Citation`，最后应用 `RagGuard`。
+- `adk_agent.rag` 导出 `PgVectorRagService`。
+- 新增 `tests/test_pgvector_rag_service.py` 五个测试（假 store 与假 embedder，无外部依赖）。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1795 passed, 95 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 3a29060 上 `adk_agent.rag` 无 `PgVectorRagService`：测试收集即 ImportError。
+
+四、范围与已知缺口
+
+- 重排模型与引用拼接（后续）。
+- CLI 命令接线与运维手册（收尾切片）。
+- 置信度映射是线性启发式（假设余弦距离 0..2），真实 embedding 归一化情况下的校准留待后续。
+- `retrieve` 的 `invocation`/`policy` 是必填关键字参数；`RagService` 协议兼容（额外关键字参数可选）。
