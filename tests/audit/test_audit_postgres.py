@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import json
 import os
@@ -410,5 +411,85 @@ def test_corrupt_event_detected_as_chain_break():
             asyncio.run(verify_audit_database(_LIVE_URL))
         assert exc.value.tenant == tenant
         assert exc.value.index == 1
+    finally:
+        _delete(tenant)
+
+
+@_live
+def test_jsonb_roundtrip_hashes_the_stored_event():
+    tenant = _tenant()
+    sink = PostgresAuditSink(_LIVE_URL)
+
+    async def scenario():
+        await sink.append(_event(0, tenant=tenant))
+        await sink.aclose()
+
+    try:
+        asyncio.run(scenario())
+        rows = _rows(tenant)
+        assert rows
+        assert record_hash(rows[0]["event"], rows[0]["prev_hash"]) == rows[0]["hash"]
+        assert asyncio.run(verify_audit_database(_LIVE_URL)) >= 1
+    finally:
+        _delete(tenant)
+
+
+@_live
+def test_legacy_event_object_verifies_as_written():
+    """A row written before the model gained fields still verifies (ADR-0037)."""
+    tenant = _tenant()
+    legacy = {
+        "event_id": f"{tenant}-legacy",
+        "run_id": "r0",
+        "trace_id": "t0",
+        "tenant": tenant,
+        "principal": {
+            "tenant": tenant,
+            "subject": "alice",
+            "kind": "human",
+            "roles": [],
+            "attributes": {},
+        },
+        "approver": None,
+        "agent_ref": {"id": "bot", "version": "1", "digest": "d" * 64, "artifact_digest": None},
+        "action": "agent.run",
+        "target": "bot@1",
+        "args_hash": None,
+        "result_hash": None,
+        "policy_decision_id": None,
+        "policy_version": None,
+        "data_classes": [],
+        "latency_ms": None,
+        "tokens": None,
+        "cost_usd": None,
+        "egress": "none",
+        "status": "ok",
+        "error_code": None,
+        "risk_level": None,
+        "timestamp": "2026-11-19T00:00:00+00:00",
+    }
+    canonical = json.dumps(legacy, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    digest = hashlib.sha256(("\n" + canonical).encode()).hexdigest()
+
+    async def insert():
+        conn = await _connect()
+        try:
+            await conn.execute(
+                "INSERT INTO adk_audit_records "
+                "(tenant, sequence, event, prev_hash, hash, signature, kid, action, "
+                "status, trace_id, run_id, occurred_at) "
+                "VALUES ($1, 1, $2::jsonb, '', $3, NULL, NULL, 'agent.run', 'ok', "
+                "'t0', 'r0', $4)",
+                tenant,
+                json.dumps(legacy),
+                digest,
+                datetime(2026, 11, 19, tzinfo=timezone.utc),
+            )
+        finally:
+            await conn.close()
+
+    try:
+        asyncio.run(insert())
+        assert asyncio.run(verify_audit_database(_LIVE_URL)) >= 1
     finally:
         _delete(tenant)
