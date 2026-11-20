@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..core import DataClass, Principal
+from ..core import DataClass, Invocation, ModelPolicy, Principal
 from .guard import RagGuard
 from .service import Citation
 
@@ -27,7 +27,13 @@ class InMemoryRagService:
         self._guard = guard
 
     async def retrieve(
-        self, query: str, principal: Principal, data_classes: list[DataClass]
+        self,
+        query: str,
+        principal: Principal,
+        data_classes: list[DataClass],
+        *,
+        invocation: Invocation | None = None,
+        policy: ModelPolicy | None = None,
     ) -> list[Citation]:
         allowed_classes = set(data_classes)
         results: list[Citation] = []

@@ -1,0 +1,83 @@
+SLICE-197 运行时 RAG 预取与注入边界
+日期: 2026-11-20
+依据: ADR-0036（Accepted 2026-11-20）决定 2-6 / 切片 2
+基线: 9d1264a
+
+一、契约（先改）
+
+- `docs/contracts/rag_service.md`：
+  - 端口签名扩展为 `retrieve(query, principal, data_classes, *, invocation=None, policy=None)`，两种实现
+    都要接受这两个关键字参数。
+  - 新增「运行时注入（ADR-0036）」一节：注入块格式、`invocation.input` 不变、只接受 `acl_checked=True`
+    的引用、`RagGuard` 先过滤再按 `top_k` 截断、边界标签按大小写与空白（含零宽字符）与结尾 `/`
+    归一化中和、行首编号中和、`on_error` 构造期校验。
+
+二、实现
+
+- `src/adk_agent/rag/context.py`：
+  - `RagContext(service, *, data_classes, top_k=5, min_confidence=0.5, on_error="deny", guard=None,
+    policy=None)`；构造时校验 `top_k>0` 与 `on_error ∈ {deny, degrade}`。
+  - `prefix(invocation)`：只接受 `acl_checked=True` 的引用，`RagGuard` 过滤后按 `top_k` 截断，渲染
+    固定边界块（编号、`source=`、`confidence=0.00`）。
+  - 中和规则：先把换行归一化为 `\n`，再剔除全部 Unicode `Cf` 类格式控制字符（含 U+200B-U+200F、U+2060、U+FEFF 等）；
+    `<\s*/?\s*retrieved_context\s*/?>`（忽略大小写、容忍结尾 `/`）替换为实体；行首（含任意非换行
+    前导空白）的 `[n]` 替换为 `&#91;n&#93;`。片段与 `source_id` 都处理。
+  - 失败：`deny` 抛 `RagUnavailable`（只带异常类型）；`degrade` 记一条不含正文的警告后返回空串。
+- `src/adk_agent/rag/service.py` 的 `RagService` 协议与 `rag/memory.py` 的 `InMemoryRagService` 都接受
+  新的可选关键字参数（内存实现忽略它们），端口与两种实现一致。
+- `src/adk_agent/runtime/execution.py`：`AgentRuntime(..., rag: RagContext | None = None)`；预取放在
+  受审计的 `try` 内、构造 `new_message` 之前，失败走既有 `status=error` 审计与 `run.failed` 进度；
+  `invocation.input` 与 `InvocationResult` 身份不变；`rag=None` 时与基线行为一致。
+- `adk_agent.rag` 导出 `RagContext` 与 `RagUnavailable`。
+- `tests/test_rag_runtime_context.py` 二十五个用例（假检索器与假 runner，无外部依赖）。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1855 passed, 96 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 9d1264a 上 `adk_agent.rag.context` 模块不存在，测试收集即
+`ModuleNotFoundError: No module named 'adk_agent.rag.context'`（1 error, collection interrupted）；
+基线 `AgentRuntime` 没有 `rag` 参数，运行路径用例无法通过。
+
+五、验证与修订
+
+第一轮独立只读验证判 DO NOT MERGE，三条阻塞项，均已在同一分支修订：
+
+1. 端口漂移：`RagContext` 依赖 `retrieve(..., invocation=, policy=)`，而契约与 `InMemoryRagService` 仍是
+   三参，`TypeError` 被宽泛捕获伪装成检索不可用，`degrade` 下静默返回空。已扩展契约端口与两种实现，
+   并补 `test_rag_context_works_with_in_memory_service`。
+2. 失败无审计：预取写在受审计 `try` 之外，`deny` 失败时审计 0 条、进度无 `run.failed`。已把预取移入
+   `try`，补 `test_runtime_audits_rag_failure`。
+3. 注入边界可伪造：空格、大小写、换行变体与行首 `[n] source=...` 都能穿过原实现。已改为归一化正则
+   中和，补参数化用例；契约与 spec 的措辞同步收紧。
+
+同时采纳的非阻塞项：`on_error` 构造期校验（非法值不再 fail-open）、只接受 `acl_checked=True` 的引用、
+运行时 `rag` 参数改为 `RagContext | None` 类型注解。证据红态异常文本已按实际输出改正。
+
+第二轮验证判 MERGE，另指出三个可低成本封掉的残余绕过，已一并修掉：`</retrieved_context/>` 结尾多一个
+`/`、标签内零宽字符、回车符或前导全空白之后的伪造 `[n]` 行。中和规则改为先归一化换行，标签允许空白
+与结尾 `/`，编号匹配任意非换行前导空白；参数化用例从四条扩到八条。
+
+六、范围与已知缺口
+
+- 运行路径仍未把 `RagContext` 接到任何入口（控制台、MCP、A2A、触发），切片 4 完成接线。
+- `rag.retrieve` 审计与共享预算未接（切片 3）。
+- `top_k` 截断是服务返回后的二次防线，服务侧 `limit` 仍应设置。
+- 边界中和是启发式防护，模型仍可能被片段语义影响；`RagGuard` 只覆盖已知注入模式。
+- 不在 `Cf` 类的不可见字符（U+034F 组合字形连接符、U+FE0F 变体选择符、Hangul filler 等）不剔除，
+  插进标签词仍可能让模型读到近似闭合标记；契约已如实写明这一残余。
+- 多轮会话不追溯历史提问，按 ADR-0036 确认记录执行。
+
+第三轮验证判 DO NOT MERGE：字符串里只硬编码了 U+200B，契约却写「含零宽字符」，ZWNJ、ZWJ、BOM、
+WORD JOINER 以及标签词内部插入零宽字符都能穿过。已改为先剔除全部 Unicode `Cf` 类字符再匹配，契约与
+本节规则同步改成「剔除 Cf 类格式控制字符」，参数化用例扩到十二条（覆盖 U+200B/200C/200D/2060/FEFF）。
+
+第四轮验证判 DO NOT MERGE：契约写「全部零宽字符」而实现只剔除 `Cf` 类，`Mn` 类的 U+034F、U+FE0F 与
+Hangul filler 仍可穿过，属措辞过度承诺。已把契约与本节改为精确的 `Cf` 描述，并把非 `Cf` 的不可见
+字符记为已知残余风险，不再声称覆盖「全部零宽字符」。
