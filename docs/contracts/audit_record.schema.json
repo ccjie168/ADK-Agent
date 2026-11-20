@@ -187,6 +187,45 @@
         "principal": {
           "$ref": "#/$defs/Principal"
         },
+        "rag_filtered": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rag Filtered"
+        },
+        "rag_returned": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rag Returned"
+        },
+        "rag_top_k": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rag Top K"
+        },
         "result_hash": {
           "anyOf": [
             {

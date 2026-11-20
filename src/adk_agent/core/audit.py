@@ -38,6 +38,9 @@ class AuditEvent(BaseModel):
     risk_level: RiskLevel | None = None
     model_alias: str | None = None
     fallback_count: int = Field(default=0, ge=0)
+    rag_top_k: int | None = Field(default=None, ge=0)
+    rag_returned: int | None = Field(default=None, ge=0)
+    rag_filtered: int | None = Field(default=None, ge=0)
     timestamp: datetime
 
     @field_validator("timestamp")

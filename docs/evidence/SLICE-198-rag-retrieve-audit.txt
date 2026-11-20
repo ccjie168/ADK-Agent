@@ -1,0 +1,40 @@
+SLICE-198 rag.retrieve 审计
+日期: 2026-11-20
+依据: ADR-0036（Accepted 2026-11-20）决定 7 / 切片 3
+基线: 9c99bb1
+
+一、契约（先改）
+
+- `docs/contracts/rag_service.md` 新增「检索审计（ADR-0036）」一节：事件字段、`rag_filtered` 的定义
+  （服务返回条数减注入条数，含 ACL 未标记、守卫丢弃与超过 `top_k` 的截断）、失败先审计再抛、不含内容。
+- `docs/contracts/audit_event.schema.json` 与 `audit_record.schema.json` 由 `scripts/export_contracts.py` 重生成。
+
+二、实现
+
+- `src/adk_agent/core/audit.py`：`AuditEvent` 增加可选 `rag_top_k`、`rag_returned`、`rag_filtered`
+  （非负，缺省 `None`），其它事件不受影响。
+- `src/adk_agent/rag/context.py`：`RagContext(..., audit=None)`；`prefix` 记录开始时间，
+  成功时写一条 `status=ok` 并带三个计数，失败时先写 `status=error`（`error_code` 为底层异常类型）
+  再按 `on_error` 抛 `RagUnavailable` 或继续；事件 `target=<id>@<version>`，只写计数、状态、延迟与
+  `data_classes`，不含查询、片段与 `source_id`。未配置 `audit` 时行为与切片 2 相同。
+- 新增 `tests/test_rag_retrieve_audit.py` 七个用例。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1862 passed, 96 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 9c99bb1 上 `AuditEvent` 不接受 `rag_top_k` 等字段（`extra="forbid"`），`RagContext` 也没有
+`audit` 参数：`pytest tests/test_rag_retrieve_audit.py` → `6 failed, 1 passed`。唯一通过的是负数校验
+用例，它在基线上靠「字段被拒绝」偶然通过，不构成新行为覆盖。
+
+五、范围与已知缺口
+
+- 共享 `BudgetTracker` 接线未做：嵌入预算仍在 `EmbeddingGateway` 构造处决定，等入口接线切片一并配。
+- 事件不区分 ACL 丢弃、守卫丢弃与截断三个来源，只给总数；需要细分时再加字段。
+- 控制台暂不展示检索事件。
