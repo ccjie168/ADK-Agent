@@ -24,6 +24,9 @@
 - [x] `rag ingest` 存储不可用退出 1 -> `test_rag_ingest_reports_store_unavailable`
 - [x] `rag ingest` 每次嵌入写 `model.embed` 审计 -> `test_rag_ingest_audits_embedding`
 - [x] `rag ingest` 正文文件读不到时退出 1 且无栈回溯 -> `test_rag_ingest_reports_missing_text_file`
+- [x] `rag ingest` 缺省不写 `allowed_subjects`（租户内可见）-> `test_rag_ingest_defaults_to_tenant_wide_visibility`
+- [x] `rag ingest --budget-usd 0` 被预算拒绝且不写存储 -> `test_rag_ingest_rejects_zero_budget`
+- [x] `rag ingest` 拒绝非法 `--data-class` -> `test_rag_ingest_rejects_invalid_data_class`
 - [x] `rag search` 输出带 ACL 标记与置信度的引用 -> `test_rag_search_returns_citations`
 - [x] `rag search` 过滤低于阈值的引用 -> `test_rag_search_drops_low_confidence`
 - [x] `rag search` 拒绝非正的 `--limit` -> `test_rag_search_rejects_non_positive_limit`
@@ -44,9 +47,12 @@
 2. **调用方**：持有数据库 DSN 与模型通道凭据的运维人员或批处理作业。
 3. **信任边界**：命令行参数 → 存储的租户与 ACL 列；嵌入调用 → 第三方模型通道。
 4. **恶意输入最坏结果**：把 `confidential` 语料标成 `public`，或把 `--subject` 省略后写入租户内全员可见的
-   分块，造成越权检索。缓解：默认不写 `allowed_subjects`（即租户内可见）要在契约里写明；`--data-class`
-   缺省为空列表时检索侧要求调用方声明数据分级才会命中，等于默认不可见；输出不含 DSN 与凭据。
-5. **失败是否泄露信息**：错误只打印异常类型与安全文案，不回显 DSN、正文或向量。
+   分块，造成越权检索。缓解：默认不写 `allowed_subjects`（即租户内可见）在契约里写明；`--data-class`
+   取值由 argparse 限定为四个枚举，非法值退出 2；未分级语料对声明“无分级”的调用方可见（`data_classes
+   <@ '{}'` 对空数组为真），这是分级语义而非隐含隔离，契约如实描述；CLI 不做额外授权，调用方自述的
+   租户与分级必须已有授权；输出不含 DSN、正文与向量。
+5. **失败是否泄露信息**：已知异常只打印安全文案，模型通道的其它异常按 `rag failed: <异常类型>` 输出，
+   不回显 DSN、正文或向量，也不打印栈。
 
 ## 范围外
 

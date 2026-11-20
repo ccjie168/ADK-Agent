@@ -6,44 +6,68 @@ SLICE-194 RAG 摄取与检索的 CLI 接线
 一、契约（先改）
 
 - `docs/contracts/cli.md` 新增 `adk-agent rag ingest` 与 `adk-agent rag search` 两节，写在
-  「会话存储的租户 RLS」之后、「入口限流」之前：参数、退出码、输出形状、审计后端沿用
-  `--audit-file|--audit-url|--audit-db`、空输入与维度不符、存储不可用的失败语义。
+  「会话存储的租户 RLS」之后、「入口限流」之前：参数、退出码、输出形状、审计后端
+  `--audit-file|--audit-url|--audit-db|--audit-token-env`、空输入与维度不符、存储不可用的失败语义，
+  以及 `--data-class` 的四个取值、`--budget-usd` 的进程内语义与「CLI 不做额外授权」的说明。
 
 二、实现
 
 - `src/adk_agent/cli.py` 新增 `rag` 子命令与 `ingest`、`search` 两段：
-  - `_rag_ingest`：读正文（`--text FILE`，缺省 stdin），空文本打印 `empty text` 退出 1；构造
-    `PgVectorRagStore(url, dimensions=N)` 与 `IngestionPipeline(store, EmbeddingGateway({provider:
-    LiteLlmProvider(...)}, audit=sink), ...)`，调用 `ingest` 写分块，`finally` 关闭存储；成功输出
-    `{"tenant","source_id","chunks"}`。
-  - `_rag_search`：读查询（`--query`，缺省 stdin），`--limit` 非正退出 1，空查询打印 `empty query`
-    退出 1；构造 `PgVectorRagService(..., guard=RagGuard(min_confidence=...), limit=...)`，用
-    principal 的租户与 `--subject` 检索，输出 `Citation` 的 JSON 数组。
-  - `_rag_embedder` 复用 `LiteLlmProvider` 与 `EmbeddingGateway`（每次调用写 `model.embed` 审计，
-    预算走 `ModelPolicy.budget_usd`）；`_rag_policy` 把 `--provider` 作为允许清单。
-  - `_run_rag` 把 `RagStoreUnavailable`、`ModelDenied` 与 `ValueError` 映射为退出 1 并只打印安全文案。
+  - `_rag_ingest`：`--chunk-chars` 非正退出 1；读正文（`--text FILE`，缺省 stdin），文件读不到打印
+    `could not read text: <异常类型>`、空文本打印 `empty text`，都退出 1；构造
+    `PgVectorRagStore(url, dimensions=N)` 与 `IngestionPipeline(store, embedder, ...)`，调用 `ingest`
+    写分块，`finally` 关闭存储；成功输出 `{"tenant","source_id","chunks"}`。
+  - `_rag_search`：先校验 `--limit` 为正（在读取 stdin 之前），再读查询（`--query`，缺省 stdin），
+    空查询打印 `empty query` 退出 1；构造 `PgVectorRagService(..., guard=RagGuard(min_confidence=...),
+    limit=...)`，只构造一个 invocation，同时用作 principal 与审计主体；输出 `Citation` 的 JSON 数组。
+  - `_rag_embedder` 复用 `LiteLlmProvider` 与 `EmbeddingGateway`，并传入进程内 `BudgetTracker`，
+    使 `--budget-usd 0` 在调用前被拒绝；配置了审计后端时每次嵌入写一条 `model.embed`。`_rag_policy`
+    把 `--provider` 作为允许清单。
+  - `--data-class` 用 argparse `choices` 限定为 `public`/`internal`/`confidential`/`restricted`，
+    非法值退出 2。
+  - `_run_rag` 把 `RagStoreUnavailable`、`ModelDenied` 与 `ValueError` 映射为退出 1 的安全文案，其余
+    异常（模型通道网络/认证错误）按 `rag failed: <异常类型>` 退出 1，不打印栈。
 - 没有新增依赖、没有改动检索或写入语义、没有改 `serve-*` 路径。
-- `tests/test_cli_rag.py` 十个用例，用假 store 与假 provider，不依赖 Postgres 或网络。
+- `tests/test_cli_rag.py` 十三个用例，用假 store 与假 provider，不依赖 Postgres 或网络。
 
 三、绿态
 
 $ python scripts/check.py --fast
-1809 passed, 95 skipped（ALL PASS，7 步）
+1812 passed, 95 skipped（ALL PASS，7 步）
 
 $ python scripts/check.py --full
 ALL PASS（9 步，含 bandit / pip-audit）
 
 四、红态
 
-基线 2679154 上 `rag` 不是合法子命令：
-`pytest tests/test_cli_rag.py` → 7 failed（`SystemExit: 2`，`invalid choice: 'rag'`）；
-契约用例在改契约前为红，`git show 2679154:docs/contracts/cli.md` 不含 `rag ingest`。
-补 `--limit` 边界用例后单独跑：`9 passed`；再加正文文件缺失用例后 `10 passed`。
+最终 13 个用例在基线 2679154 上全部失败：用基线 worktree（`git worktree add ... 2679154`）加
+`PYTHONPATH=<worktree>/src` 运行，结果 `13 failed in 2.50s`，其中 12 个是 `SystemExit: 2`
+（`invalid choice: 'rag'`），契约用例因基线 `docs/contracts/cli.md` 不含 `rag ingest` 断言失败。
+工作树已删除。
 
-五、范围与已知缺口
+五、验证与修订
+
+第一轮独立只读验证判 DO NOT MERGE，三条阻塞项，均已在同一分支修订：
+
+1. `--budget-usd` 是死开关：原实现只写 `ModelPolicy.budget_usd`，`EmbeddingGateway` 未拿到
+   `BudgetTracker`，预算检查被 `budgets is None` 短路。已传入进程内 `BudgetTracker`，补充
+   `test_rag_ingest_rejects_zero_budget`，并在契约里如实写「一次性命令只能拦住 0 预算，正数上限要共享
+   花费来源」。
+2. 审计承诺缺限定：原文写「每次嵌入写一条 `model.embed`」，实际未配置审计后端时不写。契约已改为
+   「配置了 `--audit-*` 或 `AUDIT_DATABASE_URL` 时」。
+3. 文档检查表不通过：`rag search` 的 `--budget-usd` 与两个命令的 `--audit-token-env` 在 `--help`
+   里存在但契约未记，已补；evidence 红态数字改为最终 13 个用例的真实结果。
+
+同时采纳的非阻塞项：spec 威胁模型里「缺省 `--data-class` 等于默认不可见」的结论与 SQL 语义不符
+（`data_classes <@ '{}'` 对空数组为真），已改写；`_run_rag` 增加兜底异常映射避免模型通道错误打印栈；
+`--limit` 校验移到读取 stdin 之前；补充 `--subject`/`--data-class`/`--limit` 透传、缺省
+`allowed_subjects`、非法 `--data-class`、失败时 stdout 为空、search 专有参数等断言。
+
+六、范围与已知缺口
 
 - `serve-*` 与 agent 运行路径仍未调用 `RagService`，本切片只做命令行入口。
 - 真实 Postgres + pgvector 与真实 LiteLLM embedding 未在本机验证（无网络凭据），属运维验收项；
   测试用假 provider 与假 store，真实 SQL 行为由 `tests/test_pgvector_store.py` 的 live 用例覆盖（需
   `TEST_POSTGRES_URL`）。
 - 批量目录摄取、删除来源、重排与置信度校准不在本切片。
+- `--budget-usd` 的进程内语义意味着运维不能用它做跨次调用的花费上限；需要共享花费来源时另行切片。

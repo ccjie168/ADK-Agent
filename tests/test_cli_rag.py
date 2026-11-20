@@ -42,12 +42,22 @@ class _FakeStore:
         self.url = url
         self.dimensions = dimensions
         self.chunks: list[object] = []
+        self.search_calls: list[dict[str, object]] = []
         _FakeStore.instances.append(self)
 
     async def upsert(self, chunks) -> None:
         self.chunks.extend(chunks)
 
     async def search(self, tenant, embedding, *, data_classes, subject=None, limit=10):
+        self.search_calls.append(
+            {
+                "tenant": tenant,
+                "embedding": list(embedding),
+                "data_classes": list(data_classes),
+                "subject": subject,
+                "limit": limit,
+            }
+        )
         return _FakeStore.rows[:limit]
 
     async def aclose(self) -> None:
@@ -122,7 +132,9 @@ def test_rag_ingest_reports_store_unavailable(tmp_path, monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc:
         cli.main(args)
     assert exc.value.code == 1
-    assert "dimensions must be positive" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert "dimensions must be positive" in captured.err
+    assert captured.out == ""
 
 
 def test_rag_ingest_reports_missing_text_file(tmp_path, capsys):
@@ -132,6 +144,27 @@ def test_rag_ingest_reports_missing_text_file(tmp_path, capsys):
         cli.main(args)
     assert exc.value.code == 1
     assert "could not read text" in capsys.readouterr().err
+
+
+def test_rag_ingest_defaults_to_tenant_wide_visibility(tmp_path):
+    cli.main(_ingest_args(tmp_path))
+    chunks = _FakeStore.instances[-1].chunks
+    assert chunks[0].allowed_subjects is None
+
+
+def test_rag_ingest_rejects_zero_budget(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_ingest_args(tmp_path, "--budget-usd", "0"))
+    assert exc.value.code == 1
+    assert "budget" in capsys.readouterr().err
+    assert all(not store.chunks for store in _FakeStore.instances)
+
+
+def test_rag_ingest_rejects_invalid_data_class(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_ingest_args(tmp_path, "--data-class", "secret-sauce"))
+    assert exc.value.code == 2
+    assert "secret-sauce" in capsys.readouterr().err
 
 
 def test_rag_ingest_audits_embedding(tmp_path):
@@ -172,7 +205,12 @@ def test_rag_search_returns_citations(capsys):
             distance=0.4,
         )
     ]
-    cli.main(_search_args("--data-class", "public"))
+    cli.main(_search_args("--data-class", "public", "--subject", "alice", "--limit", "3"))
+    call = _FakeStore.instances[-1].search_calls[0]
+    assert call["tenant"] == "t1"
+    assert call["subject"] == "alice"
+    assert call["data_classes"] == ["public"]
+    assert call["limit"] == 3
     payload = json.loads(capsys.readouterr().out)
     assert payload == [
         {
@@ -217,6 +255,12 @@ def test_rag_help_lists_rag_flags(capsys):
     help_text = capsys.readouterr().out
     for flag in ("--database-url", "--dimensions", "--model", "--source-id", "--chunk-chars"):
         assert flag in help_text
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["rag", "search", "--help"])
+    assert exc.value.code == 0
+    search_help = capsys.readouterr().out
+    for flag in ("--query", "--limit", "--min-confidence", "--subject", "--budget-usd"):
+        assert flag in search_help
 
 
 def test_cli_contract_documents_rag_commands():

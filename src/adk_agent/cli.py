@@ -24,6 +24,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from .registry import TrustStore
 
 Transport = Literal["stdio", "streamable-http"]
+_DATA_CLASSES = ("public", "internal", "confidential", "restricted")
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 
@@ -1122,6 +1123,7 @@ def _rag_policy(args: argparse.Namespace):
 
 
 def _rag_embedder(args: argparse.Namespace, sink: AuditSink | None):
+    from .models.budget import BudgetTracker
     from .models.embeddings import EmbeddingGateway
     from .models.providers import LiteLlmProvider
 
@@ -1132,7 +1134,9 @@ def _rag_embedder(args: argparse.Namespace, sink: AuditSink | None):
         api_key=os.environ.get("LITELLM_API_KEY"),
         api_base=os.environ.get("LITELLM_API_BASE"),
     )
-    return EmbeddingGateway({args.provider: provider}, audit=sink)
+    # The tracker is per process: a one-shot command only enforces --budget-usd 0
+    # before its single embedding call, it cannot see spend from earlier runs.
+    return EmbeddingGateway({args.provider: provider}, audit=sink, budgets=BudgetTracker())
 
 
 def _read_rag_input(value: str | None, *, what: str) -> str:
@@ -1151,6 +1155,9 @@ async def _rag_ingest(args: argparse.Namespace) -> None:
     from .rag.ingest import IngestionPipeline
     from .rag.vector_store import PgVectorRagStore
 
+    if args.chunk_chars <= 0:
+        print("--chunk-chars must be greater than 0", file=sys.stderr)
+        raise SystemExit(1)
     text = _read_rag_input(args.text, what="text")
     sink = _audit_sink(args)
     store = PgVectorRagStore(args.database_url, dimensions=args.dimensions)
@@ -1181,10 +1188,10 @@ async def _rag_search(args: argparse.Namespace) -> None:
     from .rag.pgvector_service import PgVectorRagService
     from .rag.vector_store import PgVectorRagStore
 
-    query = args.query if args.query is not None else sys.stdin.read()
     if args.limit <= 0:
         print("--limit must be greater than 0", file=sys.stderr)
         raise SystemExit(1)
+    query = args.query if args.query is not None else sys.stdin.read()
     if not query.strip():
         print("empty query", file=sys.stderr)
         raise SystemExit(1)
@@ -1224,6 +1231,9 @@ def _run_rag(args: argparse.Namespace) -> None:
             asyncio.run(_rag_search(args))
     except (RagStoreUnavailable, ModelDenied, ValueError) as exc:
         print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
+    except Exception as exc:  # noqa: BLE001 - provider errors must not print a traceback
+        print(f"rag failed: {type(exc).__name__}", file=sys.stderr)
         raise SystemExit(1) from None
 
 
@@ -2061,7 +2071,9 @@ def main(argv: list[str] | None = None) -> None:
     p_rag_ingest.add_argument("--tenant", required=True)
     p_rag_ingest.add_argument("--source-id", required=True)
     p_rag_ingest.add_argument("--text", default=None, help="file to ingest; stdin when omitted")
-    p_rag_ingest.add_argument("--data-class", dest="data_classes", action="append", default=[])
+    p_rag_ingest.add_argument(
+        "--data-class", dest="data_classes", action="append", default=[], choices=_DATA_CLASSES
+    )
     p_rag_ingest.add_argument("--subject", dest="subjects", action="append", default=[])
     p_rag_ingest.add_argument("--chunk-chars", type=int, default=800)
     p_rag_ingest.add_argument("--budget-usd", type=float, default=None)
@@ -2075,7 +2087,9 @@ def main(argv: list[str] | None = None) -> None:
     p_rag_search.add_argument("--tenant", required=True)
     p_rag_search.add_argument("--subject", default="rag-search")
     p_rag_search.add_argument("--query", default=None, help="query text; stdin when omitted")
-    p_rag_search.add_argument("--data-class", dest="data_classes", action="append", default=[])
+    p_rag_search.add_argument(
+        "--data-class", dest="data_classes", action="append", default=[], choices=_DATA_CLASSES
+    )
     p_rag_search.add_argument("--limit", type=int, default=10)
     p_rag_search.add_argument("--min-confidence", type=float, default=0.5)
     p_rag_search.add_argument("--budget-usd", type=float, default=None)
