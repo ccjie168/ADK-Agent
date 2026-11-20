@@ -18,7 +18,7 @@ from .identity import Principal
 from .invocation import Invocation
 from .lifecycle import AgentLifecycle, LifecycleStatus
 from .manifest import AgentRef, ModelPolicy, PublishedAgent
-from .model import ModelRequest, ModelResponse
+from .model import EmbeddingRequest, EmbeddingResponse, ModelRequest, ModelResponse
 from .peers import PeerGrant, PeerIdentity
 from .policy import DataClass, PolicyDecision
 from .quota import QuotaPolicy
@@ -278,6 +278,15 @@ class ModelProvider(Protocol):
     egress: Literal["none", "third_party"]
 
     async def complete(self, request: ModelRequest) -> ModelResponse: ...
+
+
+class EmbeddingProvider(Protocol):
+    """A provider that can embed texts (ADR-0035); it may also implement ModelProvider."""
+
+    name: str
+    egress: Literal["none", "third_party"]
+
+    async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse: ...
 
 
 class ModelGateway(Protocol):

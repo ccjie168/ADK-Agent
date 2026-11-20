@@ -1,0 +1,35 @@
+SLICE-190 embedding 端口与 LiteLLM 实现 + 预算联动
+日期: 2026-11-20
+依据: ADR-0035（Accepted 2026-11-20）决定 2/6 / slice 2
+基线: b57a696
+
+一、实现
+
+- `core/model.py` 新增 `EmbeddingRequest`（provider/model/texts）与 `EmbeddingResponse`
+  （vectors/model/input_tokens/cost_usd/egress）。
+- `core/ports.py` 新增 `EmbeddingProvider` 协议；`core/__init__.py` 导出三个新类型。
+- `models/providers.py` 的 `LiteLlmProvider` 增加 `embed`：复用同一 `api_key`/`api_base` 走
+  `litellm.aembedding`，成本取 `_hidden_params.response_cost`。
+- `models/embeddings.py` 新增 `EmbeddingGateway`：允许清单（复用 `check_provider`）、租户预算检查
+  （超限 `ModelDenied` 并审计 `budget_exceeded`，调用前 fail-closed）、成功后累计成本、每次调用写
+  `model.embed` 审计（target `provider:model`，egress 随 provider）。
+- 新增 `tests/models/test_embedding_gateway.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1786 passed, 95 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 b57a696 上 `core` 无 `EmbeddingRequest`：测试收集即 ImportError。
+
+四、范围与已知缺口
+
+- `LiteLlmProvider.embed` 的真实 API 调用未在本地验证（无外网密钥），仅按 litellm 文档签名实现；
+  首次真实 embedding 调用纳入运维验收项。
+- `PgVectorRagService` 检索服务与摄取管线（后续切片）。
+- 运维手册更新（收尾切片）。
