@@ -17,7 +17,7 @@ SLICE-203 审计链校验的运维说明
   - 断链表示存储内容与记录 `hash` 对不上，常见原因是存储被改或记录损坏，升级切换校验器也可能
     暴露既有不一致；按租户与序号定位，签名密钥环不一致与断链分开处理。
 - `tests/test_audit_chain_guide.py` 两个用例：手册含 ADR-0037、存储内容、`verify-audit`、
-  「规范形式复现」与「已经不一致的记录不会因升级恢复」；指向 `docs/contracts/audit_chain.md`。
+  「规范形式复现」与「不会因升级恢复」；指向 `docs/contracts/audit_chain.md`。
 
 三、绿态
 
