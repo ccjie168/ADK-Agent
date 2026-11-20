@@ -7,8 +7,9 @@ SLICE-193 RAG 运维文档与多副本说明
 
 - `docs/guides/operations.md` 新增「RAG 向量存储（pgvector，ADR-0035）」一节，位置在「模型护栏」与
   「扩缩容」之间，内容与 `rag/vector_store.py` 的实际 schema 对齐：
-  - 安装与建表：`CREATE EXTENSION IF NOT EXISTS vector`、首连建表、DBA 预建与应用角色 DML 两种模式，
-    首连缺 CREATE 权限按 `RagStoreUnavailable` 处理。
+  - 安装与建表：`CREATE EXTENSION IF NOT EXISTS vector`、首连建表、扩展由 superuser/DBA 一次性安装，
+    应用角色须为 `adk_rag_chunks` 属主并对 schema 有 `CREATE` 权限；首连权限不足按
+    `RagStoreUnavailable` 处理。
   - 租户隔离：`adk_rag_chunks` 启用并强制 RLS、策略 `adk_rag_chunks_tenant`、事务内 `set_config`、
     属主角色要求、禁止临时关闭 RLS。
   - 维度与重建索引：`dimensions=N` 必须等于 embedding 输出；`vector(N)` 写在列定义里，换模型要新建列或
@@ -55,6 +56,10 @@ ALL PASS（9 步，含 bandit / pip-audit）
   已改为「一次性由 superuser/DBA 安装」。
 - `CREATE EXTENSION IF NOT EXISTS` 在扩展已存在时只发 NOTICE 并跳过，不检查建扩展权限；原句「没有
   `CREATE EXTENSION` 权限时同样首连失败」不成立，已删除并替换为「先装扩展、再把表属主授予应用角色」。
+
+第三轮独立验证判 MERGE，另提一条精确性建议并已采纳：`CREATE TABLE IF NOT EXISTS` 在表已存在时仍先检查
+schema 的 `CREATE` 权限，所以除表属主外应用角色还需要 schema 上的 `CREATE`（或拥有 schema）。文档与本节
+摘要均已补上这一条。
 
 五、范围与已知缺口
 
