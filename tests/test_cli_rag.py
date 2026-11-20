@@ -281,6 +281,7 @@ def test_rag_ingest_rejects_text_with_dir(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc:
         cli.main(_dir_args(root, "--text", str(tmp_path / "doc.txt")))
     assert exc.value.code == 2
+    assert "not allowed with" in capsys.readouterr().err
 
 
 def test_rag_ingest_rejects_empty_source_id_with_dir(tmp_path, capsys):
