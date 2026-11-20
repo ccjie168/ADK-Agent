@@ -36,7 +36,20 @@ ALL PASS（9 步，含 bandit / pip-audit）
 `pytest tests/test_rag_operations_guide.py` → 4 failed（`AssertionError`，基线文本中既无
 `CREATE EXTENSION IF NOT EXISTS vector` 也无 `adk_rag_chunks`）。
 
-四、范围与已知缺口
+四、验证与修订
+
+第一轮独立只读验证判 DO NOT MERGE，两条阻塞项，均已在同一分支修订：
+
+1. 原文建议「生产环境由 DBA 预建，应用角色只保留 DML 权限」。实际 `LazyPool._open` 每次建池都调
+   `PgVectorRagStore._ensure_schema`（`pg.py:90-91`、`rag/vector_store.py:84-86`），其中的
+   `CREATE TABLE`、`ENABLE/FORCE RLS`、`DROP/CREATE POLICY` 都要求表属主权限，DML-only 角色首连必失败。
+   已改为「应用角色必须是 `adk_rag_chunks` 的属主」，并写明失败会包成 `RagStoreUnavailable`。
+2. 原文写「并发首启不会互相破坏」。Postgres 的 `CREATE EXTENSION IF NOT EXISTS` 与
+   `CREATE TABLE IF NOT EXISTS` 并发时仍可能撞唯一索引报错。已改为如实描述：该副本本次调用失败并抛
+   `RagStoreUnavailable`，重试恢复、不损坏数据；要求零失败就先由 DBA 建表。
+3. 非阻塞项：「低置信度与提示注入由 `RagGuard` 过滤」已补「配置了 guard 时」。
+
+五、范围与已知缺口
 
 - 纯文档切片，无代码与契约变更。
 - CLI 接线（`serve-*` 自带 RAG 存储与维度配置）不在本切片。

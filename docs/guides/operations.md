@@ -168,7 +168,7 @@
 
 1. 在承载 `adk_rag_chunks` 的库里安装 pgvector 扩展。`PgVectorRagStore` 首次连接会执行 `CREATE EXTENSION IF NOT EXISTS vector`，所以应用角色要能建扩展。
 2. 同一段 schema 还会建表并安装策略。首次启动后确认三件事：`SELECT extversion FROM pg_extension WHERE extname = 'vector';` 有值、`\d adk_rag_chunks` 的 `embedding` 是 `vector(N)`、`pg_class.relrowsecurity` 与 `relforcerowsecurity` 都为真。
-3. 生产环境建议由 DBA 预建扩展、表与策略，应用角色只保留 DML 权限。受限环境下应用角色没有 CREATE 权限时，首连会失败并按 `RagStoreUnavailable` 处理。
+3. 生产环境可以由 DBA 预建扩展与表，但应用角色必须是 `adk_rag_chunks` 的属主，不能只给 DML。每个进程首次建立连接池时都会重跑这段 schema，其中的 `CREATE TABLE IF NOT EXISTS`、`ENABLE/FORCE ROW LEVEL SECURITY`、`DROP POLICY` 与 `CREATE POLICY` 需要表属主权限。只给 DML 的角色首连就失败，异常被包成 `RagStoreUnavailable`。受限环境里应用角色连 `CREATE EXTENSION` 的权限都没有时，同样在首连失败。
 
 租户隔离：
 
@@ -198,13 +198,13 @@
 
 - 扩展缺失、维度不符、驱动或 SQL 报错都统一抛 `RagStoreUnavailable`。调用方拿到的是异常，不是空引用列表，检索不会退化成无 ACL 的路径。
 - 空结果与故障要分开处理：空列表表示没有问题匹配 ACL 的文档，`RagStoreUnavailable` 表示存储不可用。告警只看后者。
-- 低置信度与提示注入由 `RagGuard` 过滤，被过滤掉的引用不会出现在返回结果里。
+- 配置了 `RagGuard` 时，低置信度与提示注入的引用在返回前被过滤掉，不会出现在结果里。没配置就不过滤，生产环境应配置。
 
 多副本：
 
 - 向量与索引都在共享 Postgres 里，副本无本地状态。同一事务提交后其他副本立即可见，不需要副本间同步或预热。
 - 扩容前确认所有副本指向同一个库。指错库的副本只会查到自己的数据，表现为部分租户检索为空，不是报错。
-- 每个副本首次连上时都会执行同一段幂等 schema，`CREATE ... IF NOT EXISTS` 与 `DROP POLICY IF EXISTS` 之后重建策略，并发首启不会互相破坏。
+- 每个副本首次连上时都会执行同一段 schema。语句本身幂等，但多个副本同时首启时 Postgres 的 `CREATE EXTENSION IF NOT EXISTS` 与 `CREATE TABLE IF NOT EXISTS` 仍可能撞唯一索引而报错，该副本的首次请求会失败并抛 `RagStoreUnavailable`。重试即恢复，数据不会损坏。要求首启零失败就用 DBA 先建好扩展与表，再滚动副本。
 - `adk_rag_chunks` 与其它 `adk_*` 表一起进 `pg_dump`，备份与恢复顺序同「备份与恢复」一节。
 - `PgVectorRagStore` 目前由部署代码构造（传入 DSN 与维度）；CLI 接线在后续切片，接线前不要指望 `serve-*` 自带 RAG 存储。
 
