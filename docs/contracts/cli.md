@@ -480,6 +480,30 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - 幂等：重复运行先 `DROP POLICY IF EXISTS` 再重建。
 - 成功输出 `session rls enabled`，退出 0。
 
+## `adk-agent rag ingest --database-url URL --dimensions N --model MODEL --tenant T --source-id ID [--provider litellm] [--text FILE] [--data-class CLASS ...] [--subject S ...] [--chunk-chars N] [--budget-usd F] [--audit-file PATH | --audit-url URL | --audit-db URL]`
+
+把一份文本分块、嵌入并写入 `adk_rag_chunks`（ADR-0035）。
+
+- `--database-url` 必填，指向装了 pgvector 的 Postgres。`--dimensions` 必须等于 embedding 模型输出维度，`--model` 是传给模型通道的模型名。
+- 正文来自 `--text FILE`，不给时读 stdin。空文本或只有空白退出 1，输出 `empty text`，不写存储。
+- `--tenant` 同时是存储租户与嵌入审计的租户；两者由同一次调用给出，不做推导。
+- `--data-class` 可重复，缺省为空列表。`--subject` 可重复，缺省时不写 `allowed_subjects`，分块对租户内全部主体可见。
+- `--chunk-chars` 是每块最大字符数，默认 800，必须大于 0。
+- `--budget-usd` 设成 `ModelPolicy.budget_usd` 走既有预算检查；不给时不限。
+- 嵌入经 `EmbeddingGateway`，每次调用写一条 `model.embed` 审计，后端由上面的审计参数选择。
+- 成功：stdout 输出 `{"tenant":"T","source_id":"ID","chunks":N}`，退出 0。
+- 失败：`RagStoreUnavailable`（扩展缺失、维度不符、驱动或 SQL 错误）、`ModelDenied`（provider 不在允许清单、未配置、预算超限）与空文本都退出 1，stderr 只给安全文案，不回显 DSN 或正文。
+
+## `adk-agent rag search --database-url URL --dimensions N --model MODEL --tenant T [--provider litellm] [--subject S] [--query TEXT] [--data-class CLASS ...] [--limit N] [--min-confidence F] [--audit-file PATH | --audit-url URL | --audit-db URL]`
+
+按查询文本检索引用（ADR-0035 的 `PgVectorRagService`）。
+
+- 查询来自 `--query`，不给时读 stdin。空查询退出 1。
+- 检索用 principal 的租户与 `--subject`（缺省 `rag-search`）做 ACL 过滤，`--data-class` 声明调用方持有的数据分级，缺省为空列表，此时 `data_classes <@ '{}'` 只命中没有分级的分块。
+- `--limit` 默认 10，必须大于 0。`--min-confidence` 默认 0.5，传给 `RagGuard`；低于阈值的引用与命中提示注入模式的引用都被丢弃。
+- 成功：stdout 输出引用 JSON 数组，元素为 `{"source_id","snippet","acl_checked":true,"confidence"}`，退出 0。空结果输出 `[]`。
+- 失败：`RagStoreUnavailable` 与 `ModelDenied` 退出 1，不输出数组，空结果与故障不能混淆。
+
 ## 入口限流
 
 `console`、`serve-model-gateway`、`serve-tool-gateway` 和 `serve-audit` 接受 `--rate-limit N` 和 `--rate-limit-window SECONDS`（默认 60）。

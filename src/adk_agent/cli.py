@@ -1102,6 +1102,131 @@ def _peer_a2a(args: argparse.Namespace) -> dict[str, Any] | None:
     }
 
 
+def _rag_invocation(tenant: str, subject: str):
+    from .core import Invocation, Principal
+    from .runtime import dev_agent_ref
+
+    return Invocation(
+        run_id=uuid.uuid4().hex,
+        trace_id=uuid.uuid4().hex,
+        principal=Principal(tenant=tenant, subject=subject, kind="service"),
+        agent_ref=dev_agent_ref("rag"),
+        input="",
+    )
+
+
+def _rag_policy(args: argparse.Namespace):
+    from .core import ModelPolicy
+
+    return ModelPolicy(provider_allowlist=[args.provider], budget_usd=args.budget_usd)
+
+
+def _rag_embedder(args: argparse.Namespace, sink: AuditSink | None):
+    from .models.embeddings import EmbeddingGateway
+    from .models.providers import LiteLlmProvider
+
+    if args.provider != "litellm":
+        print(f"unknown provider {args.provider!r}", file=sys.stderr)
+        raise SystemExit(1)
+    provider = LiteLlmProvider(
+        api_key=os.environ.get("LITELLM_API_KEY"),
+        api_base=os.environ.get("LITELLM_API_BASE"),
+    )
+    return EmbeddingGateway({args.provider: provider}, audit=sink)
+
+
+def _read_rag_input(value: str | None, *, what: str) -> str:
+    try:
+        text = sys.stdin.read() if value is None else Path(value).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"could not read {what}: {type(exc).__name__}", file=sys.stderr)
+        raise SystemExit(1) from None
+    if not text.strip():
+        print(f"empty {what}", file=sys.stderr)
+        raise SystemExit(1)
+    return text
+
+
+async def _rag_ingest(args: argparse.Namespace) -> None:
+    from .rag.ingest import IngestionPipeline
+    from .rag.vector_store import PgVectorRagStore
+
+    text = _read_rag_input(args.text, what="text")
+    sink = _audit_sink(args)
+    store = PgVectorRagStore(args.database_url, dimensions=args.dimensions)
+    try:
+        pipeline = IngestionPipeline(
+            store,
+            _rag_embedder(args, sink),
+            provider=args.provider,
+            model=args.model,
+            chunk_chars=args.chunk_chars,
+        )
+        count = await pipeline.ingest(
+            _rag_invocation(args.tenant, "rag-ingest"),
+            tenant=args.tenant,
+            source_id=args.source_id,
+            text=text,
+            data_classes=list(args.data_classes),
+            policy=_rag_policy(args),
+            allowed_subjects=list(args.subjects) or None,
+        )
+    finally:
+        await store.aclose()
+    print(json.dumps({"tenant": args.tenant, "source_id": args.source_id, "chunks": count}))
+
+
+async def _rag_search(args: argparse.Namespace) -> None:
+    from .rag.guard import RagGuard
+    from .rag.pgvector_service import PgVectorRagService
+    from .rag.vector_store import PgVectorRagStore
+
+    query = args.query if args.query is not None else sys.stdin.read()
+    if args.limit <= 0:
+        print("--limit must be greater than 0", file=sys.stderr)
+        raise SystemExit(1)
+    if not query.strip():
+        print("empty query", file=sys.stderr)
+        raise SystemExit(1)
+    sink = _audit_sink(args)
+    store = PgVectorRagStore(args.database_url, dimensions=args.dimensions)
+    try:
+        service = PgVectorRagService(
+            store,
+            _rag_embedder(args, sink),
+            provider=args.provider,
+            model=args.model,
+            guard=RagGuard(min_confidence=args.min_confidence),
+            limit=args.limit,
+        )
+        invocation = _rag_invocation(args.tenant, args.subject)
+        citations = await service.retrieve(
+            query,
+            invocation.principal,
+            list(args.data_classes),
+            invocation=invocation,
+            policy=_rag_policy(args),
+        )
+    finally:
+        await store.aclose()
+    payload = [citation.model_dump(mode="json") for citation in citations]
+    print(json.dumps(payload))
+
+
+def _run_rag(args: argparse.Namespace) -> None:
+    from .models.gateway import ModelDenied
+    from .rag.vector_store import RagStoreUnavailable
+
+    try:
+        if args.rag_cmd == "ingest":
+            asyncio.run(_rag_ingest(args))
+        else:
+            asyncio.run(_rag_search(args))
+    except (RagStoreUnavailable, ModelDenied, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="adk-agent")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1924,6 +2049,37 @@ def main(argv: list[str] | None = None) -> None:
     decision.add_argument("--deny", action="store_true")
     p_tg_decide.add_argument("--reason", default="")
     _add_tool_grant_args(p_tg_decide)
+
+    p_rag = sub.add_parser("rag", help="ingest documents into and search the pgvector RAG store")
+    rag_sub = p_rag.add_subparsers(dest="rag_cmd", required=True)
+
+    p_rag_ingest = rag_sub.add_parser("ingest", help="chunk, embed, and store one source")
+    p_rag_ingest.add_argument("--database-url", required=True)
+    p_rag_ingest.add_argument("--dimensions", type=int, required=True)
+    p_rag_ingest.add_argument("--model", required=True)
+    p_rag_ingest.add_argument("--provider", default="litellm")
+    p_rag_ingest.add_argument("--tenant", required=True)
+    p_rag_ingest.add_argument("--source-id", required=True)
+    p_rag_ingest.add_argument("--text", default=None, help="file to ingest; stdin when omitted")
+    p_rag_ingest.add_argument("--data-class", dest="data_classes", action="append", default=[])
+    p_rag_ingest.add_argument("--subject", dest="subjects", action="append", default=[])
+    p_rag_ingest.add_argument("--chunk-chars", type=int, default=800)
+    p_rag_ingest.add_argument("--budget-usd", type=float, default=None)
+    _add_audit_args(p_rag_ingest)
+
+    p_rag_search = rag_sub.add_parser("search", help="retrieve ACL-checked citations")
+    p_rag_search.add_argument("--database-url", required=True)
+    p_rag_search.add_argument("--dimensions", type=int, required=True)
+    p_rag_search.add_argument("--model", required=True)
+    p_rag_search.add_argument("--provider", default="litellm")
+    p_rag_search.add_argument("--tenant", required=True)
+    p_rag_search.add_argument("--subject", default="rag-search")
+    p_rag_search.add_argument("--query", default=None, help="query text; stdin when omitted")
+    p_rag_search.add_argument("--data-class", dest="data_classes", action="append", default=[])
+    p_rag_search.add_argument("--limit", type=int, default=10)
+    p_rag_search.add_argument("--min-confidence", type=float, default=0.5)
+    p_rag_search.add_argument("--budget-usd", type=float, default=None)
+    _add_audit_args(p_rag_search)
 
     p_backup = sub.add_parser("backup", help="archive file-based state into a gzip tar")
     p_backup.add_argument("--out", required=True, help="archive path to write")
@@ -2930,6 +3086,8 @@ def main(argv: list[str] | None = None) -> None:
             print(f"session rls setup failed: {type(exc).__name__}", file=sys.stderr)
             raise SystemExit(1) from None
         print("session rls enabled")
+    elif args.cmd == "rag":
+        _run_rag(args)
     elif args.cmd == "backup":
         from .backup import BackupError, create_backup
 
