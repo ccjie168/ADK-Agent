@@ -36,6 +36,8 @@ class AuditEvent(BaseModel):
     status: Literal["ok", "error", "denied"]
     error_code: str | None = None
     risk_level: RiskLevel | None = None
+    model_alias: str | None = None
+    fallback_count: int = Field(default=0, ge=0)
     timestamp: datetime
 
     @field_validator("timestamp")

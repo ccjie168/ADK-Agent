@@ -1,0 +1,33 @@
+SLICE-188 模型审计字段：alias、实际模型、降级次数
+日期: 2026-11-20
+依据: ADR-0033（Accepted 2026-11-19）决定 3 / slice 4
+基线: 1eb613e
+
+一、实现
+
+- `AuditEvent` 增加 `model_alias: str | None = None` 与 `fallback_count: int`（`ge=0`，缺省 0）。
+- `emit_model_audit` 与 `_complete_once` 增加同名关键字参数并写入事件；`complete` 的 alias 路径把
+  alias 与尝试序号（降级次数）透传，直接路径保持缺省。
+- 重生成 `audit_event.schema.json` 与 `audit_record.schema.json`（内嵌事件）。
+- 实际模型已在事件 `target`（`provider:model`）中记录，本切片补齐 alias 与降级次数。
+- 新增 `tests/models/test_model_audit_fields.py` 四个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1780 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 1eb613e 上 `AuditEvent` 无 `model_alias`/`fallback_count`：
+`test_direct_call_audits_defaults`、`test_alias_call_audits_alias`、`test_fallback_audits_count`
+失败（AttributeError）；`test_audit_rejects_negative_fallback_count` 因 extra_forbidden 巧合通过。
+
+四、范围与已知缺口
+
+- 控制台展示 alias 与降级次数（后续 UI 切片）。
+- 预算跨副本共享（SLICE-187 的已知缺口）。
+- 至此 ADR-0033 四个切片全部交付。
