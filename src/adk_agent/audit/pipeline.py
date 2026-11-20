@@ -7,8 +7,10 @@ import hashlib
 import hmac
 import json
 import os
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from ..core import AuditEvent, AuditRecord
 from .keyring import SigningKeyring
@@ -32,13 +34,19 @@ class AuditSignatureInvalid(Exception):
         self.tenant = tenant
 
 
-def record_hash(event: AuditEvent, prev_hash: str) -> str:
-    canonical = json.dumps(
-        event.model_dump(mode="json"),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
+def canonical_event_json(payload: str | Mapping[str, Any]) -> str:
+    """Canonical form of a stored event object (ADR-0037)."""
+    if isinstance(payload, str):
+        payload = json.loads(payload)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def record_hash(event: AuditEvent | str | Mapping[str, Any], prev_hash: str) -> str:
+    """Hash the event as stored, never as the current model would serialize it."""
+    payload: str | Mapping[str, Any] = (
+        event.model_dump(mode="json") if isinstance(event, AuditEvent) else event
     )
+    canonical = canonical_event_json(payload)
     return hashlib.sha256(f"{prev_hash}\n{canonical}".encode()).hexdigest()
 
 
@@ -71,6 +79,11 @@ def _segment_paths(path: str | Path) -> list[Path]:
 def _read_segment(file: Path) -> list[AuditRecord]:
     lines = file.read_text(encoding="utf-8").splitlines()
     return [AuditRecord.model_validate_json(line) for line in lines if line.strip()]
+
+
+def _read_stored_events(file: Path) -> list[Mapping[str, Any]]:
+    lines = file.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line)["event"] for line in lines if line.strip()]
 
 
 def load_records(path: str | Path) -> list[AuditRecord]:
@@ -151,11 +164,12 @@ def _scan_segments(
     current_count = 0
     for segment in _segment_paths(file):
         records = _read_segment(segment)
-        for record in records:
+        stored = _read_stored_events(segment)
+        for record, event_obj in zip(records, stored, strict=True):
             tenant = record.event.tenant
             if record.prev_hash != last.get(tenant, ""):
                 raise AuditChainBroken(index, tenant)
-            if record_hash(record.event, record.prev_hash) != record.hash:
+            if record_hash(event_obj, record.prev_hash) != record.hash:
                 raise AuditChainBroken(index, tenant)
             if keyring is not None:
                 key = keyring.key_for(record.kid)
@@ -234,7 +248,8 @@ class AuditPipeline:
             ):
                 self._rotate()
             prev_hash = self._last.get(event.tenant, "")
-            digest = record_hash(event, prev_hash)
+            event_text = event.model_dump_json()
+            digest = record_hash(event_text, prev_hash)
             signing_key: str | None
             if self.keyring is not None:
                 signing_key = self.keyring.keys[self.keyring.active]
@@ -252,8 +267,19 @@ class AuditPipeline:
                 kid=kid,
             )
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            line = json.dumps(
+                {
+                    "event": json.loads(event_text),
+                    "prev_hash": prev_hash,
+                    "hash": digest,
+                    "signature": record.signature,
+                    "kid": kid,
+                },
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
             with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(record.model_dump_json() + "\n")
+                handle.write(line + "\n")
                 handle.flush()
                 os.fsync(handle.fileno())
             self._last[event.tenant] = record.hash

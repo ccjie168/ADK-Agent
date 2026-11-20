@@ -1,0 +1,46 @@
+SLICE-201 审计链以存储内容为准（文件模式）
+日期: 2026-11-21
+依据: ADR-0037（Accepted 2026-11-21）决定 1-5 / 切片 1
+基线: 1dbedb0
+
+一、契约（先改）
+
+- 新增 `docs/contracts/audit_chain.md`：记录结构、哈希口径（存储事件 JSON 的规范形式）、签名覆盖范围、
+  字段演化规则（加字段不改哈希）、Postgres 用 `event::text` 规范形式比对。
+
+二、实现
+
+- `src/adk_agent/audit/pipeline.py`：
+  - 新增 `canonical_event_json(payload)`，接受 JSON 文本或对象，输出
+    `sort_keys=True, separators=(",", ":"), ensure_ascii=False` 的规范形式。
+  - `record_hash(event, prev_hash)` 接受 `AuditEvent`、JSON 文本或对象；文本与对象一律走同一个规范
+    函数，不再单独依赖 `model_dump`。
+  - `AuditPipeline.append` 只序列化一次：先得到事件文本，用同一文本算哈希，再按
+    `{"event", "prev_hash", "hash", "signature", "kid"}` 写出，存什么就哈希什么。
+  - `_scan_segments` 从每行的 `event` 原始对象重算哈希（新增 `_read_stored_events`），不再用当前模型
+    重新序列化。
+- 新增 `tests/audit/test_audit_chain_canonical.py` 六个用例：文本/对象同一结果、键序无关、
+  缺后加字段的历史记录可验、历史之后追加仍成链、篡改断链、写入记录哈希等于存储事件哈希。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1886 passed, 96 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+- 基线 1dbedb0 上 `canonical_event_json` 不存在，`tests/audit/test_audit_chain_canonical.py` 收集即
+  `ImportError`（1 error）。
+- 独立探针：用基线代码写一条「SLICE-188 之前格式」的记录（事件里没有 `model_alias`、
+  `fallback_count`、`rag_*`），基线 `verify_audit_file` 抛
+  `AuditChainBroken: audit chain broken at record 0 for tenant 'acme'`；同一份记录在新代码下验证通过。
+  这就是 ADR-0037 要修的行为。
+
+五、范围与已知缺口
+
+- 本切片只改文件模式；Postgres 的校验路径仍用模型重算，历史行仍会失败，切片 2 处理并补 live 用例。
+- 签名口径不变，仍是 HMAC over 记录 hash。
+- 旋转、分段与 `query_events` 不受影响；新写出的行仍是合法 `AuditRecord` JSON。
