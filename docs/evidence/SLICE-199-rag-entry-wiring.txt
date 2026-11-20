@@ -1,0 +1,53 @@
+SLICE-199 RAG 入口接线：控制台与触发
+日期: 2026-11-20
+依据: ADR-0036（Accepted 2026-11-20）切片 4 的前半
+基线: 7161b4e
+
+一、契约（先改）
+
+- `docs/contracts/cli.md` 新增「`console` 与 `serve-triggers` 的 RAG 参数」：四个 `--rag-*`、缺参退出 1、
+  未知 provider 退出 1、只对 `rag.enabled=true` 的 manifest 生效、文件加载的 agent 不启用。
+- `docs/contracts/rag_service.md` 新增「入口接线」：共享存储与嵌入网关、每 agent 一个上下文、
+  控制台按需加载与触发执行的生效范围。
+
+二、实现
+
+- `src/adk_agent/rag/factory.py`：`RagFactory(store, gateway, *, provider, model, audit, policy)` 的
+  `context(manifest)` 在 `manifest.rag` 存在且启用时返回绑定了 `top_k`/`min_confidence`/
+  `data_classes`/`on_error`/`policy` 的 `RagContext`，否则 `None`；`build_rag_factory` 构造生产实例，
+  未知 provider 抛 `ValueError`。
+- `src/adk_agent/console.py`：`build_console_app` 与 `run_console` 增加 `rag`；`_register` 只在有
+  manifest 的路径（按需加载）构造上下文，文件加载的 agent 不接线。
+- `src/adk_agent/triggers_service.py`：`build_triggers_app` 增加 `rag`，每次执行用 pinned 记录的
+  manifest 构造上下文。
+- `src/adk_agent/cli.py`：`_add_rag_args` 与 `_rag_factory`，`console` 与 `serve-triggers` 解析四个参数，
+  未给 `--rag-db` 返回 `None`，缺维度/模型退出 1。
+- 测试：新增 `tests/test_rag_factory.py` 九个用例；在 `tests/test_console_on_demand.py` 与
+  `tests/test_triggers_service.py` 各加一个接线用例（复用既有 harness，给辅助函数增加可选 `rag` 参数，
+  不改既有断言）。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1876 passed, 96 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+在基线 7161b4e 的临时 worktree（`PYTHONPATH=<worktree>/src`）上实跑：
+
+- `pytest tests/test_rag_factory.py` → 1 error（收集期 `ModuleNotFoundError: No module named
+  'adk_agent.rag.factory'`）。
+- `pytest tests/test_console_on_demand.py tests/test_triggers_service.py` → 38 failed, 2 passed。失败的
+  大部分来自辅助函数把 `rag=` 传给基线不认识该参数的构建器（TypeError），其中包含两个新接线用例；
+  也就是说红态成立，但红态本身也说明「辅助函数新增可选参数」在基线上会让整模块失败，这是预期的。
+
+五、范围与已知缺口
+
+- MCP 与 A2A 入口未接线（runner 形态不同，另行切片）。
+- 共享 `BudgetTracker` 与模型网关未联账，只在嵌入网关内共享。
+- 控制台的 `--agents` 文件加载没有 manifest，永远不能开启检索，这是 ADR-0036「按 manifest 配置」的
+  直接结果，运维需要走注册表才能使用检索。
+- 运维与使用手册尚未更新（切片 5）。

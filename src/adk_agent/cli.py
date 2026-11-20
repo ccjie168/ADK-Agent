@@ -880,6 +880,35 @@ def _audit_backend(args: argparse.Namespace) -> tuple[str | None, str | None, st
     return None, None, None
 
 
+def _add_rag_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--rag-db", default=None, help="pgvector database URL")
+    parser.add_argument("--rag-dimensions", type=int, default=None, help="embedding dimensions")
+    parser.add_argument("--rag-model", default=None, help="embedding model name")
+    parser.add_argument("--rag-provider", default="litellm", help="embedding provider")
+
+
+def _rag_factory(args: argparse.Namespace):
+    """Build the RAG factory when the deployment configured one (ADR-0036)."""
+    if args.rag_db is None:
+        return None
+    if args.rag_dimensions is None or args.rag_model is None:
+        print("--rag-db needs --rag-dimensions and --rag-model", file=sys.stderr)
+        raise SystemExit(1)
+    from .rag.factory import build_rag_factory
+
+    try:
+        return build_rag_factory(
+            database_url=args.rag_db,
+            dimensions=args.rag_dimensions,
+            model=args.rag_model,
+            provider=args.rag_provider,
+            audit=_audit_sink(args),
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def _audit_sink(args: argparse.Namespace) -> AuditSink | None:
     from .audit import HttpAuditSink, JsonlAuditSink, PostgresAuditSink
     from .auth import LOOPBACK_HOSTS
@@ -1638,6 +1667,7 @@ def main(argv: list[str] | None = None) -> None:
     p_serve_triggers = sub.add_parser(
         "serve-triggers", help="serve the webhook trigger execution service"
     )
+    _add_rag_args(p_serve_triggers)
     p_serve_triggers.add_argument(
         "--triggers-dir", default=None, help="file store root for trigger definitions and fires"
     )
@@ -1727,6 +1757,7 @@ def main(argv: list[str] | None = None) -> None:
     p_verify.add_argument("--audit-db", default=None, help="Postgres audit database URL")
 
     p_console = sub.add_parser("console", help="serve a private web console for agents")
+    _add_rag_args(p_console)
     p_console.add_argument(
         "--agents",
         default=None,
@@ -2816,6 +2847,7 @@ def main(argv: list[str] | None = None) -> None:
             scheduler=not args.no_scheduler,
             schedule_tick=args.schedule_tick,
             trigger_attempts=args.trigger_attempts,
+            rag=_rag_factory(args),
         )
 
         import uvicorn
@@ -3035,6 +3067,7 @@ def main(argv: list[str] | None = None) -> None:
         if args.peer_dir or args.peer_db:
             console_peers, console_peer_grants = _peer_stores(args)
             console_remote_agents = _remote_agent_store(args)
+        rag_factory = _rag_factory(args)
         run_console(
             agents=agents,
             host=args.host,
@@ -3074,6 +3107,7 @@ def main(argv: list[str] | None = None) -> None:
             rate_limit=rate_limit,
             session_tenant_scope=args.session_tenant_scope,
             session_rls=session_rls,
+            rag=rag_factory,
         )
         if isinstance(audit_query, PostgresAuditQuery):
             # The pool may have opened in uvicorn's loop, which is now closed;

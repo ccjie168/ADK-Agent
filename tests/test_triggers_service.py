@@ -134,7 +134,7 @@ def _zip_for(published) -> bytes:
     )
 
 
-def _published(*, grants: list[ToolGrant] | None = None, tier: str | None = None):
+def _published(*, grants: list[ToolGrant] | None = None, tier: str | None = None, rag=None):
     manifest = AgentManifest(
         id="assistant",
         version="1.0.0",
@@ -143,6 +143,7 @@ def _published(*, grants: list[ToolGrant] | None = None, tier: str | None = None
         model_policy={"provider_allowlist": ["litellm"]},
         tool_grants=grants or [],
         execution_tier=tier,
+        rag=rag,
     )
     artifact = AgentArtifact(digest="sha256:" + "d" * 64, size=1)
     return published_from(manifest, artifact=artifact)
@@ -205,6 +206,7 @@ def _client(
     fire_store=None,
     sandbox=None,
     artifact_store=None,
+    rag=None,
 ):
     runner = FakeRunner()
     trust = FakeTrust()
@@ -224,6 +226,7 @@ def _client(
         runner_factory=lambda agent: runner,
         fire_store=fire_store,
         sandbox=sandbox,
+        rag=rag,
     )
     return TestClient(app), runner, trust, loader
 
@@ -685,3 +688,44 @@ def test_audit_failures_do_not_strand_the_fire(tmp_path):
     stored = asyncio.run(fire_store.get("acme", "nightly", "audit-1"))
     assert stored is not None and stored.status == "ok"
     assert any(event.action == "trigger.fire" for event in sink.events)
+
+
+class _FakeContext:
+    async def prefix(self, invocation):
+        return ""
+
+
+class _FakeRag:
+    def __init__(self) -> None:
+        self.manifests = []
+        self.contexts = []
+
+    def context(self, manifest):
+        self.manifests.append(manifest)
+        context = _FakeContext()
+        self.contexts.append(context)
+        return context
+
+
+def test_fire_passes_rag_context_for_enabled_manifest(monkeypatch):
+    from adk_agent import triggers_service
+
+    captured = {}
+    real = triggers_service.AgentRuntime
+
+    class Recorder(real):
+        def __init__(self, *args, **kwargs):
+            captured["rag"] = kwargs.get("rag")
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(triggers_service, "AgentRuntime", Recorder)
+    published = _published(rag={"enabled": True, "top_k": 3})
+    factory = _FakeRag()
+    trigger = _webhook(digest=f"sha256:{published.digest}")
+    client, *_ = _client([trigger], published=published, rag=factory)
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 200, response.text
+    assert captured["rag"] is factory.contexts[0]
+    assert factory.manifests[0].rag.top_k == 3

@@ -192,6 +192,7 @@ def build_triggers_app(
     schedule_tick: float = 15.0,
     trigger_attempts: int = 3,
     clock: Callable[[], datetime] | None = None,
+    rag: Any | None = None,
 ) -> FastAPI:
     """Build the trigger service. Only ``/healthz`` is open."""
     if schedule_tick < 5:
@@ -499,7 +500,10 @@ def build_triggers_app(
 
             session = await service.create_session(app_name=agent.name, user_id=principal.subject)
             runner = (runner_factory or default_runner)(agent)
-            runtime = AgentRuntime(runner, audit=audit, metrics=metrics, source="trigger")
+            context = rag.context(published.manifest) if rag is not None else None
+            runtime = AgentRuntime(
+                runner, audit=audit, metrics=metrics, source="trigger", rag=context
+            )
             result = await runtime.run(
                 invocation,
                 user_id=principal.subject,

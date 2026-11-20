@@ -85,3 +85,16 @@
   写同一条 `status=error` 后继续运行。
 - 事件不含查询原文、片段与 `source_id`；`error_code` 只写异常类型名。
 - 未配置 `audit` 时不写事件，运行行为与切片 2 一致。
+
+## 入口接线（ADR-0036 切片 4）
+
+`RagFactory` 持有一份共享的 `PgVectorRagStore` 与 `EmbeddingGateway`，`context(manifest)` 在
+`manifest.rag` 存在且 `enabled=true` 时返回绑定了该 manifest 的 `RagContext`（`top_k`、
+`min_confidence`、`data_classes`、`on_error`，策略取 `manifest.model_policy`），否则返回 `None`。
+
+- `console` 只在按需加载（`/api/registry/load`，有 manifest）时接线；用 `--agents` 加载的 agent
+  没有 manifest，不能开启检索。
+- `serve-triggers` 在每次执行时用 pinned 记录的 manifest 构造上下文。
+- 部署配置：`--rag-db`、`--rag-dimensions`、`--rag-model`、`--rag-provider`（默认 `litellm`）。
+  未给 `--rag-db` 时完全不启用；给了但缺维度或模型退出 1；未知 provider 退出 1。
+- 同一进程内所有 agent 共享存储与嵌入网关，嵌入预算与审计在该网关内累计。

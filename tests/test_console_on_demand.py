@@ -49,6 +49,7 @@ def _manifest(
     *,
     execution_tier: str | None = None,
     tool_grants=None,
+    rag=None,
 ) -> AgentManifest:
     data = {
         "id": "bot",
@@ -62,6 +63,8 @@ def _manifest(
         data["execution_tier"] = execution_tier
     if tool_grants is not None:
         data["tool_grants"] = tool_grants
+    if rag is not None:
+        data["rag"] = rag
     return AgentManifest.model_validate(data)
 
 
@@ -72,10 +75,11 @@ def _project(
     *,
     execution_tier: str | None = None,
     tool_grants: list[dict] | None = None,
+    rag: dict | None = None,
 ):
     project = tmp_path / f"project-{version}"
     project.mkdir(parents=True, exist_ok=True)
-    manifest = _manifest(version, execution_tier=execution_tier, tool_grants=tool_grants)
+    manifest = _manifest(version, execution_tier=execution_tier, tool_grants=tool_grants, rag=rag)
     (project / "manifest.json").write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
     (project / "agent.py").write_text(
         "from google.adk.agents import LlmAgent\n"
@@ -95,8 +99,9 @@ def _publish(
     data=None,
     execution_tier=None,
     tool_grants=None,
+    rag=None,
 ):
-    manifest = _manifest(version, execution_tier=execution_tier, tool_grants=tool_grants)
+    manifest = _manifest(version, execution_tier=execution_tier, tool_grants=tool_grants, rag=rag)
     if data is None:
         data = pack_agent(
             _project(
@@ -104,6 +109,7 @@ def _publish(
                 version,
                 execution_tier=execution_tier,
                 tool_grants=tool_grants,
+                rag=rag,
             )
         )
     digest = artifact_digest(data)
@@ -128,6 +134,7 @@ def _app(
     store: bool = True,
     audit=None,
     roles=("admin",),
+    rag=None,
 ):
     key = trust_key if trust_key is not None else _key()
     trust = TrustStore({"k1": _raw(key)}) if trust_key is not False else None
@@ -141,6 +148,7 @@ def _app(
         artifact_trust=trust,
         max_loaded_agents=max_loaded_agents,
         audit_sink=audit,
+        rag=rag,
     )
 
 
@@ -419,3 +427,38 @@ def test_on_demand_sandboxed_tool_grants_refused(tmp_path):
 
     assert loaded.status_code == 409
     assert loaded.json() == {"error": "tool_mediation_unavailable"}
+
+
+class _FakeRag:
+    def __init__(self) -> None:
+        self.manifests = []
+
+    def context(self, manifest):
+        self.manifests.append(manifest)
+        return "rag-context"
+
+
+@needs_crypto
+def test_load_passes_rag_context_for_enabled_manifest(tmp_path, monkeypatch):
+    from adk_agent import console as console_mod
+
+    captured = {}
+    real = console_mod.AgentRuntime
+
+    class Recorder(real):
+        def __init__(self, *args, **kwargs):
+            captured["rag"] = kwargs.get("rag")
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(console_mod, "AgentRuntime", Recorder)
+    key = _key()
+    registry = FileAgentRegistry(tmp_path / "registry")
+    _publish(tmp_path, registry, key, rag={"enabled": True, "top_k": 2})
+    factory = _FakeRag()
+    with TestClient(_app(tmp_path, trust_key=key, rag=factory)) as client:
+        response = _load(client)
+
+    assert response.status_code == 200
+    assert captured["rag"] == "rag-context"
+    assert factory.manifests[0].rag.enabled is True
+    assert factory.manifests[0].rag.top_k == 2
