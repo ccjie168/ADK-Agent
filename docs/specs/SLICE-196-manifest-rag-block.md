@@ -22,6 +22,7 @@
 - [x] 缺省值与 ADR 一致 -> `test_manifest_rag_defaults`
 - [x] `top_k` 越界被拒 -> `test_manifest_rag_rejects_bad_top_k`
 - [x] `on_error` 非法取值被拒 -> `test_manifest_rag_rejects_bad_on_error`
+- [x] `min_confidence` 越界被拒 -> `test_manifest_rag_rejects_bad_confidence`
 - [x] 不带 `rag` 的存量 manifest digest 不变 -> `test_legacy_manifest_digest_ignores_missing_rag`
 - [x] 带 `rag` 的 manifest digest 变化 -> `test_manifest_digest_changes_with_rag`
 - [x] schema 含 `rag` 定义 -> `test_manifest_schema_documents_rag`
