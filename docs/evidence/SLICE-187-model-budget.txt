@@ -1,0 +1,33 @@
+SLICE-187 模型预算执行
+日期: 2026-11-20
+依据: ADR-0033（Accepted 2026-11-19）决定 4 / slice 3
+基线: e717777
+
+一、实现
+
+- `models/budget.py` 新增 `BudgetTracker`：按租户累计 USD（`spent`/`add`，拒绝负数），进程内。
+- `PolicyModelGateway` 增加可选 `budgets`；`_complete_once` 在 provider 检查之后、调用之前检查
+  `policy.budget_usd`，该租户已花费达到上限时审计 `budget_exceeded` 并抛 `ModelDenied`。
+- 调用成功后把 `response.cost_usd` 累加到该租户（成本未知时不累计）。
+- 未配置 `budgets` 时不执行预算，行为与现状一致；别名路由下预算拒绝也立即上抛（不降级）。
+- 新增 `tests/models/test_model_budget.py` 五个测试。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1776 passed, 91 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 e717777 上无 `adk_agent.models.budget`，`PolicyModelGateway` 不接受 `budgets`：
+测试收集即 ModuleNotFoundError。
+
+四、范围与已知缺口
+
+- 预算持久化与跨副本共享（后续，需存储选型）。
+- 超限降级到备用候选（ADR-0033 定为后置；MVP 先停止）。
+- 审计字段扩展：alias、实际模型、降级次数（slice 4）。
+- 花费在进程内累计，进程重启丢失；多副本各自计数，与既有指标口径一致（由 scraper 聚合）。
