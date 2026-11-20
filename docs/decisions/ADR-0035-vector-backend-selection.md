@@ -1,6 +1,6 @@
 # ADR-0035 向量后端与 embedding 选型
 
-状态: Proposed   日期: 2026-11-20   起草: Claude Code   待签字
+状态: Accepted   日期: 2026-11-20   签字: Jie CAO（会话确认）
 
 ## 背景
 
@@ -47,13 +47,13 @@ SLICE-182 到 SLICE-184 已交付端口、`Citation`、内存结构化检索与�
 - embedding 调用产生成本，与 ADR-0033 预算共用计数。
 - 维度固定为部署配置；换模型需重建索引，写进运维手册。
 
-## 待确认问题
+## 确认记录（2026-11-20 会话确认）
 
-1. 是否接受 Postgres + `pgvector` 作为向量存储（而不是独立向量库）。
-2. embedding 是否复用 LiteLLM 通道（接受其成本与数据出站，按 ADR-0021 的 egress 审计）。
-3. 默认 embedding 模型与维度是否由部署配置决定，MVP 不内置默认值。
+1. 接受 **Postgres + `pgvector`** 作为向量存储，不引入独立向量库。
+2. embedding **复用 LiteLLM 通道**，成本计入 ADR-0033 预算，数据出站按 ADR-0021 记 egress 审计。
+3. 默认 embedding 模型与维度**由部署配置决定**，MVP 不内置默认值；换模型需重建索引。
 
-## 切片（确认后分配）
+## 切片（2026-11-20 确认后分配）
 
 1. `pgvector` 表、扩展安装与 RLS 迁移脚本。
 2. `ModelProvider.embed` + LiteLLM 实现 + 预算联动。
