@@ -19,7 +19,7 @@ SLICE-197 运行时 RAG 预取与注入边界
     policy=None)`；构造时校验 `top_k>0` 与 `on_error ∈ {deny, degrade}`。
   - `prefix(invocation)`：只接受 `acl_checked=True` 的引用，`RagGuard` 过滤后按 `top_k` 截断，渲染
     固定边界块（编号、`source=`、`confidence=0.00`）。
-  - 中和规则：先把换行归一化为 `\n`，再剔除全部 Unicode `Cf` 类格式控制字符（零宽集合）；
+  - 中和规则：先把换行归一化为 `\n`，再剔除全部 Unicode `Cf` 类格式控制字符（含 U+200B-U+200F、U+2060、U+FEFF 等）；
     `<\s*/?\s*retrieved_context\s*/?>`（忽略大小写、容忍结尾 `/`）替换为实体；行首（含任意非换行
     前导空白）的 `[n]` 替换为 `&#91;n&#93;`。片段与 `source_id` 都处理。
   - 失败：`deny` 抛 `RagUnavailable`（只带异常类型）；`degrade` 记一条不含正文的警告后返回空串。
@@ -70,8 +70,14 @@ ALL PASS（9 步，含 bandit / pip-audit）
 - `rag.retrieve` 审计与共享预算未接（切片 3）。
 - `top_k` 截断是服务返回后的二次防线，服务侧 `limit` 仍应设置。
 - 边界中和是启发式防护，模型仍可能被片段语义影响；`RagGuard` 只覆盖已知注入模式。
+- 不在 `Cf` 类的不可见字符（U+034F 组合字形连接符、U+FE0F 变体选择符、Hangul filler 等）不剔除，
+  插进标签词仍可能让模型读到近似闭合标记；契约已如实写明这一残余。
 - 多轮会话不追溯历史提问，按 ADR-0036 确认记录执行。
 
 第三轮验证判 DO NOT MERGE：字符串里只硬编码了 U+200B，契约却写「含零宽字符」，ZWNJ、ZWJ、BOM、
 WORD JOINER 以及标签词内部插入零宽字符都能穿过。已改为先剔除全部 Unicode `Cf` 类字符再匹配，契约与
 本节规则同步改成「剔除 Cf 类格式控制字符」，参数化用例扩到十二条（覆盖 U+200B/200C/200D/2060/FEFF）。
+
+第四轮验证判 DO NOT MERGE：契约写「全部零宽字符」而实现只剔除 `Cf` 类，`Mn` 类的 U+034F、U+FE0F 与
+Hangul filler 仍可穿过，属措辞过度承诺。已把契约与本节改为精确的 `Cf` 描述，并把非 `Cf` 的不可见
+字符记为已知残余风险，不再声称覆盖「全部零宽字符」。
