@@ -480,19 +480,21 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - 幂等：重复运行先 `DROP POLICY IF EXISTS` 再重建。
 - 成功输出 `session rls enabled`，退出 0。
 
-## `adk-agent rag ingest --database-url URL --dimensions N --model MODEL --tenant T --source-id ID [--provider litellm] [--text FILE] [--data-class CLASS ...] [--subject S ...] [--chunk-chars N] [--budget-usd F] [--audit-file PATH | --audit-url URL | --audit-db URL] [--audit-token-env VAR]`
+## `adk-agent rag ingest --database-url URL --dimensions N --model MODEL --tenant T [--source-id ID] [--provider litellm] [--text FILE | --dir DIR] [--data-class CLASS ...] [--subject S ...] [--chunk-chars N] [--budget-usd F] [--audit-file PATH | --audit-url URL | --audit-db URL] [--audit-token-env VAR]`
 
 把一份文本分块、嵌入并写入 `adk_rag_chunks`（ADR-0035）。
 
 - `--database-url` 必填，指向装了 pgvector 的 Postgres。`--dimensions` 必须等于 embedding 模型输出维度，`--model` 是传给模型通道的模型名。摄取与检索必须用同一个 `--model`，换模型等于换向量空间。
-- 正文来自 `--text FILE`，不给时读 stdin。文件读不到、空文本或只有空白都退出 1，不写存储，stderr 分别为 `could not read text: <异常类型>` 与 `empty text`。
+- 单个文件模式：正文来自 `--text FILE`，不给时读 stdin，`--source-id` 必填（缺失退出 1）。文件读不到、空文本或只有空白都退出 1，不写存储，stderr 分别为 `could not read text: <异常类型>` 与 `empty text`。
+- 目录模式：`--dir DIR` 递归摄取根目录下所有普通文件，按相对路径字符串排序依次处理，每个文件的 `source_id` 是相对路径（`/` 分隔）。符号链接跳过；空文件或只有空白的文件跳过并在 stderr 记一行 `skipped <相对路径>: empty text`；读取失败与非 UTF-8 文件按 `could not read <相对路径>: <异常类型>` 退出 1。`--dir` 与 `--text` 互斥，与 `--source-id` 同时给出退出 2（空串也算给出）。
+- 目录模式某个文件摄取失败时退出 1，之前的文件已写入，不打印汇总；重跑是幂等的（同一 `source_id` 按主键覆盖）。
 - `--tenant` 同时是存储租户与嵌入审计的租户；两者由同一次调用给出，不做推导。
-- `--data-class` 可重复，取值限 `public`、`internal`、`confidential`、`restricted`，其他值由 argparse 拒绝（退出 2），缺省为空列表。`--subject` 可重复，缺省时不写 `allowed_subjects`，分块对租户内全部主体可见。
+- `--data-class` 可重复，取值来自 `core.policy.DataClass`（`public`、`internal`、`confidential`、`restricted`），其他值由 argparse 拒绝（退出 2），缺省为空列表。`--subject` 可重复，缺省时不写 `allowed_subjects`，分块对租户内全部主体可见。
 - `--chunk-chars` 是每块最大字符数，默认 800，必须大于 0，否则退出 1。
 - `--budget-usd` 写入 `ModelPolicy.budget_usd`，并让 `EmbeddingGateway` 带一个进程内 `BudgetTracker`。一次性命令看不到历史花费，实际只能拦住 `0` 这种本次就超限的配置；正数上限要生效需要共享花费来源，属后续切片。
 - 嵌入经 `EmbeddingGateway`。配置了 `--audit-file`、`--audit-url`、`--audit-db` 或 `AUDIT_DATABASE_URL` 时，每次嵌入写一条 `model.embed`；都没配置时不写审计，与其它命令一致。
-- 成功：stdout 输出 `{"tenant":"T","source_id":"ID","chunks":N}`，退出 0。
-- 失败：`RagStoreUnavailable`（扩展缺失、维度不符、驱动或 SQL 错误）、`ModelDenied`（防御性映射：provider 未配置或预算超限；允许清单固定为 `--provider`）与运行期非法参数都退出 1；argparse 层的取值错误（如非法 `--data-class`）退出 2。stderr 只给安全文案或异常类型，不回显 DSN、正文或向量；模型通道的网络与认证错误按 `rag failed: <异常类型>` 输出，不打印栈。
+- 成功：单文件模式 stdout 输出 `{"tenant":"T","source_id":"ID","chunks":N}`；目录模式输出 `{"tenant":"T","sources":S,"chunks":N}`（`sources` 是被摄取的文件数，跳过的空文件不计）。两种模式都退出 0。
+- 失败：`RagStoreUnavailable`（扩展缺失、维度不符、驱动或 SQL 错误）、`ModelDenied`（防御性映射：provider 未配置或预算超限；允许清单固定为 `--provider`）与运行期非法参数都退出 1；argparse 层的取值错误（如非法 `--data-class`）退出 2。stderr 只给安全文案或异常类型，不回显 DSN、正文或向量；模型通道的网络与认证错误按 `rag failed: <异常类型>` 输出，不打印栈；未安装 `litellm` extra 时提示 `pip install 'adk-agent[litellm]'`。
 - CLI 不做额外授权：`--data-class` 是调用方的自述，使用前必须已获得对应租户与分级的授权。
 
 ## `adk-agent rag search --database-url URL --dimensions N --model MODEL --tenant T [--provider litellm] [--subject S] [--query TEXT] [--data-class CLASS ...] [--limit N] [--min-confidence F] [--budget-usd F] [--audit-file PATH | --audit-url URL | --audit-db URL] [--audit-token-env VAR]`

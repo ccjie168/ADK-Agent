@@ -14,8 +14,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 from urllib.parse import urlsplit
+
+from .core.policy import DataClass
 
 if TYPE_CHECKING:  # pragma: no cover
     from .audit import AuditQuery, SigningKeyring
@@ -24,7 +26,7 @@ if TYPE_CHECKING:  # pragma: no cover
     from .registry import TrustStore
 
 Transport = Literal["stdio", "streamable-http"]
-_DATA_CLASSES = ("public", "internal", "confidential", "restricted")
+_DATA_CLASSES = get_args(DataClass)
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 
@@ -1151,12 +1153,73 @@ def _read_rag_input(value: str | None, *, what: str) -> str:
     return text
 
 
+async def _rag_ingest_directory(args: argparse.Namespace) -> None:
+    from .rag.ingest import IngestionPipeline
+    from .rag.vector_store import PgVectorRagStore
+
+    root = Path(args.dir).resolve()
+    if not root.is_dir():
+        print("--dir is not a directory", file=sys.stderr)
+        raise SystemExit(1)
+    sink = _audit_sink(args)
+    store = PgVectorRagStore(args.database_url, dimensions=args.dimensions)
+    sources = 0
+    chunks = 0
+    try:
+        pipeline = IngestionPipeline(
+            store,
+            _rag_embedder(args, sink),
+            provider=args.provider,
+            model=args.model,
+            chunk_chars=args.chunk_chars,
+        )
+        for path in _rag_files(root):
+            relative = path.relative_to(root).as_posix()
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                print(f"could not read {relative}: {type(exc).__name__}", file=sys.stderr)
+                raise SystemExit(1) from None
+            if not text.strip():
+                print(f"skipped {relative}: empty text", file=sys.stderr)
+                continue
+            chunks += await pipeline.ingest(
+                _rag_invocation(args.tenant, "rag-ingest"),
+                tenant=args.tenant,
+                source_id=relative,
+                text=text,
+                data_classes=list(args.data_classes),
+                policy=_rag_policy(args),
+                allowed_subjects=list(args.subjects) or None,
+            )
+            sources += 1
+    finally:
+        await store.aclose()
+    print(json.dumps({"tenant": args.tenant, "sources": sources, "chunks": chunks}))
+
+
+def _rag_files(root: Path):
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+        if path.is_symlink() or not path.is_file():
+            continue
+        yield path
+
+
 async def _rag_ingest(args: argparse.Namespace) -> None:
     from .rag.ingest import IngestionPipeline
     from .rag.vector_store import PgVectorRagStore
 
     if args.chunk_chars <= 0:
         print("--chunk-chars must be greater than 0", file=sys.stderr)
+        raise SystemExit(1)
+    if args.dir is not None:
+        if args.source_id is not None:
+            print("--source-id cannot be combined with --dir", file=sys.stderr)
+            raise SystemExit(2)
+        await _rag_ingest_directory(args)
+        return
+    if not args.source_id:
+        print("--source-id is required with --text or stdin", file=sys.stderr)
         raise SystemExit(1)
     text = _read_rag_input(args.text, what="text")
     sink = _audit_sink(args)
@@ -1231,6 +1294,15 @@ def _run_rag(args: argparse.Namespace) -> None:
             asyncio.run(_rag_search(args))
     except (RagStoreUnavailable, ModelDenied, ValueError) as exc:
         print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from None
+    except ModuleNotFoundError as exc:
+        if exc.name == "litellm":
+            print(
+                "litellm is not installed; install it with: pip install 'adk-agent[litellm]'",
+                file=sys.stderr,
+            )
+        else:
+            print("rag failed: ModuleNotFoundError", file=sys.stderr)
         raise SystemExit(1) from None
     except Exception as exc:  # noqa: BLE001 - provider errors must not print a traceback
         print(f"rag failed: {type(exc).__name__}", file=sys.stderr)
@@ -2069,8 +2141,12 @@ def main(argv: list[str] | None = None) -> None:
     p_rag_ingest.add_argument("--model", required=True)
     p_rag_ingest.add_argument("--provider", default="litellm")
     p_rag_ingest.add_argument("--tenant", required=True)
-    p_rag_ingest.add_argument("--source-id", required=True)
-    p_rag_ingest.add_argument("--text", default=None, help="file to ingest; stdin when omitted")
+    p_rag_ingest.add_argument("--source-id", default=None)
+    source = p_rag_ingest.add_mutually_exclusive_group()
+    source.add_argument("--text", default=None, help="file to ingest; stdin when omitted")
+    source.add_argument(
+        "--dir", default=None, help="ingest every regular file under this directory"
+    )
     p_rag_ingest.add_argument(
         "--data-class", dest="data_classes", action="append", default=[], choices=_DATA_CLASSES
     )
@@ -3379,7 +3455,6 @@ def main(argv: list[str] | None = None) -> None:
             ConnectorSpec,
             ConnectorStoreError,
             CredentialStoreError,
-            DataClass,
             HttpMethod,
         )
         from .registry import ConnectorForbidden, ConnectorNotFound
@@ -3685,7 +3760,6 @@ def main(argv: list[str] | None = None) -> None:
             ConnectorSpec,
             ConnectorStoreError,
             CredentialStoreError,
-            DataClass,
             HttpMethod,
             parse_credential_ref,
         )
