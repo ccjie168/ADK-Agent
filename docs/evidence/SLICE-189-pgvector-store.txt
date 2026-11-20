@@ -1,0 +1,37 @@
+SLICE-189 pgvector 向量存储与 RLS
+日期: 2026-11-20
+依据: ADR-0035（Accepted 2026-11-20）决定 1 / ADR-0032 slice 4 第一段
+基线: fb1773e
+
+一、实现
+
+- `rag/vector_store.py` 新增 `RagChunk`（tenant/source_id/chunk_id/text/embedding/data_classes/
+  allowed_subjects）、`RagChunkRow`、`RagStoreUnavailable` 与 `PgVectorRagStore`。
+- 建表：`CREATE EXTENSION IF NOT EXISTS vector` 与 `adk_rag_chunks`（主键
+  `(tenant, source_id, chunk_id)`，`embedding vector(N)`，`data_classes text[]`，`allowed_subjects
+  text[]`），`ENABLE`/`FORCE ROW LEVEL SECURITY`，策略 `tenant = current_setting('app.tenant_id', true)`。
+- `upsert` 覆盖写入；`search` 在事务内设置 `app.tenant_id`，按租户、`data_classes <@ 请求集合`、
+  `allowed_subjects` 过滤后按余弦距离 `<=>` 排序限量返回。
+- 维度校验：`validate` 与 `search` 在维度不符时抛 `RagStoreUnavailable`；扩展缺失或 SQL 失败同样
+  fail-closed。
+- 新增 `tests/test_pgvector_store.py` 五个测试（四个 live 用例需 `TEST_POSTGRES_URL`）。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1781 passed, 95 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 fb1773e 上无 `adk_agent.rag.vector_store`：测试收集即 ModuleNotFoundError。
+
+四、范围与已知缺口
+
+- 本地与 CI 均未设 `TEST_POSTGRES_URL`，四个 live 用例跳过；pgvector 扩展与 SQL 未在真实库上执行过，
+  需在有扩展的环境跑一次（运维验收项）。
+- `ModelProvider.embed` 与 LiteLLM 实现（下一刀）。
+- 摄取管线与 `PgVectorRagService`（后续）。
+- `upsert` 假设同一批次同一租户（用首条分块的租户设置 `app.tenant_id`）；跨租户批次需调用方分组。
