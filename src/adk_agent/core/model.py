@@ -24,6 +24,24 @@ class ModelRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0, le=2)
 
 
+class EmbeddingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    texts: list[str] = Field(min_length=1)
+
+
+class EmbeddingResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    vectors: list[list[float]] = Field(min_length=1)
+    model: str = Field(min_length=1)
+    input_tokens: int = Field(default=0, ge=0)
+    cost_usd: float | None = Field(default=None, ge=0)
+    egress: Literal["none", "third_party"] = "third_party"
+
+
 class ModelResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

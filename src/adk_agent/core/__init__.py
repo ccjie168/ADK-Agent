@@ -58,7 +58,13 @@ from .manifest import (
     declared_execution_tier,
     manifest_digest,
 )
-from .model import Message, ModelRequest, ModelResponse
+from .model import (
+    EmbeddingRequest,
+    EmbeddingResponse,
+    Message,
+    ModelRequest,
+    ModelResponse,
+)
 from .orchestration import (
     OrchestrationPlan,
     PlanResult,
@@ -87,6 +93,7 @@ from .ports import (
     ConnectorRequestStore,
     ConnectorStore,
     CredentialStore,
+    EmbeddingProvider,
     EvalReportStore,
     IdentityProvider,
     ModelGateway,
@@ -196,6 +203,9 @@ __all__ = [
     "CredentialStoreUnavailable",
     "DataClass",
     "RiskLevel",
+    "EmbeddingProvider",
+    "EmbeddingRequest",
+    "EmbeddingResponse",
     "EvalCase",
     "EvalCaseResult",
     "EvalReport",

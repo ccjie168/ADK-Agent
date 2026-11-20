@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from ..core import ModelRequest, ModelResponse
+from ..core import EmbeddingRequest, EmbeddingResponse, ModelRequest, ModelResponse
 
 
 def _to_response(
@@ -50,6 +50,26 @@ class LiteLlmProvider:
             api_base=self.api_base,
         )
         return _to_response(request, response, egress=self.egress)
+
+    async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
+        import litellm
+
+        response = await litellm.aembedding(
+            model=request.model,
+            input=request.texts,
+            api_key=self.api_key,
+            api_base=self.api_base,
+        )
+        usage = getattr(response, "usage", None)
+        hidden = getattr(response, "_hidden_params", None) or {}
+        cost = hidden.get("response_cost")
+        return EmbeddingResponse(
+            vectors=[list(item["embedding"]) for item in response.data],
+            model=request.model,
+            input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
+            cost_usd=float(cost) if cost is not None else None,
+            egress=self.egress,
+        )
 
 
 class VllmProvider:
