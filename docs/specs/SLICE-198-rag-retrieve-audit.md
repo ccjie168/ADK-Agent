@@ -26,6 +26,9 @@
 - [x] 审计不含查询与片段 -> `test_rag_audit_excludes_content`
 - [x] 未配置审计时行为不变 -> `test_rag_context_without_audit_still_returns_block`
 - [x] schema 含三个 rag 计数 -> `test_audit_schema_documents_rag_counts`
+- [x] 未使用的 rag 字段不写入序列化，历史链哈希不变 -> `test_unused_rag_fields_are_not_serialized`
+- [x] 检索事件的哈希覆盖三个计数 -> `test_rag_event_hash_covers_counts`
+- [x] 过滤计数覆盖纯截断场景 -> `test_rag_context_counts_truncation_only`
 - [x] 全量门禁通过
 
 ## 反例

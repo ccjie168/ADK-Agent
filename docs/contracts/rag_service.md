@@ -76,7 +76,11 @@
 - 字段：`run_id`、`trace_id`、`tenant`、`principal`、`agent_ref`、`target=<agent id>@<version>`、
   `action="rag.retrieve"`、`status`、`error_code`、`latency_ms`、`data_classes`，以及 `rag_top_k`、
   `rag_returned`、`rag_filtered`。
-- `rag_filtered = 服务返回条数 - 注入条数`，包含 ACL 未标记丢弃、`RagGuard` 丢弃与超过 `top_k` 的截断。
+- `rag_returned` 是实际注入的引用条数，`rag_top_k` 是本次生效的上限；`rag_filtered =
+  服务返回条数 - 注入条数`，包含 ACL 未标记丢弃、`RagGuard` 丢弃与超过 `top_k` 的截断。
+- 三个字段只在检索事件上序列化；未使用（`None`）时不写入事件的 JSON 载荷，因此新增字段不会改变
+  既有事件的 canonical JSON 与链哈希，升级后可继续验证历史链。
+- 审计写入失败让本次预取失败（fail-closed），不静默丢弃审计。
 - 失败：`deny` 先写 `status=error`（`error_code` 为底层异常类型）再抛 `RagUnavailable`；`degrade`
   写同一条 `status=error` 后继续运行。
 - 事件不含查询原文、片段与 `source_id`；`error_code` 只写异常类型名。
