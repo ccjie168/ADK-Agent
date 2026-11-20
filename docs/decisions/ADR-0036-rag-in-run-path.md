@@ -1,6 +1,6 @@
 # ADR-0036 RAG 检索接入 agent 运行路径
 
-状态: Proposed   日期: 2026-11-20   待确认: Jie CAO
+状态: Accepted   日期: 2026-11-20   签字: Jie CAO（会话确认）
 
 ## 背景
 
@@ -11,7 +11,7 @@ ADR-0032 定义了 `RagService` 端口与 `Citation`（含 `acl_checked`），AD
 问题不是"怎么检索"，而是**检索在运行路径里如何被触发、结果如何进入上下文、失败如何处理**。这三件事
 决定了成本、提示注入面与越权面，必须在写代码前定下来。
 
-## 决定（草案）
+## 决定
 
 1. **显式启用，按 manifest 配置。** `AgentManifest` 新增可选 `rag` 块：
    `{"enabled": true, "top_k": 5, "min_confidence": 0.5, "data_classes": [...]}`。
@@ -51,11 +51,11 @@ ADR-0032 定义了 `RagService` 端口与 `Citation`（含 `acl_checked`），AD
 - 存量 manifest 不受影响；新发布可以显式打开。控制台与注册表面板需要后续切片展示 `rag` 配置。
 - `degrade` 是显式的安全风险接受，需在运维手册写明：检索故障时 agent 会在无资料的情况下回答。
 
-## 待确认问题
+## 确认记录（2026-11-20 会话确认）
 
-1. 预取时机是否就用本次 `input` 做一次检索（多轮会话不追溯历史提问）？
-2. `on_error` 默认值用 `deny` 还是 `degrade`？
-3. `rag.data_classes` 缺省空列表是否可接受，还是要求发布时必须显式声明？
+1. 预取时机：只用本次 `input` 做一次检索，不追溯多轮历史提问。
+2. `on_error` 默认值：`deny`（fail-closed），`degrade` 必须显式声明。
+3. `rag.data_classes`：允许缺省为空列表，发布时不强制声明；缺省等于只命中未分级分块。
 
 ## 切片（确认后分配）
 
