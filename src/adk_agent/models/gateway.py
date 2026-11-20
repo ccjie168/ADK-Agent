@@ -21,6 +21,7 @@ from ..core import (
 )
 from ..guardrails import GuardrailPipeline
 from ..observability import model_span, record_error, record_usage
+from .budget import BudgetTracker
 
 
 class ModelDenied(Exception):
@@ -93,6 +94,7 @@ class PolicyModelGateway:
         audit: AuditSink | None = None,
         *,
         guardrails: GuardrailPipeline | None = None,
+        budgets: BudgetTracker | None = None,
     ) -> None:
         for name, provider in providers.items():
             if name != provider.name:
@@ -102,6 +104,7 @@ class PolicyModelGateway:
         self.providers = dict(providers)
         self.audit = audit
         self.guardrails = guardrails
+        self.budgets = budgets
 
     async def complete(
         self,
@@ -183,6 +186,28 @@ class PolicyModelGateway:
             )
             raise ModelDenied(f"provider {request.provider!r} is not configured")
 
+        tenant = invocation.principal.tenant
+        if (
+            self.budgets is not None
+            and policy.budget_usd is not None
+            and self.budgets.spent(tenant) >= policy.budget_usd
+        ):
+            await emit_model_audit(
+                self.audit,
+                invocation,
+                provider=request.provider,
+                model=request.model,
+                args_hash=args_hash,
+                result_hash=None,
+                tokens=None,
+                cost_usd=None,
+                egress="none",
+                status="denied",
+                error_code="budget_exceeded",
+                started=started,
+            )
+            raise ModelDenied(f"tenant {tenant!r} has spent its model budget")
+
         try:
             with model_span(invocation, provider=request.provider, model=request.model) as span:
                 try:
@@ -215,6 +240,8 @@ class PolicyModelGateway:
             output_tokens=response.output_tokens,
             cost_usd=response.cost_usd,
         )
+        if self.budgets is not None and response.cost_usd:
+            self.budgets.add(tenant, response.cost_usd)
         await emit_model_audit(
             self.audit,
             invocation,
