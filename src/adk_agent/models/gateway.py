@@ -59,6 +59,8 @@ async def emit_model_audit(
     status: Literal["ok", "error", "denied"],
     error_code: str | None,
     started: float,
+    model_alias: str | None = None,
+    fallback_count: int = 0,
 ) -> None:
     if audit is None:
         return
@@ -80,6 +82,8 @@ async def emit_model_audit(
         egress=egress,
         status=status,
         error_code=error_code,
+        model_alias=model_alias,
+        fallback_count=fallback_count,
         timestamp=datetime.now(timezone.utc),
     )
     await audit.emit(event)
@@ -127,12 +131,14 @@ class PolicyModelGateway:
 
         candidates = resolve_candidates(policy, alias, data_classes or [])
         last_error: Exception | None = None
-        for candidate in candidates:
+        for index, candidate in enumerate(candidates):
             routed = request.model_copy(
                 update={"provider": candidate.provider, "model": candidate.model}
             )
             try:
-                return await self._complete_once(invocation, routed, policy)
+                return await self._complete_once(
+                    invocation, routed, policy, alias=alias, fallback_count=index
+                )
             except ModelDenied:
                 raise
             except Exception as exc:
@@ -144,6 +150,9 @@ class PolicyModelGateway:
         invocation: Invocation,
         request: ModelRequest,
         policy: ModelPolicy,
+        *,
+        alias: str | None = None,
+        fallback_count: int = 0,
     ) -> ModelResponse:
         started = time.perf_counter()
         if self.guardrails is not None:
@@ -165,6 +174,8 @@ class PolicyModelGateway:
                 status="denied",
                 error_code="provider_not_allowed",
                 started=started,
+                model_alias=alias,
+                fallback_count=fallback_count,
             )
             raise
 
@@ -183,6 +194,8 @@ class PolicyModelGateway:
                 status="denied",
                 error_code="provider_unavailable",
                 started=started,
+                model_alias=alias,
+                fallback_count=fallback_count,
             )
             raise ModelDenied(f"provider {request.provider!r} is not configured")
 
@@ -205,6 +218,8 @@ class PolicyModelGateway:
                 status="denied",
                 error_code="budget_exceeded",
                 started=started,
+                model_alias=alias,
+                fallback_count=fallback_count,
             )
             raise ModelDenied(f"tenant {tenant!r} has spent its model budget")
 
@@ -229,6 +244,8 @@ class PolicyModelGateway:
                 status="error",
                 error_code=type(exc).__name__,
                 started=started,
+                model_alias=alias,
+                fallback_count=fallback_count,
             )
             raise
 
@@ -255,6 +272,8 @@ class PolicyModelGateway:
             status="ok",
             error_code=None,
             started=started,
+            model_alias=alias,
+            fallback_count=fallback_count,
         )
         return response
 

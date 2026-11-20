@@ -129,6 +129,12 @@
           "title": "Event Id",
           "type": "string"
         },
+        "fallback_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fallback Count",
+          "type": "integer"
+        },
         "latency_ms": {
           "anyOf": [
             {
@@ -141,6 +147,18 @@
           ],
           "default": null,
           "title": "Latency Ms"
+        },
+        "model_alias": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Alias"
         },
         "policy_decision_id": {
           "anyOf": [
