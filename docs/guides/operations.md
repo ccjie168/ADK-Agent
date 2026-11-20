@@ -291,6 +291,11 @@
 - 四个 Service 的 `/healthz` 与受保护的 `/metrics`。抓取账号要绕过限流或使用独立 token。
 - 审批待办数量与最老待办年龄：`GET /api/approvals`。到期请求不会出现在列表里，积压看审计的 `approval.request` 事件。
 - 审计链每日验证一次：`verify-audit --audit-db`。失败按租户与序号定位。
+- 校验口径以**存储内容**为准（ADR-0037，见 `docs/contracts/audit_chain.md`）：每条记录的哈希按落盘
+  的事件 JSON 规范化后重算，不用当前代码重新序列化。因此升级新增审计字段不会让历史链断掉，
+  SLICE-188 之前写出的记录也会按原样通过；升级后「原本失败的链又通过了」属于预期，不是规则放松。
+- 断链只可能来自存储被改或记录损坏：报告给出租户与序号，按该位置比对 `event` 与 `hash`，不要重签
+  历史或整链重建，那会销毁证据。签名密钥环不一致会报签名失败，与断链分开处理。
 - Postgres：连接数、advisory lock 等待、`adk_audit_records` 与 `adk_approvals` 的增长、WAL 与磁盘。
 - Redis：内存与淘汰；淘汰只影响限流精度。
 - 日志与指标不得出现 token、DSN 或待审 `input`。发现即按泄露处理并轮换。
