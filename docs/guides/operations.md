@@ -160,6 +160,54 @@
 - 每次拦截或脱敏写 `guardrail.input` / `guardrail.output` 审计，只记规则 id 与原文哈希，不记原文。
 - 正则非法或配置文件不合法时服务拒绝启动。规则文件不要写真实密钥或 DSN。
 
+## RAG 向量存储（pgvector，ADR-0035）
+
+向量库与平台库共用同一个 Postgres。数据在 `adk_rag_chunks` 表里，主键 `(tenant, source_id, chunk_id)`，列包括 `body`、`embedding vector(N)`、`data_classes text[]` 与 `allowed_subjects text[]`。
+
+安装与建表：
+
+1. 在承载 `adk_rag_chunks` 的库里一次性安装 pgvector 扩展。pgvector 不是受信扩展，建它需要 superuser 或 DBA。`PgVectorRagStore` 首次连接会执行 `CREATE EXTENSION IF NOT EXISTS vector`；扩展已存在时该语句只发 NOTICE 后跳过，不再检查建扩展权限，所以应用角色本身不需要这项权限，但由它首连安装时就需要。
+2. 同一段 schema 还会建表并安装策略。首次启动后确认三件事：`SELECT extversion FROM pg_extension WHERE extname = 'vector';` 有值、`\d adk_rag_chunks` 的 `embedding` 是 `vector(N)`、`pg_class.relrowsecurity` 与 `relforcerowsecurity` 都为真。
+3. 生产环境可以由 DBA 预建扩展与表，但应用角色必须是 `adk_rag_chunks` 的属主，不能只给 DML。每个进程首次建立连接池时都会重跑这段 schema，其中的 `CREATE TABLE IF NOT EXISTS`、`ENABLE/FORCE ROW LEVEL SECURITY`、`DROP POLICY` 与 `CREATE POLICY` 需要表属主权限。只给 DML 的角色首连就失败，异常被包成 `RagStoreUnavailable`。另外 `CREATE TABLE IF NOT EXISTS` 即使表已存在，也会先检查 schema 上的 `CREATE` 权限，所以应用角色还要对建表所在的 schema 有 `CREATE`，或者直接拥有该 schema。生产上先由 superuser/DBA 装好扩展，再把 `adk_rag_chunks` 的属主与 schema 权限授予应用角色。
+
+租户隔离：
+
+- 表启用并强制 RLS，策略 `adk_rag_chunks_tenant` 的判定是 `tenant = current_setting('app.tenant_id', true)`。每次 upsert 与检索都在事务里先 `SET LOCAL` 等价的 `set_config`，事务结束即失效，不会漏到池里的下一条连接。
+- 应用角色必须是表的属主，不能是 superuser，不能有 `BYPASSRLS`。superuser 永远绕过 RLS，用它验证会得到假阳性。
+- 不要为了排障临时 `DISABLE ROW LEVEL SECURITY`。检索路径不提供无 ACL 的降级分支。
+
+维度与重建索引：
+
+- `PgVectorRagStore(url, dimensions=N)` 的 `N` 必须等于 embedding 模型输出的维度。维度不符时写入与检索都抛 `RagStoreUnavailable`，见下节。
+- `vector(N)` 的维度写在列定义里，改维度不是改参数，而是要重建：新建列或新表（例如 `embedding_v2 vector(M)`）、按新模型重新摄取全部来源、校验行数、再切换读取方，最后删除旧列。不要原地 `ALTER` 旧列后继续用旧向量。
+- 摄取与检索必须用同一 `provider`/`model`。换 embedding 模型等于换向量空间，新旧向量不能混在同一列里比较。
+
+索引与重建：
+
+- schema 只建表与策略，不自动建 ANN 索引，检索是租户内全量 `<=>` 排序。行数到十万级前这么做可以接受；更大时手工建索引：
+
+  ```sql
+  CREATE INDEX IF NOT EXISTS adk_rag_chunks_embedding
+      ON adk_rag_chunks USING hnsw (embedding vector_cosine_ops);
+  ```
+
+- `hnsw` 对 `vector` 类型上限 2000 维，超过要先降维或改用 `halfvec`。建索引后跑一次 `ANALYZE adk_rag_chunks`。
+- 批量重新摄取或删掉大量来源后，索引会膨胀。低峰时执行 `REINDEX INDEX CONCURRENTLY adk_rag_chunks_embedding;`，不要用阻塞式的 `REINDEX`。
+
+失败模式（fail-closed）：
+
+- 扩展缺失、维度不符、驱动或 SQL 报错都统一抛 `RagStoreUnavailable`。调用方拿到的是异常，不是空引用列表，检索不会退化成无 ACL 的路径。
+- 空结果与故障要分开处理：空列表表示没有问题匹配 ACL 的文档，`RagStoreUnavailable` 表示存储不可用。告警只看后者。
+- 配置了 `RagGuard` 时，低置信度与提示注入的引用在返回前被过滤掉，不会出现在结果里。没配置就不过滤，生产环境应配置。
+
+多副本：
+
+- 向量与索引都在共享 Postgres 里，副本无本地状态。同一事务提交后其他副本立即可见，不需要副本间同步或预热。
+- 扩容前确认所有副本指向同一个库。指错库的副本只会查到自己的数据，表现为部分租户检索为空，不是报错。
+- 每个副本首次连上时都会执行同一段 schema。语句本身幂等，但多个副本同时首启时 Postgres 的 `CREATE EXTENSION IF NOT EXISTS` 与 `CREATE TABLE IF NOT EXISTS` 仍可能撞唯一索引而报错，该副本的首次请求会失败并抛 `RagStoreUnavailable`。重试即恢复，数据不会损坏。要求首启零失败就用 DBA 先建好扩展与表，再滚动副本。
+- `adk_rag_chunks` 与其它 `adk_*` 表一起进 `pg_dump`，备份与恢复顺序同「备份与恢复」一节。
+- `PgVectorRagStore` 目前由部署代码构造（传入 DSN 与维度）；CLI 接线在后续切片，接线前不要指望 `serve-*` 自带 RAG 存储。
+
 ## 扩缩容
 
 - 扩副本前逐项确认上表里的共享后端都已设置。任一文件后端仍在用时禁止扩容。

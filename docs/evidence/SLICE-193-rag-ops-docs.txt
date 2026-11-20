@@ -1,0 +1,68 @@
+SLICE-193 RAG 运维文档与多副本说明
+日期: 2026-11-20
+依据: ADR-0035（Accepted 2026-11-20）决定 / slice 5
+基线: d45cf56
+
+一、实现
+
+- `docs/guides/operations.md` 新增「RAG 向量存储（pgvector，ADR-0035）」一节，位置在「模型护栏」与
+  「扩缩容」之间，内容与 `rag/vector_store.py` 的实际 schema 对齐：
+  - 安装与建表：`CREATE EXTENSION IF NOT EXISTS vector`、首连建表、扩展由 superuser/DBA 一次性安装，
+    应用角色须为 `adk_rag_chunks` 属主并对 schema 有 `CREATE` 权限；首连权限不足按
+    `RagStoreUnavailable` 处理。
+  - 租户隔离：`adk_rag_chunks` 启用并强制 RLS、策略 `adk_rag_chunks_tenant`、事务内 `set_config`、
+    属主角色要求、禁止临时关闭 RLS。
+  - 维度与重建索引：`dimensions=N` 必须等于 embedding 输出；`vector(N)` 写在列定义里，换模型要新建列或
+    新建表并重新摄取；摄取与检索必须同一 provider/model。
+  - 索引：schema 不自动建 ANN 索引，给出 `hnsw (embedding vector_cosine_ops)` 建索引语句、2000 维上限、
+    `ANALYZE` 与 `REINDEX INDEX CONCURRENTLY`。
+  - fail-closed：扩展缺失、维度不符、驱动错误统一抛 `RagStoreUnavailable`，不退化为无 ACL 路径；
+    空结果与故障分开处理；`RagGuard` 过滤低置信度与注入引用。
+  - 多副本：共享同一库、无本地状态、提交即可见；扩容前确认指向同一库；并发首启的幂等 schema；
+    `pg_dump` 范围；并写明 `PgVectorRagStore` 目前由部署代码构造、CLI 接线待后续切片。
+- `tests/test_rag_operations_guide.py` 四个断言测试，分别校验安装步骤、维度与重建索引、fail-closed、
+  多副本与技术表名。
+
+二、绿态
+
+$ python scripts/check.py --fast
+1799 passed, 95 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+三、红态
+
+基线 d45cf56 上 `operations.md` 无 pgvector 内容：
+`pytest tests/test_rag_operations_guide.py` → 4 failed（`AssertionError`，基线文本中既无
+`CREATE EXTENSION IF NOT EXISTS vector` 也无 `adk_rag_chunks`）。
+
+四、验证与修订
+
+第一轮独立只读验证判 DO NOT MERGE，两条阻塞项，均已在同一分支修订：
+
+1. 原文建议「生产环境由 DBA 预建，应用角色只保留 DML 权限」。实际 `LazyPool._open` 每次建池都调
+   `PgVectorRagStore._ensure_schema`（`pg.py:90-91`、`rag/vector_store.py:84-86`），其中的
+   `CREATE TABLE`、`ENABLE/FORCE RLS`、`DROP/CREATE POLICY` 都要求表属主权限，DML-only 角色首连必失败。
+   已改为「应用角色必须是 `adk_rag_chunks` 的属主」，并写明失败会包成 `RagStoreUnavailable`。
+2. 原文写「并发首启不会互相破坏」。Postgres 的 `CREATE EXTENSION IF NOT EXISTS` 与
+   `CREATE TABLE IF NOT EXISTS` 并发时仍可能撞唯一索引报错。已改为如实描述：该副本本次调用失败并抛
+   `RagStoreUnavailable`，重试恢复、不损坏数据；要求零失败就先由 DBA 建表。
+3. 非阻塞项：「低置信度与提示注入由 `RagGuard` 过滤」已补「配置了 guard 时」。
+
+第二轮独立验证判 MERGE（13 项全部 PASS），另提两条非阻塞精确性建议，已一并修正：
+
+- 原文「应用角色要能建扩展」与「应用角色不能是 superuser」矛盾。pgvector 不是受信扩展，建它要 superuser；
+  已改为「一次性由 superuser/DBA 安装」。
+- `CREATE EXTENSION IF NOT EXISTS` 在扩展已存在时只发 NOTICE 并跳过，不检查建扩展权限；原句「没有
+  `CREATE EXTENSION` 权限时同样首连失败」不成立，已删除并替换为「先装扩展、再把表属主授予应用角色」。
+
+第三轮独立验证判 MERGE，另提一条精确性建议并已采纳：`CREATE TABLE IF NOT EXISTS` 在表已存在时仍先检查
+schema 的 `CREATE` 权限，所以除表属主外应用角色还需要 schema 上的 `CREATE`（或拥有 schema）。文档与本节
+摘要均已补上这一条。
+
+五、范围与已知缺口
+
+- 纯文档切片，无代码与契约变更。
+- CLI 接线（`serve-*` 自带 RAG 存储与维度配置）不在本切片。
+- 真实环境安装演练（扩展安装、RLS 策略安装、HNSW 建索引与重建）属运维验收项，本地未执行。
