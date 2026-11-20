@@ -492,7 +492,7 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - `--budget-usd` 写入 `ModelPolicy.budget_usd`，并让 `EmbeddingGateway` 带一个进程内 `BudgetTracker`。一次性命令看不到历史花费，实际只能拦住 `0` 这种本次就超限的配置；正数上限要生效需要共享花费来源，属后续切片。
 - 嵌入经 `EmbeddingGateway`。配置了 `--audit-file`、`--audit-url`、`--audit-db` 或 `AUDIT_DATABASE_URL` 时，每次嵌入写一条 `model.embed`；都没配置时不写审计，与其它命令一致。
 - 成功：stdout 输出 `{"tenant":"T","source_id":"ID","chunks":N}`，退出 0。
-- 失败：`RagStoreUnavailable`（扩展缺失、维度不符、驱动或 SQL 错误）、`ModelDenied`（防御性映射：provider 未配置或预算超限；允许清单固定为 `--provider`）与非法参数都退出 1。stderr 只给安全文案或异常类型，不回显 DSN、正文或向量；模型通道的网络与认证错误按 `rag failed: <异常类型>` 输出，不打印栈。
+- 失败：`RagStoreUnavailable`（扩展缺失、维度不符、驱动或 SQL 错误）、`ModelDenied`（防御性映射：provider 未配置或预算超限；允许清单固定为 `--provider`）与运行期非法参数都退出 1；argparse 层的取值错误（如非法 `--data-class`）退出 2。stderr 只给安全文案或异常类型，不回显 DSN、正文或向量；模型通道的网络与认证错误按 `rag failed: <异常类型>` 输出，不打印栈。
 - CLI 不做额外授权：`--data-class` 是调用方的自述，使用前必须已获得对应租户与分级的授权。
 
 ## `adk-agent rag search --database-url URL --dimensions N --model MODEL --tenant T [--provider litellm] [--subject S] [--query TEXT] [--data-class CLASS ...] [--limit N] [--min-confidence F] [--budget-usd F] [--audit-file PATH | --audit-url URL | --audit-db URL] [--audit-token-env VAR]`
@@ -504,7 +504,7 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - `--limit` 默认 10，必须大于 0，否则退出 1（在读取 stdin 之前校验）。`--min-confidence` 默认 0.5，传给 `RagGuard`；低于阈值的引用与命中提示注入模式的引用都被丢弃。
 - `--budget-usd` 与审计语义同 `rag ingest`：查询嵌入同样经 `EmbeddingGateway` 受预算检查并写 `model.embed`。
 - 成功：stdout 输出引用 JSON 数组，元素为 `{"source_id","snippet","acl_checked":true,"confidence"}`，退出 0。空结果输出 `[]`。
-- 失败：`RagStoreUnavailable`、`ModelDenied` 与非法参数退出 1，stdout 不输出数组，空结果与故障不能混淆。
+- 失败：`RagStoreUnavailable`、`ModelDenied` 与运行期非法参数退出 1，argparse 层取值错误退出 2，stdout 不输出数组，空结果与故障不能混淆。
 
 ## 入口限流
 
