@@ -17,6 +17,8 @@ def test_operations_guide_explains_audit_chain_hashing():
     assert "ADR-0037" in text
     assert "存储内容" in text
     assert "verify-audit" in text
+    assert "规范形式复现" in text
+    assert "不会因升级恢复" in text
 
 
 def test_operations_guide_links_audit_chain_contract():
