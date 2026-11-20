@@ -1,0 +1,51 @@
+SLICE-195 RAG CLI 收尾：安装提示、分级单一来源、目录摄取
+日期: 2026-11-20
+依据: SLICE-194 验证记录的非阻塞项与 PROGRESS 缺口清单第 9 条
+基线: 00c2d2c
+
+一、契约（先改）
+
+- `docs/contracts/cli.md` 的 `rag ingest` 一节：`--text` 与 `--dir` 互斥；`--source-id` 只在
+  `--text` 模式必填，与 `--dir` 同时给出退出 2；目录模式的 `source_id`（根目录相对路径、`/` 分隔）、
+  排序、空文件跳过、符号链接跳过、失败语义与重跑幂等；汇总输出 `{"tenant","sources","chunks"}`；
+  缺 `litellm` extra 时的安装提示；`--data-class` 取值来源改为 `core.policy.DataClass`。
+
+二、实现
+
+- `src/adk_agent/cli.py`：
+  - `_DATA_CLASSES = get_args(DataClass)`，从 `core.policy.DataClass` 推导，不再手写元组。
+  - `_run_rag` 在通用兜底之前捕获 `ImportError`，输出
+    `litellm is not installed; install it with: pip install 'adk-agent[litellm]'` 并退出 1。
+  - `rag ingest` 增加 `--dir DIR`（与 `--text` 互斥），`--source-id` 改为可选：`--text`/stdin 模式
+    缺失退出 1，与 `--dir` 同时给出退出 2。
+  - `_rag_ingest_directory`：解析根目录，按相对路径排序遍历普通文件，跳过符号链接；空文件打印
+    `skipped <相对路径>: empty text` 后继续；读取失败按 `could not read <相对路径>: <异常类型>` 退出 1；
+    每个文件调用一次 `IngestionPipeline.ingest`，`source_id` 用相对路径的 POSIX 形式；`finally` 关闭存储；
+    汇总输出 `{"tenant","sources","chunks"}`。
+  - `_rag_files` 只产出根目录下解析后的普通文件，不跟随符号链接。
+- `tests/test_cli_rag.py` 增加五个用例（共 18 个）。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1817 passed, 95 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 00c2d2c 上先写后跑：`pytest tests/test_cli_rag.py` → `5 failed, 13 passed`。
+五个新用例分别是缺 `litellm` 提示、目录相对路径、空文件跳过、缺 `--source-id`、`--dir` 与
+`--source-id` 冲突；前两个因 `--dir` 不是合法参数（argparse 退出 2），第三个因空文件让整批退出 1，
+后两个因基线 `--source-id` 必填。
+
+单独说明「分级单一来源」一项：基线手写元组与新推导取值完全相同，写不出红态断言。按切片规则不写绿于
+基线的测试，改为人工核对：`_DATA_CLASSES` 现在等于 `typing.get_args(DataClass)`，改枚举即同步。
+
+五、范围与已知缺口
+
+- 目录模式不做增量同步与删除消失来源；重跑靠主键覆盖保证幂等。
+- 目录很小时一次性读取全部文件，没有并发或流式处理。
+- 真实 Postgres + pgvector 与真实 LiteLLM embedding 仍未在本机验证（运维验收项）。
+- 检索接入 agent 运行路径另立 ADR。

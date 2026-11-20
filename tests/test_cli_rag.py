@@ -167,6 +167,82 @@ def test_rag_ingest_rejects_invalid_data_class(tmp_path, capsys):
     assert "secret-sauce" in capsys.readouterr().err
 
 
+def test_rag_ingest_reports_missing_litellm_extra(tmp_path, monkeypatch, capsys):
+    class _NoLitellm(_FakeProvider):
+        async def embed(self, request):
+            raise ModuleNotFoundError("No module named 'litellm'")
+
+    monkeypatch.setattr("adk_agent.models.providers.LiteLlmProvider", _NoLitellm)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_ingest_args(tmp_path))
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "adk-agent[litellm]" in err
+    assert "Traceback" not in err
+
+
+def _dir_args(root: Path, *extra: str) -> list[str]:
+    return [
+        "rag",
+        "ingest",
+        "--database-url",
+        "postgresql://adk@127.0.0.1:5432/adk",
+        "--dimensions",
+        "3",
+        "--model",
+        "text-embedding-3-small",
+        "--tenant",
+        "t1",
+        "--dir",
+        str(root),
+        *extra,
+    ]
+
+
+def test_rag_ingest_directory_ingests_relative_source_ids(tmp_path, capsys):
+    root = tmp_path / "corpus"
+    (root / "nested").mkdir(parents=True)
+    (root / "a.txt").write_text("alpha", encoding="utf-8")
+    (root / "nested" / "b.txt").write_text("beta", encoding="utf-8")
+    cli.main(_dir_args(root, "--data-class", "internal"))
+    chunks = _FakeStore.instances[-1].chunks
+    assert [(chunk.source_id, chunk.text) for chunk in chunks] == [
+        ("a.txt", "alpha"),
+        ("nested/b.txt", "beta"),
+    ]
+    assert json.loads(capsys.readouterr().out) == {"tenant": "t1", "sources": 2, "chunks": 2}
+
+
+def test_rag_ingest_directory_skips_empty_files(tmp_path, capsys):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    (root / "good.txt").write_text("alpha", encoding="utf-8")
+    (root / "empty.txt").write_text("  \n\n", encoding="utf-8")
+    cli.main(_dir_args(root))
+    chunks = _FakeStore.instances[-1].chunks
+    assert [chunk.source_id for chunk in chunks] == ["good.txt"]
+    assert json.loads(capsys.readouterr().out) == {"tenant": "t1", "sources": 1, "chunks": 1}
+
+
+def test_rag_ingest_requires_source_id_without_dir(tmp_path, capsys):
+    args = _ingest_args(tmp_path)
+    index = args.index("--source-id")
+    del args[index : index + 2]
+    with pytest.raises(SystemExit) as exc:
+        cli.main(args)
+    assert exc.value.code == 1
+    assert "--source-id" in capsys.readouterr().err
+
+
+def test_rag_ingest_rejects_source_id_with_dir(tmp_path, capsys):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_dir_args(root, "--source-id", "doc"))
+    assert exc.value.code == 2
+    assert "--source-id" in capsys.readouterr().err
+
+
 def test_rag_ingest_audits_embedding(tmp_path):
     audit = tmp_path / "audit.jsonl"
     cli.main(_ingest_args(tmp_path, "--audit-file", str(audit)))
