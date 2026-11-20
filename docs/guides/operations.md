@@ -166,9 +166,9 @@
 
 安装与建表：
 
-1. 在承载 `adk_rag_chunks` 的库里安装 pgvector 扩展。`PgVectorRagStore` 首次连接会执行 `CREATE EXTENSION IF NOT EXISTS vector`，所以应用角色要能建扩展。
+1. 在承载 `adk_rag_chunks` 的库里一次性安装 pgvector 扩展。pgvector 不是受信扩展，建它需要 superuser 或 DBA。`PgVectorRagStore` 首次连接会执行 `CREATE EXTENSION IF NOT EXISTS vector`；扩展已存在时该语句只发 NOTICE 后跳过，不再检查建扩展权限，所以应用角色本身不需要这项权限，但由它首连安装时就需要。
 2. 同一段 schema 还会建表并安装策略。首次启动后确认三件事：`SELECT extversion FROM pg_extension WHERE extname = 'vector';` 有值、`\d adk_rag_chunks` 的 `embedding` 是 `vector(N)`、`pg_class.relrowsecurity` 与 `relforcerowsecurity` 都为真。
-3. 生产环境可以由 DBA 预建扩展与表，但应用角色必须是 `adk_rag_chunks` 的属主，不能只给 DML。每个进程首次建立连接池时都会重跑这段 schema，其中的 `CREATE TABLE IF NOT EXISTS`、`ENABLE/FORCE ROW LEVEL SECURITY`、`DROP POLICY` 与 `CREATE POLICY` 需要表属主权限。只给 DML 的角色首连就失败，异常被包成 `RagStoreUnavailable`。受限环境里应用角色连 `CREATE EXTENSION` 的权限都没有时，同样在首连失败。
+3. 生产环境可以由 DBA 预建扩展与表，但应用角色必须是 `adk_rag_chunks` 的属主，不能只给 DML。每个进程首次建立连接池时都会重跑这段 schema，其中的 `CREATE TABLE IF NOT EXISTS`、`ENABLE/FORCE ROW LEVEL SECURITY`、`DROP POLICY` 与 `CREATE POLICY` 需要表属主权限。只给 DML 的角色首连就失败，异常被包成 `RagStoreUnavailable`。所以生产上先由 superuser/DBA 装好扩展，再把 `adk_rag_chunks` 的属主授予应用角色。
 
 租户隔离：
 

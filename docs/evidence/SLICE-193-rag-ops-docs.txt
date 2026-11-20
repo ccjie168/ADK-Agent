@@ -49,6 +49,13 @@ ALL PASS（9 步，含 bandit / pip-audit）
    `RagStoreUnavailable`，重试恢复、不损坏数据；要求零失败就先由 DBA 建表。
 3. 非阻塞项：「低置信度与提示注入由 `RagGuard` 过滤」已补「配置了 guard 时」。
 
+第二轮独立验证判 MERGE（13 项全部 PASS），另提两条非阻塞精确性建议，已一并修正：
+
+- 原文「应用角色要能建扩展」与「应用角色不能是 superuser」矛盾。pgvector 不是受信扩展，建它要 superuser；
+  已改为「一次性由 superuser/DBA 安装」。
+- `CREATE EXTENSION IF NOT EXISTS` 在扩展已存在时只发 NOTICE 并跳过，不检查建扩展权限；原句「没有
+  `CREATE EXTENSION` 权限时同样首连失败」不成立，已删除并替换为「先装扩展、再把表属主授予应用角色」。
+
 五、范围与已知缺口
 
 - 纯文档切片，无代码与契约变更。
