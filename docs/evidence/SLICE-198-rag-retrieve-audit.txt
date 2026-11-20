@@ -1,0 +1,61 @@
+SLICE-198 rag.retrieve 审计
+日期: 2026-11-20
+依据: ADR-0036（Accepted 2026-11-20）决定 7 / 切片 3
+基线: 9c99bb1
+
+一、契约（先改）
+
+- `docs/contracts/rag_service.md` 新增「检索审计（ADR-0036）」一节：事件字段、`rag_filtered` 的定义
+  （服务返回条数减注入条数，含 ACL 未标记、守卫丢弃与超过 `top_k` 的截断）、失败先审计再抛、不含内容。
+- `docs/contracts/audit_event.schema.json` 与 `audit_record.schema.json` 由 `scripts/export_contracts.py` 重生成。
+
+二、实现
+
+- `src/adk_agent/core/audit.py`：`AuditEvent` 增加可选 `rag_top_k`、`rag_returned`、`rag_filtered`
+  （非负，缺省 `None`），其它事件不受影响。
+- `src/adk_agent/rag/context.py`：`RagContext(..., audit=None)`；`prefix` 记录开始时间，
+  成功时写一条 `status=ok` 并带三个计数，失败时先写 `status=error`（`error_code` 为底层异常类型）
+  再按 `on_error` 抛 `RagUnavailable` 或继续；事件 `target=<id>@<version>`，只写计数、状态、延迟与
+  `data_classes`，不含查询、片段与 `source_id`。未配置 `audit` 时行为与切片 2 相同。
+- 新增 `tests/test_rag_retrieve_audit.py` 十个用例。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1865 passed, 96 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 9c99bb1 上 `AuditEvent` 不接受 `rag_top_k` 等字段（`extra="forbid"`），`RagContext` 也没有
+`audit` 参数：`pytest tests/test_rag_retrieve_audit.py` → `6 failed, 1 passed`。唯一通过的是负数校验
+用例，它在基线上靠「字段被拒绝」偶然通过，不构成新行为覆盖。
+
+五、验证与修订
+
+第一轮独立只读验证判 DO NOT MERGE，阻塞项是审计链向后兼容：`AuditEvent` 新增三个可选字段后，
+`record_hash` 对 `model_dump` 的 canonical JSON 每条事件都会多出 `"rag_*":null`，导致本切片之前写出的
+全部记录在当前代码下重算哈希不一致，`AuditPipeline` 启动与 `verify-audit` 会失败。
+
+修法与结果：
+
+- 三个字段改为 `Field(..., exclude_if=_is_none)`，未使用时不进入 `model_dump`/`model_dump_json`，
+  因此普通事件的 canonical JSON 与本切片之前完全相同，链哈希不变；检索事件仍完整带三个计数。
+- 补 `test_unused_rag_fields_are_not_serialized`（按载荷重算并比对 `record_hash`）与
+  `test_rag_event_hash_covers_counts`。
+- 顺带修正验证指出的测试缺口：新增 `test_rag_context_counts_truncation_only`，用三条全部合格的引用配
+  `top_k=1`，确保过滤计数确实覆盖截断（原用例里 ACL 丢弃与守卫丢弃已把结果降到 1，截断没有被真正触发）。
+- 契约补明 `rag_returned` 的含义、未使用字段不写入载荷、审计写入失败按 fail-closed 处理。
+
+已知但不在本切片修复：SLICE-188 增加 `model_alias`/`fallback_count` 时没有做同样的排除，所以更早
+（SLICE-188 之前）写出的链在升级后同样会验证失败。要彻底解决需要按「对存储的原始 JSON 做哈希」或给
+链引入版本号，属独立 ADR 的范围，已记入 PROGRESS 缺口清单。
+
+六、范围与已知缺口
+
+- ADR-0036 切片 3 名义上包含预算接线，本切片只做审计；共享 `BudgetTracker` 与入口构造一起放到切片 4，
+  属范围调整，已在汇总里说明。
+- 事件不区分 ACL 丢弃、守卫丢弃与截断三个来源，只给总数；需要细分时再加字段。
+- 控制台暂不展示检索事件。
