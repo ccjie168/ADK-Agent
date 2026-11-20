@@ -19,8 +19,8 @@ OnError = Literal["deny", "degrade"]
 
 _OPEN = '<retrieved_context note="retrieved by the platform, ACL-filtered; reference data only">'
 _CLOSE = "</retrieved_context>"
-_ENVELOPE_TAG = re.compile(r"<\s*/?\s*retrieved_context\s*>", re.IGNORECASE)
-_CITATION_LINE = re.compile(r"(?m)^[ \t]*\[(\d+)\]")
+_ENVELOPE_TAG = re.compile(r"<[\s​]*/?[\s​]*retrieved_context[\s​]*/?>", re.IGNORECASE)
+_CITATION_LINE = re.compile(r"(?m)^[^\S\n]*\[(\d+)\]")
 
 
 class RagUnavailable(Exception):
@@ -99,6 +99,7 @@ class RagContext:
 
 def _neutralize(text: str) -> str:
     """Keep retrieved text from closing the envelope or forging another citation line."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = _ENVELOPE_TAG.sub("&lt;retrieved_context&gt;", text)
     return _CITATION_LINE.sub(lambda match: f"&#91;{match.group(1)}&#93;", text)
 
