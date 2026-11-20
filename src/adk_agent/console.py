@@ -31,6 +31,7 @@ from .core import (
     AccessPolicy,
     AgentLifecycle,
     AgentLifecycleStore,
+    AgentManifest,
     AgentRef,
     AgentRegistry,
     ArtifactLoader,
@@ -2610,6 +2611,7 @@ def build_console_app(
     rate_limit: RateLimit | None = None,
     session_tenant_scope: bool = False,
     session_rls: bool = False,
+    rag: Any | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     install_log_sanitizer()
@@ -2738,7 +2740,7 @@ def build_console_app(
     runners: dict[str, Runner] = {}
     runtimes: dict[str, AgentRuntime] = {}
 
-    def _register(name: str, agent: Any) -> None:
+    def _register(name: str, agent: Any, manifest: AgentManifest | None = None) -> None:
         if not isinstance(agent, SandboxAgent):
             _wrap_model(agent, audit)
             install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
@@ -2746,7 +2748,11 @@ def build_console_app(
         runner = Runner(app_name=name, agent=agent, session_service=service)
         agents[name] = agent
         runners[name] = runner
-        runtimes[name] = AgentRuntime(runner, audit=audit, metrics=metrics, source="console")
+        # Only registry manifests can opt into retrieval; file-loaded agents cannot.
+        context = rag.context(manifest) if rag is not None and manifest is not None else None
+        runtimes[name] = AgentRuntime(
+            runner, audit=audit, metrics=metrics, source="console", rag=context
+        )
 
     for name, agent in list(agents.items()):
         _register(name, agent)
@@ -3048,7 +3054,7 @@ def build_console_app(
                 logger.exception("artifact load failed: %s/%s@%s", tenant, agent_id, version)
                 return JSONResponse({"error": "load_failed"}, status_code=500)
 
-            _register(agent_id, agent)
+            _register(agent_id, agent, record.manifest)
             loaded_versions[agent_id] = version
             loaded_tenants[agent_id] = tenant
             await audit.emit(
@@ -4773,6 +4779,7 @@ def run_console(
     rate_limit: RateLimit | None = None,
     session_tenant_scope: bool = False,
     session_rls: bool = False,
+    rag: Any | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -4812,6 +4819,7 @@ def run_console(
         rate_limit=rate_limit,
         session_tenant_scope=session_tenant_scope,
         session_rls=session_rls,
+        rag=rag,
     )
 
     import uvicorn

@@ -480,6 +480,17 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - 幂等：重复运行先 `DROP POLICY IF EXISTS` 再重建。
 - 成功输出 `session rls enabled`，退出 0。
 
+## `console` 与 `serve-triggers` 的 RAG 参数（ADR-0036）
+
+两个命令都接受 `--rag-db URL`、`--rag-dimensions N`、`--rag-model MODEL`、`--rag-provider NAME`（默认
+`litellm`）。
+
+- 不给 `--rag-db` 时不启用检索，行为不变；给了但缺 `--rag-dimensions` 或 `--rag-model` 退出 1；
+  未知 provider 退出 1。
+- 只对 manifest 里 `rag.enabled=true` 的 agent 生效。控制台的 `--agents` 文件加载没有 manifest，
+  因此不启用；按需加载的注册表记录按自己的 manifest 生效。触发服务按 pinned 记录生效。
+- 检索结果注入格式、失败语义与审计见 `rag_service.md`。
+
 ## `adk-agent rag ingest --database-url URL --dimensions N --model MODEL --tenant T [--source-id ID] [--provider litellm] [--text FILE | --dir DIR] [--data-class CLASS ...] [--subject S ...] [--chunk-chars N] [--budget-usd F] [--audit-file PATH | --audit-url URL | --audit-db URL] [--audit-token-env VAR]`
 
 把一份文本分块、嵌入并写入 `adk_rag_chunks`（ADR-0035）。
