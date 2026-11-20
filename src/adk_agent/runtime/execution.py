@@ -83,11 +83,13 @@ class AgentRuntime:
         audit: AuditSink | None = None,
         metrics: MetricsRegistry | None = None,
         source: str = "agent",
+        rag: Any | None = None,
     ) -> None:
         self.runner = runner
         self.audit = audit
         self.metrics = metrics
         self.source = source
+        self.rag = rag
 
     async def run(
         self,
@@ -169,7 +171,12 @@ class AgentRuntime:
                 "agent_ref": invocation.agent_ref.model_dump(mode="json"),
             }
         )
-        new_message = types.Content(role="user", parts=[types.Part(text=invocation.input)])
+        text = invocation.input
+        if self.rag is not None:
+            block = await self.rag.prefix(invocation)
+            if block:
+                text = block + "\n\n" + text
+        new_message = types.Content(role="user", parts=[types.Part(text=text)])
         reply_parts: list[str] = []
         token = set_invocation(invocation)
         try:

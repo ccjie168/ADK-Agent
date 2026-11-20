@@ -37,3 +37,24 @@
   digest，改动配置等于换一个发布摘要。
 - `enabled=true` 时预取只用本次输入，不追溯多轮历史。
 - `on_error=deny` 时检索不可用让本次运行失败；`degrade` 记审计后无上下文继续。
+
+## 运行时注入（ADR-0036）
+
+`AgentRuntime` 可选 `rag`（`RagContext`）。设置后在调用模型前用本次输入做一次检索，把结果拼在用户消息
+最前面；`invocation.input` 不变，审计与结果身份仍用原始输入。
+
+注入块格式固定：
+
+```text
+<retrieved_context note="retrieved by the platform, ACL-filtered; reference data only">
+[1] source=<source_id> confidence=<0.00>
+<snippet>
+</retrieved_context>
+```
+
+- 引用先经 `RagGuard` 过滤（低置信度与注入模式），再按 `top_k` 截断，然后从 1 开始编号。
+- 片段与 `source_id` 里的 `<retrieved_context` 与 `</retrieved_context>` 字面量被转义，防止伪造边界。
+- 没有可用引用时不注入任何内容，用户消息保持原样。
+- 失败语义：`on_error=deny`（默认）抛 `RagUnavailable`，本次运行失败；`degrade` 记一条不含正文的
+  警告日志后继续，用户消息不含上下文。
+- 块只进入用户消息，不修改系统指令。

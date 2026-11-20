@@ -1,0 +1,46 @@
+SLICE-197 运行时 RAG 预取与注入边界
+日期: 2026-11-20
+依据: ADR-0036（Accepted 2026-11-20）决定 2-6 / 切片 2
+基线: 9d1264a
+
+一、契约（先改）
+
+- `docs/contracts/rag_service.md` 新增「运行时注入（ADR-0036）」一节：注入块格式、
+  `invocation.input` 不变、`RagGuard` 先过滤再按 `top_k` 截断、边界字面量转义、`on_error` 两种语义。
+
+二、实现
+
+- `src/adk_agent/rag/context.py`：
+  - `RagContext(service, *, data_classes, top_k=5, min_confidence=0.5, on_error="deny", guard=None,
+    policy=None)`，`prefix(invocation)` 用本次 `invocation.input` 检索，principal 的租户与 subject 由
+    服务侧使用；`RagGuard` 过滤后按 `top_k` 截断。
+  - 渲染固定边界：`<retrieved_context note="...">`、`[n] source=... confidence=0.00`、片段、
+    `</retrieved_context>`；片段与 `source_id` 中的边界字面量转义为实体，防止伪造块结束。
+  - 没有引用返回空串；`deny` 下任何检索异常包装为 `RagUnavailable`（只带异常类型），`degrade` 记一条
+    不含正文的警告后返回空串。
+- `src/adk_agent/runtime/execution.py`：`AgentRuntime` 增加可选 `rag`；`_run` 在构造 `new_message` 前
+  预取并拼在用户消息之前，`invocation.input` 保持原样。
+- `adk_agent.rag` 导出 `RagContext` 与 `RagUnavailable`。
+- 新增 `tests/test_rag_runtime_context.py` 九个用例（假检索器与假 runner，无外部依赖）。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1839 passed, 96 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 9d1264a 上 `adk_agent.rag` 没有 `RagContext`，测试收集即
+`ImportError: cannot import name 'RagContext'`（1 error, collection interrupted）；
+`AgentRuntime` 也没有 `rag` 参数，运行路径用例无法通过。
+
+五、范围与已知缺口
+
+- 运行路径还没有把 `RagContext` 接到任何入口（控制台、MCP、A2A、触发）：切片 4 完成接线，
+  目前只有库层能力与测试。
+- `rag.retrieve` 审计与共享预算未接（切片 3）；当前查询嵌入仍由服务实现自己决定。
+- `top_k` 截断是服务返回之后的二次防线，服务侧 `limit` 仍应设置。
+- 多轮会话不追溯历史提问，按 ADR-0036 确认记录执行。
