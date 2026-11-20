@@ -15,6 +15,7 @@ from .policy import DataClass, ToolGrant
 
 Exposure = Literal["none", "mcp", "http", "a2a"]
 ExecutionTier = Literal["in_process", "sandboxed"]
+RagOnError = Literal["deny", "degrade"]
 
 _SAFE_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
 
@@ -66,6 +67,18 @@ class Slo(BaseModel):
     max_cost_usd: float | None = Field(default=None, ge=0)
 
 
+class RagConfig(BaseModel):
+    """Retrieval settings an agent opts into (ADR-0036)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    top_k: int = Field(default=5, ge=1, le=50)
+    min_confidence: float = Field(default=0.5, ge=0, le=1)
+    data_classes: list[DataClass] = Field(default_factory=list)
+    on_error: RagOnError = "deny"
+
+
 class AgentManifest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -84,6 +97,8 @@ class AgentManifest(BaseModel):
     execution_tier: ExecutionTier | None = None
     # Alias the agent's business code references instead of a provider model name (ADR-0033).
     model_alias: str | None = Field(default=None, pattern=_SAFE_NAME_PATTERN)
+    # Retrieval is off unless the manifest opts in (ADR-0036).
+    rag: RagConfig | None = None
 
 
 class AgentRef(BaseModel):
@@ -124,6 +139,8 @@ def manifest_digest(manifest: AgentManifest) -> str:
         payload.pop("execution_tier", None)
     if payload.get("model_alias") is None:
         payload.pop("model_alias", None)
+    if payload.get("rag") is None:
+        payload.pop("rag", None)
     policy = payload.get("model_policy")
     if isinstance(policy, dict) and not policy.get("model_aliases"):
         policy.pop("model_aliases", None)

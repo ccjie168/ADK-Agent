@@ -71,6 +71,7 @@ def test_manifest_digest_unchanged_by_defaults():
     payload = manifest.model_dump(mode="json")
     payload.pop("execution_tier", None)
     payload.pop("model_alias", None)
+    payload.pop("rag", None)
     payload["model_policy"].pop("model_aliases", None)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     assert manifest_digest(manifest) == hashlib.sha256(canonical.encode("utf-8")).hexdigest()
