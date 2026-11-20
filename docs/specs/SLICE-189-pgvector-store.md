@@ -9,7 +9,9 @@
 1. `rag/vector_store.py` 新增 `RagChunk`（`tenant`/`source_id`/`chunk_id`/`text`/`embedding`/
    `data_classes`/`allowed_subjects`）与 `PgVectorRagStore`。
 2. 构造时校验 `dimensions`，并建立 `CREATE EXTENSION IF NOT EXISTS vector` 与
-   `adk_rag_chunks`（主键 `(tenant, source_id, chunk_id)`，`embedding vector(N)`，`acl jsonb`）。
+   `adk_rag_chunks`（主键 `(tenant, source_id, chunk_id)`，`embedding vector(N)`，正文列 `body text`，
+   ACL 由 `data_classes text[]` 与 `allowed_subjects text[]` 两列承载；ADR-0035 决定 1 里的通用
+   `acl jsonb` 在本实现收敛为这两列，语义等价且便于 SQL 过滤，偏差已记入证据）。
 3. `upsert` 写入或覆盖分块；`search` 按租户、`data_classes` 交集与 `allowed_subjects` 过滤后按余弦距离
    排序并限量返回。
 4. RLS：`ENABLE`/`FORCE ROW LEVEL SECURITY`，策略为 `tenant = current_setting('app.tenant_id', true)`；

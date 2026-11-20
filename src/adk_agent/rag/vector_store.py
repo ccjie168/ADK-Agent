@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..core import DataClass
 from ..pg import LazyPool
+
+_Subject = Annotated[str, Field(min_length=1)]
 
 
 class RagStoreUnavailable(Exception):
@@ -24,7 +26,7 @@ class RagChunk(BaseModel):
     text: str = Field(min_length=1)
     embedding: list[float] = Field(min_length=1)
     data_classes: list[DataClass] = Field(default_factory=list)
-    allowed_subjects: list[str] | None = None
+    allowed_subjects: list[_Subject] | None = None
 
 
 class RagChunkRow(BaseModel):

@@ -28,7 +28,14 @@ ALL PASS（9 步，含 bandit / pip-audit）
 
 基线 fb1773e 上无 `adk_agent.rag.vector_store`：测试收集即 ModuleNotFoundError。
 
-四、范围与已知缺口
+四、与 ADR-0035 决定 1 的偏差（已记录）
+
+ADR-0035 决定 1 的草案列为 `text` 与通用 `acl jsonb`；本实现收敛为：正文列 `body text`，ACL 拆成
+`data_classes text[]` 与 `allowed_subjects text[]` 两列。语义等价（ACL 仍是摄取时绑定的元数据，检索按它
+过滤），显式数组列更便于 SQL 过滤与后续索引。ADR 文本未改；若需要把 ADR 也同步成这两列，需你确认后
+再改。
+
+五、范围与已知缺口
 
 - 本地与 CI 均未设 `TEST_POSTGRES_URL`，四个 live 用例跳过；pgvector 扩展与 SQL 未在真实库上执行过，
   需在有扩展的环境跑一次（运维验收项）。

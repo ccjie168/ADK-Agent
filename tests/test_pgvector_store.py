@@ -37,6 +37,8 @@ def test_rag_chunk_validates_embedding_dimensions():
         store.validate(_chunk(embedding=[0.1, 0.2]))
     with pytest.raises(ValidationError):
         _chunk(embedding=[])
+    with pytest.raises(ValidationError):
+        _chunk(allowed_subjects=[""])
 
 
 @_live
