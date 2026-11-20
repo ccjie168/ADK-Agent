@@ -480,6 +480,32 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - 幂等：重复运行先 `DROP POLICY IF EXISTS` 再重建。
 - 成功输出 `session rls enabled`，退出 0。
 
+## `adk-agent rag ingest --database-url URL --dimensions N --model MODEL --tenant T --source-id ID [--provider litellm] [--text FILE] [--data-class CLASS ...] [--subject S ...] [--chunk-chars N] [--budget-usd F] [--audit-file PATH | --audit-url URL | --audit-db URL] [--audit-token-env VAR]`
+
+把一份文本分块、嵌入并写入 `adk_rag_chunks`（ADR-0035）。
+
+- `--database-url` 必填，指向装了 pgvector 的 Postgres。`--dimensions` 必须等于 embedding 模型输出维度，`--model` 是传给模型通道的模型名。摄取与检索必须用同一个 `--model`，换模型等于换向量空间。
+- 正文来自 `--text FILE`，不给时读 stdin。文件读不到、空文本或只有空白都退出 1，不写存储，stderr 分别为 `could not read text: <异常类型>` 与 `empty text`。
+- `--tenant` 同时是存储租户与嵌入审计的租户；两者由同一次调用给出，不做推导。
+- `--data-class` 可重复，取值限 `public`、`internal`、`confidential`、`restricted`，其他值由 argparse 拒绝（退出 2），缺省为空列表。`--subject` 可重复，缺省时不写 `allowed_subjects`，分块对租户内全部主体可见。
+- `--chunk-chars` 是每块最大字符数，默认 800，必须大于 0，否则退出 1。
+- `--budget-usd` 写入 `ModelPolicy.budget_usd`，并让 `EmbeddingGateway` 带一个进程内 `BudgetTracker`。一次性命令看不到历史花费，实际只能拦住 `0` 这种本次就超限的配置；正数上限要生效需要共享花费来源，属后续切片。
+- 嵌入经 `EmbeddingGateway`。配置了 `--audit-file`、`--audit-url`、`--audit-db` 或 `AUDIT_DATABASE_URL` 时，每次嵌入写一条 `model.embed`；都没配置时不写审计，与其它命令一致。
+- 成功：stdout 输出 `{"tenant":"T","source_id":"ID","chunks":N}`，退出 0。
+- 失败：`RagStoreUnavailable`（扩展缺失、维度不符、驱动或 SQL 错误）、`ModelDenied`（防御性映射：provider 未配置或预算超限；允许清单固定为 `--provider`）与非法参数都退出 1。stderr 只给安全文案或异常类型，不回显 DSN、正文或向量；模型通道的网络与认证错误按 `rag failed: <异常类型>` 输出，不打印栈。
+- CLI 不做额外授权：`--data-class` 是调用方的自述，使用前必须已获得对应租户与分级的授权。
+
+## `adk-agent rag search --database-url URL --dimensions N --model MODEL --tenant T [--provider litellm] [--subject S] [--query TEXT] [--data-class CLASS ...] [--limit N] [--min-confidence F] [--budget-usd F] [--audit-file PATH | --audit-url URL | --audit-db URL] [--audit-token-env VAR]`
+
+按查询文本检索引用（ADR-0035 的 `PgVectorRagService`）。
+
+- 查询来自 `--query`，不给时读 stdin。空查询退出 1（`empty query`）。
+- 检索用 principal 的租户与 `--subject`（缺省 `rag-search`）做 ACL 过滤，`--data-class` 声明调用方持有的数据分级，取值同 `rag ingest`，缺省为空列表。空列表下 `data_classes <@ '{}'` 为真，只命中没有分级的分块；未分级语料因此对声明“无分级”的调用方可见。
+- `--limit` 默认 10，必须大于 0，否则退出 1（在读取 stdin 之前校验）。`--min-confidence` 默认 0.5，传给 `RagGuard`；低于阈值的引用与命中提示注入模式的引用都被丢弃。
+- `--budget-usd` 与审计语义同 `rag ingest`：查询嵌入同样经 `EmbeddingGateway` 受预算检查并写 `model.embed`。
+- 成功：stdout 输出引用 JSON 数组，元素为 `{"source_id","snippet","acl_checked":true,"confidence"}`，退出 0。空结果输出 `[]`。
+- 失败：`RagStoreUnavailable`、`ModelDenied` 与非法参数退出 1，stdout 不输出数组，空结果与故障不能混淆。
+
 ## 入口限流
 
 `console`、`serve-model-gateway`、`serve-tool-gateway` 和 `serve-audit` 接受 `--rate-limit N` 和 `--rate-limit-window SECONDS`（默认 60）。
