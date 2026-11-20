@@ -176,7 +176,7 @@ serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有�
 
 检索按 manifest 开关，默认关闭。完整步骤：
 
-1. 让 agent 的 manifest 带上 `rag` 块并重新发布：
+1. 让 agent 的 manifest 带上 `rag` 块，升一个版本号再发布（`rag` 参与摘要，同一版本不能覆盖）：
 
    ```json
    "rag": {"enabled": true, "top_k": 5, "min_confidence": 0.5,
@@ -184,7 +184,9 @@ serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有�
    ```
 
 2. 装语料。单文件、stdin 或整个目录都可以，`source_id` 在目录模式下取相对路径。下面的示例假设
-   当前目录已有 `manual.txt` 与 `handbook/`，`RAG_DB` 指向装了 pgvector 的库：
+   已激活虚拟环境（未激活时用 `.venv/Scripts/python.exe -m adk_agent` 代替 `adk-agent`），当前目录
+   有 `manual.txt` 与 `handbook/`，`RAG_DB` 指向装了 pgvector 的库，且已按「配置模型」一节设置
+   嵌入后端的凭据（LiteLLM 通道读 `LITELLM_API_KEY`，直连 OpenAI 读 `OPENAI_API_KEY`）：
 
    ```bash
    adk-agent rag ingest --database-url "$RAG_DB" --dimensions 1536 \
@@ -202,7 +204,9 @@ serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有�
      --data-class internal --query "how do I reset the pump?"
    ```
 
-4. 打开入口：控制台或触发服务加上 `--rag-db`、`--rag-dimensions`、`--rag-model` 重启。
+4. 打开入口：控制台或触发服务加上 `--rag-db`、`--rag-dimensions`、`--rag-model` 重启。控制台只有
+   在市场页按需加载注册表记录时生效；`--agents` 与启动 `--agent-ref` 注册的 agent 没有 manifest，
+   不会检索。触发服务对 pinned 版本生效。
 
 模型看到的是一段固定边界的上下文块：
 
@@ -214,7 +218,8 @@ Pump reset steps...
 ```
 
 - 摄取与检索必须用同一个 `--model`，换模型要按运维手册重建向量。
-- 检索失败按 `on_error` 处理：`deny` 让本次运行失败，`degrade` 记审计后不带资料继续。
+- 检索失败按 `on_error` 处理：`deny` 让本次运行失败，`degrade` 记审计后不带资料继续。配置了审计后端
+  时才会写 `model.embed` 与 `rag.retrieve`。
 - 文件加载的控制台 agent（`--agents`）没有 manifest，不能用检索；MCP 与 A2A 入口尚未接线。
 - `--data-class` 是调用方的自述，必须已经有对应授权，不要用它给机密语料换轨。
 

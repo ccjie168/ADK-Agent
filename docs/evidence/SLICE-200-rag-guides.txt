@@ -32,7 +32,21 @@ ALL PASS（9 步，含 bandit / pip-audit）
 基线 fedea39 上两份手册都没有 RAG 配置段：`pytest tests/test_rag_guides.py` → `4 failed`
 （缺 `--rag-db`、`"rag"`、`rag ingest`、`retrieved_context` 等标记）。
 
-五、范围与已知缺口
+五、验证与修订
+
+独立只读验证判 MERGE，另提六条非阻塞项，已修正其中五条会误导运维的：
+
+- 运维手册把 `--budget-usd` 写成 `console`/`serve-triggers` 的预算开关（实际两者不接受），已改为
+  「运行时预算来自 `manifest.model_policy.budget_usd`，`--budget-usd` 只属于 `rag ingest|search`」。
+- 两处把 `model.embed`/`rag.retrieve` 写成无条件写入，已补「配置了审计后端时」。
+- 「改 manifest 重新发布/关掉即可」漏了摘要语义：`rag` 块参与摘要，同版本不能覆盖，必须升版本号，
+  触发要改 pinned 版本；回滚用新版本或指回旧版本。已按此重写升级与回滚段。
+- 使用手册说「控制台加 `--rag-*` 重启」就生效，实际只有按需加载的注册表记录生效，启动时
+  `--agents`/`--agent-ref` 注册的 agent 没有 manifest。已在两份手册写清。
+- 命令示例的调用形式与嵌入后端凭据没交代，已补虚拟环境与 `LITELLM_API_KEY`/`OPENAI_API_KEY` 前置条件。
+- spec 里的「假模型名」措辞改为「真实模型名、不含真实凭据」。
+
+六、范围与已知缺口
 
 - 手册示例用占位 DSN 与模型名，没有在真实环境执行；`rag ingest` 的两条命令需要 `RAG_DB` 与网络模型。
 - 手册如实写了四项现状缺口：沙箱触发不检索、MCP/A2A 未接线、预算进程内、`--rag-dimensions 0` 未捕获。
