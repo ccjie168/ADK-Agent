@@ -26,7 +26,7 @@ $ python scripts/check.py --fast
 $ python scripts/check.py --full
 ALL PASS（9 步，含 bandit / pip-audit）
 
-额外在真实 Postgres 上跑 `tests/audit`（`TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk`）：
+额外在真实 Postgres 上跑 `tests/audit`（`TEST_POSTGRES_URL` 指向本机 55432 上的测试库）：
 `84 passed, 1 failed`。失败的是 `tests/audit/test_audit_service_postgres.py::test_console_db_roundtrip`
 （403），在基线 73bd9e5 的 worktree 上同样失败，与本切片无关，属既有环境问题。
 
