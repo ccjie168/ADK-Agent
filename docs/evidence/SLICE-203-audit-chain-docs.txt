@@ -1,0 +1,38 @@
+SLICE-203 审计链校验的运维说明
+日期: 2026-11-21
+依据: ADR-0037（Accepted 2026-11-21）切片 3
+基线: c6a2fbd
+
+一、契约
+
+- 无契约变更；口径已在 SLICE-201 的 `docs/contracts/audit_chain.md` 定义，本切片只在手册里指向它。
+
+二、实现
+
+- `docs/guides/operations.md` 的「值守检查」补三条：
+  - 校验口径以存储内容为准（ADR-0037）：只要存储内容能被当前规范形式复现，升级新增审计字段不会
+    断链，SLICE-188 之前的记录按原样通过；「原本失败的链又通过」是预期而非规则放松。
+  - 存储内容与 `hash` 已经对不上的记录不会因升级恢复。例如历史 `-0.0` 行被存储成 `0.0` 后仍与
+    旧哈希不符，继续按断链调查，禁止重签或整链重建。
+  - 断链表示存储内容与记录 `hash` 对不上，常见原因是存储被改或记录损坏，升级切换校验器也可能
+    暴露既有不一致；按租户与序号定位，签名密钥环不一致与断链分开处理。
+- `tests/test_audit_chain_guide.py` 两个用例：手册含 ADR-0037、存储内容、`verify-audit`、
+  「规范形式复现」与「不会因升级恢复」；指向 `docs/contracts/audit_chain.md`。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1890 passed, 98 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 c6a2fbd 的手册没有这两段：`pytest tests/test_audit_chain_guide.py` → `2 failed`
+（缺 `ADR-0037`、`存储内容`、`audit_chain.md`）。
+
+五、范围与已知缺口
+
+- 纯文档切片，`verify-audit` 命令输出未改（当前输出已给出序号与租户）。
+- 历史里已经不一致的记录不迁移（ADR-0037 已否决重签）。
