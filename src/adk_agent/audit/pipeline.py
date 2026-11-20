@@ -34,11 +34,24 @@ class AuditSignatureInvalid(Exception):
         self.tenant = tenant
 
 
+def _normalize_numbers(value: Any) -> Any:
+    """Fold negative zero so storage that drops the sign still hashes the same."""
+    if isinstance(value, float) and value == 0.0:
+        return 0.0
+    if isinstance(value, Mapping):
+        return {key: _normalize_numbers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_numbers(item) for item in value]
+    return value
+
+
 def canonical_event_json(payload: str | Mapping[str, Any]) -> str:
     """Canonical form of a stored event object (ADR-0037)."""
     if isinstance(payload, str):
         payload = json.loads(payload)
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return json.dumps(
+        _normalize_numbers(payload), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
 
 
 def record_hash(event: AuditEvent | str | Mapping[str, Any], prev_hash: str) -> str:

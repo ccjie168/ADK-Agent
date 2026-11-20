@@ -101,6 +101,11 @@ def test_record_hash_matches_for_non_finite_floats():
     assert record_hash(event, "p") == record_hash(text, "p")
 
 
+def test_canonical_form_folds_negative_zero():
+    assert canonical_event_json({"cost": -0.0}) == canonical_event_json({"cost": 0.0})
+    assert canonical_event_json({"a": {"b": [-0.0]}}) == canonical_event_json({"a": {"b": [0.0]}})
+
+
 def test_canonical_form_is_key_order_independent():
     left = '{"b":1,"a":{"d":2,"c":3}}'
     right = '{"a":{"c":3,"d":2},"b":1}'

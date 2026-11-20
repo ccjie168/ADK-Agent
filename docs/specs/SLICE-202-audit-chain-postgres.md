@@ -17,6 +17,7 @@
 
 - [x] `jsonb` 往返后哈希仍等于存储值 -> `test_jsonb_roundtrip_hashes_the_stored_event`
 - [x] 旧格式行的哈希按原样验证通过 -> `test_legacy_event_object_verifies_as_written`
+- [x] 负零在规范形式里归一，不因 null 的符号断链 -> `test_canonical_form_folds_negative_zero`
 - [x] 全量门禁通过
 
 ## 反例
