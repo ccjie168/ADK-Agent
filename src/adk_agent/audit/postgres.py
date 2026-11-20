@@ -168,13 +168,14 @@ class PostgresAuditSink:
                 )
                 prev_hash = row["hash"] if row is not None else ""
                 sequence = (row["sequence"] + 1) if row is not None else 1
-                digest = record_hash(event, prev_hash)
+                event_text = event.model_dump_json()
+                digest = record_hash(event_text, prev_hash)
                 signature, kid = _sign(digest, self.signing_key, self.keyring)
                 await conn.execute(
                     _INSERT,
                     event.tenant,
                     sequence,
-                    event.model_dump_json(),
+                    event_text,
                     prev_hash,
                     digest,
                     signature,
@@ -250,14 +251,15 @@ def _walk(
         tenant = row["tenant"]
         sequence = row["sequence"]
         try:
-            event = AuditEvent.model_validate_json(row["event"])
+            AuditEvent.model_validate_json(row["event"])
         except ValueError as exc:
             raise AuditChainBroken(sequence, tenant) from exc
         prev_hash = row["prev_hash"]
         digest = row["hash"]
         if prev_hash != last.get(tenant, ""):
             raise AuditChainBroken(sequence, tenant)
-        if record_hash(event, prev_hash) != digest:
+        # Hash the stored jsonb text, not the current model (ADR-0037).
+        if record_hash(row["event"], prev_hash) != digest:
             raise AuditChainBroken(sequence, tenant)
         if keyring is not None:
             key = keyring.key_for(row["kid"])

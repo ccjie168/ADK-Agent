@@ -1,0 +1,44 @@
+SLICE-202 审计链以存储内容为准（Postgres 模式）
+日期: 2026-11-21
+依据: ADR-0037（Accepted 2026-11-21）决定 3、6 / 切片 2
+基线: 73bd9e5
+
+一、契约
+
+- `docs/contracts/audit_chain.md` 已含 Postgres 说明（`event::text` 规范形式比对），本切片不改契约文本。
+
+二、实现
+
+- `src/adk_agent/audit/postgres.py`：
+  - `append` 只序列化一次，`event_text` 同时用于 `record_hash` 与写入 `$3::jsonb`。
+  - `_walk` 仍先 `AuditEvent.model_validate_json` 确认事件可解析（损坏即断链），但哈希改用
+    `record_hash(row["event"], prev_hash)`，即存储的 `jsonb` 文本的规范形式。
+- `tests/audit/test_audit_postgres.py` 新增两个 live 用例（需 `TEST_POSTGRES_URL`）：
+  - `test_jsonb_roundtrip_hashes_the_stored_event`：写入后按存储文本重算哈希等于行内哈希，整库验证通过。
+  - `test_legacy_event_object_verifies_as_written`：直接插入一条「SLICE-188 之前格式」的行（哈希按该行
+    文本手工计算），`verify_audit_database` 通过。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1887 passed, 98 skipped（ALL PASS，7 步；两个 live 用例在未设 `TEST_POSTGRES_URL` 时跳过）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+额外在真实 Postgres 上跑 `tests/audit`（`TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55432/adk`）：
+`84 passed, 1 failed`。失败的是 `tests/audit/test_audit_service_postgres.py::test_console_db_roundtrip`
+（403），在基线 73bd9e5 的 worktree 上同样失败，与本切片无关，属既有环境问题。
+
+四、红态
+
+基线 73bd9e5 的 worktree（`PYTHONPATH=<worktree>/src`）+ 真实 Postgres，跑同一测试文件：
+`test_legacy_event_object_verifies_as_written` 失败，`AuditChainBroken`（`postgres.py:261`，模型重算路径）。
+`test_jsonb_roundtrip_hashes_the_stored_event` 在基线上通过（有限值下模型与文本规范形式一致），它的作用
+是锁定往返保真，不是修 bug 的证明。
+
+五、范围与已知缺口
+
+- `verify-audit` 输出措辞与运维手册留到切片 3。
+- 历史不一致记录不迁移（ADR-0037 已否决重签）。
+- `jsonb` 的数字规范化目前对实测值集保真；若将来出现不保真的类型，需另行评估（ADR 决定 6）。
