@@ -206,7 +206,24 @@
 - 扩容前确认所有副本指向同一个库。指错库的副本只会查到自己的数据，表现为部分租户检索为空，不是报错。
 - 每个副本首次连上时都会执行同一段 schema。语句本身幂等，但多个副本同时首启时 Postgres 的 `CREATE EXTENSION IF NOT EXISTS` 与 `CREATE TABLE IF NOT EXISTS` 仍可能撞唯一索引而报错，该副本的首次请求会失败并抛 `RagStoreUnavailable`。重试即恢复，数据不会损坏。要求首启零失败就用 DBA 先建好扩展与表，再滚动副本。
 - `adk_rag_chunks` 与其它 `adk_*` 表一起进 `pg_dump`，备份与恢复顺序同「备份与恢复」一节。
-- `PgVectorRagStore` 目前由部署代码构造（传入 DSN 与维度）；CLI 接线在后续切片，接线前不要指望 `serve-*` 自带 RAG 存储。
+- `adk-agent rag ingest` 与 `adk-agent rag search` 是手工装料与自检入口，参数见 `docs/contracts/cli.md`。
+
+### 运行时检索（ADR-0036）
+
+- `console` 与 `serve-triggers` 接受 `--rag-db URL`、`--rag-dimensions N`、`--rag-model MODEL`、
+  `--rag-provider NAME`（默认 `litellm`）。不给 `--rag-db` 完全不启用；给了但缺维度或模型退出 1。
+- 只有 manifest 里 `rag.enabled=true` 的 agent 会检索。控制台用 `--agents` 文件加载的 agent 没有
+  manifest，永远不启用；按需加载的注册表记录按自己的配置生效。触发服务按 pinned 记录生效。
+- 检索在调模型前做一次，结果拼在用户消息最前面；`top_k`、`min_confidence`、`data_classes` 全部来自
+  manifest。查询嵌入写 `model.embed` 审计，每次检索写一条 `rag.retrieve`（计数、状态、延迟，不含
+  查询与片段）。
+- 失败语义：`rag.on_error=deny`（默认）让本次运行失败；`degrade` 记审计后不带上下文继续，是显式的
+  风险接受，审计里能看到 `status=error`。
+- 现状与缺口：`--budget-usd` 与嵌入预算都是进程内累计，多副本各自记账；`execution_tier=sandboxed` 的
+  触发在 `serve-triggers` 里提前返回，不会检索，也没有 `rag.retrieve` 审计；MCP 与 A2A 入口尚未接线；
+  `--rag-dimensions` 给 0 会以未捕获的 `RagStoreUnavailable` 退出，运维不要这么配。
+- 升级顺序：先装扩展与表，再给控制台或触发加 `--rag-*` 重启，最后把 agent 的 manifest 改成
+  `rag.enabled=true` 重新发布。回滚时把 manifest 关掉即可，表可以留着。
 
 ## 扩缩容
 

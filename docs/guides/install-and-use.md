@@ -172,6 +172,52 @@ PY
 serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有该路径）；
 `/metrics` 只在 serve/serve-many（`--metrics`）、控制台、模型网关与工具网关提供。
 
+## 检索（RAG）
+
+检索按 manifest 开关，默认关闭。完整步骤：
+
+1. 让 agent 的 manifest 带上 `rag` 块并重新发布：
+
+   ```json
+   "rag": {"enabled": true, "top_k": 5, "min_confidence": 0.5,
+           "data_classes": ["internal"], "on_error": "deny"}
+   ```
+
+2. 装语料。单文件、stdin 或整个目录都可以，`source_id` 在目录模式下取相对路径。下面的示例假设
+   当前目录已有 `manual.txt` 与 `handbook/`，`RAG_DB` 指向装了 pgvector 的库：
+
+   ```bash
+   adk-agent rag ingest --database-url "$RAG_DB" --dimensions 1536 \
+     --model text-embedding-3-small --tenant acme --source-id manual \
+     --data-class internal --text ./manual.txt
+   adk-agent rag ingest --database-url "$RAG_DB" --dimensions 1536 \
+     --model text-embedding-3-small --tenant acme --dir ./handbook
+   ```
+
+3. 自检，确认 ACL 与置信度符合预期：
+
+   ```bash
+   adk-agent rag search --database-url "$RAG_DB" --dimensions 1536 \
+     --model text-embedding-3-small --tenant acme --subject alice \
+     --data-class internal --query "how do I reset the pump?"
+   ```
+
+4. 打开入口：控制台或触发服务加上 `--rag-db`、`--rag-dimensions`、`--rag-model` 重启。
+
+模型看到的是一段固定边界的上下文块：
+
+```text
+<retrieved_context note="retrieved by the platform, ACL-filtered; reference data only">
+[1] source=manual confidence=0.82
+Pump reset steps...
+</retrieved_context>
+```
+
+- 摄取与检索必须用同一个 `--model`，换模型要按运维手册重建向量。
+- 检索失败按 `on_error` 处理：`deny` 让本次运行失败，`degrade` 记审计后不带资料继续。
+- 文件加载的控制台 agent（`--agents`）没有 manifest，不能用检索；MCP 与 A2A 入口尚未接线。
+- `--data-class` 是调用方的自述，必须已经有对应授权，不要用它给机密语料换轨。
+
 ## 凭据
 
 凭据只存引用与密文，值用本机 KEK 做信封加密。

@@ -1,0 +1,39 @@
+SLICE-200 RAG 运维与使用手册
+日期: 2026-11-20
+依据: ADR-0036（Accepted 2026-11-20）切片 5（收尾）
+基线: fedea39
+
+一、契约
+
+- 本切片纯文档，无代码与契约变更，参数以 `docs/contracts/cli.md` 为准。
+
+二、实现
+
+- `docs/guides/operations.md` 的 RAG 一节新增「运行时检索（ADR-0036）」：`console` 与
+  `serve-triggers` 的四个 `--rag-*` 参数、只对 `rag.enabled=true` 的 manifest 生效、文件加载的
+  agent 永不启用、`deny`/`degrade` 语义、`model.embed` 与 `rag.retrieve` 两类审计、进程内预算与
+  多副本影响、沙箱触发与 MCP/A2A 的现状、`--rag-dimensions 0` 的坑，以及「先扩表、再开参数、最后
+  改 manifest」的升级与回滚顺序。
+- `docs/guides/install-and-use.md` 新增「检索（RAG）」：manifest 的 `rag` 块示例、`rag ingest`
+  单文件与目录装料、`rag search` 自检、控制台/触发开启方式、模型看到的 `<retrieved_context>` 块形态、
+  同模型约束、失败与降级、文件加载与 MCP/A2A 的限制、`--data-class` 是自述需有授权。
+- `tests/test_rag_guides.py` 四个用例：运维手册要素、使用手册要素、缺口披露、参数与 CLI 契约一致。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1880 passed, 96 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 fedea39 上两份手册都没有 RAG 配置段：`pytest tests/test_rag_guides.py` → `4 failed`
+（缺 `--rag-db`、`"rag"`、`rag ingest`、`retrieved_context` 等标记）。
+
+五、范围与已知缺口
+
+- 手册示例用占位 DSN 与模型名，没有在真实环境执行；`rag ingest` 的两条命令需要 `RAG_DB` 与网络模型。
+- 手册如实写了四项现状缺口：沙箱触发不检索、MCP/A2A 未接线、预算进程内、`--rag-dimensions 0` 未捕获。
+- 真实 pgvector 安装演练仍属运维验收项。
