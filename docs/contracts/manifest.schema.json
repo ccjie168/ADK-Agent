@@ -144,6 +144,55 @@
       "title": "ModelPolicy",
       "type": "object"
     },
+    "RagConfig": {
+      "additionalProperties": false,
+      "description": "Retrieval settings an agent opts into (ADR-0036).",
+      "properties": {
+        "data_classes": {
+          "items": {
+            "enum": [
+              "public",
+              "internal",
+              "confidential",
+              "restricted"
+            ],
+            "type": "string"
+          },
+          "title": "Data Classes",
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "min_confidence": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "on_error": {
+          "default": "deny",
+          "enum": [
+            "deny",
+            "degrade"
+          ],
+          "title": "On Error",
+          "type": "string"
+        },
+        "top_k": {
+          "default": 5,
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Top K",
+          "type": "integer"
+        }
+      },
+      "title": "RagConfig",
+      "type": "object"
+    },
     "Slo": {
       "additionalProperties": false,
       "properties": {
@@ -313,6 +362,17 @@
       "minLength": 1,
       "title": "Owner",
       "type": "string"
+    },
+    "rag": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RagConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "slo": {
       "anyOf": [

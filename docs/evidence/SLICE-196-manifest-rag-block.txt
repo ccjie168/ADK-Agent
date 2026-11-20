@@ -1,0 +1,50 @@
+SLICE-196 manifest 的 rag 配置块
+日期: 2026-11-20
+依据: ADR-0036（Accepted 2026-11-20）决定 1 / slice 1
+基线: fd497b6
+
+一、契约（先改）
+
+- `docs/contracts/rag_service.md` 新增「manifest 配置（ADR-0036）」一节：`enabled`、`top_k`（1..50）、
+  `min_confidence`（0..1）、`data_classes`、`on_error`（`deny`|`degrade`）的缺省值与约束，以及
+  digest 语义（`rag=None` 不进摘要，显式给出即参与）。
+- `docs/contracts/manifest.schema.json` 由 `scripts/export_contracts.py` 重生成，新增 `RagConfig`。
+
+二、实现
+
+- `src/adk_agent/core/manifest.py`：
+  - 新增 `RagOnError = Literal["deny", "degrade"]` 与 `RagConfig`（`extra="forbid"`、冻结）。
+  - `AgentManifest` 增加 `rag: RagConfig | None = None`。
+  - `manifest_digest` 在 `rag` 为 `None` 时从摘要载荷剔除，沿用 `execution_tier`、`model_alias` 的
+    向后兼容做法；显式给出（包括 `enabled=false`）参与摘要。
+- `src/adk_agent/core/__init__.py` 导出 `RagConfig` 与 `RagOnError`。
+- 两个既有测试的 digest 辅助函数各补一行 `payload.pop("rag", None)`（`tests/core/test_execution_tier.py`
+  与 `tests/test_model_alias_schema.py`），断言与判据未改。经用户会话确认后执行，与 SLICE-185 处理
+  `model_alias` 的方式一致。
+- 新增 `tests/core/test_manifest_rag.py` 九个用例。
+
+三、绿态
+
+$ python scripts/check.py --fast
+1830 passed, 96 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit）
+
+四、红态
+
+基线 fd497b6 上 `adk_agent.core` 没有 `RagConfig`，`tests/core/test_manifest_rag.py` 收集即
+`ImportError: cannot import name 'RagConfig'`（1 error, collection interrupted）。基线
+`docs/contracts/manifest.schema.json` 不含 `RagConfig`，schema 用例同样无法通过。
+
+五、过程记录
+
+- digest 用例最初写成硬编码摘要常量，被密钥扫描判为高熵字符串；改为在测试里按「剔除全部
+  发布后字段」的载荷重算，与其它 digest 用例同一做法，避免把哈希常量写进仓库。
+- 新增字段同时打在 `tests/test_model_alias_schema.py` 的内联 digest 辅助上，全量跑才发现；这说明
+  跑 `--fast`（整棵工作树）而不是只跑新文件是必要的。
+
+六、范围与已知缺口
+
+- 本切片只加配置与摘要语义，运行路径仍不消费 `rag`（切片 2）。
+- `top_k` 上限 50 是防上下文与成本放大的启发式上限，没有按模型窗口动态计算。
