@@ -98,3 +98,4 @@
 - 部署配置：`--rag-db`、`--rag-dimensions`、`--rag-model`、`--rag-provider`（默认 `litellm`）。
   未给 `--rag-db` 时完全不启用；给了但缺维度或模型退出 1；未知 provider 退出 1。
 - 同一进程内所有 agent 共享存储与嵌入网关，嵌入预算与审计在该网关内累计。
+- `RagFactory` 可传入部署级 `policy` 覆盖 manifest 的 `model_policy`；当前 CLI 不传，生产按 manifest 生效。
