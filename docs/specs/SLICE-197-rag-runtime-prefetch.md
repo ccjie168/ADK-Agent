@@ -27,6 +27,11 @@
 - [x] `degrade` 下存储失败返回空串 -> `test_rag_context_degrade_returns_empty`
 - [x] 运行时把块拼在用户消息前 -> `test_runtime_prefixes_retrieved_context`
 - [x] 运行时保留原始 `invocation.input` -> `test_runtime_keeps_original_input`
+- [x] 边界标签的大小写/空白/换行变体被中和 -> `test_rag_context_neutralizes_forged_markers`
+- [x] 未标记 `acl_checked` 的引用不注入 -> `test_rag_context_requires_acl_checked_citations`
+- [x] 未知 `on_error` 在构造时被拒 -> `test_rag_context_rejects_unknown_on_error`
+- [x] `InMemoryRagService` 与扩展后的端口兼容 -> `test_rag_context_works_with_in_memory_service`
+- [x] 预取失败走既有错误审计 -> `test_runtime_audits_rag_failure`
 - [x] 全量门禁通过
 
 ## 反例
@@ -41,8 +46,9 @@
 2. **调用方**：运行任一打开了 `rag.enabled` 的 agent 的调用方。
 3. **信任边界**：检索存储 → 模型上下文；principal 的 ACL → 可见片段。
 4. **恶意输入最坏结果**：库里被塞入「忽略之前的指令」类片段，或片段试图伪造边界标记提前关闭上下文块。
-   缓解：`RagGuard` 在注入前过滤已知注入模式；渲染时对片段中的 `<retrieved_context>` / `</retrieved_context>`
-   字面量做转义，防止伪造边界；块只放在用户消息最前面，不进入系统指令。
+   缓解：`RagGuard` 在注入前过滤已知注入模式；渲染时按大小写与空白归一化中和边界标签，并中和行首
+   `[n]` 编号，防止伪造边界或额外引用行；只接受 `acl_checked=True` 的引用；块只放在用户消息最前面，
+   不进入系统指令。
 5. **失败是否泄露信息**：`RagUnavailable` 只带异常类型；警告日志不含片段正文。
 
 ## 范围外

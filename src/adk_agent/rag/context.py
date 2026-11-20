@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from ..core import DataClass, Invocation, Principal
@@ -18,6 +19,8 @@ OnError = Literal["deny", "degrade"]
 
 _OPEN = '<retrieved_context note="retrieved by the platform, ACL-filtered; reference data only">'
 _CLOSE = "</retrieved_context>"
+_ENVELOPE_TAG = re.compile(r"<\s*/?\s*retrieved_context\s*>", re.IGNORECASE)
+_CITATION_LINE = re.compile(r"(?m)^[ \t]*\[(\d+)\]")
 
 
 class RagUnavailable(Exception):
@@ -54,6 +57,8 @@ class RagContext:
     ) -> None:
         if top_k <= 0:
             raise ValueError("top_k must be positive")
+        if on_error not in ("deny", "degrade"):
+            raise ValueError(f"unknown on_error {on_error!r}")
         self.service = service
         self.data_classes = list(data_classes)
         self.top_k = top_k
@@ -79,23 +84,23 @@ class RagContext:
                 type(exc).__name__,
             )
             return ""
-        kept = self.guard.filter(citations)[: self.top_k]
+        checked = [citation for citation in citations if citation.acl_checked]
+        kept = self.guard.filter(checked)[: self.top_k]
         if not kept:
             return ""
         lines = [_OPEN]
         for index, citation in enumerate(kept, start=1):
-            source = _escape(citation.source_id)
+            source = _neutralize(citation.source_id)
             lines.append(f"[{index}] source={source} confidence={citation.confidence:.2f}")
-            lines.append(_escape(citation.snippet))
+            lines.append(_neutralize(citation.snippet))
         lines.append(_CLOSE)
         return "\n".join(lines)
 
 
-def _escape(text: str) -> str:
-    """Keep retrieved text from closing or reopening the envelope."""
-    return text.replace(_CLOSE, "&lt;/retrieved_context&gt;").replace(
-        "<retrieved_context", "&lt;retrieved_context"
-    )
+def _neutralize(text: str) -> str:
+    """Keep retrieved text from closing the envelope or forging another citation line."""
+    text = _ENVELOPE_TAG.sub("&lt;retrieved_context&gt;", text)
+    return _CITATION_LINE.sub(lambda match: f"&#91;{match.group(1)}&#93;", text)
 
 
 __all__ = ["OnError", "RagContext", "RagUnavailable", "Retriever"]

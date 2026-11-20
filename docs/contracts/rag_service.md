@@ -4,8 +4,11 @@
 
 ## 端口
 
-`RagService.retrieve(query, principal, data_classes) -> list[Citation]`，异步。实现方在
-`src/adk_agent/rag/` 之外，端口先定，向量库/embedding 选型另行 ADR。
+`RagService.retrieve(query, principal, data_classes, *, invocation=None, policy=None) -> list[Citation]`，
+异步。实现方在 `src/adk_agent/rag/` 之外，端口先定，向量库/embedding 选型另行 ADR。
+
+- `invocation` 与 `policy` 可选，供需要审计与预算的实现（例如查询嵌入）使用；不需要的实现忽略即可，
+  但必须接受这两个关键字参数。
 
 `Citation`：
 
@@ -52,9 +55,11 @@
 </retrieved_context>
 ```
 
+- 只接受 `acl_checked=True` 的引用；服务返回未标记的引用按不可用处理（不注入）。
 - 引用先经 `RagGuard` 过滤（低置信度与注入模式），再按 `top_k` 截断，然后从 1 开始编号。
-- 片段与 `source_id` 里的 `<retrieved_context` 与 `</retrieved_context>` 字面量被转义，防止伪造边界。
+- 片段与 `source_id` 中的边界标签按大小写与空白归一化转义（`<` / `/ >` 之间的空格、大小写变体都算），
+  行首形如 `[n] ` 的编号标记被替换为实体，防止伪造额外的引用行或提前关闭上下文块。
 - 没有可用引用时不注入任何内容，用户消息保持原样。
 - 失败语义：`on_error=deny`（默认）抛 `RagUnavailable`，本次运行失败；`degrade` 记一条不含正文的
-  警告日志后继续，用户消息不含上下文。
+  警告日志后继续，用户消息不含上下文。`on_error` 只接受 `deny` 与 `degrade`，其它值在构造时拒绝。
 - 块只进入用户消息，不修改系统指令。

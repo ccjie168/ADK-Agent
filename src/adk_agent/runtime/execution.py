@@ -8,7 +8,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from google.adk.agents.run_config import RunConfig
 from google.genai import types
@@ -27,6 +27,9 @@ from ..core import (
 )
 from ..core.context import reset_invocation, set_invocation
 from ..metrics import MetricsRegistry
+
+if TYPE_CHECKING:  # pragma: no cover
+    from ..rag.context import RagContext
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +86,7 @@ class AgentRuntime:
         audit: AuditSink | None = None,
         metrics: MetricsRegistry | None = None,
         source: str = "agent",
-        rag: Any | None = None,
+        rag: RagContext | None = None,
     ) -> None:
         self.runner = runner
         self.audit = audit
@@ -171,15 +174,15 @@ class AgentRuntime:
                 "agent_ref": invocation.agent_ref.model_dump(mode="json"),
             }
         )
-        text = invocation.input
-        if self.rag is not None:
-            block = await self.rag.prefix(invocation)
-            if block:
-                text = block + "\n\n" + text
-        new_message = types.Content(role="user", parts=[types.Part(text=text)])
         reply_parts: list[str] = []
         token = set_invocation(invocation)
         try:
+            text = invocation.input
+            if self.rag is not None:
+                block = await self.rag.prefix(invocation)
+                if block:
+                    text = block + "\n\n" + text
+            new_message = types.Content(role="user", parts=[types.Part(text=text)])
             async for event in self.runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
