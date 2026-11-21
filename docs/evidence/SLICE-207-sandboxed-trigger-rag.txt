@@ -1,0 +1,42 @@
+SLICE-207 沙箱化触发的检索接线
+日期: 2026-11-21
+依据: PROGRESS 已知缺口第 9 条、2026-11-21 复盘第七节第 3 条
+基线: `25aafbe`
+
+一、契约
+
+- 先改 `docs/contracts/cli.md` 的 `serve-triggers` 一节：`--rag-*` 对沙箱与非沙箱触发都生效，
+  检索失败返回 `rag_unavailable`（500），不再静默传空上下文。
+- 运维手册的「运行时检索」现状段同步；manifest 与 `rag.retrieve` 事件形状不变。
+
+二、实现
+
+- `src/adk_agent/triggers_service.py`：沙箱分支在配额预留之后、`sandbox.run` 之前，用 pinned
+  manifest 构造 `RagContext`，以 `Invocation(run_id, trace_id, principal, agent_ref, input)` 调用
+  `prefix`，把返回块拼成 `block + "\n\n" + input` 传给沙箱；`RagUnavailable` 映射为
+  `rag_unavailable`（500）并写 `agent.run` error 与 `trigger.fire` 审计。
+- 审计 `args_hash` 仍取原始输入；`degrade` 由 `RagContext` 内部返回空串，沙箱收到原输入。
+
+三、绿态
+
+$ python -m pytest tests/test_triggers_service.py -q
+25 passed
+
+$ python scripts/check.py --fast
+1913 passed, 98 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `25aafbe` 加新用例、未改实现时：
+`pytest tests/test_triggers_service.py` -> `2 failed, 23 passed`
+（沙箱收到原始输入，没有检索块；检索失败仍返回 200 ok。）
+
+五、范围与已知限制
+
+- 沙箱后端只在 POSIX 可用，本机 Windows 无法做端到端沙箱运行；本轮用触发服务的单元级假后端
+  验证接线，`prove_it_works.py` 不覆盖沙箱路径。
+- 预取发生在配额预留之后，配额拒绝时不会检索，也不会写 `rag.retrieve`。
+- 预取结果的重排与引用拼接仍不在范围内。
