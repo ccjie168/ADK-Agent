@@ -173,9 +173,9 @@ serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有�
 `/metrics` 只在 serve/serve-many（`--metrics`）、控制台、模型网关与工具网关提供。
 
 没有 `--oidc-config` 时，控制台主体的租户固定为 `local`、用户为 `console_user`，角色来自 `--role`；
-这个模式只适合本机演示，RAG、审计与配额都只覆盖 `local` 租户。正式部署用 OIDC：租户取自 token 的
-`tenant` claim（配置里的 `tenant_claim` 可改名，缺少该 claim 的 token 会被拒绝），控制台随后按 token
-的租户生效。
+这个模式只适合本机演示：RAG 与配额只覆盖 `local`，审计写入落在 `local`（`admin` 角色的读路径仍可见
+其它租户的审计）。正式部署用 OIDC：租户取自 token 的 `tenant` claim（配置里的 `tenant_claim` 可改名，
+缺少该 claim 的 token 会被拒绝），控制台随后按 token 的租户生效。
 
 ## 检索（RAG）
 

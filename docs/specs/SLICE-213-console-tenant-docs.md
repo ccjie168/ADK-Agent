@@ -17,9 +17,9 @@
 
 ## 完成判据
 
-- [ ] 两份手册都写明 `local`、`console_user` 与 `tenant_claim` -> `test_guides_state_the_token_only_tenant`
-- [ ] 使用手册把 OIDC 标为正式部署路径 -> `test_install_guide_marks_oidc_as_the_production_path`
-- [ ] 全量门禁通过
+- [x] 两份手册都写明 `local`、`console_user` 与 `tenant_claim` -> `test_guides_state_the_token_only_tenant`
+- [x] 使用手册把 OIDC 标为正式部署路径 -> `test_install_guide_marks_oidc_as_the_production_path`
+- [x] 全量门禁通过
 
 ## 反例
 
