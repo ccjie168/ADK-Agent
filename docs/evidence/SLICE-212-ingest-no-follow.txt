@@ -1,0 +1,40 @@
+SLICE-212 目录摄取不跟随换入的符号链接
+日期: 2026-11-21
+依据: PROGRESS 已知缺口第 9 条（`is_symlink` 与 `read_text` 之间有 TOCTOU 窗口）
+基线: `817cf11`
+
+一、契约
+
+- 先改 `docs/contracts/cli.md` 的 `rag ingest` 目录模式：打开时用 `O_NOFOLLOW` 并校验普通文件，
+  列目录后被换入的符号链接按读取失败退出 1；Windows 没有该标志，只保留列出时检查。
+
+二、实现
+
+- `src/adk_agent/cli.py` 新增 `_read_rag_file`：以 `O_RDONLY | O_NOFOLLOW` 打开，`fstat` 必须是
+  普通文件，再用 `lstat` 确认路径此刻不是符号链接，最后从打开的描述符读取并解码 UTF-8。
+  目录摄取改调它，读取失败仍按 `could not read <相对路径>: <异常类型>` 退出 1。
+- 单文件模式（`--text FILE`）是操作员显式指定，行为不变。
+
+三、绿态
+
+$ python -m pytest tests/test_cli_rag.py -q
+24 passed, 3 skipped（本机无符号链接权限，两个真实符号链接用例跳过）
+
+$ python scripts/check.py --fast
+1932 passed, 101 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `817cf11` 加新用例、未改实现时：
+`pytest tests/test_cli_rag.py` -> `2 failed, 22 passed, 3 skipped`
+（`_read_rag_file` 不存在，两个机制用例 `AttributeError`；真实符号链接用例在本机跳过，不计入红态。）
+
+五、范围与已知缺口
+
+- Windows 上没有 `O_NOFOLLOW`，打开时会跟随符号链接；`lstat` 检查在打开之后，描述符已绑定到
+  被打开的文件，读取本身不会因后续换入而改向。
+- 父目录在列目录后被换成符号链接时，`O_NOFOLLOW` 只约束路径末段，仍可能越界，记入后续缺口。
+- 目录级增量同步仍不做。
