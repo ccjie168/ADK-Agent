@@ -95,30 +95,59 @@ class PgVectorRagStore:
                     "SELECT set_config('app.tenant_id', $1, true)",
                     chunks[0].tenant if chunks else "",
                 )
-                for chunk in chunks:
-                    await conn.execute(
-                        "INSERT INTO adk_rag_chunks "
-                        "(tenant, source_id, chunk_id, body, embedding, data_classes, "
-                        "allowed_subjects, updated_at) "
-                        "VALUES ($1, $2, $3, $4, $5::vector, $6, $7, $8) "
-                        "ON CONFLICT (tenant, source_id, chunk_id) DO UPDATE SET "
-                        "body = EXCLUDED.body, embedding = EXCLUDED.embedding, "
-                        "data_classes = EXCLUDED.data_classes, "
-                        "allowed_subjects = EXCLUDED.allowed_subjects, "
-                        "updated_at = EXCLUDED.updated_at",
-                        chunk.tenant,
-                        chunk.source_id,
-                        chunk.chunk_id,
-                        chunk.text,
-                        _vector_literal(chunk.embedding),
-                        list(chunk.data_classes),
-                        chunk.allowed_subjects,
-                        datetime.now(timezone.utc),
-                    )
+                await self._write(conn, chunks)
         except RagStoreUnavailable:
             raise
         except Exception as exc:  # noqa: BLE001
             raise RagStoreUnavailable(f"rag vector write failed ({type(exc).__name__})") from exc
+
+    async def replace(self, chunks: list[RagChunk]) -> None:
+        """Replace one source's chunk set in one transaction, dropping stale chunks."""
+        for chunk in chunks:
+            self.validate(chunk)
+        if not chunks:
+            return
+        tenant, source_id = chunks[0].tenant, chunks[0].source_id
+        if any(chunk.tenant != tenant or chunk.source_id != source_id for chunk in chunks):
+            raise ValueError("replace takes chunks from exactly one tenant and source")
+        try:
+            pool = await self._pool.get()
+            async with pool.acquire() as conn, conn.transaction():
+                await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant)
+                await conn.execute(
+                    "DELETE FROM adk_rag_chunks "
+                    "WHERE tenant = $1 AND source_id = $2 AND chunk_id <> ALL($3::text[])",
+                    tenant,
+                    source_id,
+                    [chunk.chunk_id for chunk in chunks],
+                )
+                await self._write(conn, chunks)
+        except RagStoreUnavailable:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise RagStoreUnavailable(f"rag vector write failed ({type(exc).__name__})") from exc
+
+    async def _write(self, conn: Any, chunks: list[RagChunk]) -> None:
+        for chunk in chunks:
+            await conn.execute(
+                "INSERT INTO adk_rag_chunks "
+                "(tenant, source_id, chunk_id, body, embedding, data_classes, "
+                "allowed_subjects, updated_at) "
+                "VALUES ($1, $2, $3, $4, $5::vector, $6, $7, $8) "
+                "ON CONFLICT (tenant, source_id, chunk_id) DO UPDATE SET "
+                "body = EXCLUDED.body, embedding = EXCLUDED.embedding, "
+                "data_classes = EXCLUDED.data_classes, "
+                "allowed_subjects = EXCLUDED.allowed_subjects, "
+                "updated_at = EXCLUDED.updated_at",
+                chunk.tenant,
+                chunk.source_id,
+                chunk.chunk_id,
+                chunk.text,
+                _vector_literal(chunk.embedding),
+                list(chunk.data_classes),
+                chunk.allowed_subjects,
+                datetime.now(timezone.utc),
+            )
 
     async def search(
         self,

@@ -514,7 +514,8 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - `--database-url` 必填，指向装了 pgvector 的 Postgres。`--dimensions` 必须等于 embedding 模型输出维度，`--model` 是传给模型通道的模型名。摄取与检索必须用同一个 `--model`，换模型等于换向量空间。
 - 单个文件模式：正文来自 `--text FILE`，不给时读 stdin，`--source-id` 必填（缺失退出 1）。文件读不到、空文本或只有空白都退出 1，不写存储，stderr 分别为 `could not read text: <异常类型>` 与 `empty text`。
 - 目录模式：`--dir DIR` 递归摄取根目录下所有普通文件，按相对路径字符串排序依次处理，每个文件的 `source_id` 是相对路径（`/` 分隔）。符号链接跳过；空文件或只有空白的文件跳过并在 stderr 记一行 `skipped <相对路径>: empty text`；读取失败与非 UTF-8 文件按 `could not read <相对路径>: <异常类型>` 退出 1。`--dir` 与 `--text` 互斥，与 `--source-id` 同时给出退出 2（空串也算给出）。
-- 目录模式某个文件摄取失败时退出 1，之前的文件已写入，不打印汇总；重跑是幂等的（同一 `source_id` 按主键覆盖）。
+- 目录模式某个文件摄取失败时退出 1，之前的文件已写入，不打印汇总；重跑是幂等的。
+- 同一 `--source-id`（目录模式下是同一相对路径）重新摄取时整源替换：新的分块集合写入的同一事务里删除该来源不再存在的分块，文件变短不会留下陈旧尾部分块；其他来源不受影响。没有内容时仍然拒绝，不删除已有分块。
 - `--tenant` 同时是存储租户与嵌入审计的租户；两者由同一次调用给出，不做推导。
 - `--data-class` 可重复，取值来自 `core.policy.DataClass`（`public`、`internal`、`confidential`、`restricted`），其他值由 argparse 拒绝（退出 2），缺省为空列表。`--subject` 可重复，缺省时不写 `allowed_subjects`，分块对租户内全部主体可见。
 - `--chunk-chars` 是每块最大字符数，默认 800，必须大于 0，否则退出 1。

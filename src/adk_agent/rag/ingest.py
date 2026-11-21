@@ -1,4 +1,4 @@
-"""RAG ingestion: chunk, embed, and upsert with ACL bound at ingestion (ADR-0035)."""
+"""RAG ingestion: chunk, embed, and replace a source with ACL bound at ingestion."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from .vector_store import RagChunk
 
 
 class ChunkStore(Protocol):
-    async def upsert(self, chunks: list[RagChunk]) -> None: ...
+    async def replace(self, chunks: list[RagChunk]) -> None: ...
 
 
 class Embedder(Protocol):
@@ -100,7 +100,7 @@ class IngestionPipeline:
             )
             for index, (piece, vector) in enumerate(zip(pieces, response.vectors, strict=True))
         ]
-        await self.store.upsert(chunks)
+        await self.store.replace(chunks)
         return len(chunks)
 
 
