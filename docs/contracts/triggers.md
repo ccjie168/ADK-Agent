@@ -24,7 +24,7 @@
 - `kind` 取 `schedule` 或 `webhook`。
 - `schedule` 必须有 `every_seconds >= 60`，不得有 `webhook_token_hash`。
 - `webhook` 必须有 64 hex 的 `webhook_token_hash`，不得有 `every_seconds`。
-- `digest` 必须是 `sha256:<64 hex>`。执行服务会与注册表记录核对。
+- `digest` 存储形状是 `sha256:<64 hex>`。注册时也接受裸 64 位小写 hex，统一归一化为带前缀形状；执行服务与注册表记录核对时剥去前缀。
 - `input` 是固定文本，最长 8000 字符。不做模板展开。
 - `trigger_id`：`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`。
 

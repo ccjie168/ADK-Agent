@@ -16,7 +16,7 @@ TriggerKind = Literal["schedule", "webhook"]
 
 _TRIGGER_ID = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 _SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._+-]*$"
-_DIGEST = r"^sha256:[0-9a-f]{64}$"
+_DIGEST = r"^(?:sha256:)?[0-9a-f]{64}$"
 _TOKEN_HASH = r"^[0-9a-f]{64}$"  # nosec B105  # hex regex, not a secret
 
 
@@ -58,6 +58,14 @@ class AgentTrigger(BaseModel):
     enabled: bool = True
     created_by: str = Field(min_length=1)
     created_at: datetime
+
+    @field_validator("digest", mode="before")
+    @classmethod
+    def _canonical_digest(cls, value: object) -> object:
+        # The registry stores bare hex; accept the shape operators copy from it.
+        if isinstance(value, str) and not value.startswith("sha256:"):
+            return f"sha256:{value}"
+        return value
 
     @field_validator("created_at")
     @classmethod

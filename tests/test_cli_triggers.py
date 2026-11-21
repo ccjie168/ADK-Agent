@@ -113,6 +113,62 @@ def test_cli_register_is_idempotent(tmp_path, capsys):
     assert second == first
 
 
+def test_register_accepts_bare_digest(tmp_path, capsys):
+    bare = "b" * 64
+    cli.main(
+        [
+            "triggers",
+            "register",
+            "--dir",
+            str(tmp_path / "triggers"),
+            "--tenant",
+            "acme",
+            "--id",
+            "bare",
+            "--agent-id",
+            "assistant",
+            "--version",
+            "1.0.0",
+            "--digest",
+            bare,
+            "--every-seconds",
+            "3600",
+        ]
+    )
+    registered = json.loads(capsys.readouterr().out)
+
+    assert registered["digest"] == "sha256:" + bare
+
+
+@pytest.mark.parametrize("digest", ["a" * 63, "A" * 64, "sha256:" + "a" * 63, "md5:" + "a" * 64])
+def test_register_rejects_malformed_digest(tmp_path, capsys, digest):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(
+            [
+                "triggers",
+                "register",
+                "--dir",
+                str(tmp_path / "triggers"),
+                "--tenant",
+                "acme",
+                "--id",
+                "bad",
+                "--agent-id",
+                "assistant",
+                "--version",
+                "1.0.0",
+                "--digest",
+                digest,
+                "--every-seconds",
+                "3600",
+            ]
+        )
+
+    assert exc.value.code == 1
+    assert "triggers failed" in capsys.readouterr().err
+    assert not (tmp_path / "triggers" / "acme" / "bad.json").exists()
+
+
 def test_cli_token_errors(tmp_path, monkeypatch, capsys):
     root = tmp_path / "triggers"
     monkeypatch.delenv("ADK_MISSING_TOKEN", raising=False)
