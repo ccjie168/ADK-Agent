@@ -1,0 +1,39 @@
+SLICE-216 验收脚本的发布冒烟子集
+日期: 2026-11-22
+依据: 2026-11-21 复盘第七节第 4 条
+基线: `646d0f7`
+
+一、契约
+
+- 先改脚本模块 docstring 的用法段，补 `--smoke`；`--help` 输出随之更新。
+
+二、实现
+
+- `scripts/prove_it_works.py`：检查表提升为模块级 `CHECKS`，新增 `SMOKE_CHECKS = ("P1", "P2", "P3", "P4")`、
+  纯函数 `select_checks(only, smoke)` 与 `build_parser()`；`--smoke` 与 `--only` 放进同一个互斥组。
+  `main` 改用 `build_parser()` 与 `select_checks`，运行逻辑不变。
+- `tests/test_prove_it_works_selection.py` 用 `importlib` 加载脚本，只验证选择与解析，不启动容器。
+
+三、绿态
+
+$ python -m pytest tests/test_prove_it_works_selection.py -q
+5 passed
+
+$ python scripts/prove_it_works.py --help
+usage: prove_it_works.py [-h] [--only ONLY | --smoke] [--keep] [--work WORK]
+
+$ python scripts/check.py --fast
+1943 passed, 102 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `646d0f7` 加新用例、未改实现时：
+`pytest tests/test_prove_it_works_selection.py` -> `5 failed`
+（没有 `select_checks`、`CHECKS`、`build_parser`，用例都在导入后的属性访问处 `AttributeError`。）
+
+五、范围与已知缺口
+
+- `--smoke` 没有接进 CI 或发布流水线。

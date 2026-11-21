@@ -9,6 +9,7 @@ Usage:
 
     python scripts/prove_it_works.py            # run every check
     python scripts/prove_it_works.py --only P2,P3
+    python scripts/prove_it_works.py --smoke    # release subset: P1-P4
     python scripts/prove_it_works.py --keep     # keep the work dir for debugging
 
 The harness exits 1 when any check fails. Evidence is written to
@@ -1916,31 +1917,54 @@ def check_backup(proof: Proof) -> Result:
     )
 
 
-def main() -> int:
+CHECKS = {
+    "P1": check_env,
+    "P2": check_audit,
+    "P3": check_registry_chat,
+    "P4": check_tools,
+    "P5": check_mcp,
+    "P6": check_a2a,
+    "P7": check_rag,
+    "P8": check_model_gateway,
+    "P9": check_approvals,
+    "P10": check_triggers,
+    "P11": check_quota,
+    "P12": check_backup,
+}
+SMOKE_CHECKS = ("P1", "P2", "P3", "P4")
+
+
+def select_checks(only: str | None, smoke: bool) -> list[str]:
+    """Return the check ids to run: the smoke subset, an explicit list, or all."""
+    if smoke:
+        return list(SMOKE_CHECKS)
+    if only:
+        return [item.strip() for item in only.split(",")]
+    return list(CHECKS)
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--only", default=None, help="comma separated check ids, e.g. P2,P3")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--only", default=None, help="comma separated check ids, e.g. P2,P3")
+    group.add_argument(
+        "--smoke",
+        action="store_true",
+        help="run the release subset (P1-P4) instead of every check",
+    )
     parser.add_argument("--keep", action="store_true", help="keep the work directory")
     parser.add_argument("--work", default=None, help="explicit work directory")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
 
     work = Path(args.work) if args.work else Path(tempfile.mkdtemp(prefix="adk-prove-"))
     work.mkdir(parents=True, exist_ok=True)
     proof = Proof(work)
-    checks = {
-        "P1": check_env,
-        "P2": check_audit,
-        "P3": check_registry_chat,
-        "P4": check_tools,
-        "P5": check_mcp,
-        "P6": check_a2a,
-        "P7": check_rag,
-        "P8": check_model_gateway,
-        "P9": check_approvals,
-        "P10": check_triggers,
-        "P11": check_quota,
-        "P12": check_backup,
-    }
-    selected = [item.strip() for item in args.only.split(",")] if args.only else list(checks)
+    checks = CHECKS
+    selected = select_checks(args.only, args.smoke)
 
     try:
         proof.start_stub()
