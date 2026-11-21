@@ -1,0 +1,45 @@
+SLICE-214 置信度按余弦相似度截断
+日期: 2026-11-22
+依据: PROGRESS 已知缺口第 9 条（置信度映射是线性启发式）；用户 2026-11-22 确认改判据
+基线: `8594c00`
+
+一、契约
+
+- 先改 `docs/contracts/rag_service.md`：`confidence` 是截断到 `[0, 1]` 的余弦相似度
+  （`max(0, 1 - distance)`），`min_confidence` 与它比较，默认 `0.5` 即相似度门槛 `0.5`，正交引用
+  置信度为 `0` 会被过滤。
+- 运维手册的检索一节同步一句。
+
+二、实现
+
+- `src/adk_agent/rag/pgvector_service.py` 的 `_confidence` 从 `1 - distance / 2` 改为
+  `max(0, min(1, 1 - distance))`。向量库返回的仍是余弦距离，映射与截断只在服务层。
+
+三、判据变更（已获用户批准）
+
+- `tests/test_pgvector_rag_service.py::test_retrieve_maps_distance_to_confidence` 的期望从
+  `[1.0, 0.5, 0.0]` 改为 `[1.0, 0.0, 0.0]`。
+- `tests/test_cli_rag.py::test_rag_search_returns_citations` 的 distance 0.4 期望从 `0.8` 改为 `0.6`。
+  两处都是同一映射公式的直接结果，用户批准改映射时明确同意改这条判据。
+
+四、绿态
+
+$ python -m pytest tests/test_pgvector_rag_service.py tests/test_cli_rag.py -q
+31 passed, 3 skipped
+
+$ python scripts/check.py --fast
+1937 passed, 101 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、红态
+
+基线 `8594c00` 加新判据、未改实现时：
+`pytest tests/test_pgvector_rag_service.py tests/test_cli_rag.py` -> `4 failed, 27 passed, 3 skipped`
+（映射用例、正交过滤用例、截断边界用例，以及 CLI 搜索的输出期望都按新公式失败。）
+
+六、范围与已知缺口
+
+- 重排与按来源去重仍不做。
+- 阈值需要真实 embedding 数据再调；默认 `0.5` 现在确实会过滤正交分块。

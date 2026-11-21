@@ -410,7 +410,7 @@ def test_rag_search_returns_citations(capsys):
             "source_id": "s1",
             "snippet": "hello world",
             "acl_checked": True,
-            "confidence": pytest.approx(0.8),
+            "confidence": pytest.approx(0.6),
         }
     ]
 
