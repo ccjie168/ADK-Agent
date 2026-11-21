@@ -136,7 +136,7 @@ def build_a2a_app(
         if peers is None or peer_grants is None:
             raise ValueError(_STORES_ERROR)
 
-    audited = audit is not None or quota is not None or require_context
+    audited = audit is not None or quota is not None or require_context or rag is not None
     if audited:
         if runner is None:
             from google.adk.tools.mcp_tool._agent_to_mcp import _build_runner

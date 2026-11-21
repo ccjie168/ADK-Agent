@@ -232,7 +232,7 @@
   manifest 生效，文件加载的 `--agent` 不检索；`execution_tier=sandboxed` 的触发在 `serve-triggers`
   里提前返回，不会检索，也没有 `rag.retrieve` 审计；`--rag-dimensions` 给 0 会以未捕获的
   `RagStoreUnavailable` 退出，运维不要这么配。
-- 升级顺序：先装扩展与表，再给控制台或触发加 `--rag-*` 重启，最后改 agent 的 manifest。注意 `rag`
+- 升级顺序：先装扩展与表，再给控制台、触发、MCP 或 A2A 加 `--rag-*` 重启，最后改 agent 的 manifest。注意 `rag`
   块参与摘要，改动等于换一个发布摘要，同一版本不能覆盖发布，必须升版本号重新发布；触发要把 pinned
   版本改到新版本记录。回滚同理：发布一个不带 `rag` 块的新版本，或把触发指回旧版本，不要试图改回
   已发布的旧版本。表可以留着，不影响关闭检索后的运行。

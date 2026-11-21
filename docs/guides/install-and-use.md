@@ -221,7 +221,7 @@ Pump reset steps...
 - 摄取与检索必须用同一个 `--model`，换模型要按运维手册重建向量。
 - 检索失败按 `on_error` 处理：`deny` 让本次运行失败，`degrade` 记审计后不带资料继续。配置了审计后端
   时才会写 `model.embed` 与 `rag.retrieve`。
-- 文件加载的控制台 agent（`--agents`）没有 manifest，不能用检索；MCP 与 A2A 入口尚未接线。
+- 文件加载的控制台与 MCP/A2A agent（`--agents`/`--agent`）没有 manifest，不能用检索。
 - `--data-class` 是调用方的自述，必须已经有对应授权，不要用它给机密语料换轨。
 
 ## 凭据

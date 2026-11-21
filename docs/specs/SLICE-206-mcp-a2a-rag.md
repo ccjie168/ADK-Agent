@@ -24,6 +24,7 @@
 - [x] 只给 rag 也会包一层审计代理 -> `test_wrap_runner_wraps_when_only_rag_is_set`
 - [x] 三个命令的 help 列出 `--rag-*` -> `test_serve_modes_help_list_rag_flags`
 - [x] 注册表 manifest 决定是否检索，文件加载跳过 -> `test_agent_rag_uses_the_registry_manifest`
+- [x] 只给 rag 的 A2A 调用也会包 runner -> `test_a2a_wraps_runner_when_only_rag_is_set`
 - [x] 全量门禁通过
 
 ## 反例

@@ -363,7 +363,8 @@
 - 只对 `--agent-ref` 加载的注册表记录生效，且要求该记录的 manifest `rag.enabled=true`；`--agent`/
   `--agents` 文件加载没有 manifest，不检索。`serve-many` 按每个 agent 各自的记录生效。
 - 检索在调用模型前做一次，结果作为固定边界块拼在用户消息前面；`top_k`、`min_confidence`、
-  `data_classes` 取自 manifest。每次检索写 `rag.retrieve` 审计（计数、状态、延迟，不含查询与片段）。
+  `data_classes` 取自 manifest。配置了审计后端时每次检索写 `rag.retrieve`（计数、状态、延迟，
+  不含查询与片段）。
 - 失败语义与 `console` 一致：`on_error=deny` 让本次运行失败并审计 `agent.run` error；`degrade` 记审计后
   不带上下文继续。
 
