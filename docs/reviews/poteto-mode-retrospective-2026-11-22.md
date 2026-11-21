@@ -1,7 +1,7 @@
 # 复盘：poteto-mode 在 ADK-Agent 开发中的使用
 
 日期: 2026-11-22
-基线: master `44521a7`，216 个切片，PR #22 到 #190，37 份 ADR，门禁 1943 passed / 102 skipped。
+基线: master `44521a7`。项目共 216 个切片；SLICE-113 到 216 经 PR #22 到 #188 合并，master 在 #190。37 份 ADR，门禁 1943 passed / 102 skipped。
 
 本文回答三个问题。poteto-mode 在这个项目里实际起了什么作用。哪些做法值得带到下一个项目。哪些地方花了冤枉钱。结论都有具体切片或 PR 作依据。
 
@@ -60,11 +60,11 @@ poteto-mode 有三层。
 - 交接记忆里的「用 Write/Edit 写中文与转义多的内容，不要用 heredoc」。
 - 「测试目录不要命名为 mcp 或 secrets」。
 
-反例也有。11-21 的复盘已经写过「CI 的 detect-secrets 会连证据文件里的占位 DSN 形状都命中」，SLICE-211 还是把一条字面 DSN 写进了证据，直到 CI 红才发现。这说明**教训写进记忆还不够，要写进会被执行的检查**。下次应该在 `check.py` 的 secrets 步骤前加一条对 `docs/evidence/` 的 DSN 形状检查，或者干脆禁止证据里出现形如 `://` 的字符串。
+反例也有。11-21 的复盘已经写过「CI 的 detect-secrets 会连证据文件里的占位 DSN 形状都命中」，SLICE-211 还是把一条字面 DSN 写进了证据，直到 CI 的 secrets 步骤报红才修正。这说明**教训写进记忆还不够，要写进会被执行的检查**。下次应该在 `check.py` 的 secrets 步骤前加一条对 `docs/evidence/` 的 DSN 形状检查，或者干脆禁止证据里出现形如 `://` 的字符串。
 
 ### 5. Build the Lever 让验证成本趋近于零
 
-`check.py` 一条命令跑完格式、lint、类型、分层、spec 名、测试、密钥扫描、依赖审计。`prove_it_works.py --smoke` 4 项发布前检查。`scripts/loadtest.py` 两个压测子命令。这些工具让「验证」从一次性劳动变成了可重跑的动作。
+`check.py` 一条命令跑完格式、lint、类型、分层、spec 名、测试、密钥扫描、依赖审计。`prove_it_works.py --smoke` 4 项发布前检查。`scripts/loadtest.py` 三个压测子命令（quota、audit、sse）。这些工具让「验证」从一次性劳动变成了可重跑的动作。
 
 SLICE-216 刚加的 `--smoke` 就是这条原则的小例子。它把「发布前该跑哪几项」从口头约定变成了命令。
 
@@ -80,9 +80,9 @@ poteto-mode 说「可逆的事直接做，别问人类」，这个项目的 `CLA
 
 ### 2. 文档级改动的验证成本过高
 
-每个切片都要走一遍：改、`--fast` 三分钟、`--full` 三分钟、提交、推送、CI 五分钟左右、验证代理一轮、修一处措辞、再验证、再跑 CI。
+每个切片都要走一遍：改、`--fast` 约三分钟、`--full` 约三分钟、提交、推送、CI 按本会话观察约五到六分钟、验证代理一轮、修一处措辞、再验证、再跑 CI。
 
-代码切片值得这个成本。**只改文档的 PR 不值得。**SLICE-208 的 PROGRESS 陈旧句、SLICE-213 的证据异常类型、216 的 `（待填）` 占位符，每一次措辞修正都重启了一轮五到六分钟的 CI 和一轮验证。一个 docs-only 的 PR 花了将近半小时的流水线时间。
+代码切片值得这个成本。**只改文档的 PR 不值得。**SLICE-208 的 PROGRESS 陈旧句、SLICE-213 的证据异常类型、216 的 `（待填）` 占位符，每一次措辞修正都重启了一轮五到六分钟的 CI 和一轮验证。按本会话的推断，一个 docs-only 的 PR 会多花近半小时的流水线时间。
 
 **建议**：代码切片保持一次验证。文档修正批到一起，一轮验证收尾。或者让 docs-only PR 跳过完整 CI，只跑 markdown 与 secrets 检查。这个仓库目前没有这样的分流。
 
@@ -90,7 +90,7 @@ poteto-mode 说「可逆的事直接做，别问人类」，这个项目的 `CLA
 
 poteto-mode 自己写了「Interrupt-chained resumes silently drop directives」，建议默认开新代理。这个项目里我多次在同一个验证代理上续发确认，大部分时候没问题，但也出现过验证时代码树被平行进程切走、验证代理只能对显式 ref 复核的情况。
 
-更贵的是**分支基线**问题。SLICE-209 与 213 两次从上一个切片的分支而不是 `origin/master` 切出，导致 two-dot diff 里出现 PROGRESS 回退，验证代理按规则判 FAIL，只能重基、重推、重跑 CI。这是一个可以结构化的错误：开分支前强制 `git fetch` 并从 `origin/master` 切。
+更贵的是**分支基线**问题。这一轮里 SLICE-209 与 213 两次从上一个切片的分支而不是 `origin/master` 切出，导致 two-dot diff 里出现 PROGRESS 回退，验证代理按规则判 FAIL，只能重基、重推、重跑 CI。这条记录来自本轮的验证代理报告；仓库里因为已经重基，看不到痕迹。这是一个可以结构化的错误：开分支前强制 `git fetch` 并从 `origin/master` 切。
 
 **建议**：把「分支必须从 `origin/master` 切」写成脚本或在 `CLAUDE.md` 里加一条硬规则。子代理的续用只用于同一条验证线的收尾确认，不用于新任务。
 
