@@ -30,8 +30,8 @@ ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
 
 基线 `a41c9b8` 加新用例、未改手册时：
 `pytest tests/test_tenant_docs.py` -> `3 failed`
-（两份手册都没有 `租户固定为 local`、`console_user` 与 `tenant_claim`，三个用例都在查找这些句子时抛
-`ValueError`。）
+（两份手册都没有 `租户固定为 local`、`console_user` 与 `tenant_claim`，两个参数化用例 `AssertionError`，
+第三个在查找 `正式部署用 OIDC` 时 `ValueError`。）
 
 五、范围与已知缺口
 
