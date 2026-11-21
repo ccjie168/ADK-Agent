@@ -21,8 +21,8 @@ SLICE-211 重新摄取整源替换
 $ python -m pytest tests/test_rag_ingest.py tests/test_cli_rag.py tests/test_rag_factory.py -q
 37 passed, 1 skipped
 
-$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55433/adk python -m pytest tests/test_rag_vector_store_postgres.py -q
-1 passed（临时 `pgvector/pgvector:pg15` 容器）
+$ TEST_POSTGRES_URL=<临时容器的 DSN> python -m pytest tests/test_rag_vector_store_postgres.py -q
+1 passed（临时 `pgvector/pgvector:pg15` 容器，随机口令，跑完删除）
 
 $ python scripts/check.py --fast
 1930 passed, 99 skipped（ALL PASS，7 步）
