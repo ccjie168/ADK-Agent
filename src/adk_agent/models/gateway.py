@@ -41,6 +41,12 @@ def check_provider(provider: str, policy: ModelPolicy) -> None:
         raise ModelDenied(f"provider {provider!r} is not allowed by policy")
 
 
+def check_model(model: str, policy: ModelPolicy) -> None:
+    """An empty allowlist means no model restriction (ADR-0033)."""
+    if policy.model_allowlist and model not in policy.model_allowlist:
+        raise ModelDenied(f"model {model!r} is not allowed by policy")
+
+
 def hash_messages(request: ModelRequest) -> str:
     return hash_json([message.model_dump() for message in request.messages])
 
@@ -173,6 +179,27 @@ class PolicyModelGateway:
                 egress="none",
                 status="denied",
                 error_code="provider_not_allowed",
+                started=started,
+                model_alias=alias,
+                fallback_count=fallback_count,
+            )
+            raise
+
+        try:
+            check_model(request.model, policy)
+        except ModelDenied:
+            await emit_model_audit(
+                self.audit,
+                invocation,
+                provider=request.provider,
+                model=request.model,
+                args_hash=args_hash,
+                result_hash=None,
+                tokens=None,
+                cost_usd=None,
+                egress="none",
+                status="denied",
+                error_code="model_not_allowed",
                 started=started,
                 model_alias=alias,
                 fallback_count=fallback_count,

@@ -1390,16 +1390,26 @@ def check_model_gateway(proof: Proof) -> Result:
     denied = complete("gemini", "gemini-2.5-pro", run="2")
     require(denied.status_code == 403, denied.text)
     require(denied.json()["error"] == "model_denied", denied.text)
+    denied_model = complete("litellm", "openai/not-allowed", run="3")
+    require(denied_model.status_code == 403, denied_model.text)
+    require(denied_model.json()["error"] == "model_denied", denied_model.text)
+    model_denials = proof.psql(
+        "select count(*) from adk_audit_records where action = 'model.call' "
+        "and event->>'error_code' = 'model_not_allowed'"
+    )
+    require(int(model_denials) == 1, f"model_not_allowed audit rows: {model_denials}")
 
     audits = proof.psql("select count(*) from adk_audit_records where action = 'model.call'")
     require(int(audits) >= 2, f"model.call audit rows: {audits}")
     return Result(
         "P8 model gateway",
         True,
-        "allowlisted provider served, provider outside the allowlist denied, both audited",
+        "provider and model allowlists enforced by the gateway, denials audited",
         [
             f"allowlisted provider -> {allowed.status_code} {allowed.json()['text'][:20]!r}",
             f"provider outside the allowlist -> {denied.status_code} {denied.json()['error']}",
+            f"model outside the allowlist -> {denied_model.status_code} "
+            f"{denied_model.json()['error']}, audit error_code rows {model_denials}",
             f"model.call audit rows: {audits}",
         ],
     )
