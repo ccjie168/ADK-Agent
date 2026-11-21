@@ -503,7 +503,14 @@ class FakeSandbox:
 
 
 def _sandboxed_client(
-    sandbox, *, grants=None, audit=None, fire_store=None, quota=None, quota_config=None
+    sandbox,
+    *,
+    grants=None,
+    audit=None,
+    fire_store=None,
+    quota=None,
+    quota_config=None,
+    rag=None,
 ):
     published = _published(grants=grants, tier="sandboxed")
     client, runner, trust, loader = _client(
@@ -515,6 +522,7 @@ def _sandboxed_client(
         fire_store=fire_store,
         quota=quota,
         quota_config=quota_config,
+        rag=rag,
     )
     return client, runner, trust, loader, published
 
@@ -729,3 +737,96 @@ def test_fire_passes_rag_context_for_enabled_manifest(monkeypatch):
     assert response.status_code == 200, response.text
     assert captured["rag"] is factory.contexts[0]
     assert factory.manifests[0].rag.top_k == 3
+
+
+class FakeRagContext:
+    def __init__(self, block="<retrieved_context>doc</retrieved_context>", error=None):
+        self.block = block
+        self.error = error
+        self.seen = None
+
+    async def prefix(self, invocation):
+        self.seen = invocation
+        if self.error is not None:
+            raise self.error
+        return self.block
+
+
+class FakeRagFactory:
+    def __init__(self, context):
+        self.context_value = context
+        self.manifests = []
+
+    def context(self, manifest):
+        self.manifests.append(manifest)
+        return self.context_value
+
+
+def test_sandboxed_trigger_injects_retrieval():
+    from adk_agent.rag.context import RagUnavailable  # noqa: F401  (import parity)
+
+    sandbox = FakeSandbox()
+    context = FakeRagContext()
+    factory = FakeRagFactory(context)
+    client, _, _, _, published = _sandboxed_client(sandbox, rag=factory)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 200
+    [call] = sandbox.calls
+    assert call[2] == "<retrieved_context>doc</retrieved_context>\n\nhello"
+    assert factory.manifests == [published.manifest]
+    assert context.seen is not None and context.seen.input == "hello"
+
+
+def test_sandboxed_trigger_denies_when_retrieval_fails():
+    from adk_agent.rag.context import RagUnavailable
+
+    sandbox = FakeSandbox()
+    audit = ListAuditSink()
+    factory = FakeRagFactory(FakeRagContext(error=RagUnavailable("store down")))
+    client, _, _, _, _ = _sandboxed_client(sandbox, rag=factory, audit=audit)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": "rag_unavailable"}
+    assert sandbox.calls == []
+    events = audit.recent(50)
+    fired = [e for e in events if e.action == "trigger.fire" and e.status == "error"]
+    runs = [e for e in events if e.action == "agent.run" and e.status == "error"]
+    assert [e.error_code for e in fired] == ["rag_unavailable"]
+    assert [e.error_code for e in runs] == ["rag_unavailable"]
+
+
+def test_sandboxed_trigger_degrades_without_context():
+    sandbox = FakeSandbox()
+    factory = FakeRagFactory(FakeRagContext(block=""))
+    client, _, _, _, _ = _sandboxed_client(sandbox, rag=factory)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 200
+    [call] = sandbox.calls
+    assert call[2] == "hello"
+
+
+def test_in_process_trigger_denies_when_retrieval_fails():
+    from adk_agent.rag.context import RagUnavailable
+
+    audit = ListAuditSink()
+    factory = FakeRagFactory(FakeRagContext(error=RagUnavailable("store down")))
+    client, runner, _, _ = _client([_webhook()], audit=audit, rag=factory)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": "rag_unavailable"}
+    assert runner.calls == 0
+    events = audit.recent(50)
+    fired = [e for e in events if e.action == "trigger.fire" and e.status == "error"]
+    assert [e.error_code for e in fired] == ["rag_unavailable"]

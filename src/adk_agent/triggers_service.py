@@ -41,6 +41,7 @@ from .core import (
     TriggerStore,
 )
 from .metrics import MetricsRegistry
+from .rag.context import RagUnavailable
 from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .registry.loader import verify_published_artifact
 from .runtime.execution import AgentRuntime
@@ -62,6 +63,7 @@ _ERROR_STATUS = {
     "version_retired": 409,
     "approval_required": 409,
     "sandbox_unavailable": 409,
+    "rag_unavailable": 500,
     "tool_mediation_unavailable": 409,
     "sandbox_timeout": 500,
     "sandbox_crashed": 500,
@@ -411,22 +413,40 @@ def build_triggers_app(
 
             started_at = time.perf_counter()
             policy = quota_config.tenants.get(tenant) if quota_config is not None else None
+            sandbox_invocation = Invocation(
+                run_id=run_id,
+                trace_id=trace_id,
+                principal=principal,
+                agent_ref=ref,
+                input=input_text,
+            )
+            sandbox_context = rag.context(published.manifest) if rag is not None else None
+
+            async def _run_sandbox() -> Any:
+                text = input_text
+                if sandbox_context is not None:
+                    block = await sandbox_context.prefix(sandbox_invocation)
+                    if block:
+                        text = block + "\n\n" + text
+                return await active_sandbox.run(artifact, data, text, manifest=published.manifest)
+
             try:
                 if quota is not None and policy is not None:
                     async with quota.reserve(tenant, policy):
-                        sandbox_result = await active_sandbox.run(
-                            artifact, data, input_text, manifest=published.manifest
-                        )
+                        sandbox_result = await _run_sandbox()
                 else:
-                    sandbox_result = await active_sandbox.run(
-                        artifact, data, input_text, manifest=published.manifest
-                    )
+                    sandbox_result = await _run_sandbox()
             except QuotaExceeded as exc:
                 metrics.inc("adk_agent_quota_denials_total", {"tenant": tenant, "limit": exc.limit})
                 await finish("denied", "quota_exceeded")
                 await record_agent_run("denied", "quota_exceeded", started_at)
                 await emit("denied", "quota_exceeded", run_id, trace_id)
                 return TriggerExecution("denied", "quota_exceeded", run_id, trace_id)
+            except RagUnavailable:
+                await finish("error", "rag_unavailable")
+                await record_agent_run("error", "rag_unavailable", started_at)
+                await emit("error", "rag_unavailable", run_id, trace_id)
+                return TriggerExecution("error", "rag_unavailable", run_id, trace_id)
             except SandboxTimeout:
                 await finish("error", "sandbox_timeout")
                 await record_agent_run("error", "sandbox_timeout", started_at)
@@ -515,6 +535,10 @@ def build_triggers_app(
             await finish("denied", "quota_exceeded")
             await emit("denied", "quota_exceeded", run_id, trace_id)
             return TriggerExecution("denied", "quota_exceeded", run_id, trace_id)
+        except RagUnavailable:
+            await finish("error", "rag_unavailable")
+            await emit("error", "rag_unavailable", run_id, trace_id)
+            return TriggerExecution("error", "rag_unavailable", run_id, trace_id)
         except Exception as exc:  # noqa: BLE001
             code = type(exc).__name__
             await finish("error", code)

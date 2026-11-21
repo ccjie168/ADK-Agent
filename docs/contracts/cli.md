@@ -213,6 +213,8 @@
 - 调度：`--schedule-tick SECONDS`（默认 15，最小 5）；`--trigger-attempts N`（默认 3，最小 1）；`--no-scheduler` 只开 webhook。
 - 沙箱：`--agent-sandbox` 让 `sandboxed` 记录在子进程运行；父进程用 `build_model()` 提供模型。
   非 POSIX 平台默认拒绝，需显式 `--allow-unsandboxed` 才允许本地开发，并在 stderr 提示降级。
+- 检索：`--rag-*` 对沙箱与非沙箱触发都生效，按 pinned manifest 预取；检索失败返回
+  `rag_unavailable`（500），不会把空上下文静默传给沙箱。
 - 监听：`--host`、`--port`。缺少必要后端或参数越界时退出 1。
 
 ## `adk-agent triggers list|register|disable`
