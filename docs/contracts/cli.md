@@ -500,7 +500,7 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 `litellm`）。
 
 - 不给 `--rag-db` 时不启用检索，行为不变；给了但缺 `--rag-dimensions` 或 `--rag-model` 退出 1；
-  未知 provider 退出 1。
+  `--rag-dimensions` 必须是正整数（0 或负数退出 1）；未知 provider 退出 1。
 - 只对 manifest 里 `rag.enabled=true` 的 agent 生效。控制台的 `--agents` 文件加载没有 manifest，
   因此不启用；按需加载的注册表记录按自己的 manifest 生效。触发服务按 pinned 记录生效。
 - 检索结果注入格式、失败语义与审计见 `rag_service.md`。
