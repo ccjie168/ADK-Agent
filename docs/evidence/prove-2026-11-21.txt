@@ -8,7 +8,7 @@
 - 每个检查启动真实进程或真实容器，走 HTTP/SDK 调用，直接查询 Postgres 里落下的审计行；不 mock 服务边界。
 - Postgres 使用 `pgvector/pgvector:pg15` 容器（临时启动、随机端口、随机口令、结束即删除），向量扩展由 `PgVectorRagStore` 自己创建。
 - 模型与嵌入走本地 OpenAI 兼容桩（`/v1/chat/completions`、`/v1/embeddings`），经真实 `litellm` 通道调用；不访问外部 API，不使用任何真实密钥。
-- 完整一轮耗时约 166 秒，日志与 `report.json` 留在临时工作目录，证据只摘录断言结果。
+- 完整一轮耗时约 166 秒；日志与 `report.json` 写入临时工作目录，默认跑完删除，加 `--keep` 才保留。
 - 运行前需在虚拟环境安装声明过的 `[litellm]` extra；按未锁定版本直接解析会引入带已知漏洞的
   `wcmatch`，开发环境应在跑完验收后恢复依赖，生产与 CI 仍按 `requirements/runtime.lock` 安装。
 - 容器镜像取自本机可达的镜像源；默认跑完删除临时工作目录（含生成的签名私钥），需要保留时加 `--keep`。

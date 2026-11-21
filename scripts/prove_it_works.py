@@ -434,8 +434,9 @@ def check_audit(proof: Proof) -> Result:
     sink = PostgresAuditSink(proof.pg_url)
     for index in range(3):
         asyncio.run(sink.append(_audit_event("acme", index)))
+    rows = int(proof.psql("select count(*) from adk_audit_records"))
     stored = asyncio.run(verify_audit_database(proof.pg_url))
-    require(stored == 3, f"postgres chain verified {stored} records, expected 3")
+    require(stored == rows and rows >= 3, f"verified {stored} of {rows} rows")
     evidence.append(f"postgres chain: verify_audit_database -> {stored}")
 
     proof.psql(
@@ -449,7 +450,13 @@ def check_audit(proof: Proof) -> Result:
     else:
         raise AssertionError("tampered postgres chain still verified")
     proof.psql("delete from adk_audit_records where tenant = 'acme'")
-    require(asyncio.run(verify_audit_database(proof.pg_url)) == 0, "tenant rows survived cleanup")
+    remaining = int(proof.psql("select count(*) from adk_audit_records where tenant = 'acme'"))
+    require(remaining == 0, f"{remaining} acme rows survived cleanup")
+    require(
+        asyncio.run(verify_audit_database(proof.pg_url))
+        == int(proof.psql("select count(*) from adk_audit_records")),
+        "chain verification count diverged after cleanup",
+    )
     return Result(
         "P2 audit chain", True, "file + postgres chains verify and detect tampering", evidence
     )
@@ -662,11 +669,15 @@ def check_registry_chat(proof: Proof) -> Result:
         replies[name] = reply
 
     runs = proof.psql(
-        "select count(*) from adk_audit_records "
-        "where action = 'agent.run' and event->>'status' = 'ok'"
+        "select count(*) from adk_audit_records where action = 'agent.run' "
+        "and event->>'status' = 'ok' "
+        "and event->'principal'->>'subject' = 'console_user'"
     )
-    require(int(runs) == 2, f"expected two agent.run rows, got {runs}")
-    tenants = proof.psql("select distinct tenant from adk_audit_records where action = 'agent.run'")
+    require(int(runs) == 2, f"expected two console_user agent.run rows, got {runs}")
+    tenants = proof.psql(
+        "select distinct tenant from adk_audit_records where action = 'agent.run' "
+        "and event->'principal'->>'subject' = 'console_user'"
+    )
 
     return Result(
         "P3 publish/load/chat",
