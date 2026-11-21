@@ -2591,8 +2591,12 @@ def main(argv: list[str] | None = None) -> None:
             print(str(exc), file=sys.stderr)
             raise SystemExit(1) from None
         trust_caller_policy = _trust_caller_policy(args)
+        from .models.budget import BudgetTracker
+
         app = build_model_gateway_app(
-            PolicyModelGateway(providers, audit=sink, guardrails=guardrails),
+            PolicyModelGateway(
+                providers, audit=sink, guardrails=guardrails, budgets=BudgetTracker()
+            ),
             host=args.host,
             auth_token=_auth_token(args),
             allow_unauthenticated=args.allow_unauthenticated,

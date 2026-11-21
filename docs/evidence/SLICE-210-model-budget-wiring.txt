@@ -1,0 +1,41 @@
+SLICE-210 模型网关的预算执行接线
+日期: 2026-11-21
+依据: PROGRESS 已知缺口第 9 条（共享 `BudgetTracker` 未与模型网关联账）
+基线: `0a38c72`
+
+一、契约
+
+- 先改 `docs/contracts/cli.md` 的 `serve-model-gateway` 一节：请求策略的 `budget_usd` 由进程内
+  `BudgetTracker` 累计执行，超限返回 403 `model_denied` 并审计 `budget_exceeded`；多副本各自记账。
+- 运维手册新增「模型预算」一节。
+
+二、实现
+
+- `src/adk_agent/cli.py`：`serve-model-gateway` 构造 `PolicyModelGateway` 时传入新的
+  `BudgetTracker`。在此之前没有传，注册表解析出的 `manifest.model_policy.budget_usd` 在这条
+  生产路径上从未执行。
+- `src/adk_agent/rag/factory.py`：`build_rag_factory` 接受可选 `budgets`，不传时仍新建一个，
+  单进程内可以把它与模型路径共享；`TYPE_CHECKING` 导入避免运行时循环依赖。
+- 网关的检查位置不变：直接调用与别名降级都走 `_complete_once`，超限拒绝不降级。
+
+三、绿态
+
+$ python -m pytest tests/test_model_budget_wiring.py -q
+2 passed
+
+$ python scripts/check.py --fast
+1928 passed, 98 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `0a38c72` 加新用例、未改实现时：
+`pytest tests/test_model_budget_wiring.py` -> `2 failed`
+（网关 `budgets is None`，超限请求仍然成功；`build_rag_factory` 不认识 `budgets` 关键字。）
+
+五、范围与已知缺口
+
+- 跨副本预算（共享存储）不在本切片，需要 ADR。
+- 控制台 `GatewayLlm` 的 manifest 预算仍不执行：合成策略只带 provider。
