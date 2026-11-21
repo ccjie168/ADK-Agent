@@ -1255,15 +1255,6 @@ def check_rag(proof: Proof) -> Result:
     registry, registry_url = _start_registry(proof, keys, artifacts, env)
     _publish(proof, project, keys, registry_url, env)
 
-    placeholder = proof.work / "placeholder_agent.py"
-    placeholder.write_text(
-        "from google.adk.agents import LlmAgent\n"
-        "from adk_agent import build_model\n"
-        "\n"
-        "agent = LlmAgent(name='placeholder', model=build_model(), instruction='proof')\n",
-        encoding="utf-8",
-    )
-
     console = proof.start_service(
         "console-rag",
         [
@@ -1272,8 +1263,8 @@ def check_rag(proof: Proof) -> Result:
             registry_url,
             "--registry-token-env",
             "PROOF_TOKEN",
-            "--agents",
-            str(placeholder),
+            "--agent-ref",
+            "acme/proof_rag@1.0.0",
             "--artifact-dir",
             str(artifacts),
             "--artifact-keys",
@@ -1299,13 +1290,6 @@ def check_rag(proof: Proof) -> Result:
         health="http://127.0.0.1:{port}/healthz",
         env=env,
     )
-    loaded = httpx.post(
-        f"http://127.0.0.1:{console.port}/api/registry/load",
-        json={"tenant": "acme", "id": "proof_rag", "version": "1.0.0"},
-        timeout=60,
-    )
-    require(loaded.status_code == 200, loaded.text)
-
     chat = httpx.post(
         f"http://127.0.0.1:{console.port}/api/chat",
         json={"agent": "proof_rag", "message": "What is the refund policy?"},
@@ -1337,8 +1321,10 @@ def check_rag(proof: Proof) -> Result:
     return Result(
         "P7 RAG",
         True,
-        "pgvector ingest/search with ACL, injected context reached the model, retrieval audited",
+        "console startup ref: pgvector ingest/search with ACL, injected context reached the model, "
+        "retrieval audited",
         [
+            "path: console --agent-ref (startup), not the on-demand load route",
             f"pgvector extension: {extension}",
             f"ingest: {ingested}",
             f"public search as carol: {len(public_hits)} hit(s); restricted as carol: 0; "

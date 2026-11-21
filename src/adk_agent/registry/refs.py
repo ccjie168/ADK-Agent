@@ -70,6 +70,9 @@ async def load_registry_agents(
             trust=trust,
         )
         object.__setattr__(agent, "_adk_tool_grants", tuple(record.manifest.tool_grants))
+        # The runtime needs the manifest to opt into retrieval (ADR-0036);
+        # carry it with the agent instead of looking it up again by name.
+        object.__setattr__(agent, "_adk_manifest", record.manifest)
         if agent.name in agents:
             raise RefError(f"duplicate agent name: {agent.name}")
         agents[agent.name] = agent

@@ -1,0 +1,49 @@
+SLICE-204 控制台启动引用的检索接线
+日期: 2026-11-21
+依据: 2026-11-21 复盘第 4 节第 1 条、PROGRESS 已知缺口第 10 条
+基线: `f774319`
+
+一、契约
+
+- 无对外契约变更。`--agent-ref`、`--rag-*` 与 manifest 形状不变；改动只在内部把注册表加载结果里的
+  manifest 随 agent 传给控制台的注册路径。运维手册与使用手册的生效范围表述同步更正。
+
+二、实现
+
+- `src/adk_agent/registry/refs.py`：`load_registry_agents` 在挂 `_adk_tool_grants` 的同一处挂
+  `_adk_manifest = record.manifest`，manifest 随本次加载返回，不按名字二次查找。
+- `src/adk_agent/console.py`：启动注册循环改为 `_register(name, agent, getattr(agent, "_adk_manifest", None))`；
+  文件加载（`--agents`）的 agent 没有该属性，仍不构造检索上下文。按需加载路径不变。
+- `docs/guides/operations.md` 与 `docs/guides/install-and-use.md`：控制台对注册表记录生效（按需加载与
+  启动 `--agent-ref`），只有文件加载不生效。
+- `scripts/prove_it_works.py` 的 P7 改为走 `console --agent-ref` 启动路径，不再走按需加载，直接验证
+  本次修复的路径。
+
+三、绿态
+
+$ python -m pytest tests/test_console_startup_rag.py -q
+3 passed
+
+$ python scripts/check.py --fast
+1893 passed, 98 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+$ python scripts/prove_it_works.py --only P7
+PASS；证据行明确打印 “path: console --agent-ref (startup), not the on-demand load route”
+
+$ python scripts/prove_it_works.py
+12/12 PASS（P7 走启动引用路径）
+
+四、红态
+
+基线 `f774319` 加新用例、未改实现时：
+`pytest tests/test_console_startup_rag.py` -> `2 failed, 1 passed`
+（加载器没挂 manifest；启动注册没传 manifest。文件加载路径的负向用例本来就通过。）
+
+五、范围与已知缺口
+
+- 只修控制台启动引用。MCP 与 A2A 入口的检索接线、`model_allowlist` 语义、沙箱化触发的检索缺口仍在
+  PROGRESS 第 10 条与第 9 条。
+- 注册表加载器现在给所有调用方的 agent 附加 `_adk_manifest`；`serve`、`serve-a2a` 暂不消费它。

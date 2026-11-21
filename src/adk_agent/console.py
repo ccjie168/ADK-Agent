@@ -2755,7 +2755,9 @@ def build_console_app(
         )
 
     for name, agent in list(agents.items()):
-        _register(name, agent)
+        # Registry refs carry their manifest from the loader; file-loaded
+        # agents have none and therefore never opt into retrieval.
+        _register(name, agent, getattr(agent, "_adk_manifest", None))
 
     loaded_versions: dict[str, str] = {}
     loaded_tenants: dict[str, str] = {}
