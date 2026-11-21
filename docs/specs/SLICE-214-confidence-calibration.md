@@ -30,7 +30,8 @@
 - 基线 `8594c00`：`test_retrieve_maps_distance_to_confidence` 期望 `[1.0, 0.5, 0.0]`，新期望
   `[1.0, 0.0, 0.0]` 失败；`test_retrieve_default_guard_drops_orthogonal_chunks` 里距离 1.0 的分块
   仍被保留，失败。
-- 若只截断下界不做上界，`test_confidence_is_clamped` 失败。
+- `test_confidence_is_clamped` 覆盖上界（距离 0.0 → 1.0）与下界截断（距离 1.5 → 0.0）；余弦距离
+  实际不会为负，上界 `min(1.0, …)` 是防御性写法，本用例不专门区分它是否被删除。
 
 ## 5 问威胁建模
 
