@@ -153,6 +153,7 @@ class Service:
     process: subprocess.Popen[bytes]
     port: int
     log_path: Path
+    log_handle: Any
 
     def stop(self) -> None:
         if self.process.poll() is None:
@@ -161,6 +162,9 @@ class Service:
                 self.process.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+        # Windows refuses to delete files with an open handle, so release it
+        # before the work dir is cleaned up.
+        self.log_handle.close()
 
 
 @dataclass
@@ -326,7 +330,9 @@ class Proof:
             stdout=handle,
             stderr=subprocess.STDOUT,
         )
-        service = Service(name=name, process=process, port=port, log_path=log_path)
+        service = Service(
+            name=name, process=process, port=port, log_path=log_path, log_handle=handle
+        )
         self.services.append(service)
         if health:
             try:
@@ -671,12 +677,12 @@ def check_registry_chat(proof: Proof) -> Result:
     runs = proof.psql(
         "select count(*) from adk_audit_records where action = 'agent.run' "
         "and event->>'status' = 'ok' "
-        "and event->'principal'->>'subject' = 'console_user'"
+        "and event->'agent_ref'->>'id' in ('proof_agent', 'proof_ondemand')"
     )
-    require(int(runs) == 2, f"expected two console_user agent.run rows, got {runs}")
+    require(int(runs) == 2, f"expected two agent.run rows for the P3 agents, got {runs}")
     tenants = proof.psql(
         "select distinct tenant from adk_audit_records where action = 'agent.run' "
-        "and event->'principal'->>'subject' = 'console_user'"
+        "and event->'agent_ref'->>'id' in ('proof_agent', 'proof_ondemand')"
     )
 
     return Result(
@@ -1475,7 +1481,8 @@ def check_approvals(proof: Proof) -> Result:
             await inbox.aclose()
 
     asyncio.run(submit("race-1", None))
-    asyncio.run(submit("expiring-1", datetime.now(timezone.utc) - timedelta(seconds=1)))
+    # A minute in the past survives host/container clock skew (measured ~4 s).
+    asyncio.run(submit("expiring-1", datetime.now(timezone.utc) - timedelta(seconds=60)))
 
     pending = httpx.get(f"{base}/api/approvals", timeout=10).json()
     ids = {item["request_id"] for item in pending}
@@ -1879,8 +1886,15 @@ def main() -> int:
     else:
         # The work dir holds generated signing keys and service logs; keep it
         # only when asked.
-        shutil.rmtree(work, ignore_errors=True)
-        print("\nreport: not kept (pass --keep to retain it)")
+        for _ in range(5):
+            shutil.rmtree(work, ignore_errors=True)
+            if not work.exists():
+                break
+            time.sleep(0.2)
+        if work.exists():
+            print(f"\nwarning: work dir could not be removed: {work}")
+        else:
+            print("\nreport: not kept (pass --keep to retain it)")
     return 0 if passed else 1
 
 
