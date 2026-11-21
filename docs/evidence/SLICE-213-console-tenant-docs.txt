@@ -21,10 +21,10 @@ $ python -m pytest tests/test_tenant_docs.py -q
 3 passed
 
 $ python scripts/check.py --fast
-（待填）
+1935 passed, 101 skipped（ALL PASS，7 步；已重基到含 SLICE-212 的 `9be9e69`）
 
 $ python scripts/check.py --full
-（待填）
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
 
 四、红态
 
