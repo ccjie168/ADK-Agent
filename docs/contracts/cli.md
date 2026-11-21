@@ -356,6 +356,18 @@
   `--tool-gateway-token-env`（默认 `ADK_TOOL_GATEWAY_TOKEN`）指向的环境变量读取。
 - 该 flag 适用于 `console`、`serve`、`serve-many` 与 `serve-a2a`。
 
+## `serve` / `serve-many` / `serve-a2a` 的运行时检索（ADR-0036）
+
+- 三个命令都接受 `--rag-db URL --rag-dimensions N --rag-model MODEL [--rag-provider NAME]`（默认
+  `litellm`）。不给 `--rag-db` 不启用；给了但缺维度或模型退出 1。
+- 只对 `--agent-ref` 加载的注册表记录生效，且要求该记录的 manifest `rag.enabled=true`；`--agent`/
+  `--agents` 文件加载没有 manifest，不检索。`serve-many` 按每个 agent 各自的记录生效。
+- 检索在调用模型前做一次，结果作为固定边界块拼在用户消息前面；`top_k`、`min_confidence`、
+  `data_classes` 取自 manifest。配置了审计后端时每次检索写 `rag.retrieve`（计数、状态、延迟，
+  不含查询与片段）。
+- 失败语义与 `console` 一致：`on_error=deny` 让本次运行失败并审计 `agent.run` error；`degrade` 记审计后
+  不带上下文继续。
+
 ## `adk-agent serve` / `serve-many` 的 MCP HTTP 鉴权
 
 `serve` 和 `serve-many` 的 `streamable-http` 传输支持 `--oidc-config FILE`。

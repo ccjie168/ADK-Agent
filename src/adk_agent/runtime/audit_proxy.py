@@ -64,6 +64,7 @@ class AuditedRunner:
         source: str = "agent",
         agent_ref: AgentRef | None = None,
         require_context: bool = False,
+        rag: Any | None = None,
     ) -> None:
         self._inner = inner
         self._agent_name = agent_name
@@ -77,6 +78,7 @@ class AuditedRunner:
         self._source = source
         self._agent_ref = agent_ref
         self._require_context = require_context
+        self._rag = rag
 
     @property  # type: ignore[misc]
     def __class__(self) -> type[Any]:
@@ -135,6 +137,10 @@ class AuditedRunner:
 
             reply_parts: list[str] = []
             try:
+                if self._rag is not None:
+                    block = await self._rag.prefix(invocation)
+                    if block:
+                        kwargs = _prefixed(kwargs, block)
                 async for event in self._inner.run_async(**kwargs):
                     if event.is_final_response() and event.content and event.content.parts:
                         for part in event.content.parts:
@@ -240,6 +246,18 @@ class AuditedRunner:
         await self._audit.emit(event)
 
 
+def _prefixed(kwargs: dict[str, Any], block: str) -> dict[str, Any]:
+    """Prepend the retrieval block to the run's first message."""
+    from google.genai import types
+
+    message = kwargs.get("new_message")
+    parts = list(getattr(message, "parts", None) or ())
+    if message is None or not hasattr(message, "model_copy"):
+        return kwargs
+    prefixed = message.model_copy(update={"parts": [types.Part(text=block), *parts]})
+    return {**kwargs, "new_message": prefixed}
+
+
 def _text_from(message: Any) -> str:
     return "".join(
         getattr(part, "text", "") or "" for part in getattr(message, "parts", None) or ()
@@ -252,6 +270,7 @@ def wrap_runner(inner: Any, **kwargs: Any) -> Any:
         kwargs.get("audit") is None
         and kwargs.get("quota") is None
         and kwargs.get("metrics") is None
+        and kwargs.get("rag") is None
         and not kwargs.get("require_context")
     ):
         return inner

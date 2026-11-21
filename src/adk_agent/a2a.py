@@ -122,6 +122,7 @@ def build_a2a_app(
     peer_grants: Any = None,
     peer_tokens: dict[str, str] | None = None,
     manifest: AgentManifest | None = None,
+    rag: Any | None = None,
 ) -> Any:
     """Build the A2A Starlette app. Legacy token mode or per-peer identity."""
     peer_mode = any(
@@ -135,7 +136,7 @@ def build_a2a_app(
         if peers is None or peer_grants is None:
             raise ValueError(_STORES_ERROR)
 
-    audited = audit is not None or quota is not None or require_context
+    audited = audit is not None or quota is not None or require_context or rag is not None
     if audited:
         if runner is None:
             from google.adk.tools.mcp_tool._agent_to_mcp import _build_runner
@@ -160,6 +161,7 @@ def build_a2a_app(
             trace_id=lambda: _current_trace_id.get(),
             source="a2a",
             require_context=require_context,
+            rag=rag,
         )
     app = _to_a2a()(
         agent,
@@ -214,6 +216,7 @@ def serve_a2a(
     peer_grants: Any = None,
     peer_tokens: dict[str, str] | None = None,
     manifest: AgentManifest | None = None,
+    rag: Any | None = None,
 ) -> None:
     """Serve an agent over A2A (blocking). Peer mode replaces the shared token."""
     peer_mode = any(
@@ -238,6 +241,7 @@ def serve_a2a(
         peer_grants=peer_grants,
         peer_tokens=peer_tokens,
         manifest=manifest,
+        rag=rag,
     )
 
     import uvicorn

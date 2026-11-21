@@ -204,9 +204,10 @@ serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有�
      --data-class internal --query "how do I reset the pump?"
    ```
 
-4. 打开入口：控制台或触发服务加上 `--rag-db`、`--rag-dimensions`、`--rag-model` 重启。控制台对注册表
-   记录生效：市场页按需加载与启动时的 `--agent-ref` 都会带上记录的 manifest；`--agents` 文件加载的
-   agent 没有 manifest，不会检索。触发服务对 pinned 版本生效。
+4. 打开入口：控制台、触发服务、MCP（`serve`/`serve-many`）与 A2A（`serve-a2a`）加上 `--rag-db`、
+   `--rag-dimensions`、`--rag-model` 重启。控制台对注册表记录生效：市场页按需加载与启动时的
+   `--agent-ref` 都会带上记录的 manifest；MCP 与 A2A 同样按 `--agent-ref` 记录的 manifest 生效。
+   `--agents`/`--agent` 文件加载的 agent 没有 manifest，不会检索。触发服务对 pinned 版本生效。
 
 模型看到的是一段固定边界的上下文块：
 
@@ -220,7 +221,7 @@ Pump reset steps...
 - 摄取与检索必须用同一个 `--model`，换模型要按运维手册重建向量。
 - 检索失败按 `on_error` 处理：`deny` 让本次运行失败，`degrade` 记审计后不带资料继续。配置了审计后端
   时才会写 `model.embed` 与 `rag.retrieve`。
-- 文件加载的控制台 agent（`--agents`）没有 manifest，不能用检索；MCP 与 A2A 入口尚未接线。
+- 文件加载的控制台与 MCP/A2A agent（`--agents`/`--agent`）没有 manifest，不能用检索。
 - `--data-class` 是调用方的自述，必须已经有对应授权，不要用它给机密语料换轨。
 
 ## 凭据

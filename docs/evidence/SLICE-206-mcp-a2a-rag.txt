@@ -1,0 +1,56 @@
+SLICE-206 MCP 与 A2A 的检索接线
+日期: 2026-11-21
+依据: PROGRESS 已知缺口第 9 与第 10 条、2026-11-21 复盘第七节第 3 条
+基线: `b49a85e`
+
+一、契约
+
+- 先改 `docs/contracts/cli.md`：新增「`serve` / `serve-many` / `serve-a2a` 的运行时检索（ADR-0036）」
+  一节，写明 `--rag-*`、只对注册表记录生效、`rag.retrieve` 审计与 `on_error` 语义。
+- manifest 与审计事件形状不变。
+
+二、实现
+
+- `src/adk_agent/runtime/audit_proxy.py`：`AuditedRunner` 与 `wrap_runner` 接受 `rag`；运行前调用
+  `RagContext.prefix(invocation)`，把返回的固定边界块作为首条文本 part 拼到 `new_message` 前；
+  检索异常走既有 audited try，写 `agent.run` error 后重新抛出。
+- `src/adk_agent/a2a.py`：`build_a2a_app`/`serve_a2a` 接受并透传 `rag` 给 `wrap_runner`；`audited`
+  条件包含 `rag is not None`，只给检索也会包一层代理。
+- `src/adk_agent/mcp/server.py`：`serve_agent`/`serve_many` 接受 `rag`/`rag_for`，按工具取上下文传给
+  `wrap_runner`；只给 rag 也会包一层审计代理。
+- `src/adk_agent/cli.py`：`serve`、`serve-many`、`serve-a2a` 增加 `--rag-db/--rag-dimensions/--rag-model/
+  --rag-provider`；新增 `_agent_rag(factory, agent)`，从注册表加载附加的 `_adk_manifest` 构造上下文，
+  文件加载的 agent 没有 manifest 返回 `None`；`serve-many` 复用同一个 factory。
+- 运维与使用手册更正：MCP 与 A2A 已接线，文件加载不检索。
+
+三、绿态
+
+$ python -m pytest tests/runtime/test_audit_proxy_rag.py tests/test_cli_rag_modes.py tests/test_a2a_rag_wiring.py -q
+9 passed
+
+$ python scripts/check.py --fast
+1911 passed, 98 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+$ python scripts/prove_it_works.py
+12/12 PASS。其中：
+- P5 MCP：认证调用返回含 `MCP-RAG-MARKER` 与 `PROOF-OK`，`rag.retrieve` 行数 +1。
+- P6 A2A：授予后调用返回含 `A2A-RAG-MARKER` 与 `PROOF-OK`，`rag.retrieve` 行数 +1。
+- P7 console 仍走启动引用，检索与 ACL 不变；其 `rag_returned` 断言放宽为 `>= 1`，因为 P5 在租户 local 写入的文档会与 P7 的公开文档被同一
+  常量向量查询一并命中（P6 的文档在租户 acme，不参与）；断言聚焦“本次检索发生”而不是片段数。
+
+四、红态
+
+基线 `b49a85e` 加新用例、未改实现时：
+`pytest tests/runtime/test_audit_proxy_rag.py tests/test_cli_rag_modes.py` -> `7 failed`；
+在 `16ccd0c` 上单独加 `tests/test_a2a_rag_wiring.py` -> `1 failed, 1 passed`（只给 rag 时 A2A 不包装 runner）。
+（`wrap_runner` 不认识 `rag`、`AuditedRunner` 不接受 `rag`、三个命令 help 没有 `--rag-*`、
+`cli._agent_rag` 不存在。）
+
+五、范围与已知缺口
+
+- 沙箱化触发（`execution_tier=sandboxed`）仍提前返回、不检索，也没有 `rag.retrieve` 审计；这是下一项。
+- 文件加载的 `--agent`/`--agents` 没有 manifest，按设计不检索。
+- 检索排序质量与真实 embedding 仍未验收（桩向量是常量）。

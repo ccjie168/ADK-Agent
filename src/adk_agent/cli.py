@@ -887,6 +887,14 @@ def _add_rag_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--rag-provider", default="litellm", help="embedding provider")
 
 
+def _agent_rag(factory: Any, agent: Any) -> Any:
+    """Build the retrieval context for a registry-loaded agent, if it opted in."""
+    if factory is None:
+        return None
+    manifest = getattr(agent, "_adk_manifest", None)
+    return factory.context(manifest) if manifest is not None else None
+
+
 def _rag_factory(args: argparse.Namespace):
     """Build the RAG factory when the deployment configured one (ADR-0036)."""
     if args.rag_db is None:
@@ -1357,6 +1365,7 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
     )
+    _add_rag_args(p_serve)
     _add_registry_client_args(p_serve)
     p_serve.add_argument(
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
@@ -1421,6 +1430,7 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
     )
+    _add_rag_args(p_many)
     _add_registry_client_args(p_many)
     p_many.add_argument(
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
@@ -1481,6 +1491,7 @@ def main(argv: list[str] | None = None) -> None:
         default=os.environ.get("ADK_REGISTRY_DIR", "registry"),
         help="registry directory (defaults to $ADK_REGISTRY_DIR, then ./registry)",
     )
+    _add_rag_args(p_a2a)
     _add_registry_client_args(p_a2a)
     p_a2a.add_argument(
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
@@ -2415,6 +2426,7 @@ def main(argv: list[str] | None = None) -> None:
             rate_limit=rate_limit,
             session_tenant_scope=args.session_tenant_scope,
             tool_guard=True,
+            rag=_agent_rag(_rag_factory(args), agent),
         )
     elif args.cmd == "serve-many":
         _install_agent_sandbox(args)
@@ -2453,6 +2465,7 @@ def main(argv: list[str] | None = None) -> None:
             if not isinstance(loaded_agent, SandboxAgent):
                 install_declared_guards(loaded_agent, audit, overlay=tool_grants)
         quota, quota_config = _quota_settings(args)
+        rag_factory = _rag_factory(args)
         metrics = None
         if args.metrics:
             from .metrics import MetricsRegistry
@@ -2475,6 +2488,11 @@ def main(argv: list[str] | None = None) -> None:
             rate_limit=rate_limit,
             session_tenant_scope=args.session_tenant_scope,
             tool_guard=True,
+            rag_for=(
+                (lambda tool_name: _agent_rag(rag_factory, agents[tool_name]))
+                if rag_factory is not None
+                else None
+            ),
         )
     elif args.cmd == "serve-a2a":
         _install_agent_sandbox(args)
@@ -2518,6 +2536,7 @@ def main(argv: list[str] | None = None) -> None:
                 quota_config=quota_config,
                 rate_limit=rate_limit,
                 require_context=True,
+                rag=_agent_rag(_rag_factory(args), agent),
                 **(peer or {}),
             )
         except A2aUnavailable as exc:
