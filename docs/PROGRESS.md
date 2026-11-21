@@ -2,13 +2,14 @@
 
 更新日期: 2026-11-21
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `ad11d6e` docs: explain audit chain verification in operations (SLICE-203) (#161)
-状态: 可交接暂停；M6 Enterprise Trust Chain 已收口；ADR-0031、ADR-0033、ADR-0035、ADR-0036、ADR-0037 全部交付；已接受 ADR 的缺口清单为空，下一刀需要先确认新方向
+最新提交: `52741ad` test: add end-to-end proof harness and retrospective (#163)
+状态: 可交接暂停；M6 Enterprise Trust Chain 已收口；ADR-0031、ADR-0033、ADR-0035、ADR-0036、ADR-0037 全部交付；端到端验收脚本与复盘已入库；已接受 ADR 的缺口清单为空，下一刀需要先确认新方向
 
 ## 本次暂停交接
 
-- 代码在 `master`，`ad11d6e`。SLICE-113 到 SLICE-203 已通过 PR #22 到 #161 合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
+- 代码在 `master`，`52741ad`。SLICE-113 到 SLICE-203 已通过 PR #22 到 #161 合并，PR #162/#163 记录进度与验收脚本，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
 - 最近门禁: `--full` 9 步全 PASS，1890 passed, 98 skipped（`docs/evidence/SLICE-203-audit-chain-docs.txt`；多出的 skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
+- 端到端验收: `python scripts/prove_it_works.py` 12 项真实进程/真实 Postgres 检查，2026-11-21 跑出 12/12 PASS（`docs/evidence/prove-2026-11-21.txt`），复盘见 `docs/reviews/retrospective-2026-11-21.md`。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
 - M6 已收口：Gate 1（ADR-0030 角色职责分离）、Gate 2/3（ADR-0028 网关策略服务端化）、Gate 4（ADR-0029 风险分级 L1–L4 + ADR-0034 写工具幂等）。Gate 5 是端到端 trace 验证，随前四项一起闭环（审计 trace_id 与 OTel trace_id 已对齐）。
@@ -308,7 +309,14 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 7. SLICE-138 的构建签名只绑定工件 digest，不绑定发布记录 manifest。SLICE-154 在控制面补上比较：上传时要求工件内 manifest 与所有租户中引用该 digest 的记录 manifest 一致，发布时在字节已存在的情况下再查一次；CLI 端原本就比较。残余：签名本身仍不覆盖 manifest（需要新签名格式，另行评审）；任一租户发布不匹配记录会让该 digest 的上传 fail-closed，且没有删除记录接口，只能换新工件。`scripts/demo_seed.py` 属本地演示信任域，仍生成只带演示发布签名、没有平台构建签名的 `in_process` 工件。
 8. SLICE-140 的残余：SLICE-155 已让 `serve-tool-gateway` 无条件校验凭据参数（只给 `--tools` 时给凭据参数退出 1），`--credential-db` 与 `CREDENTIAL_DATABASE_URL` 同时给出退出 2，工具网关、`remote-agents` 与控制台在 keyring 非法时退出 1。`remote-agents` 的测试已清空 `CREDENTIAL_DATABASE_URL`，工具网关与控制台远程 agent 的两个接线用例仍未清空。ADR-0025 第 8 条的 `credential.decrypt_failed` 审计已由 SLICE-150 到 152 交付（失败与缺后端两条路径，元数据写不改 fail-closed；成功解析仍不逐次审计，这是 ADR-0025 的既定取舍）。`ADK_SECRET_KEKS` 格式非法时 `serve-registry` 已给提示退出 1；SLICE-155 之后工具网关、`remote-agents` 与控制台也退出 1。SLICE-142 的残余：控制台 `/api/credentials` 的请求体密文已由 SLICE-156 拒绝；admin 跨租户写入的审计落在调用方租户链；Postgres 下并发停用可能重复写 `credential.disable`；凭据池关闭 best-effort。超过 128 字符的 `credential_id`/`tenant` 已由 SLICE-143 的长度上限改为 400。SLICE-143 的残余：Windows 文件锁的重试已由 SLICE-157 限次（约 5 秒）并转为存储错误；旧记录（id > 128）读取时抛存储错误（控制台 503、CLI 退出 1），不再 500；控制台凭据列表的非法 `tenant` 参数已由 SLICE-158 改为 400 `unsafe_tenant`；超长 `credential_id` 路径仍可能抛 `UnsafePath`；只读目录上停用已停用的记录会因建锁文件失败；CLI 的 rewrap 在锁外计算新 payload（`replace_wrapped` 会重读合并，两个不同 keyring 的并发 rewrap 由最后写入者胜出）。SLICE-149 到 152 的残余：Windows 不做 keyring ACL 检查（只跳过，不伪造检查）；工具网关、`remote-agents` 与控制台的 keyring 非法已由 SLICE-155 改为退出 1；控制台 `/api/credentials` 请求体密文已由 SLICE-156 拒绝；跨租户 admin 写入的审计落在调用方租户链；Postgres 并发停用可能重复写 `credential.disable`；凭据池关闭 best-effort；解密失败审计在工具网关和控制台没有 invocation，主体是服务主体；超过 128 字符的旧凭据记录读取时 fail-closed（SLICE-157），需要手工清理。
 
-9. RAG 残余：摄取（单文件/stdin/目录）与检索可从 CLI 用，运行时预取、注入边界、`rag.retrieve` 审计与控制台/触发接线已由 SLICE-197 到 199 交付（ADR-0036 slice 2-4）；MCP 与 A2A 入口仍未接线；沙箱化触发（`execution_tier=sandboxed`）在 `triggers_service` 里提前返回，绕过 `AgentRuntime`，因此经触发执行的沙箱 agent 即使 `rag.enabled=true` 也不会检索、没有 `rag.retrieve` 审计；共享 `BudgetTracker` 未与模型网关联账；`--rag-dimensions 0` 会让 `PgVectorRagStore` 抛 `RagStoreUnavailable`，CLI 未捕获；`RagFactory` 的 `policy` 参数可覆盖 manifest 策略（当前 CLI 不传，生产按 manifest 生效，契约已注明）；`--budget-usd` 仍是进程内语义；pgvector SQL 与真实 LiteLLM embedding 未在真实环境验证；检索没有重排与引用拼接，置信度映射是线性启发式；目录摄取不做增量同步，文件变短会留下尾部分块，`is_symlink`/`read_text` 之间有 TOCTOU 窗口；注入中和只剔除 Unicode `Cf` 类字符，`Mn` 类不可见字符仍可穿过标签词；运维与使用手册已由 SLICE-200 补齐。审计链的哈希口径与运维说明已由 ADR-0037 / SLICE-201 到 203 收口：校验按存储内容重算，历史里存储内容已与 `hash` 对不上的记录（如 `-0.0` 写入后被存成 `0.0` 的行）不自动迁移，继续按断链调查。
+9. RAG 残余：摄取（单文件/stdin/目录）与检索可从 CLI 用，运行时预取、注入边界、`rag.retrieve` 审计与控制台/触发接线已由 SLICE-197 到 199 交付（ADR-0036 slice 2-4）；MCP 与 A2A 入口仍未接线；沙箱化触发（`execution_tier=sandboxed`）在 `triggers_service` 里提前返回，绕过 `AgentRuntime`，因此经触发执行的沙箱 agent 即使 `rag.enabled=true` 也不会检索、没有 `rag.retrieve` 审计；共享 `BudgetTracker` 未与模型网关联账；`--rag-dimensions 0` 会让 `PgVectorRagStore` 抛 `RagStoreUnavailable`，CLI 未捕获；`RagFactory` 的 `policy` 参数可覆盖 manifest 策略（当前 CLI 不传，生产按 manifest 生效，契约已注明）；`--budget-usd` 仍是进程内语义；pgvector SQL 已在 `prove_it_works.py` 的 live 容器里验证（扩展 0.8.7、建表、ACL 检索），真实 LiteLLM embedding 仍未验证；检索没有重排与引用拼接，置信度映射是线性启发式；目录摄取不做增量同步，文件变短会留下尾部分块，`is_symlink`/`read_text` 之间有 TOCTOU 窗口；注入中和只剔除 Unicode `Cf` 类字符，`Mn` 类不可见字符仍可穿过标签词；运维与使用手册已由 SLICE-200 补齐。审计链的哈希口径与运维说明已由 ADR-0037 / SLICE-201 到 203 收口：校验按存储内容重算，历史里存储内容已与 `hash` 对不上的记录（如 `-0.0` 写入后被存成 `0.0` 的行）不自动迁移，继续按断链调查。
+
+10. 2026-11-21 端到端验收（`docs/reviews/retrospective-2026-11-21.md`、`docs/evidence/prove-2026-11-21.txt`）确认的缺口，按风险排序：
+    - console 启动引用（`--agent-ref`）加载的 agent 不构造 `RagContext`，检索静默失效；按需加载路径正常。`console.py` 的启动循环不传 manifest。
+    - `model_allowlist` 目前哪里都不执行：直连请求只校验 `provider_allowlist`，别名路由也不过滤 model；ADR-0033 注明是“声明但未执行”，需要确认预期语义。
+    - `triggers register --digest` 要求 `sha256:` 前缀，注册表记录是裸 hex（服务端会归一化，命令行易踩）。
+    - 无 OIDC 的 console 主体租户固定为 `local`，RAG 只能看到该租户文档；正式部署需 OIDC claim 提供租户。
+    - 验收脚本依赖 `[litellm]` extra 与可用的 pgvector 镜像源；按未锁定版本安装会引入带已知漏洞的 `wcmatch`，验收后应恢复依赖。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
