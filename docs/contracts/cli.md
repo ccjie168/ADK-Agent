@@ -70,6 +70,8 @@
 - 默认 provider 是 `litellm`。`--provider vllm` 需要 `--vllm-url` 或 `$VLLM_BASE_URL`。
 - 只有 `/healthz` 开放。`POST /v1/complete` 需要 bearer token，非回环地址没 token 拒绝启动。
 - 策略拒绝返回 403 `{"error":"model_denied"}`，provider 失败返回 502 `{"error":"model_call_failed"}`。
+- 请求策略的 `budget_usd` 由进程内 `BudgetTracker` 按租户累计执行：已花费达到上限时返回 403
+  `{"error":"model_denied"}`，审计 `error_code=budget_exceeded`。多副本各自记账。
 - `GET /metrics` 需要 token，指标见 `metrics.md`。
 - 给了 `--audit-file` 时每个 `model.call` 事件追加一行 JSON。
 - 给了 `--audit-url` 时每个事件 `POST` 到 `<url>/v1/events`，期望 202。非 202 或连不上抛 `AuditSinkUnavailable`，当前请求以 502 结束。

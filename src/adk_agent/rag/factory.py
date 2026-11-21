@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ..core import AgentManifest, AuditSink, ModelPolicy
 from .context import RagContext
 from .guard import RagGuard
 from .ingest import Embedder
 from .pgvector_service import PgVectorRagService
 from .vector_store import PgVectorRagStore
+
+if TYPE_CHECKING:
+    from ..models.budget import BudgetTracker
 
 
 class RagFactory:
@@ -65,6 +70,7 @@ def build_rag_factory(
     provider: str = "litellm",
     audit: AuditSink | None = None,
     policy: ModelPolicy | None = None,
+    budgets: BudgetTracker | None = None,
 ) -> RagFactory:
     """Construct the production factory from the deployment's RAG settings."""
     import os
@@ -78,7 +84,7 @@ def build_rag_factory(
     gateway = EmbeddingGateway(
         {provider: LiteLlmProvider(api_key=os.environ.get("LITELLM_API_KEY"))},
         audit=audit,
-        budgets=BudgetTracker(),
+        budgets=budgets if budgets is not None else BudgetTracker(),
     )
     return RagFactory(
         PgVectorRagStore(database_url, dimensions=dimensions),
