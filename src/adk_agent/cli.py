@@ -1218,7 +1218,7 @@ async def _rag_ingest_directory(args: argparse.Namespace) -> None:
         for path in _rag_files(root):
             relative = path.relative_to(root).as_posix()
             try:
-                text = _read_rag_file(path)
+                text = _read_rag_file(path, root=root)
             except (OSError, UnicodeDecodeError) as exc:
                 print(f"could not read {relative}: {type(exc).__name__}", file=sys.stderr)
                 raise SystemExit(1) from None
@@ -1247,10 +1247,34 @@ def _rag_files(root: Path):
         yield path
 
 
-def _read_rag_file(path: Path) -> str:
+def _open_rag_file(path: Path, root: Path | None) -> int:
+    """Open a listed file without following a symlink in any component we walk."""
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    base = root
+    parts: tuple[str, ...] | None = None
+    if base is not None:
+        try:
+            parts = path.relative_to(base).parts
+        except ValueError:
+            raise OSError(f"{path.name} is outside {base}") from None
+    if base is None or parts is None or not no_follow or not directory_flag:
+        return os.open(path, flags | no_follow)
+    directory = os.open(base, flags | directory_flag)
+    try:
+        for part in parts[:-1]:
+            child = os.open(part, flags | directory_flag | no_follow, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        return os.open(parts[-1], flags | no_follow, dir_fd=directory)
+    finally:
+        os.close(directory)
+
+
+def _read_rag_file(path: Path, *, root: Path | None = None) -> str:
     """Read one listed file without following a symlink swapped in after listing."""
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
+    descriptor = _open_rag_file(path, root)
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise OSError(f"{path.name} is not a regular file")
