@@ -1,0 +1,54 @@
+端到端验证（prove it works，SLICE-204 到 216 之后重跑）
+日期: 2026-11-22
+基线: master `3f7d325`
+入口: `python scripts/prove_it_works.py`（12 项检查，全部 PASS，总耗时约 172 秒）
+冒烟子集: `python scripts/prove_it_works.py --smoke`（P1–P4，4/4 PASS）
+
+一、方法
+
+- 每个检查启动真实进程或真实容器，走 HTTP/SDK 调用，直接查询 Postgres 里落下的审计行；不 mock 服务边界。
+- Postgres 使用 `pgvector/pgvector:pg15` 容器（临时启动、随机端口、随机口令、结束即删除）。
+- 模型与嵌入走本地 OpenAI 兼容桩，经真实 `litellm` 通道调用；不访问外部 API，不使用任何真实密钥。
+- 运行前在虚拟环境安装声明过的 `[litellm]` extra（1.106.2），跑完卸载，恢复 `deps` 门禁。
+
+二、结果（12/12 PASS）
+
+P1 环境：容器内 `select 1` 成功；桩服务 `/healthz` 200。
+P2 审计链：文件链 3 条记录、篡改 `target` 后 `AuditChainBroken`；Postgres 链同样 3 条，SQL 篡改一行后断链。
+P3 发布 / 加载 / 对话：签名工件经 `serve-registry` 上传；启动引用与按需加载各跑一轮对话，回复含
+`PROOF-OK`，`agent.run` 审计 2 条。
+P4 工具网关：授权 200、未授权 403 `tool_denied`、需审批 403 且审计 `approval_required`、写工具缺幂等键
+400、同键重放只执行一次处理器，`tool.call` 审计 6 条。
+P5 MCP HTTP：匿名 `initialize` 401；带 token 握手与调用成功，回复含 `PROOF-OK` 与检索标记，
+`rag.retrieve` 0 -> 1。
+P6 A2A peer：匿名取 card 401、未授权 peer 404、调用 403；授权后 card 200、调用 200 且回复含检索标记，
+`rag.retrieve` 1 -> 2。
+P7 RAG：走 `console --agent-ref` 启动引用路径（不是按需加载）；pgvector 0.8.7；公开文档对 carol 2 命中、
+受限文档对 carol 0 命中、对 bob 1 命中；注入块进入提示；`rag.retrieve` 2 -> 3，审计不含分块原文。
+P8 模型网关：白名单内 provider 200；白名单外 provider 403 `model_denied`；白名单外 model 同样 403，
+并审计 `model_not_allowed`。
+P9 审批：两个进程共用 Postgres 收件箱；并发一批准一拒绝得到 `[200, 409]`；历史可查。
+P10 触发：匿名 webhook 401；首次 200；同幂等键 `duplicate=true` 且 `run_id` 相同；带审批授权的 agent
+409 `approval_required`。
+P11 共享配额：两个 console 进程共用 Postgres 计数；进程 1 200、进程 2 429、进程 1 再跑 429。
+P12 备份恢复：备份 4 个成员；恢复到新目录后审计链仍验证通过。
+
+三、与 2026-11-21 那轮的差异
+
+- P5/P6 增加了检索标记断言：MCP 与 A2A 入口现在都会预取（SLICE-206）。
+- P7 改走启动引用路径，覆盖 SLICE-204 的修复；不再只验证按需加载。
+- P8 增加 model 级白名单拒绝断言（SLICE-205），并验证 `model_not_allowed` 审计。
+- P4 的幂等与审批断言不变；P11 的共享配额不变。
+
+四、门禁
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets），1943 passed / 102 skipped
+
+五、已知限制（本次没有覆盖）
+
+- 沙箱执行（POSIX-only）在 Windows 上不可用。
+- 多副本 Kubernetes 清单没有集群可部署。
+- 真实外部模型与嵌入通道未调用；RAG 排序质量与真实 LiteLLM embedding 仍未验收。
+- OIDC 登录链路没有真实 IdP；浏览器 UI 未做自动化点击。
+- 重排与跨副本预算未实现，属已知缺口。
