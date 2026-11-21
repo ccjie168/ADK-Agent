@@ -36,4 +36,5 @@ ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
 
 - Windows 上没有 `O_NOFOLLOW`，打开时会跟随符号链接；`lstat` 检查在打开之后，描述符已绑定到
   被打开的文件，读取本身不会因后续换入而改向。
+- 父目录在列目录后被换成符号链接时，`O_NOFOLLOW` 只约束路径末段，仍可能越界，记入后续缺口。
 - 目录级增量同步仍不做。
