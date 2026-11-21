@@ -159,6 +159,11 @@
 - 命中阻断时返回 403 `model_denied`，provider 不会被调用；命中脱敏时请求或响应里的原文被替换为 `[redacted]`。
 - 每次拦截或脱敏写 `guardrail.input` / `guardrail.output` 审计，只记规则 id 与原文哈希，不记原文。
 - 正则非法或配置文件不合法时服务拒绝启动。规则文件不要写真实密钥或 DSN。
+- 模型策略：网关按注册表里 manifest 的 `model_policy` 执行 `provider_allowlist` 与 `model_allowlist`。
+  `model_allowlist` 为空表示不限模型；非空时直连请求、别名候选与 `GatewayLlm` 包装调用都必须命中，
+  否则 403 `model_denied`：直连拒绝审计 `model_not_allowed`，别名无候选审计 `alias_not_allowed`。
+  控制台虽然用 `GatewayLlm` 包装模型，但合成策略只含 provider，不含 manifest 的 `model_allowlist`，
+  所以 console 里的 agent 不受该 allowlist 约束；生产要把模型调用统一走网关。
 
 ## RAG 向量存储（pgvector，ADR-0035）
 

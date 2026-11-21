@@ -1,0 +1,53 @@
+SLICE-205 执行模型 allowlist
+日期: 2026-11-21
+依据: ADR-0033「后果」（`model_allowlist` 随该 ADR 落地执行）、2026-11-21 复盘第 4 节第 2 条
+基线: `a45d41f`
+
+一、契约
+
+- manifest schema 与 `docs/contracts/model_gateway_request.schema.json` 不变；语义补在 ADR-0033 与
+  运维手册的模型护栏一节。
+- 语义：`model_allowlist` 为空表示不限制；非空时请求模型必须在列表里。直连请求、别名候选与
+  `GatewayLlm` 包装调用都执行。拒绝走 `ModelDenied`，HTTP 映射 403 `model_denied`；直连拒绝审计
+  `model_not_allowed`，别名过滤后没有候选审计 `alias_not_allowed`。
+- 边界：控制台把模型包成 `GatewayLlm`，但合成策略只含 provider、不含 manifest 的 `model_allowlist`，
+  所以 console 路径不受该 allowlist 约束；已写进 ADR 与手册。
+
+二、实现
+
+- `src/adk_agent/models/gateway.py`：新增 `check_model`；`_complete_once` 在 provider 检查之后、调用
+  供应商之前执行，拒绝时写审计 `model_not_allowed`（`egress=none`，不调用 provider）。`complete` 的
+  别名分支在 `resolve_candidates` 拒绝时写一条 `alias_not_allowed` 审计。
+- `src/adk_agent/models/routing.py`：`resolve_candidates` 增加模型过滤；过滤后没有候选按
+  `ModelDenied` 处理。
+- `src/adk_agent/models/gateway_llm.py`：包装调用在 provider 检查后执行 `check_model`，拒绝审计
+  `model_not_allowed`；控制台的合成策略不含 model_allowlist，行为不变。
+- `scripts/prove_it_works.py` P8 增加直连模型拒绝用例与 `model_not_allowed` 审计断言。
+
+三、绿态
+
+$ python -m pytest tests/models/test_model_allowlist.py -q
+9 passed
+
+$ python scripts/check.py --fast
+1902 passed, 98 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+$ python scripts/prove_it_works.py --only P8
+PASS：白名单 provider 200；列表外 provider 403；列表外模型 403 `model_denied`，审计
+`model_not_allowed` 1 条；`model.call` 3 条。
+
+四、红态
+
+基线 `a45d41f` 加新用例、未改实现时：
+`pytest tests/models/test_model_allowlist.py` -> `6 failed, 3 passed`
+（列表外模型被照常服务、别名不按模型过滤、无合法候选不拒绝、两类拒绝都没有审计、`GatewayLlm`
+不做模型检查；列表内放行、空列表放行与 provider 优先三个用例本来就通过。）
+
+五、范围与已知缺口
+
+- 只覆盖网关路径。控制台与业务代码直接访问供应商仍是绕过面，生产需把模型调用统一走网关；这条写进
+  ADR-0033 与运维手册。
+- `budget_usd` 的跨副本记账仍按进程内累计（既有限制，未在本切片处理）。

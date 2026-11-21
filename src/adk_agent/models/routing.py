@@ -22,6 +22,7 @@ def resolve_candidates(
         candidate
         for candidate in definition.candidates
         if candidate.provider in policy.provider_allowlist
+        and (not policy.model_allowlist or candidate.model in policy.model_allowlist)
         and (not candidate.allowed_data_classes or requested <= set(candidate.allowed_data_classes))
     ]
     if not permitted:
