@@ -204,9 +204,9 @@ serve-model-gateway、serve-audit 与 serve-triggers 上免鉴权（A2A 没有�
      --data-class internal --query "how do I reset the pump?"
    ```
 
-4. 打开入口：控制台或触发服务加上 `--rag-db`、`--rag-dimensions`、`--rag-model` 重启。控制台只有
-   在市场页按需加载注册表记录时生效；`--agents` 与启动 `--agent-ref` 注册的 agent 没有 manifest，
-   不会检索。触发服务对 pinned 版本生效。
+4. 打开入口：控制台或触发服务加上 `--rag-db`、`--rag-dimensions`、`--rag-model` 重启。控制台对注册表
+   记录生效：市场页按需加载与启动时的 `--agent-ref` 都会带上记录的 manifest；`--agents` 文件加载的
+   agent 没有 manifest，不会检索。触发服务对 pinned 版本生效。
 
 模型看到的是一段固定边界的上下文块：
 

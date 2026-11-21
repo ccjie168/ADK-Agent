@@ -212,9 +212,9 @@
 
 - `console` 与 `serve-triggers` 接受 `--rag-db URL`、`--rag-dimensions N`、`--rag-model MODEL`、
   `--rag-provider NAME`（默认 `litellm`）。不给 `--rag-db` 完全不启用；给了但缺维度或模型退出 1。
-- 只有 manifest 里 `rag.enabled=true` 的 agent 会检索。控制台**只有按需加载（市场页加载）的注册表记录
-  生效**：`--agents` 文件加载与启动时的 `--agent-ref` 都在启动阶段注册、没有 manifest，永远不启用。
-  触发服务按 pinned 记录生效。
+- 只有 manifest 里 `rag.enabled=true` 的 agent 会检索。控制台对**注册表记录**生效：按需加载（市场页
+  加载）与启动时的 `--agent-ref` 都会带上该记录的 manifest；`--agents` 文件加载没有 manifest，永远
+  不启用。触发服务按 pinned 记录生效。
 - 检索在调模型前做一次，结果拼在用户消息最前面；`top_k`、`min_confidence`、`data_classes` 全部来自
   manifest。配置了审计后端时，查询嵌入写 `model.embed`、每次检索写一条 `rag.retrieve`（计数、状态、
   延迟，不含查询与片段）；没配审计后端时不写。
