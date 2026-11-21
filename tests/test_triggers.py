@@ -66,6 +66,12 @@ def test_webhook_requires_token_hash():
         _webhook(every_seconds=3600)
 
 
+def test_trigger_digest_normalizes_bare_hex():
+    trigger = _schedule(digest="c" * 64)
+    assert trigger.digest == "sha256:" + "c" * 64
+    assert _schedule(digest=_DIGEST).digest == _DIGEST
+
+
 def test_invalid_fields_are_rejected():
     with pytest.raises(ValidationError):
         _schedule(digest="sha256:" + "A" * 64)

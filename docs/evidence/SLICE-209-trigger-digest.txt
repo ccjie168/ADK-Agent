@@ -1,0 +1,36 @@
+SLICE-209 触发注册接受裸 digest
+日期: 2026-11-21
+依据: PROGRESS 已知缺口第 10 条第 3 项
+基线: `a2ce72e`
+
+一、契约
+
+- 先改 `docs/contracts/triggers.md`：`digest` 存储形状是 `sha256:<64 hex>`；注册时也接受裸
+  64 位小写 hex，统一归一化；执行服务核对时剥前缀。
+
+二、实现
+
+- `src/adk_agent/core/triggers.py`：`AgentTrigger.digest` 的 pattern 放宽为
+  `^(?:sha256:)?[0-9a-f]{64}$`，加 `field_validator("digest", mode="before")` 把裸 hex 补成
+  `sha256:<hex>`。存储、执行服务与注册表核对逻辑不变。
+
+三、绿态
+
+$ python -m pytest tests/test_triggers.py tests/test_cli_triggers.py -q
+15 passed
+
+$ python scripts/check.py --fast
+1926 passed, 98 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `a2ce72e` 加新用例、未改实现时：
+`pytest tests/test_triggers.py tests/test_cli_triggers.py` -> `2 failed, 13 passed`
+（裸 hex 被 `AgentTrigger` 的 pattern 拒绝，模型层与 CLI 两个用例失败；非法 digest 的四个参数化用例在基线就通过。）
+
+五、范围与已知缺口
+
+- `tool-grants request --digest` 的同类易用性问题不在本切片。
