@@ -6,7 +6,8 @@ SLICE-207 沙箱化触发的检索接线
 一、契约
 
 - 先改 `docs/contracts/cli.md` 的 `serve-triggers` 一节：`--rag-*` 对沙箱与非沙箱触发都生效，
-  检索失败返回 `rag_unavailable`（500），不再静默传空上下文。
+  检索失败返回 `rag_unavailable`（500），不再静默传空上下文；`docs/contracts/trigger_service.md`
+  的错误码表补 `rag_unavailable`。
 - 运维手册的「运行时检索」现状段同步；manifest 与 `rag.retrieve` 事件形状不变。
 
 二、实现
@@ -15,15 +16,17 @@ SLICE-207 沙箱化触发的检索接线
   manifest 构造 `RagContext`，以 `Invocation(run_id, trace_id, principal, agent_ref, input)` 调用
   `prefix`，把返回块拼成 `block + "\n\n" + input` 传给沙箱；`RagUnavailable` 映射为
   `rag_unavailable`（500）并写 `agent.run` error 与 `trigger.fire` 审计。
-- 审计 `args_hash` 仍取原始输入；`degrade` 由 `RagContext` 内部返回空串，沙箱收到原输入。
+- 非沙箱分支同样在通用异常前捕获 `RagUnavailable`，返回 `rag_unavailable` 并写 `trigger.fire`
+  error；`AgentRuntime` 的 `agent.run` error 仍记录异常类名。审计 `args_hash` 仍取原始输入；
+  `degrade` 由 `RagContext` 内部返回空串，沙箱收到原输入。
 
 三、绿态
 
 $ python -m pytest tests/test_triggers_service.py -q
-25 passed
+27 passed
 
 $ python scripts/check.py --fast
-1913 passed, 98 skipped（ALL PASS，7 步）
+1915 passed, 98 skipped（ALL PASS，7 步）
 
 $ python scripts/check.py --full
 ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
@@ -31,8 +34,8 @@ ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
 四、红态
 
 基线 `25aafbe` 加新用例、未改实现时：
-`pytest tests/test_triggers_service.py` -> `2 failed, 23 passed`
-（沙箱收到原始输入，没有检索块；检索失败仍返回 200 ok。）
+`pytest tests/test_triggers_service.py` -> `3 failed, 24 passed`
+（沙箱收到原始输入；沙箱与非沙箱的检索失败都没有映射成 `rag_unavailable`；degrade 用例本来就通过。）
 
 五、范围与已知限制
 

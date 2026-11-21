@@ -46,6 +46,7 @@
 | 409 | `tool_mediation_unavailable` | `sandboxed` 记录声明了工具授权（触发路径一律拒绝，即使注入了执行器） |
 | 409 | `fire_in_progress` | 同幂等键的运行未结束 |
 | 429 | `quota_exceeded` | 租户配额超限 |
+| 500 | `rag_unavailable` | 检索失败且 manifest 的 `on_error=deny`（沙箱与非沙箱触发一致） |
 | 500 | `sandbox_timeout` | 沙箱运行超过墙钟 |
 | 500 | `sandbox_crashed` | 沙箱加载或运行崩溃 |
 | 500 | `sandbox_violation` | 沙箱守卫拒绝 |

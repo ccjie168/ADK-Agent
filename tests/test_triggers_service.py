@@ -784,8 +784,9 @@ def test_sandboxed_trigger_denies_when_retrieval_fails():
     from adk_agent.rag.context import RagUnavailable
 
     sandbox = FakeSandbox()
+    audit = ListAuditSink()
     factory = FakeRagFactory(FakeRagContext(error=RagUnavailable("store down")))
-    client, _, _, _, _ = _sandboxed_client(sandbox, rag=factory)
+    client, _, _, _, _ = _sandboxed_client(sandbox, rag=factory, audit=audit)
 
     with client:
         response = _fire(client, json={"input": "hello"})
@@ -793,3 +794,39 @@ def test_sandboxed_trigger_denies_when_retrieval_fails():
     assert response.status_code == 500
     assert response.json() == {"error": "rag_unavailable"}
     assert sandbox.calls == []
+    events = audit.recent(50)
+    fired = [e for e in events if e.action == "trigger.fire" and e.status == "error"]
+    runs = [e for e in events if e.action == "agent.run" and e.status == "error"]
+    assert [e.error_code for e in fired] == ["rag_unavailable"]
+    assert [e.error_code for e in runs] == ["rag_unavailable"]
+
+
+def test_sandboxed_trigger_degrades_without_context():
+    sandbox = FakeSandbox()
+    factory = FakeRagFactory(FakeRagContext(block=""))
+    client, _, _, _, _ = _sandboxed_client(sandbox, rag=factory)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 200
+    [call] = sandbox.calls
+    assert call[2] == "hello"
+
+
+def test_in_process_trigger_denies_when_retrieval_fails():
+    from adk_agent.rag.context import RagUnavailable
+
+    audit = ListAuditSink()
+    factory = FakeRagFactory(FakeRagContext(error=RagUnavailable("store down")))
+    client, runner, _, _ = _client([_webhook()], audit=audit, rag=factory)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 500
+    assert response.json() == {"error": "rag_unavailable"}
+    assert runner.calls == 0
+    events = audit.recent(50)
+    fired = [e for e in events if e.action == "trigger.fire" and e.status == "error"]
+    assert [e.error_code for e in fired] == ["rag_unavailable"]

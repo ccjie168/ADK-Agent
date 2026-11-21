@@ -21,6 +21,8 @@
 
 - [x] 沙箱触发把检索块拼到输入前 -> `test_sandboxed_trigger_injects_retrieval`
 - [x] 检索失败返回 500 `rag_unavailable` 且不调用沙箱 -> `test_sandboxed_trigger_denies_when_retrieval_fails`
+- [x] 非沙箱触发同样映射 `rag_unavailable` -> `test_in_process_trigger_denies_when_retrieval_fails`
+- [x] `degrade` 时沙箱收到原输入 -> `test_sandboxed_trigger_degrades_without_context`
 - [x] 既有触发行为与审批拒绝不变（全量用例）
 - [x] 全量门禁通过
 

@@ -535,6 +535,10 @@ def build_triggers_app(
             await finish("denied", "quota_exceeded")
             await emit("denied", "quota_exceeded", run_id, trace_id)
             return TriggerExecution("denied", "quota_exceeded", run_id, trace_id)
+        except RagUnavailable:
+            await finish("error", "rag_unavailable")
+            await emit("error", "rag_unavailable", run_id, trace_id)
+            return TriggerExecution("error", "rag_unavailable", run_id, trace_id)
         except Exception as exc:  # noqa: BLE001
             code = type(exc).__name__
             await finish("error", code)
