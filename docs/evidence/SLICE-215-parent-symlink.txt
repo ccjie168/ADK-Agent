@@ -18,7 +18,7 @@ SLICE-215 目录摄取逐段打开路径
 三、绿态
 
 $ python -m pytest tests/test_cli_rag.py -q
-（待填）
+25 passed, 4 skipped
 
 $ python scripts/check.py --fast
 1938 passed, 102 skipped（ALL PASS，7 步）
