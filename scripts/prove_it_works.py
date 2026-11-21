@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import secrets
+import shutil
 import socket
 import subprocess  # nosec B404 - fixed argv lists only
 import sys
@@ -352,14 +353,13 @@ class Proof:
 def check_env(proof: Proof) -> Result:
     """P1: the stub, Postgres and the real model channel are alive."""
     one = proof.psql("select 1")
+    stub = httpx.get(f"{proof.stub_url}/healthz", timeout=5).status_code
+    require(one == "1" and stub == 200, f"Postgres select 1 -> {one!r}, stub -> {stub}")
     return Result(
         "P1 environment",
-        one == "1",
+        True,
         f"Postgres and stub are up (stub port {proof.stub_port})",
-        [
-            f"select 1 -> {one}",
-            f"stub health -> {httpx.get(proof.stub_url + '/healthz').status_code}",
-        ],
+        [f"select 1 -> {one}", f"stub health -> {stub}"],
     )
 
 
@@ -435,7 +435,7 @@ def check_audit(proof: Proof) -> Result:
     for index in range(3):
         asyncio.run(sink.append(_audit_event("acme", index)))
     stored = asyncio.run(verify_audit_database(proof.pg_url))
-    require(stored >= 3, f"postgres chain verified only {stored} records")
+    require(stored == 3, f"postgres chain verified {stored} records, expected 3")
     evidence.append(f"postgres chain: verify_audit_database -> {stored}")
 
     proof.psql(
@@ -449,7 +449,7 @@ def check_audit(proof: Proof) -> Result:
     else:
         raise AssertionError("tampered postgres chain still verified")
     proof.psql("delete from adk_audit_records where tenant = 'acme'")
-    require(asyncio.run(verify_audit_database(proof.pg_url)) >= 0)
+    require(asyncio.run(verify_audit_database(proof.pg_url)) == 0, "tenant rows survived cleanup")
     return Result(
         "P2 audit chain", True, "file + postgres chains verify and detect tampering", evidence
     )
@@ -665,7 +665,7 @@ def check_registry_chat(proof: Proof) -> Result:
         "select count(*) from adk_audit_records "
         "where action = 'agent.run' and event->>'status' = 'ok'"
     )
-    require(int(runs) >= 2, f"expected two agent.run rows, got {runs}")
+    require(int(runs) == 2, f"expected two agent.run rows, got {runs}")
     tenants = proof.psql("select distinct tenant from adk_audit_records where action = 'agent.run'")
 
     return Result(
@@ -876,6 +876,7 @@ def check_tools(proof: Proof) -> Result:
     require(calls.count("wipe") == 1, f"idempotent replay executed {calls.count('wipe')} times")
 
     total = proof.psql("select count(*) from adk_audit_records where action = 'tool.call'")
+    require(int(total) == 6, f"expected six tool.call audit rows, got {total}")
     return Result(
         "P4 tool gateway",
         True,
@@ -966,7 +967,7 @@ def check_mcp(proof: Proof) -> Result:
         inners = getattr(exc, "exceptions", ()) or (exc,)
         details = ["".join(traceback.format_exception(inner))[-1200:] for inner in inners]
         raise RuntimeError("MCP call failed:\n" + "\n---\n".join(details)) from None
-    require(count >= 1, "MCP server exposed no tools")
+    require(count == 1, f"MCP server exposed {count} tools, expected 1")
     require("PROOF-OK" in reply, reply)
 
     runs = proof.psql("select count(*) from adk_audit_records where action = 'agent.run'")
@@ -975,6 +976,7 @@ def check_mcp(proof: Proof) -> Result:
         "from adk_audit_records where action = 'agent.run'"
     )
     require(int(runs) >= 1, f"no agent.run audit rows after the MCP call: {runs}")
+    require("mcp_user" in subjects, f"MCP run was not audited as mcp_user: {subjects}")
     return Result(
         "P5 MCP HTTP",
         True,
@@ -1219,7 +1221,7 @@ def check_rag(proof: Proof) -> Result:
     hidden = search("carol", "SECRET-BETA-CODE", "internal")
     require(hidden == [], f"ACL leaked the restricted doc: {hidden}")
     bob_hits = search("bob", "SECRET-BETA-CODE", "internal")
-    require(bob_hits, f"owner subject cannot retrieve the restricted doc: {bob_hits}")
+    require(len(bob_hits) == 1, f"owner subject got {len(bob_hits)} hits, expected 1")
 
     project = _write_agent_project(proof.work, "proof_rag")
     manifest_path = project / "manifest.json"
@@ -1303,7 +1305,10 @@ def check_rag(proof: Proof) -> Result:
         "from adk_audit_records where action = 'rag.retrieve'"
     )
     audit_rows, returned = (int(part) for part in audit.split("|"))
-    require(audit_rows >= 1 and returned >= 1, f"rag.retrieve audit: {audit_rows}/{returned}")
+    require(
+        audit_rows == 1 and returned == 1,
+        f"rag.retrieve audit: {audit_rows} rows, max rag_returned {returned}",
+    )
     leaked = proof.psql(
         "select count(*) from adk_audit_records where action = 'rag.retrieve' "
         "and event::text like '%REFUND-POLICY-ALPHA%'"
@@ -1311,6 +1316,7 @@ def check_rag(proof: Proof) -> Result:
     require(leaked == "0", "audit event contains chunk text")
 
     extension = proof.psql("select extversion from pg_extension where extname = 'vector'")
+    require(bool(extension), "pgvector extension is missing")
     return Result(
         "P7 RAG",
         True,
@@ -1380,7 +1386,7 @@ def check_model_gateway(proof: Proof) -> Result:
     require(allowed.json()["text"].startswith("PROOF-OK"), allowed.text)
     denied = complete("gemini", "gemini-2.5-pro", run="2")
     require(denied.status_code == 403, denied.text)
-    require(denied.json()["error"] in {"model_denied", "policy_denied"}, denied.text)
+    require(denied.json()["error"] == "model_denied", denied.text)
 
     audits = proof.psql("select count(*) from adk_audit_records where action = 'model.call'")
     require(int(audits) >= 2, f"model.call audit rows: {audits}")
@@ -1756,6 +1762,7 @@ def check_backup(proof: Proof) -> Result:
     with tarfile.open(archive, "r:gz") as bundle:
         names = set(bundle.getnames())
     require(any(name.startswith("registry/") for name in names), sorted(names)[:10])
+    require(any(name.startswith("approvals/") for name in names), sorted(names)[:10])
 
     dest = proof.work / "backup-dest"
     restore = subprocess.run(  # nosec B603 B607
@@ -1771,7 +1778,20 @@ def check_backup(proof: Proof) -> Result:
     require(restored_audit is not None, sorted(str(p.relative_to(dest)) for p in dest.rglob("*")))
     require(verify_audit_file(restored_audit) == 1)
     restored_manifests = list(dest.rglob("*.json"))
-    require(restored_manifests, "restore produced no registry records")
+    restored_ids = []
+    for path in restored_manifests:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            continue
+        manifest = data.get("manifest") if isinstance(data, dict) else None
+        restored_ids.append(
+            (manifest or data).get("id") if isinstance(manifest or data, dict) else None
+        )
+    require(
+        "proof_backup" in restored_ids,
+        f"restored registry records: {restored_ids}",
+    )
     return Result(
         "P12 backup/restore",
         True,
@@ -1842,8 +1862,15 @@ def main() -> int:
         ],
     }
     (work / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(f"\nreport: {work / 'report.json'}")
-    return 0 if all(result.ok for result in proof.results) else 1
+    passed = all(result.ok for result in proof.results)
+    if args.keep or args.work:
+        print(f"\nreport: {work / 'report.json'}")
+    else:
+        # The work dir holds generated signing keys and service logs; keep it
+        # only when asked.
+        shutil.rmtree(work, ignore_errors=True)
+        print("\nreport: not kept (pass --keep to retain it)")
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

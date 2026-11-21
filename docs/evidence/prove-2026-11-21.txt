@@ -11,6 +11,7 @@
 - 完整一轮耗时约 166 秒，日志与 `report.json` 留在临时工作目录，证据只摘录断言结果。
 - 运行前需在虚拟环境安装声明过的 `[litellm]` extra；按未锁定版本直接解析会引入带已知漏洞的
   `wcmatch`，开发环境应在跑完验收后恢复依赖，生产与 CI 仍按 `requirements/runtime.lock` 安装。
+- 容器镜像取自本机可达的镜像源；默认跑完删除临时工作目录（含生成的签名私钥），需要保留时加 `--keep`。
 
 二、结果（12/12 PASS）
 
@@ -34,7 +35,7 @@ P6 A2A（peer 模式）
 - 匿名取 card 401；未授权 peer 取 card 404（不暴露存在性）、调用 403；授予 `read,invoke` 后 card 200、`message/send` 200 且回复含 `PROOF-OK`。
 
 P7 RAG
-- pgvector 扩展 0.8.7 就绪；两个文档分别按 public 与受限 subject 摄取。
+- pgvector 扩展已加载（本轮 0.8.7）；两个文档分别按 public 与受限 subject 摄取。
 - 公开文档可按查询命中；受限文档对 `carol` 0 命中、对 `bob` 1 命中（ACL 生效）。
 - 按需加载的 agent 在对话中收到 `<retrieved_context ...>` 注入块，回复包含检索到的标记文本；受限文档未进入提示。
 - `rag.retrieve` 审计 1 条、`rag_returned=1`，审计行不含分块原文。
@@ -52,7 +53,7 @@ P11 共享配额
 - 两个 console 进程共用同一个 Postgres 配额计数；进程 1 首次 200，进程 2 立即 429 `quota_exceeded`，进程 1 再跑同样 429。
 
 P12 备份恢复
-- 备份包含 registry、approvals、audit；恢复到全新目录后审计链仍验证通过，注册表记录可读。
+- 备份包含 registry、approvals、audit 三类成员；恢复到全新目录后审计链仍验证通过，解析出的注册表记录里有 `proof_backup`。
 
 三、门禁
 

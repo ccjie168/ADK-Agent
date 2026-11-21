@@ -49,9 +49,10 @@
    `for name, agent in list(agents.items()): _register(name, agent)` 不传 manifest，
    而 `_register` 只在 `manifest is not None` 时构造 `RagContext`。按需加载路径正常。
    后果：用 `--agent-ref` 起的生产控制台，检索静默失效且没有 `rag.retrieve` 审计。
-2. **直连模型请求不受 `model_allowlist` 约束**。`PolicyModelGateway.complete` 的直连分支只检查
-   `provider_allowlist`；`model_allowlist` 只在别名路由里过滤候选。需要确认这是否是预期语义；
-   如果不是，这是一条策略绕过面。
+2. **`model_allowlist` 目前哪里都不生效**。`PolicyModelGateway.complete` 的直连分支只检查
+   `provider_allowlist`；别名路由 `resolve_candidates` 也只按 provider 与数据分级过滤，
+   `model_allowlist` 除声明外没有引用。ADR-0033 已注明它是“声明但未执行”，但契约读起来像限制。
+   需要确认预期语义：要么实现校验，要么在契约和手册里明确它只是记录。
 3. **`triggers register --digest` 要求 `sha256:` 前缀**，注册表记录却是裸 hex；服务端会归一化，
    功能可用，但命令行人容易踩。
 4. **无 OIDC 的 console 固定租户 `local`**，RAG 只能看到该租户文档。本地演示没问题，正式部署
