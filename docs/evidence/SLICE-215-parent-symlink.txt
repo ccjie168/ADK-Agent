@@ -1,0 +1,39 @@
+SLICE-215 目录摄取逐段打开路径
+日期: 2026-11-22
+依据: PROGRESS 已知缺口第 9 条、SLICE-212 复核留下的父目录残余
+基线: `f0eba3f`
+
+一、契约
+
+- 先改 `docs/contracts/cli.md` 的 `rag ingest` 目录模式：从根目录起逐段用 `dir_fd` 打开，每段带
+  `O_NOFOLLOW`，末段校验普通文件；路径不在根目录下直接拒绝；Windows 的平台差异保留。
+
+二、实现
+
+- `src/adk_agent/cli.py` 拆出 `_open_rag_file(path, root)`：先确认路径在根目录下（不在则 `OSError`），
+  POSIX 上逐段 `os.open(..., dir_fd=...)` 并带 `O_NOFOLLOW`/`O_DIRECTORY`，每开下一段就关上一段。
+  `_read_rag_file` 增加可选 `root`，打开与读取逻辑不变；目录摄取传 `root=root`。
+- 单文件模式与 stdin 不变。
+
+三、绿态
+
+$ python -m pytest tests/test_cli_rag.py -q
+25 passed, 4 skipped
+
+$ python scripts/check.py --fast
+1938 passed, 102 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `f0eba3f` 加新用例、未改实现时：
+`pytest tests/test_cli_rag.py` -> `1 failed, 24 passed, 4 skipped`
+（`_read_rag_file` 不接收 `root`，根目录外路径用例 `TypeError`；父目录符号链接用例在本机跳过，
+由 Linux CI 运行。）
+
+五、范围与已知缺口
+
+- Windows 上没有 `O_NOFOLLOW`/`O_DIRECTORY`，退化为单次打开加 `fstat`/`lstat` 复核。
+- 目录级增量同步仍不做。

@@ -295,6 +295,34 @@ def test_read_rag_file_refuses_symlink(tmp_path):
         cli._read_rag_file(link)
 
 
+def test_read_rag_file_rejects_a_path_outside_the_root(tmp_path):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+
+    with pytest.raises(OSError):
+        cli._read_rag_file(outside, root=root)
+
+
+def test_read_rag_file_refuses_a_swapped_parent_directory(tmp_path):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "doc.txt").write_text("secret", encoding="utf-8")
+    link = root / "sub"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are not available on this platform")
+    if not (hasattr(os, "O_DIRECTORY") and hasattr(os, "O_NOFOLLOW")):
+        pytest.skip("dir_fd walking is not available on this platform")
+
+    with pytest.raises(OSError):
+        cli._read_rag_file(link / "doc.txt", root=root)
+
+
 def test_read_rag_file_rejects_a_path_that_is_now_a_symlink(tmp_path, monkeypatch):
     doc = tmp_path / "doc.txt"
     doc.write_text("alpha", encoding="utf-8")
