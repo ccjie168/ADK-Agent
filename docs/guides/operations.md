@@ -229,9 +229,8 @@
   各自记账。`--budget-usd` 只是 `rag ingest`/`rag search` 的参数，`console` 与 `serve-triggers` 不接受，
   写上会被 argparse 拒绝。
 - 现状与缺口：MCP（`serve`/`serve-many`）与 A2A（`serve-a2a`）同样接受 `--rag-*`，按注册表记录的
-  manifest 生效，文件加载的 `--agent` 不检索；`execution_tier=sandboxed` 的触发同样按 pinned manifest 检索，
-  检索失败返回 `rag_unavailable`（500）；`--rag-dimensions` 给 0 会以未捕获的
-  `RagStoreUnavailable` 退出，运维不要这么配。
+  manifest 生效，文件加载的 `--agent` 不检索；`--rag-dimensions` 必须是正整数，0 或负数在启动时退出 1；`execution_tier=sandboxed` 的触发同样按 pinned manifest 检索，
+  检索失败返回 `rag_unavailable`（500）；
 - 升级顺序：先装扩展与表，再给控制台、触发、MCP 或 A2A 加 `--rag-*` 重启，最后改 agent 的 manifest。注意 `rag`
   块参与摘要，改动等于换一个发布摘要，同一版本不能覆盖发布，必须升版本号重新发布；触发要把 pinned
   版本改到新版本记录。回滚同理：发布一个不带 `rag` 块的新版本，或把触发指回旧版本，不要试图改回

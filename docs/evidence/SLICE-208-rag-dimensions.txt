@@ -1,0 +1,38 @@
+SLICE-208 检索维度的入口校验
+日期: 2026-11-21
+依据: PROGRESS 已知缺口第 9 条（`--rag-dimensions 0` 未捕获）
+基线: `ef81803`
+
+一、契约
+
+- 先改 `docs/contracts/cli.md` 的检索参数说明：`--rag-dimensions` 必须是正整数，0 或负数退出 1。
+- 运维手册「运行时检索」同步，删除“给 0 会以未捕获 `RagStoreUnavailable` 退出”的旧提示。
+
+二、实现
+
+- `src/adk_agent/cli.py` 的 `_rag_factory`：`--rag-dimensions <= 0` 时打印
+  `--rag-dimensions must be positive` 并退出 1；同时捕获 `RagStoreUnavailable`，与既有的
+  `ValueError` 一样转成干净的退出 1，不再冒 traceback。
+- `rag ingest`/`rag search` 与 `PgVectorRagStore` 的既有拒绝行为不变，本切片补用例锁定。
+
+三、绿态
+
+$ python -m pytest tests/test_rag_dimensions.py -q
+5 passed
+
+$ python scripts/check.py --fast
+1920 passed, 98 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `ef81803` 加新用例、未改实现时：
+`pytest tests/test_rag_dimensions.py` -> `2 failed, 3 passed`
+（服务命令的工厂不校验，`RagStoreUnavailable` 直接抛出；向量存储与 `rag` 子命令的拒绝本来就正确。）
+
+五、范围与已知缺口
+
+- 维度与既有表不匹配时的重建流程不在本切片，按运维手册执行。
+- `RagFactory` 的 `policy` 参数覆盖、共享预算与真实 embedding 验收仍在 PROGRESS 第 9 条。
