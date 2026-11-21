@@ -200,6 +200,7 @@ def serve_agent(
     rate_limit: RateLimit | None = None,
     session_tenant_scope: bool = False,
     tool_guard: bool = False,
+    rag: Any | None = None,
 ) -> Any:
     """Expose one ADK agent as an MCP server and run it (blocking).
 
@@ -226,6 +227,7 @@ def serve_agent(
         or metrics is not None
         or rate_limit is not None
         or tool_guard
+        or rag is not None
     ):
         tool_name = name or agent.name
         return serve_many(
@@ -246,6 +248,7 @@ def serve_agent(
             rate_limit=rate_limit,
             session_tenant_scope=session_tenant_scope,
             tool_guard=tool_guard,
+            rag_for=(lambda _tool_name: rag) if rag is not None else None,
         )
 
     server = to_mcp_server(agent, name=name, runner=runner, instructions=instructions)
@@ -286,6 +289,7 @@ def serve_many(
     rate_limit: RateLimit | None = None,
     session_tenant_scope: bool = False,
     tool_guard: bool = False,
+    rag_for: Callable[[str], Any] | None = None,
 ) -> Any:
     """Expose several ADK agents as separate MCP tools in one server.
 
@@ -320,6 +324,7 @@ def serve_many(
     for tool_name, agent in agents.items():
         runner = runner_factory(agent) if runner_factory else _build_runner(agent)
         reap = isinstance(runner.session_service, InMemorySessionService)
+        rag = rag_for(tool_name) if rag_for is not None else None
 
         # One session map per tool, so separate tools keep separate conversations.
         anonymous_state = _ScopedState(
@@ -339,6 +344,7 @@ def serve_many(
             _metrics: MetricsRegistry | None,
             _tenant_scope: bool,
             _tool_guard: bool,
+            _rag: Any | None,
         ) -> Callable[..., Any]:
             async def _tool(request: str, ctx: Context[ServerSession, Any]) -> list[Any]:
                 principal = _principal_from_ctx(ctx)
@@ -368,7 +374,13 @@ def serve_many(
                     tenant="local", subject=_MCP_USER_ID, kind="service"
                 )
                 policy = _quota_config.tenants.get(run_principal.tenant) if _quota_config else None
-                if _audit is not None or _quota is not None or _metrics is not None or _tool_guard:
+                if (
+                    _audit is not None
+                    or _quota is not None
+                    or _metrics is not None
+                    or _tool_guard
+                    or _rag is not None
+                ):
                     scoped_runner = wrap_runner(
                         scoped_runner,
                         agent_name=_agent_name,
@@ -381,6 +393,7 @@ def serve_many(
                         metrics=_metrics,
                         source="mcp",
                         require_context=_tool_guard,
+                        rag=_rag,
                     )
                 return await _run_agent(
                     scoped_runner,
@@ -405,6 +418,7 @@ def serve_many(
             metrics,
             session_tenant_scope,
             tool_guard,
+            rag,
         )
         tool_fn.__name__ = f"call_{tool_name}"
         description = agent.description or f"Run the {tool_name} agent."

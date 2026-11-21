@@ -726,6 +726,43 @@ def _start_registry(
     return registry, f"http://127.0.0.1:{registry.port}"
 
 
+def _ingest_marker(
+    proof: Proof, env: dict[str, str], tenant: str, source: str, marker: str
+) -> None:
+    doc = proof.work / f"{source}.txt"
+    doc.write_text(f"{marker} proof document.\n", encoding="utf-8")
+    done = subprocess.run(  # nosec B603 B607
+        [
+            PY,
+            "-m",
+            "adk_agent",
+            "rag",
+            "ingest",
+            "--database-url",
+            proof.pg_url,
+            "--dimensions",
+            str(EMBED_DIMENSIONS),
+            "--model",
+            "openai/proof-embed",
+            "--provider",
+            "litellm",
+            "--tenant",
+            tenant,
+            "--source-id",
+            source,
+            "--text",
+            str(doc),
+            "--data-class",
+            "public",
+        ],
+        cwd=str(proof.work),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    require(done.returncode == 0, done.stderr[-800:])
+
+
 def _record_digest(registry_url: str, tenant: str, agent_id: str) -> str:
     response = httpx.get(
         f"{registry_url}/v1/agents/{tenant}/{agent_id}/1.0.0",
@@ -926,8 +963,18 @@ def check_mcp(proof: Proof) -> Result:
     env["PROOF_MCP_TOKEN"] = MCP_TOKEN
 
     project = _write_agent_project(proof.work, "proof_mcp")
+    manifest_path = project / "manifest.json"
+    mcp_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    mcp_manifest["rag"] = {
+        "enabled": True,
+        "top_k": 3,
+        "min_confidence": 0.0,
+        "data_classes": ["public"],
+    }
+    manifest_path.write_text(json.dumps(mcp_manifest, indent=2), encoding="utf-8")
     registry, registry_url = _start_registry(proof, keys, artifacts, env)
     _publish(proof, project, keys, registry_url, env)
+    _ingest_marker(proof, env, "local", "mcp-rag", "MCP-RAG-MARKER")
 
     server = proof.start_service(
         "mcp",
@@ -949,6 +996,14 @@ def check_mcp(proof: Proof) -> Result:
             "PROOF_MCP_TOKEN",
             "--audit-db",
             proof.pg_url,
+            "--rag-db",
+            proof.pg_url,
+            "--rag-dimensions",
+            str(EMBED_DIMENSIONS),
+            "--rag-model",
+            "openai/proof-embed",
+            "--rag-provider",
+            "litellm",
             "--host",
             "127.0.0.1",
             "--port",
@@ -976,6 +1031,9 @@ def check_mcp(proof: Proof) -> Result:
             texts = [getattr(item, "text", "") for item in result.content]
             return len(tools.tools), "".join(texts)
 
+    rag_before = int(
+        proof.psql("select count(*) from adk_audit_records where action = 'rag.retrieve'")
+    )
     try:
         count, reply = asyncio.run(call())
     except Exception as exc:  # noqa: BLE001 - surface the nested cause
@@ -986,6 +1044,14 @@ def check_mcp(proof: Proof) -> Result:
         raise RuntimeError("MCP call failed:\n" + "\n---\n".join(details)) from None
     require(count == 1, f"MCP server exposed {count} tools, expected 1")
     require("PROOF-OK" in reply, reply)
+    require("MCP-RAG-MARKER" in reply, reply)
+    rag_after = int(
+        proof.psql("select count(*) from adk_audit_records where action = 'rag.retrieve'")
+    )
+    require(
+        rag_after - rag_before == 1,
+        f"rag.retrieve delta after the MCP run: {rag_before} -> {rag_after}",
+    )
 
     runs = proof.psql("select count(*) from adk_audit_records where action = 'agent.run'")
     subjects = proof.psql(
@@ -1000,7 +1066,8 @@ def check_mcp(proof: Proof) -> Result:
         "anonymous call refused; authenticated initialize/list/call ran the registry agent",
         [
             f"anonymous initialize -> {anonymous.status_code}",
-            f"authenticated tools: {count}, reply contains PROOF-OK: {'PROOF-OK' in reply}",
+            f"authenticated tools: {count}, reply contains PROOF-OK and the retrieved marker",
+            f"rag.retrieve rows: {rag_before} -> {rag_after}",
             f"agent.run audit rows: {runs} (subjects: {subjects})",
         ],
     )
@@ -1040,10 +1107,17 @@ def check_a2a(proof: Proof) -> Result:
     manifest_path = project / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["exposure"] = "a2a"
+    manifest["rag"] = {
+        "enabled": True,
+        "top_k": 3,
+        "min_confidence": 0.0,
+        "data_classes": ["public"],
+    }
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
     registry, registry_url = _start_registry(proof, keys, artifacts, env)
     _publish(proof, project, keys, registry_url, env)
+    _ingest_marker(proof, env, "acme", "a2a-rag", "A2A-RAG-MARKER")
 
     peer_token = PEER_TOKEN
     token_file = proof.work / "peer-tokens.json"
@@ -1086,6 +1160,14 @@ def check_a2a(proof: Proof) -> Result:
             str(keys["artifact_keys"]),
             "--audit-db",
             proof.pg_url,
+            "--rag-db",
+            proof.pg_url,
+            "--rag-dimensions",
+            str(EMBED_DIMENSIONS),
+            "--rag-model",
+            "openai/proof-embed",
+            "--rag-provider",
+            "litellm",
             "--host",
             "127.0.0.1",
             "--port",
@@ -1140,11 +1222,22 @@ def check_a2a(proof: Proof) -> Result:
     peers_cli("grant", "--id", "peer1", "--agent", "proof_a2a", "--actions", "read,invoke")
     card = httpx.get(f"{base}{card_path}", headers=auth, timeout=10)
     require(card.status_code == 200, card.text)
+    a2a_rag_before = int(
+        proof.psql("select count(*) from adk_audit_records where action = 'rag.retrieve'")
+    )
     granted = send("hello a2a")
     require(granted.status_code == 200, granted.text)
     payload = granted.json()
     text = _a2a_text(payload)
     require("PROOF-OK" in text, payload)
+    require("A2A-RAG-MARKER" in text, payload)
+    a2a_rag = int(
+        proof.psql("select count(*) from adk_audit_records where action = 'rag.retrieve'")
+    )
+    require(
+        a2a_rag - a2a_rag_before == 1,
+        f"rag.retrieve delta after A2A: {a2a_rag_before} -> {a2a_rag}",
+    )
 
     runs = proof.psql("select count(*) from adk_audit_records where action = 'agent.run'")
     return Result(
@@ -1155,7 +1248,9 @@ def check_a2a(proof: Proof) -> Result:
             f"agent card: anonymous -> {anonymous.status_code}, ungranted peer -> "
             f"{hidden.status_code}, after grant -> {card.status_code}",
             f"invoke before grant -> HTTP {before.status_code}",
-            f"invoke after grant -> HTTP {granted.status_code}, reply has PROOF-OK",
+            f"invoke after grant -> HTTP {granted.status_code}, reply has PROOF-OK and "
+            f"the retrieved marker",
+            f"rag.retrieve rows: {a2a_rag_before} -> {a2a_rag}",
             f"agent.run audit rows: {runs}",
         ],
     )
@@ -1290,6 +1385,9 @@ def check_rag(proof: Proof) -> Result:
         health="http://127.0.0.1:{port}/healthz",
         env=env,
     )
+    rag_before = int(
+        proof.psql("select count(*) from adk_audit_records where action = 'rag.retrieve'")
+    )
     chat = httpx.post(
         f"http://127.0.0.1:{console.port}/api/chat",
         json={"agent": "proof_rag", "message": "What is the refund policy?"},
@@ -1307,8 +1405,8 @@ def check_rag(proof: Proof) -> Result:
     )
     audit_rows, returned = (int(part) for part in audit.split("|"))
     require(
-        audit_rows == 1 and returned == 1,
-        f"rag.retrieve audit: {audit_rows} rows, max rag_returned {returned}",
+        audit_rows - rag_before == 1 and returned >= 1,
+        f"rag.retrieve audit: {rag_before} -> {audit_rows} rows, max rag_returned {returned}",
     )
     leaked = proof.psql(
         "select count(*) from adk_audit_records where action = 'rag.retrieve' "
@@ -1330,7 +1428,7 @@ def check_rag(proof: Proof) -> Result:
             f"public search as carol: {len(public_hits)} hit(s); restricted as carol: 0; "
             f"as bob: {len(bob_hits)}",
             "chat reply contained the retrieved marker and envelope: yes",
-            f"rag.retrieve audit rows: {audit_rows}, max rag_returned: {returned}, "
+            f"rag.retrieve rows: {rag_before} -> {audit_rows}, max rag_returned: {returned}, "
             f"chunk text in audit: no",
         ],
     )

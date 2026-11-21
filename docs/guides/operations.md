@@ -228,8 +228,9 @@
 - 预算：运行时的嵌入预算来自 `manifest.model_policy.budget_usd`，由进程内 `BudgetTracker` 累计，多副本
   各自记账。`--budget-usd` 只是 `rag ingest`/`rag search` 的参数，`console` 与 `serve-triggers` 不接受，
   写上会被 argparse 拒绝。
-- 现状与缺口：`execution_tier=sandboxed` 的触发在 `serve-triggers` 里提前返回，不会检索，也没有
-  `rag.retrieve` 审计；MCP 与 A2A 入口尚未接线；`--rag-dimensions` 给 0 会以未捕获的
+- 现状与缺口：MCP（`serve`/`serve-many`）与 A2A（`serve-a2a`）同样接受 `--rag-*`，按注册表记录的
+  manifest 生效，文件加载的 `--agent` 不检索；`execution_tier=sandboxed` 的触发在 `serve-triggers`
+  里提前返回，不会检索，也没有 `rag.retrieve` 审计；`--rag-dimensions` 给 0 会以未捕获的
   `RagStoreUnavailable` 退出，运维不要这么配。
 - 升级顺序：先装扩展与表，再给控制台或触发加 `--rag-*` 重启，最后改 agent 的 manifest。注意 `rag`
   块参与摘要，改动等于换一个发布摘要，同一版本不能覆盖发布，必须升版本号重新发布；触发要把 pinned
