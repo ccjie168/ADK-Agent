@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import re
+import stat
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -1217,7 +1218,7 @@ async def _rag_ingest_directory(args: argparse.Namespace) -> None:
         for path in _rag_files(root):
             relative = path.relative_to(root).as_posix()
             try:
-                text = path.read_text(encoding="utf-8")
+                text = _read_rag_file(path)
             except (OSError, UnicodeDecodeError) as exc:
                 print(f"could not read {relative}: {type(exc).__name__}", file=sys.stderr)
                 raise SystemExit(1) from None
@@ -1244,6 +1245,24 @@ def _rag_files(root: Path):
         if path.is_symlink() or not path.is_file():
             continue
         yield path
+
+
+def _read_rag_file(path: Path) -> str:
+    """Read one listed file without following a symlink swapped in after listing."""
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise OSError(f"{path.name} is not a regular file")
+        if stat.S_ISLNK(os.stat(path, follow_symlinks=False).st_mode):
+            raise OSError(f"{path.name} is a symbolic link")
+        with os.fdopen(descriptor, "rb") as handle:
+            descriptor = -1
+            data = handle.read()
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    return data.decode("utf-8")
 
 
 async def _rag_ingest(args: argparse.Namespace) -> None:

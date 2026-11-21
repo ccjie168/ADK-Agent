@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -268,6 +271,68 @@ def test_rag_ingest_directory_skips_symlinks(tmp_path, capsys):
     cli.main(_dir_args(root))
     chunks = _FakeStore.instances[-1].chunks
     assert [chunk.source_id for chunk in chunks] == ["real.txt"]
+
+
+def test_read_rag_file_reads_regular_file(tmp_path):
+    doc = tmp_path / "doc.txt"
+    doc.write_text("alpha", encoding="utf-8")
+
+    assert cli._read_rag_file(doc) == "alpha"
+
+
+def test_read_rag_file_refuses_symlink(tmp_path):
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    link = tmp_path / "link.txt"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are not available on this platform")
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("O_NOFOLLOW is not available on this platform")
+
+    with pytest.raises(OSError):
+        cli._read_rag_file(link)
+
+
+def test_read_rag_file_rejects_a_path_that_is_now_a_symlink(tmp_path, monkeypatch):
+    doc = tmp_path / "doc.txt"
+    doc.write_text("alpha", encoding="utf-8")
+    real_stat = os.stat
+
+    def linked_stat(path, *, follow_symlinks=True):
+        if not follow_symlinks and Path(path) == doc:
+            return SimpleNamespace(st_mode=stat.S_IFLNK | 0o777)
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(cli.os, "stat", linked_stat)
+
+    with pytest.raises(OSError):
+        cli._read_rag_file(doc)
+
+
+def test_directory_ingest_fails_closed_on_swapped_symlink(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "corpus"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    link = root / "link.txt"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are not available on this platform")
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("O_NOFOLLOW is not available on this platform")
+    monkeypatch.setattr(cli, "_rag_files", lambda _root: iter([link]))
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(_dir_args(root))
+
+    assert exc.value.code == 1
+    captured = capsys.readouterr()
+    assert "could not read link.txt" in captured.err
+    assert "secret" not in captured.err
+    assert all(not store.chunks for store in _FakeStore.instances)
 
 
 def test_rag_ingest_directory_with_no_files(tmp_path, capsys):
