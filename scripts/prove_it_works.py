@@ -1939,7 +1939,7 @@ def select_checks(only: str | None, smoke: bool) -> list[str]:
     if smoke:
         return list(SMOKE_CHECKS)
     if only:
-        return [item.strip() for item in only.split(",") if item.strip()]
+        return [item.strip() for item in only.split(",")]
     return list(CHECKS)
 
 
