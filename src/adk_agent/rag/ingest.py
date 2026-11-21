@@ -1,4 +1,4 @@
-"""RAG ingestion: chunk, embed, and upsert with ACL bound at ingestion (ADR-0035)."""
+"""RAG ingestion: chunk, embed, and replace a source with ACL bound at ingestion."""
 
 from __future__ import annotations
 

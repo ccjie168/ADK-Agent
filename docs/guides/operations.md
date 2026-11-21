@@ -183,7 +183,7 @@
 
 租户隔离：
 
-- 表启用并强制 RLS，策略 `adk_rag_chunks_tenant` 的判定是 `tenant = current_setting('app.tenant_id', true)`。每次 upsert 与检索都在事务里先 `SET LOCAL` 等价的 `set_config`，事务结束即失效，不会漏到池里的下一条连接。
+- 表启用并强制 RLS，策略 `adk_rag_chunks_tenant` 的判定是 `tenant = current_setting('app.tenant_id', true)`。每次写入（重新摄取是整源替换）与检索都在事务里先 `SET LOCAL` 等价的 `set_config`，事务结束即失效，不会漏到池里的下一条连接。
 - 应用角色必须是表的属主，不能是 superuser，不能有 `BYPASSRLS`。superuser 永远绕过 RLS，用它验证会得到假阳性。
 - 不要为了排障临时 `DISABLE ROW LEVEL SECURITY`。检索路径不提供无 ACL 的降级分支。
 
