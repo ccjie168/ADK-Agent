@@ -110,7 +110,19 @@ def test_retrieve_embeds_and_searches():
 def test_retrieve_maps_distance_to_confidence():
     service, _, _ = _service([_row("near", 0.0), _row("halfway", 1.0), _row("far", 2.0)])
     results = _retrieve(service)
-    assert [round(citation.confidence, 3) for citation in results] == [1.0, 0.5, 0.0]
+    assert [round(citation.confidence, 3) for citation in results] == [1.0, 0.0, 0.0]
+
+
+def test_retrieve_default_guard_drops_orthogonal_chunks():
+    service, _, _ = _service([_row("similar", 0.5), _row("orthogonal", 1.0)], guard=RagGuard())
+    results = _retrieve(service)
+    assert [citation.snippet for citation in results] == ["text similar"]
+
+
+def test_confidence_is_clamped():
+    service, _, _ = _service([_row("exact", 0.0), _row("negative", 1.5)])
+    results = _retrieve(service)
+    assert [round(citation.confidence, 3) for citation in results] == [1.0, 0.0]
 
 
 def test_retrieve_applies_guard():

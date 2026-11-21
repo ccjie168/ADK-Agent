@@ -26,8 +26,8 @@ class _SearchStore(Protocol):
 
 
 def _confidence(distance: float) -> float:
-    """Map cosine distance (0..2) to confidence (1..0), clamped."""
-    return min(1.0, max(0.0, 1.0 - distance / 2.0))
+    """Clamp cosine similarity (1 - distance) into [0, 1] as confidence."""
+    return min(1.0, max(0.0, 1.0 - distance))
 
 
 class PgVectorRagService:
