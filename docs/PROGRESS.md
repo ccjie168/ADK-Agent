@@ -9,7 +9,7 @@
 
 - 代码在 `master`，`52741ad`。SLICE-113 到 SLICE-216 已通过 PR #22 到 #188 合并，PR #162 到 #164 记录进度与验收，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
 - 最近门禁: `--full` 9 步全 PASS，1943 passed, 102 skipped（`docs/evidence/SLICE-216-prove-smoke.txt`；多出的 skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
-- 端到端验收: `python scripts/prove_it_works.py` 12 项真实进程/真实 Postgres 检查，2026-11-21 跑出 12/12 PASS（`docs/evidence/prove-2026-11-21.txt`），复盘见 `docs/reviews/retrospective-2026-11-21.md`。
+- 端到端验收: `python scripts/prove_it_works.py` 12 项真实进程/真实 Postgres 检查，2026-11-21 跑出 12/12 PASS（`docs/evidence/prove-2026-11-21.txt`），复盘见 `docs/reviews/retrospective-2026-11-21.md`；SLICE-204 到 216 之后于 2026-11-22 在 `3f7d325` 重跑仍是 12/12 PASS（`docs/evidence/prove-2026-11-22.txt`，含 `--smoke` 4/4）。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
 - M6 已收口：Gate 1（ADR-0030 角色职责分离）、Gate 2/3（ADR-0028 网关策略服务端化）、Gate 4（ADR-0029 风险分级 L1–L4 + ADR-0034 写工具幂等）。Gate 5 是端到端 trace 验证，随前四项一起闭环（审计 trace_id 与 OTel trace_id 已对齐）。
