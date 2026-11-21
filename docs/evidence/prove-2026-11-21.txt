@@ -1,0 +1,78 @@
+端到端验证（prove it works）
+日期: 2026-11-21
+基线: master `38841ea`
+入口: `python scripts/prove_it_works.py`（新增；12 项检查，全部 PASS）
+
+一、方法
+
+- 每个检查启动真实进程或真实容器，走 HTTP/SDK 调用，直接查询 Postgres 里落下的审计行；不 mock 服务边界。
+- Postgres 使用 `pgvector/pgvector:pg15` 容器（临时启动、随机端口、随机口令、结束即删除），向量扩展由 `PgVectorRagStore` 自己创建。
+- 模型与嵌入走本地 OpenAI 兼容桩（`/v1/chat/completions`、`/v1/embeddings`），经真实 `litellm` 通道调用；不访问外部 API，不使用任何真实密钥。
+- 完整一轮耗时约 166 秒；日志与 `report.json` 写入临时工作目录，默认跑完删除，加 `--keep` 才保留。
+- 运行前需在虚拟环境安装声明过的 `[litellm]` extra；按未锁定版本直接解析会引入带已知漏洞的
+  `wcmatch`，开发环境应在跑完验收后恢复依赖，生产与 CI 仍按 `requirements/runtime.lock` 安装。
+- 容器镜像取自本机可达的镜像源；默认跑完删除临时工作目录（含生成的签名私钥），需要保留时加 `--keep`。
+
+二、结果（12/12 PASS）
+
+P1 环境
+- 容器内 `select 1` 成功；桩服务 `/healthz` 200。
+
+P2 审计链
+- 文件链：3 条记录、`verify_audit_file -> 3`；改动第 2 条 `target` 后抛 `AuditChainBroken`。
+- Postgres 链：同一批事件写入 `adk_audit_records`，`verify_audit_database -> 3`；用 SQL 篡改一行 `event` 后抛 `AuditChainBroken`。
+
+P3 发布 / 加载 / 对话
+- 签名工件经 `serve-registry` 上传并落库；两个 agent（启动引用与按需加载）各跑一轮真实对话，回复均含 `PROOF-OK`，审计表 2 条 `agent.run`（状态 ok）。
+
+P4 工具网关
+- 授权工具 200；未授权工具 403 `tool_denied`；需审批工具 403 且审计 `error_code=approval_required`；写工具缺幂等键 400 `idempotency_missing`，带键 200；同键重放只执行一次处理器；`tool.call` 审计 6 条。
+
+P5 MCP（streamable HTTP）
+- 匿名 `initialize` 401；带 token 握手成功、`tools/list` 1 个工具、`tools/call` 返回 `PROOF-OK`；审计主体出现 `mcp_user`。
+
+P6 A2A（peer 模式）
+- 匿名取 card 401；未授权 peer 取 card 404（不暴露存在性）、调用 403；授予 `read,invoke` 后 card 200、`message/send` 200 且回复含 `PROOF-OK`。
+
+P7 RAG
+- pgvector 扩展已加载（本轮 0.8.7）；两个文档分别按 public 与受限 subject 摄取。
+- 公开文档可按查询命中；受限文档对 `carol` 0 命中、对 `bob` 1 命中（ACL 生效）。
+- 按需加载的 agent 在对话中收到 `<retrieved_context ...>` 注入块，回复包含检索到的标记文本；受限文档未进入提示。
+- `rag.retrieve` 审计 1 条、`rag_returned=1`，审计行不含分块原文。
+
+P8 模型网关
+- manifest 允许 `litellm`：请求 200 且回复经桩模型返回；请求 `gemini` 被 403 `model_denied`。`model.call` 审计 2 条。
+
+P9 审批
+- 两个进程共用 Postgres 收件箱；并发一批准一拒绝得到 `[200, 409]`，只有一个决定生效；过期请求不出现在待办；历史接口返回该记录。
+
+P10 触发
+- 匿名 webhook 401；首次触发 200 且 agent 运行成功；同幂等键再次触发返回 `duplicate=true` 且 `run_id` 相同；带 `requires_approval` 授权的 agent 触发被 409 `approval_required` 拒绝。
+
+P11 共享配额
+- 两个 console 进程共用同一个 Postgres 配额计数；进程 1 首次 200，进程 2 立即 429 `quota_exceeded`，进程 1 再跑同样 429。
+
+P12 备份恢复
+- 备份包含 registry、approvals、audit 三类成员；恢复到全新目录后审计链仍验证通过，解析出的注册表记录里有 `proof_backup`。
+
+三、门禁
+
+$ python scripts/check.py --fast
+1890 passed, 98 skipped（ALL PASS）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、已知限制（本次没有覆盖）
+
+- 沙箱执行（POSIX-only）在 Windows 上不可用，`sandboxed` 路由未在本机跑通。
+- 多副本 Kubernetes 清单没有集群可部署，只有文本级守卫测试。
+- 真实外部模型与嵌入通道（Gemini/Claude/DeepSeek）未调用；RAG 排序质量与真实 LiteLLM embedding 仍未验收。
+- OIDC 登录链路没有真实 IdP；浏览器 UI 未做自动化点击。
+- Redis 跨副本限流未在本轮复跑（既有证据见 SLICE-084）。
+
+五、本轮发现
+
+1. console 启动时用 `--agent-ref` 加载的 agent 没有检索上下文：`_register` 的启动循环不传 manifest，而 `rag.context` 只在按需加载路径构造。按需加载路径已验证可用。属真实缺口，建议单开切片。
+2. `triggers register --digest` 要求 `sha256:` 前缀，而注册表记录里是裸 hex；触发服务会归一化，所以能用，但命令行容易踩。
+3. 无 OIDC 的 console 主体租户固定为 `local`，RAG 只能看到该租户的文档；正式部署需由 OIDC claim 提供租户，手册应写明。

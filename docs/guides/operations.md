@@ -306,3 +306,9 @@
 - OTel 默认关闭。设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 后导出 `agent.run`、`model.call`、`tool.call` 与 `a2a.call`，属性只含租户、run、agent、模型、token 用量与成本，不含 prompt、completion 或工具参数原文。导出失败只告警一次，不影响运行；审计链继续是权威记录。
 - 公开仓库已启用 GitHub secret scanning、push protection 与 Dependabot security updates。自定义 pattern 与 validity checks 需要付费套餐，当前关闭。仓库根的 `.secrets.baseline` 是 detect-secrets 的已审基线；门禁只读它、不改写，新命中会让门禁失败。更新基线必须单独提交并评审。已接受漏洞的到期由 `.trivyignore.yaml` 的 `expired_at` 控制，`check.py` 与 `sbom.py` 会停止忽略过期项。
 - 滚动升级前跑一次 `python scripts/check.py --full`，升级后重跑冒烟与验签。
+- 发布前或变更治理面之后，在验收机上跑 `python scripts/prove_it_works.py`：它起真实进程与一个临时
+  pgvector 容器，覆盖发布加载、工具授权、MCP、A2A、RAG、审批、触发、共享配额与备份恢复。前提是
+  Docker 可用、镜像源能取到 `pgvector/pgvector:pg15`（脚本当前写的是本机可用的镜像源地址，换网络时
+  改 `scripts/prove_it_works.py` 里的镜像名），并在虚拟环境安装 `[litellm]` extra（模型与嵌入走本地
+  桩，不调用外部 API，但没有 litellm 通道会起不来）。12 项全 PASS 才算通过；默认跑完删除临时工作目录，
+  需要保留日志与 `report.json` 时加 `--keep`。结果与已知限制见 `docs/evidence/prove-2026-11-21.txt`。
