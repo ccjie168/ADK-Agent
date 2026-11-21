@@ -55,6 +55,8 @@
 
 生产环境建议用 OIDC 替代共享 Bearer token：各服务加 `--oidc-config`，控制台去掉 `--role admin`，授权由 token 的租户与角色决定。共享 token 只适合演示与内网。
 
+没有 OIDC 时（共享 Bearer token 或免鉴权），控制台主体的租户固定为 `local`、用户为 `console_user`，角色来自 `--role`。此时 RAG 只能检索 `local` 租户的文档，审计与配额也落在 `local`。正式部署必须用 OIDC：租户取自 token 的 `tenant` claim（`tenant_claim` 可改名，缺少该 claim 的 token 被拒绝），各服务按该租户隔离。
+
 控制台的浏览器登录需要在同一配置文件加 `browser` 段。`redirect_uri` 必须与控制台的真实地址一致，回调路径固定为 `/auth/callback`：
 
 ```json

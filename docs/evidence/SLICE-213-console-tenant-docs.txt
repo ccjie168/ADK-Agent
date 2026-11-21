@@ -1,0 +1,38 @@
+SLICE-213 无 OIDC 控制台的租户说明
+日期: 2026-11-21
+依据: PROGRESS 已知缺口第 10 条第 4 项
+基线: `a41c9b8`
+
+一、契约
+
+- 只改手册，没有对外接口变化，`docs/contracts/` 不动。
+
+二、实现
+
+- `docs/guides/operations.md` 的鉴权段补：没有 OIDC 时控制台主体的租户固定为 `local`、用户为
+  `console_user`，角色来自 `--role`；RAG、审计与配额都只覆盖 `local`。正式部署用 OIDC，租户取自
+  token 的 `tenant` claim（`tenant_claim` 可改名，缺少该 claim 的 token 被拒绝）。
+- `docs/guides/install-and-use.md` 的服务参数表后补同一事实，并把 OIDC 标为正式部署路径。
+- `tests/test_tenant_docs.py` 锁定两份手册的关键句与先后顺序。
+
+三、绿态
+
+$ python -m pytest tests/test_tenant_docs.py -q
+3 passed
+
+$ python scripts/check.py --fast
+（待填）
+
+$ python scripts/check.py --full
+（待填）
+
+四、红态
+
+基线 `a41c9b8` 加新用例、未改手册时：
+`pytest tests/test_tenant_docs.py` -> `3 failed`
+（两份手册都没有 `租户固定为 local`、`console_user` 与 `tenant_claim`，第三个用例在查找
+`正式部署用 OIDC` 时抛 `ValueError`。）
+
+五、范围与已知缺口
+
+- 不提供无 OIDC 时选择租户的参数：那会绕过鉴权。
