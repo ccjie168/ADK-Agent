@@ -361,7 +361,7 @@
 ## `serve` / `serve-many` / `serve-a2a` 的运行时检索（ADR-0036）
 
 - 三个命令都接受 `--rag-db URL --rag-dimensions N --rag-model MODEL [--rag-provider NAME]`（默认
-  `litellm`）。不给 `--rag-db` 不启用；给了但缺维度或模型退出 1。
+  `litellm`）。不给 `--rag-db` 不启用；给了但缺维度或模型退出 1；维度必须是正整数，0 或负数退出 1。
 - 只对 `--agent-ref` 加载的注册表记录生效，且要求该记录的 manifest `rag.enabled=true`；`--agent`/
   `--agents` 文件加载没有 manifest，不检索。`serve-many` 按每个 agent 各自的记录生效。
 - 检索在调用模型前做一次，结果作为固定边界块拼在用户消息前面；`top_k`、`min_confidence`、
@@ -500,7 +500,7 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 `litellm`）。
 
 - 不给 `--rag-db` 时不启用检索，行为不变；给了但缺 `--rag-dimensions` 或 `--rag-model` 退出 1；
-  未知 provider 退出 1。
+  `--rag-dimensions` 必须是正整数（0 或负数退出 1）；未知 provider 退出 1。
 - 只对 manifest 里 `rag.enabled=true` 的 agent 生效。控制台的 `--agents` 文件加载没有 manifest，
   因此不启用；按需加载的注册表记录按自己的 manifest 生效。触发服务按 pinned 记录生效。
 - 检索结果注入格式、失败语义与审计见 `rag_service.md`。

@@ -902,7 +902,11 @@ def _rag_factory(args: argparse.Namespace):
     if args.rag_dimensions is None or args.rag_model is None:
         print("--rag-db needs --rag-dimensions and --rag-model", file=sys.stderr)
         raise SystemExit(1)
+    if args.rag_dimensions <= 0:
+        print("--rag-dimensions must be positive", file=sys.stderr)
+        raise SystemExit(1)
     from .rag.factory import build_rag_factory
+    from .rag.vector_store import RagStoreUnavailable
 
     try:
         return build_rag_factory(
@@ -912,7 +916,7 @@ def _rag_factory(args: argparse.Namespace):
             provider=args.rag_provider,
             audit=_audit_sink(args),
         )
-    except ValueError as exc:
+    except (RagStoreUnavailable, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from None
 
