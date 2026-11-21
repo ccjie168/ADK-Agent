@@ -30,9 +30,10 @@ Model Policy → Model Alias → Gateway → Endpoint，不能让 `if provider =
 
 - `AgentManifest`、`ModelPolicy` 与网关 schema 变更；新增路由器组件。
 - `budget_usd` 由 SLICE-187 执行（每租户 `BudgetTracker`）。`model_allowlist` 原为“声明未执行”，
-  SLICE-205 补齐：空列表不限制模型；非空时直连请求与别名候选都按列表过滤，拒绝审计
-  `error_code=model_not_allowed`。已知边界：控制台与业务代码直接调用 `build_model()` 不经网关，
-  该路径不受 allowlist 约束；网关是唯一执行点。
+  SLICE-205 补齐：空列表不限制模型；非空时直连请求、别名候选与 `GatewayLlm` 包装调用都检查。直连
+  拒绝审计 `error_code=model_not_allowed`，别名无候选审计 `alias_not_allowed`。已知边界：控制台把
+  模型包成 `GatewayLlm`，但合成策略只含 provider，不含 manifest 的 `model_allowlist`，所以 console
+  路径不受该 allowlist 约束。
 - 成本/令牌/追踪已有（`models/gateway.py` 的 audit 与 `observability`），扩展到 alias 与降级事件。
 
 ## 切片（待确认后分配）

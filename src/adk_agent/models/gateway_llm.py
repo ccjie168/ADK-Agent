@@ -15,6 +15,7 @@ from ..core import ModelPolicy
 from ..core.context import current_invocation
 from .gateway import (
     ModelDenied,
+    check_model,
     check_provider,
     egress_for,
     emit_model_audit,
@@ -96,6 +97,25 @@ class GatewayLlm(BaseLlm):
                 egress=egress,
                 status="denied",
                 error_code="provider_not_allowed",
+                started=started,
+            )
+            raise
+
+        try:
+            check_model(model_name, self.policy)
+        except ModelDenied:
+            await emit_model_audit(
+                self.audit,
+                invocation,
+                provider=self.provider,
+                model=model_name,
+                args_hash=args_hash,
+                result_hash=None,
+                tokens=None,
+                cost_usd=None,
+                egress=egress,
+                status="denied",
+                error_code="model_not_allowed",
                 started=started,
             )
             raise

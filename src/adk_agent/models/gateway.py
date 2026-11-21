@@ -135,7 +135,28 @@ class PolicyModelGateway:
         # Imported here: routing imports ModelDenied from this module.
         from .routing import resolve_candidates
 
-        candidates = resolve_candidates(policy, alias, data_classes or [])
+        started = time.perf_counter()
+        try:
+            candidates = resolve_candidates(policy, alias, data_classes or [])
+        except ModelDenied:
+            # No candidate passed the provider/model/data-class filters; the
+            # denial is audited here because routing never reaches a provider.
+            await emit_model_audit(
+                self.audit,
+                invocation,
+                provider=request.provider,
+                model=request.model,
+                args_hash=hash_messages(request),
+                result_hash=None,
+                tokens=None,
+                cost_usd=None,
+                egress="none",
+                status="denied",
+                error_code="alias_not_allowed",
+                started=started,
+                model_alias=alias,
+            )
+            raise
         last_error: Exception | None = None
         for index, candidate in enumerate(candidates):
             routed = request.model_copy(

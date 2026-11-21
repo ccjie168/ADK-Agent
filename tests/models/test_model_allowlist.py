@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
+from google.adk.models import BaseLlm
+from google.genai import types
 
 from adk_agent.core import (
     AgentRef,
@@ -17,7 +20,9 @@ from adk_agent.core import (
     ModelResponse,
     Principal,
 )
+from adk_agent.core.context import reset_invocation, set_invocation
 from adk_agent.models.gateway import ModelDenied, PolicyModelGateway
+from adk_agent.models.gateway_llm import GatewayLlm
 from adk_agent.models.routing import resolve_candidates
 
 
@@ -177,3 +182,63 @@ def test_provider_denial_wins_over_model_check():
 
     [event] = audit.events
     assert event.error_code == "provider_not_allowed"
+
+
+def test_alias_without_permitted_candidate_is_audited():
+    audit = FakeAudit()
+    gateway = PolicyModelGateway({"litellm": FakeProvider()}, audit=audit)
+    policy = ModelPolicy(
+        provider_allowlist=["litellm"],
+        model_allowlist=["second-model"],
+        model_aliases=[
+            ModelAlias(
+                alias="primary",
+                candidates=[ModelCandidate(provider="litellm", model="first-model")],
+            )
+        ],
+    )
+
+    with pytest.raises(ModelDenied):
+        asyncio.run(
+            gateway.complete(_invocation(), _request("first-model"), policy, alias="primary")
+        )
+
+    [event] = audit.events
+    assert event.status == "denied"
+    assert event.error_code == "alias_not_allowed"
+    assert event.model_alias == "primary"
+    assert event.egress == "none"
+
+
+async def _drain(gateway: GatewayLlm, request: SimpleNamespace) -> None:
+    async for _ in gateway.generate_content_async(request):
+        pass
+
+
+def test_gateway_llm_enforces_model_allowlist():
+    audit = FakeAudit()
+
+    class Delegate(BaseLlm):
+        async def generate_content_async(self, llm_request, stream=False):
+            yield None
+
+    gateway = GatewayLlm(
+        model="gemini-2.5-pro",
+        delegate=Delegate(model="gemini-2.5-pro"),
+        provider="gemini",
+        policy=ModelPolicy(provider_allowlist=["gemini"], model_allowlist=["allowed-model"]),
+        audit=audit,
+    )
+    request = SimpleNamespace(
+        contents=[types.Content(role="user", parts=[types.Part(text="hi")])],
+        model="gemini-2.5-pro",
+    )
+    token = set_invocation(_invocation())
+    try:
+        with pytest.raises(ModelDenied):
+            asyncio.run(_drain(gateway, request))
+    finally:
+        reset_invocation(token)
+
+    [event] = audit.events
+    assert event.error_code == "model_not_allowed"
