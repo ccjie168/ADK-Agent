@@ -45,7 +45,9 @@ class _FakeStore:
         self.search_calls: list[dict[str, object]] = []
         _FakeStore.instances.append(self)
 
-    async def upsert(self, chunks) -> None:
+    async def replace(self, chunks) -> None:
+        source_id = chunks[0].source_id
+        self.chunks = [chunk for chunk in self.chunks if chunk.source_id != source_id]
         self.chunks.extend(chunks)
 
     async def search(self, tenant, embedding, *, data_classes, subject=None, limit=10):

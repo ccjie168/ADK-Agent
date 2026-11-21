@@ -52,7 +52,9 @@ class FakeStore:
     def __init__(self) -> None:
         self.chunks: list[RagChunk] = []
 
-    async def upsert(self, chunks: list[RagChunk]) -> None:
+    async def replace(self, chunks: list[RagChunk]) -> None:
+        source_id = chunks[0].source_id
+        self.chunks = [chunk for chunk in self.chunks if chunk.source_id != source_id]
         self.chunks.extend(chunks)
 
 
@@ -87,6 +89,56 @@ def test_ingest_writes_chunks_with_acl():
     assert chunk.allowed_subjects == ["alice"]
     assert chunk.embedding == [0.1, 0.2]
     assert len(embedder.requests) == 1
+
+
+def test_reingest_replaces_stale_chunks():
+    store = FakeStore()
+    pipeline = IngestionPipeline(
+        store, FakeEmbedder(), provider="fake", model="embed-model", chunk_chars=6
+    )
+
+    def ingest(text: str) -> None:
+        asyncio.run(
+            pipeline.ingest(
+                _invocation(),
+                tenant="acme",
+                source_id="doc-1",
+                text=text,
+                data_classes=["internal"],
+                policy=PUBLIC_POLICY,
+            )
+        )
+
+    ingest("alpha beta gamma delta epsilon zeta")
+    assert len(store.chunks) > 1
+
+    ingest("alpha")
+    assert [chunk.text for chunk in store.chunks] == ["alpha"]
+    assert [chunk.chunk_id for chunk in store.chunks] == ["c0"]
+
+
+def test_reingest_leaves_other_sources_alone():
+    store = FakeStore()
+    pipeline = IngestionPipeline(store, FakeEmbedder(), provider="fake", model="embed-model")
+
+    def ingest(source_id: str, text: str) -> None:
+        asyncio.run(
+            pipeline.ingest(
+                _invocation(),
+                tenant="acme",
+                source_id=source_id,
+                text=text,
+                data_classes=["internal"],
+                policy=PUBLIC_POLICY,
+            )
+        )
+
+    ingest("doc-a", "alpha beta")
+    ingest("doc-b", "gamma delta")
+    ingest("doc-a", "alpha")
+
+    by_source = {chunk.source_id: chunk.text for chunk in store.chunks}
+    assert by_source == {"doc-a": "alpha", "doc-b": "gamma delta"}
 
 
 def test_ingest_rejects_empty_text():

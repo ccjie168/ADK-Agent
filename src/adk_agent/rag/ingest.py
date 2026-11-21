@@ -9,7 +9,7 @@ from .vector_store import RagChunk
 
 
 class ChunkStore(Protocol):
-    async def upsert(self, chunks: list[RagChunk]) -> None: ...
+    async def replace(self, chunks: list[RagChunk]) -> None: ...
 
 
 class Embedder(Protocol):
@@ -100,7 +100,7 @@ class IngestionPipeline:
             )
             for index, (piece, vector) in enumerate(zip(pieces, response.vectors, strict=True))
         ]
-        await self.store.upsert(chunks)
+        await self.store.replace(chunks)
         return len(chunks)
 
 

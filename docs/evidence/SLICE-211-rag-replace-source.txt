@@ -1,0 +1,43 @@
+SLICE-211 重新摄取整源替换
+日期: 2026-11-21
+依据: PROGRESS 已知缺口第 9 条（目录摄取不做增量同步，文件变短会留下尾部分块）
+基线: `34c088f`
+
+一、契约
+
+- 先改 `docs/contracts/rag_service.md`（新增「摄取与替换」）与 `docs/contracts/cli.md` 的
+  `rag ingest` 一节：同一来源重新摄取是整源替换，写入同一事务里删除陈旧分块。
+
+二、实现
+
+- `src/adk_agent/rag/ingest.py`：`ChunkStore` 端口从 `upsert` 改为 `replace`，流水线改调它。
+- `src/adk_agent/rag/vector_store.py`：新增 `replace`，在单个事务里先
+  `DELETE ... WHERE tenant = $1 AND source_id = $2 AND chunk_id <> ALL($3)`，再插入新分块；
+  插入语句抽到 `_write` 与既有 `upsert` 共用。跨来源的输入被拒绝。
+- 单文件与目录模式都经过 `IngestionPipeline`，行为一致；空内容仍在嵌入前拒绝，不删除已有分块。
+
+三、绿态
+
+$ python -m pytest tests/test_rag_ingest.py tests/test_cli_rag.py tests/test_rag_factory.py -q
+37 passed, 1 skipped
+
+$ TEST_POSTGRES_URL=postgresql://adk:adk@127.0.0.1:55433/adk python -m pytest tests/test_rag_vector_store_postgres.py -q
+1 passed（临时 `pgvector/pgvector:pg15` 容器）
+
+$ python scripts/check.py --fast
+1930 passed, 99 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `34c088f` 加新用例、未改实现时：
+`pytest tests/test_rag_ingest.py` -> `3 failed, 3 passed`
+（流水线仍在调 `upsert`，假存储按新契约只实现 `replace`，三个用例 `AttributeError`；空文本与
+嵌入失败两个既有用例不经过写入，照常通过。）
+
+五、范围与已知缺口
+
+- 目录级增量同步（按 mtime 或摘要跳过未变文件）不在本切片。
+- `is_symlink` 与 `read_text` 之间的 TOCTOU 窗口不在本切片。
