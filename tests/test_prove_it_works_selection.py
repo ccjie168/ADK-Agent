@@ -28,7 +28,7 @@ def test_default_runs_every_check():
     selected = module.select_checks(None, False)
 
     assert selected == list(module.CHECKS)
-    assert len(selected) == 12
+    assert len(selected) == len(module.CHECKS)
 
 
 def test_smoke_and_only_are_mutually_exclusive(capsys):

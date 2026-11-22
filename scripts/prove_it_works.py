@@ -1917,6 +1917,58 @@ def check_backup(proof: Proof) -> Result:
     )
 
 
+def check_console_ui(proof: Proof) -> Result:
+    """P13: the console index serves the design-token and metric-card baseline."""
+    placeholder = proof.work / "ui_agent.py"
+    placeholder.write_text(
+        "from google.adk.agents import LlmAgent\n"
+        "from adk_agent import build_model\n"
+        "\n"
+        "agent = LlmAgent(name='ui_agent', model=build_model(), instruction='proof')\n",
+        encoding="utf-8",
+    )
+    console = proof.start_service(
+        "console-ui",
+        [
+            "console",
+            "--agents",
+            str(placeholder),
+            "--allow-unauthenticated",
+            "--role",
+            "admin",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "{port}",
+        ],
+        health="http://127.0.0.1:{port}/healthz",
+        env=proof.service_env(),
+    )
+    page = httpx.get(f"http://127.0.0.1:{console.port}/", timeout=10)
+    require(page.status_code == 200, page.text)
+    html = page.text
+    for marker in (
+        "--radius-lg:",
+        "--shadow-card:",
+        "--space-1:",
+        ".metric-grid",
+        ".stat-card",
+        ".stat-label",
+        ".stat-value",
+        ".stat-delta",
+    ):
+        require(marker in html, f"missing marker {marker}")
+    return Result(
+        "P13 console UI baseline",
+        True,
+        "index HTML carries the design tokens and metric-card system",
+        [
+            "design tokens --radius-lg/--shadow-card/--space-1 present",
+            "metric-card classes .metric-grid/.stat-card/.stat-label/.stat-value/.stat-delta present",
+        ],
+    )
+
+
 CHECKS = {
     "P1": check_env,
     "P2": check_audit,
@@ -1930,6 +1982,7 @@ CHECKS = {
     "P10": check_triggers,
     "P11": check_quota,
     "P12": check_backup,
+    "P13": check_console_ui,
 }
 SMOKE_CHECKS = ("P1", "P2", "P3", "P4")
 
