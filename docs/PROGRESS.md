@@ -331,7 +331,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - SLICE-223 总览首页：聚合卡片网格，深链到各面板。
     - SLICE-224 审计面板 + 配额面板：只读查询可视化。
     - SLICE-225 RAG 面板 + 模型网关面板：只读查询可视化。
-    - SLICE-226 语义层面板：术语表、概念、能力绑定、路由回放。
+    - SLICE-226 语义层面板：术语表、概念、能力绑定、路由回放。~~已合并 `ce0c554`~~
     - SLICE-227 通用导入：术语表 / agent 定义 / RAG 语料三类格式。
     - SLICE-228 全局 Ask AI：确定性语义路由展示 + 深链。
     第二阶段（Ask AI 完整编排、前端框架、可视化实时化）按 ADR 触发条件另行分配。
