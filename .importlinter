@@ -22,5 +22,6 @@ forbidden_modules =
     adk_agent.runtime
     adk_agent.sandbox
     adk_agent.secretstore
+    adk_agent.semantics
     adk_agent.templates
     adk_agent.tools

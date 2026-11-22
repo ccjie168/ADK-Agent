@@ -1,0 +1,39 @@
+SLICE-217 语义层核心数据模型
+日期: 2026-11-22
+依据: ADR-0038 MVP 第 1 项
+基线: `c6893bc`
+
+一、契约
+
+- 新增 `docs/contracts/semantics.md`：术语层（Term/Concept/ConceptScheme/ConceptMapping）与能力层
+  （CapabilityId）的类型形状与校验规则；`exact` 映射不自指、与 `broad`/`narrow` 互斥；分层边界写入
+  `.importlinter`。
+
+二、实现
+
+- 新建 `src/adk_agent/semantics/`：`terminology.py`（SKOS 子集：每语言一个 pref_label、`broader`
+  有向图无环、映射两端存在、`exact` 一致）、`capability.py`（dot-namespaced `CapabilityId`）、
+  `__init__.py` 导出。
+- `.importlinter` 的 `core-isolation` 把 `adk_agent.semantics` 列入 core 的 forbidden，声明分层边界。
+
+三、绿态
+
+$ python -m pytest tests/test_semantics_model.py -q
+7 passed
+
+$ python scripts/check.py --fast
+1950 passed, 102 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `c6893bc` 加新用例、未改实现时：
+`pytest tests/test_semantics_model.py` -> 1 collection error（`ModuleNotFoundError: adk_agent.semantics`），
+六个用例无法收集；spec 反例所述「六个用例 ImportError」即指此。
+
+五、范围与已知缺口
+
+- 术语层存储（SLICE-218）、数据领域维（SLICE-219）、能力映射（SLICE-220）、确定性路由（SLICE-221）。
+- `exact` 的传递闭包推理属第二阶段，不在本切片。
