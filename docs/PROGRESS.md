@@ -3,7 +3,7 @@
 更新日期: 2026-11-22
 分支: master（工作区干净，只留本地工具目录未跟踪）
 最新提交: `608d64a` feat: add a release smoke subset to the proof harness (SLICE-216) (#188)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037 交付；ADR-0038（语义层）2026-11-22 已确认，MVP 五个切片（SLICE-217 到 221）连续执行，当前 SLICE-220
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037 交付；ADR-0038（语义层）2026-11-22 已确认，MVP 五个切片（SLICE-217 到 221）连续执行，当前 SLICE-221
 
 ## 本次暂停交接
 
@@ -322,7 +322,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - SLICE-217 语义层核心数据模型：术语层（Concept/Term/Mapping）与能力层（CapabilityId）的类型与契约，校验标签唯一、层级无环、`exact_match` 一致。~~已合并 `e8cf480`~~
     - SLICE-218 术语层存储：registry 双后端（文件 + Postgres），租户隔离，复用 `safe_join` / RLS。~~已合并 `ba2361a`~~
     - SLICE-219 数据领域维：领域概念类型，与敏感度 `DataClass` 正交，租户可扩展。~~已合并 `a14c331`~~
-    - SLICE-220 能力映射：能力 id 关联 `tool_grants` / A2A skill，校验能力 id 不悬空。
+    - SLICE-220 能力映射：能力 id 关联 `tool_grants` / A2A skill，校验能力 id 不悬空。~~已合并 `4daa518`~~
     - SLICE-221 确定性语义路由：需求 → 概念 → 能力 → agent 的确定性映射，落到 `PlanStrategy`。
     第二阶段（语义路由模型化、独立图存储、标注验收）按 ADR 触发条件另行分配。
 
