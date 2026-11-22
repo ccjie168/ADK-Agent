@@ -1,9 +1,9 @@
 # 项目进度登记
 
-更新日期: 2026-11-21
+更新日期: 2026-11-22
 分支: master（工作区干净，只留本地工具目录未跟踪）
 最新提交: `608d64a` feat: add a release smoke subset to the proof harness (SLICE-216) (#188)
-状态: 可交接暂停；M6 Enterprise Trust Chain 已收口；ADR-0031、ADR-0033、ADR-0035、ADR-0036、ADR-0037 全部交付；端到端验收脚本与复盘已入库；验收缺口的第 1、2 条已由 SLICE-204/205 修复；已接受 ADR 的缺口清单为空，下一步按第 10 条的剩余项与第 9 条的 RAG 残余继续
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037 交付；ADR-0038（语义层）2026-11-22 已确认，MVP 五个切片（SLICE-217 到 221）连续执行，当前 SLICE-217
 
 ## 本次暂停交接
 
@@ -317,6 +317,14 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - ~~`triggers register --digest` 要求 `sha256:` 前缀，注册表记录是裸 hex~~ 已由 SLICE-209 修复：裸 64 hex 也可注册，存储统一归一化为 `sha256:<hex>`。
     - ~~无 OIDC 的 console 主体租户固定为 `local`，RAG 只能看到该租户文档；正式部署需 OIDC claim 提供租户~~ 已由 SLICE-213 写进运维与使用手册：该模式只覆盖 `local`（admin 读路径仍可见其它租户审计），正式部署用 OIDC 的 `tenant` claim。
     - 验收脚本依赖 `[litellm]` extra 与可用的 pgvector 镜像源；按未锁定版本安装会引入带已知漏洞的 `wcmatch`，验收后应恢复依赖。
+
+11. ADR-0038（语义层）2026-11-22 已确认，MVP 连续执行中（`docs/decisions/ADR-0038-semantic-layer.md`）：
+    - SLICE-217 语义层核心数据模型：术语层（Concept/Term/Mapping）与能力层（CapabilityId）的类型与契约，校验标签唯一、层级无环、`exact_match` 一致。
+    - SLICE-218 术语层存储：registry 双后端（文件 + Postgres），租户隔离，复用 `safe_join` / RLS。
+    - SLICE-219 数据领域维：领域概念类型，与敏感度 `DataClass` 正交，租户可扩展。
+    - SLICE-220 能力映射：能力 id 关联 `tool_grants` / A2A skill，校验能力 id 不悬空。
+    - SLICE-221 确定性语义路由：需求 → 概念 → 能力 → agent 的确定性映射，落到 `PlanStrategy`。
+    第二阶段（语义路由模型化、独立图存储、标注验收）按 ADR 触发条件另行分配。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
