@@ -1969,15 +1969,23 @@ def check_console_ui(proof: Proof) -> Result:
     )
     require('id="audit-panel"' in html, "missing audit panel")
     require('id="quota"' in html, "missing quota panel")
+    require('id="rag"' in html, "missing rag panel")
+    require('id="model"' in html, "missing model panel")
+    rag = httpx.get(f"http://127.0.0.1:{console.port}/api/rag", timeout=10)
+    require(rag.status_code == 200, rag.text)
+    require("recent_retrievals" in rag.json(), rag.text)
+    model = httpx.get(f"http://127.0.0.1:{console.port}/api/model", timeout=10)
+    require(model.status_code == 200, model.text)
+    require("recent_calls" in model.json(), model.text)
     return Result(
         "P13 console UI baseline, overview and panels",
         True,
-        "index HTML carries the design tokens, metric-card system, overview, audit and quota panels",
+        "index HTML carries the design tokens, metric-card system, overview and capability panels",
         [
             "design tokens --radius-lg/--shadow-card/--space-1 present",
             "metric-card classes .metric-grid/.stat-card/.stat-label/.stat-value/.stat-delta present",
             "overview panel + /api/overview with 4 cards present",
-            "audit-panel and quota panels present",
+            "audit-panel, quota, rag and model panels present",
         ],
     )
 
