@@ -29,6 +29,8 @@ ALL = {
     "peers.manage",
     "policy.read",
     "policy.write",
+    "model.read",
+    "model.write",
     "ops.status",
 }
 
@@ -43,6 +45,7 @@ OPERATOR = BASE | {
     "peers.read",
     "registry.read",
     "policy.read",
+    "model.read",
 }
 
 PUBLISHER = BASE | {

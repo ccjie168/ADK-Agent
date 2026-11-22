@@ -140,6 +140,25 @@ def set_default_model(spec: str | None) -> None:
     _default_model_override = spec
 
 
+def is_valid_model_spec(spec: str) -> bool:
+    """True when ``spec`` has a recognised provider prefix or is a bare LiteLLM id.
+
+    A bare id (no ``:``) is treated as LiteLLM, matching :func:`build_model`.
+    """
+    if not spec or not spec.strip():
+        return False
+    if ":" not in spec:
+        return True
+    provider, name = spec.split(":", 1)
+    return provider in _PROVIDER_PREFIXES and bool(name.strip())
+
+
+def effective_default_model() -> str:
+    """Return the current global default model spec as ``provider:name`` (ADR-0040)."""
+    cfg = _default_model_config()
+    return f"{cfg.provider}:{cfg.name}"
+
+
 def _default_model_config() -> ModelConfig:
     if _default_model_override is not None:
         return _normalize(_default_model_override)
@@ -163,5 +182,7 @@ __all__ = [
     "build_model_gateway_app",
     "build_providers",
     "disable_thinking",
+    "effective_default_model",
+    "is_valid_model_spec",
     "set_default_model",
 ]

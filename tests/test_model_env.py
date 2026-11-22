@@ -42,3 +42,17 @@ def test_set_default_model_priority(monkeypatch):
     assert cfg.provider == "litellm"
     assert cfg.name == "openai/override-model"
     models.set_default_model(None)
+
+
+def test_is_valid_model_spec():
+    from adk_agent.models import is_valid_model_spec
+
+    assert is_valid_model_spec("gemini:gemini-2.5-pro")
+    assert is_valid_model_spec("litellm:deepseek/deepseek-v4-pro")
+    assert is_valid_model_spec("claude:claude-sonnet-5-5")
+    assert is_valid_model_spec("vertex:claude-3-5")
+    assert is_valid_model_spec("openai/gpt-4o")  # bare id -> litellm
+    assert not is_valid_model_spec("bogus:foo")
+    assert not is_valid_model_spec("gemini:")
+    assert not is_valid_model_spec("")
+    assert not is_valid_model_spec("   ")

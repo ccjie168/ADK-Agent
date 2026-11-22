@@ -7,8 +7,10 @@ import asyncio
 from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 
+from adk_agent.audit import ListAuditSink
 from adk_agent.console import build_console_app
 from adk_agent.registry import FileAgentRegistry
+from adk_agent.registry.model_config import FileModelConfigStore
 from adk_agent.registry.terminology import FileConceptSchemeStore
 from adk_agent.semantics import Concept, ConceptScheme, Term
 from adk_agent.tools import ToolCatalog, ToolEntry
@@ -363,3 +365,97 @@ def test_live_endpoint_streams_tick():
         assert response.headers["content-type"].startswith("text/event-stream")
         first = next(response.iter_text())
         assert "event: tick" in first
+
+
+def _model_config_app(tmp_path, roles=None, audit_sink=None):
+    store = FileModelConfigStore(tmp_path / "model")
+    return build_console_app(
+        _agents(),
+        auth_token="secret",
+        roles=roles or ["admin"],
+        model_config_store=store,
+        audit_sink=audit_sink,
+    )
+
+
+def test_index_has_model_config_controls():
+    with _client() as client:
+        page = client.get("/")
+
+    assert "设置默认模型" in page.text
+    assert 'id="model-config"' in page.text
+    assert 'id="model-config-save"' in page.text
+
+
+def test_model_config_get_requires_model_read():
+    app = build_console_app(_agents(), auth_token="secret", roles=["requester"])
+    with TestClient(app) as client:
+        response = client.get("/api/model-config", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 403
+
+
+def test_model_config_get_returns_stored(tmp_path):
+    store = FileModelConfigStore(tmp_path / "model")
+    asyncio.run(store.put("claude:claude-sonnet-5-5"))
+    app = build_console_app(
+        _agents(), auth_token="secret", roles=["admin"], model_config_store=store
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/model-config", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert response.json() == {"model": "claude:claude-sonnet-5-5"}
+
+
+def test_model_config_put_admin_only(tmp_path):
+    app = _model_config_app(tmp_path, roles=["operator"])
+    with TestClient(app) as client:
+        response = client.put(
+            "/api/model-config",
+            json={"model": "gemini:gemini-2.5-pro"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 403
+
+
+def test_model_config_put_validates_provider(tmp_path):
+    app = _model_config_app(tmp_path)
+    with TestClient(app) as client:
+        response = client.put(
+            "/api/model-config",
+            json={"model": "bogus:foo"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_model"}
+
+
+def test_model_config_put_persists_and_audits(tmp_path):
+    from adk_agent import models
+
+    store = FileModelConfigStore(tmp_path / "model")
+    sink = ListAuditSink()
+    app = build_console_app(
+        _agents(), auth_token="secret", roles=["admin"], model_config_store=store, audit_sink=sink
+    )
+    try:
+        with TestClient(app) as client:
+            response = client.put(
+                "/api/model-config",
+                json={"model": "gemini:gemini-2.5-pro"},
+                headers={"Authorization": "Bearer secret"},
+            )
+            assert response.status_code == 200
+            assert response.json() == {"model": "gemini:gemini-2.5-pro"}
+            got = client.get("/api/model-config", headers={"Authorization": "Bearer secret"})
+            assert got.json() == {"model": "gemini:gemini-2.5-pro"}
+    finally:
+        models.set_default_model(None)
+
+    events = [event for event in sink.recent() if event.action == "model.configure"]
+    assert len(events) == 1
+    assert events[0].status == "ok"
+    assert events[0].target == "gemini:gemini-2.5-pro"

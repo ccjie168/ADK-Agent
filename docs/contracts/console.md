@@ -243,6 +243,27 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 返回最近审计窗口内 `model.call` 事件的条数、用到的 `model_alias` 去重集合、`fallback_count` 总和。
 - 统计基于最近 200 条审计事件，是窗口摘要。审计不可用返回 502 `audit_unavailable`。
 
+## `GET /api/model-config` -> `{model}`
+
+```json
+{"model": "litellm:deepseek/deepseek-v4-pro"}
+```
+
+- 返回当前全局默认模型字符串（`provider:name` 语法，见 ADR-0040）。
+- 取值优先级：持久化 store（`--model-config-dir` / `--model-config-db` 配置且非空）> 运行时生效值
+  （内存 override > `ADK_AGENT_MODEL` > fallback）。
+- 需要 `model.read` 能力（admin + operator），缺少返回 403 `forbidden`。
+- 未配置 store 时不报错，回落到运行时生效值。
+
+## `PUT /api/model-config` -> `{model}`
+
+请求：`{"model": "<provider>:<name>"}`。需要 `model.write` 能力（仅 admin），缺少返回 403 `forbidden`。
+
+- 校验 provider 前缀合法（`:` 前段须在 `gemini|litellm|claude|vertex`，无 `:` 按 litellm 接受），
+  非法或空返回 400 `invalid_model`。
+- 写持久化 store（若配置）+ 更新内存 override（动态生效），并写一条 `model.configure` 审计。
+- store 不可用返回 503 `model_config_unavailable`；未配置 store 时仅更新内存 override。
+
 ## `GET /api/semantics` -> `[ConceptScheme]`
 
 返回当前租户的术语表列表，结构见 ADR-0038 的 `ConceptScheme`。未配置 `--terminology-dir` / `--terminology-db` 返回 404 `{"error":"terminology_not_configured"}`；存储不可用返回 503 `{"error":"terminology_unavailable"}`。

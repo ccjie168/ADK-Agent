@@ -1,0 +1,50 @@
+SLICE-231 控制台 model-config 端点 + 管理员 UI
+日期: 2026-11-22
+依据: ADR-0040 MVP 第 2 项（控制台端点 + 管理员 UI）
+基线: `fe11471`
+
+一、契约
+
+- `docs/contracts/console.md` 新增 `GET /api/model-config` 与 `PUT /api/model-config`。
+- `models/__init__.py` 新增公开谓词 `is_valid_model_spec(spec)` 与 `effective_default_model()`。
+
+二、实现
+
+- `models/__init__.py`：`is_valid_model_spec`（空串/非法 provider 前缀拒绝，无冒号按 litellm 接受）、
+  `effective_default_model()`（返回 `provider:name` 形式的当前默认模型）。
+- `console.py`：`build_console_app` / `run_console` 新增 `model_config_store` 参数；新增能力
+  `model.read`（admin + operator）与 `model.write`（admin）；`GET/PUT /api/model-config` 端点；
+  模型面板加「全局默认模型」区块与「设置默认模型」输入框/按钮（按 `model.write` 显隐）；
+  `PUT` 写 store + `set_default_model` + 落 `model.configure` 审计。
+- `cli.py`：`--model-config-dir` / `--model-config-db` 开关 + `_model_config_store(args)` 工厂。
+- `tests/test_console_me.py`：`ALL` / `OPERATOR` 能力清单随 ADR-0040 新增 `model.read` / `model.write`。
+
+三、红态
+
+基线 `fe11471` 加新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_model_env.py::test_is_valid_model_spec \
+    tests/test_console.py -k "model_config or is_valid" -q
+7 failed（`is_valid_model_spec` ImportError；`build_console_app` 无 `model_config_store` 参数
+TypeError；无 `/api/model-config` 端点；首页无「设置默认模型」）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_model_env.py::test_is_valid_model_spec \
+    tests/test_console.py -k "model_config or is_valid" -q
+7 passed
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console_me.py -q
+8 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1998 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- 多副本同步（ADR-0040 第二阶段）。
+- `prove_it_works` 验收（SLICE-232）。
+- 进程启动时读 store 初始化 override（由 SLICE-232 prove_it_works 路径覆盖；本切片 GET 直接读 store）。
