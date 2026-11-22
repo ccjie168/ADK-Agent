@@ -6,7 +6,7 @@
 ## 意图
 
 1. 新增 `GET /api/live`（SSE）：`text/event-stream`，每 5 秒推一个 `tick` 事件
-   （`event: tick` + `{"ts": <epoch>}`），客户端断开即停止。服务端控制节奏，为后续「有变化才推」
+   （`event: tick` + `{"ts": <iso 时间戳>}`），客户端断开即停止。服务端控制节奏，为后续「有变化才推」
    留出位置。
 2. 前端在登录后建立 `/api/live` 的 fetch + ReadableStream 订阅（复用 `/api/chat/stream` 的模式，
    带 `Authorization` header），收到 `tick` 就刷新总览、配额、RAG、模型、语义层五个面板
