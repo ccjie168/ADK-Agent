@@ -175,6 +175,7 @@ _CAPABILITIES_ALL = frozenset(
         "policy.write",
         "model.read",
         "model.write",
+        "semantics.write",
         "ops.status",
     }
 )
@@ -189,6 +190,7 @@ _CAPABILITIES_OPERATOR = _CAPABILITIES_BASE | {
     "registry.read",
     "policy.read",
     "model.read",
+    "semantics.write",
 }
 _CAPABILITIES_PUBLISHER = _CAPABILITIES_BASE | {
     "registry.read",
@@ -3410,9 +3412,12 @@ def build_console_app(
 
     @app.post("/api/import/terminology")
     async def import_terminology(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "semantics.write")
+        if denied is not None:
+            return denied
         if terminology is None:
             return JSONResponse({"error": "terminology_not_configured"}, status_code=404)
-        caller = _principal_for(request)
         try:
             body = await request.json()
         except ValueError:
@@ -3445,9 +3450,12 @@ def build_console_app(
 
     @app.post("/api/import/agent")
     async def import_agent(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "registry.publish")
+        if denied is not None:
+            return denied
         if registry is None:
             return JSONResponse({"error": "registry_not_configured"}, status_code=404)
-        caller = _principal_for(request)
         try:
             body = await request.json()
         except ValueError:

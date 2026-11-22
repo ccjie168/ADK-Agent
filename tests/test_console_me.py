@@ -31,6 +31,7 @@ ALL = {
     "policy.write",
     "model.read",
     "model.write",
+    "semantics.write",
     "ops.status",
 }
 
@@ -46,6 +47,7 @@ OPERATOR = BASE | {
     "registry.read",
     "policy.read",
     "model.read",
+    "semantics.write",
 }
 
 PUBLISHER = BASE | {

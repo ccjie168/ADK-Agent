@@ -459,3 +459,27 @@ def test_model_config_put_persists_and_audits(tmp_path):
     assert len(events) == 1
     assert events[0].status == "ok"
     assert events[0].target == "gemini:gemini-2.5-pro"
+
+
+def test_import_terminology_requires_semantics_write():
+    with _client() as client:
+        response = client.post(
+            "/api/import/terminology",
+            json={"scheme_id": "products", "concepts": []},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_import_agent_requires_registry_publish():
+    with _client() as client:
+        response = client.post(
+            "/api/import/agent",
+            json={"id": "bot", "version": "1.0.0", "tenant": "local"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}

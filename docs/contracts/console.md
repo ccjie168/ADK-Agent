@@ -21,7 +21,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - `capabilities` 由服务端按角色映射计算，映射只在一处定义。同一主体有多个角色时取并集。未知角色只得到基础能力。
 - 基础能力是 `chat.run`、`runs.read`、`sessions.read`。
 - 读接口按消费它的面板检查能力：审计 `audit.read`，策略 `policy.read`，注册表与评测 `registry.read`，工具目录 `tools.read`，工具授权 `grants.read`，连接器、连接器申请与凭据 `connectors.read`，对端与远程目录 `peers.read`。
-- 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`、决定 `grants.decide`，连接器/凭据/连接器申请决定 `connectors.manage`，对端/远程目录 `peers.manage`，全局默认模型 `model.write`。能力检查一律先于请求体解析、配置 404、非法参数 400 与租户检查。
+- 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`、决定 `grants.decide`，连接器/凭据/连接器申请决定 `connectors.manage`，对端/远程目录 `peers.manage`，全局默认模型 `model.write`，术语表导入 `semantics.write`，agent 导入 `registry.publish`。能力检查一律先于请求体解析、配置 404、非法参数 400 与租户检查。
 - 运行、计划、trace、会话与聊天接口检查基础能力 `runs.read`、`sessions.read`、`chat.run`。这些能力按现有角色表对每个主体都为真，检查用于未来增加受限角色时的防御；租户可见性仍由既有的租户过滤决定。带显式租户参数的读接口同样能力检查先于租户检查。
 - `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。
 - `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
@@ -274,11 +274,11 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `POST /api/import/terminology` -> `ConceptScheme`
 
-请求体是 `ConceptScheme` JSON。校验后落到调用方租户的术语表 store，返回导入的 `ConceptScheme`，并写一条 `terminology.import` 审计。未配置返回 404 `terminology_not_configured`；结构非法返回 400 `invalid_scheme`。
+请求体是 `ConceptScheme` JSON。校验后落到调用方租户的术语表 store，返回导入的 `ConceptScheme`，并写一条 `terminology.import` 审计。需要 `semantics.write` 能力（admin + operator），缺少返回 403 `forbidden`，先于配置检查与请求体解析。未配置返回 404 `terminology_not_configured`；结构非法返回 400 `invalid_scheme`。
 
 ## `POST /api/import/agent` -> `{id, version}`
 
-请求体是 `AgentManifest` JSON。校验后走 registry publish（manifest-only，不含工件字节），返回 `{id, version}`，并写一条 `agent.import` 审计。未配置返回 404 `registry_not_configured`；结构非法返回 400 `invalid_manifest`；跨租户且非 admin 返回 403 `tenant_forbidden`。
+请求体是 `AgentManifest` JSON。校验后走 registry publish（manifest-only，不含工件字节），返回 `{id, version}`，并写一条 `agent.import` 审计。需要 `registry.publish` 能力（publisher + admin），缺少返回 403 `forbidden`，先于配置检查与请求体解析。未配置返回 404 `registry_not_configured`；结构非法返回 400 `invalid_manifest`；跨租户且非 admin 返回 403 `tenant_forbidden`。
 
 ## `POST /api/ask-ai` -> `{hits, scheme_id}`
 

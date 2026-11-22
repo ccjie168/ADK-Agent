@@ -1,0 +1,39 @@
+SLICE-234 导入路由权限
+日期: 2026-11-23
+依据: 用户确认「基础角色不能发布 agent；术语表批量导入 admin+operator」
+基线: `687465c`
+
+一、契约
+
+`docs/contracts/console.md`：`POST /api/import/terminology` 需 `semantics.write`（admin+operator）；
+`POST /api/import/agent` 需 `registry.publish`（publisher+admin）。两者都先于配置 404 与请求体解析。
+
+二、实现
+
+- `console.py` 能力清单加 `semantics.write`（`_CAPABILITIES_ALL` + `_CAPABILITIES_OPERATOR`）。
+- `import_terminology` 前加 `_forbidden_if_missing(caller, "semantics.write")`；
+  `import_agent` 前加 `_forbidden_if_missing(caller, "registry.publish")`，都是 principal 解析后第一条语句。
+- `tests/test_console_me.py` 的 `ALL` / `OPERATOR` 加 `semantics.write`。
+
+三、红态
+
+基线 `687465c` 加两用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py \
+    -k "import_terminology_requires or import_agent_requires" -q
+2 failed（requester 调两个 import 路由返回 404 config-not-configured，期望 403）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py \
+    -k "import_terminology_requires or import_agent_requires or import_terminology_endpoint or import_agent_endpoint" \
+    tests/test_console_me.py -q
+（import 4 用例 + me 8 用例全绿）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+2003 passed, 103 skipped（ALL PASS，9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围外
+
+- 「业务用户逐条写术语表」的轻量入口（需要新端点，另行设计）。
+- 只读面板可见性收紧（SLICE-235）。
