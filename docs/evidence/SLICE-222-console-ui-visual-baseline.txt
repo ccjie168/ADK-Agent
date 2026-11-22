@@ -1,0 +1,48 @@
+SLICE-222 控制台 UI 视觉基线
+日期: 2026-11-22
+依据: ADR-0039 MVP 第 1 项（视觉基线先行）
+基线: `bf92850`
+
+一、契约
+
+无对外接口变更，不改 `docs/contracts/`。设计 token 与卡片 class 是控制台内部视觉骨架。
+
+二、实现
+
+- `src/adk_agent/console.py` `_INDEX_HTML` 的 `<style>`：`:root` 新增设计 token
+  （`--radius-sm`/`--radius-lg`/`--shadow-card`/`--shadow-card-hover`/`--space-1` 到 `--space-4`），
+  新增 `.metric-grid`（响应式网格）与 `.stat-card`/`.stat-label`/`.stat-value`/`.stat-delta`
+  （指标卡片系统），供后续总览页与能力面板复用。
+- `scripts/prove_it_works.py`：新增 `check_console_ui`（P13），起真实 console 服务、GET / 断言
+  设计 token 与卡片 marker；`CHECKS` 加 `"P13": check_console_ui`。
+- `tests/test_console.py`：新增 `test_index_has_design_tokens` 与 `test_index_has_metric_card_system`。
+- `tests/test_prove_it_works_selection.py`：`len(selected) == 12` 改为 `len(selected) == len(module.CHECKS)`
+  （新增 P13 后 check 数 12 -> 13；用户确认用动态断言而非硬编码数字）。
+
+三、红态
+
+基线 `bf92850` 加两个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py -k "design_tokens or metric_card_system" -q
+2 failed（`--radius-lg:` 与 `.metric-grid` 均不存在于 `_INDEX_HTML`）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py -k "design_tokens or metric_card_system" -q
+2 passed
+
+$ .venv/Scripts/python.exe -m pytest tests/test_prove_it_works_selection.py tests/test_console.py -q
+13 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1970 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- 本切片只落地视觉骨架，不新增面板、不新增后端接口。
+- 总览首页从 SLICE-223 起；各能力面板（审计/配额/RAG/模型网关/语义层）从 SLICE-224/225/226 起；
+  通用导入与全局 Ask AI 是 SLICE-227/228。
+- 前端框架与构建链已被 ADR-0039 否决，保持单文件内联 HTML/CSS/JS。

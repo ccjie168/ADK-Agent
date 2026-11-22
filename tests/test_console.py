@@ -86,3 +86,19 @@ def test_audit_block_is_capability_gated():
         page = client.get("/")
 
     assert 'data-capability="audit.read"' in page.text
+
+
+def test_index_has_design_tokens():
+    with _client() as client:
+        page = client.get("/")
+
+    for token in ("--radius-lg:", "--shadow-card:", "--space-1:"):
+        assert token in page.text
+
+
+def test_index_has_metric_card_system():
+    with _client() as client:
+        page = client.get("/")
+
+    for cls in (".metric-grid", ".stat-card", ".stat-label", ".stat-value", ".stat-delta"):
+        assert cls in page.text
