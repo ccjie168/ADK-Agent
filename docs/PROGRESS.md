@@ -3,7 +3,7 @@
 更新日期: 2026-11-22
 分支: master（工作区干净，只留本地工具目录未跟踪）
 最新提交: `608d64a` feat: add a release smoke subset to the proof harness (SLICE-216) (#188)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）已确认，MVP 连续执行中
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环
 
 ## 本次暂停交接
 
@@ -333,8 +333,15 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - SLICE-225 RAG 面板 + 模型网关面板：只读查询可视化。
     - SLICE-226 语义层面板：术语表、概念、能力绑定、路由回放。
     - SLICE-227 通用导入：术语表 / agent 定义 / RAG 语料三类格式。
-    - SLICE-228 全局 Ask AI：确定性语义路由展示 + 深链。
+    - SLICE-228 全局 Ask AI：确定性语义路由展示 + 深链。~~已合并 `d1fbe5f`~~
     第二阶段（Ask AI 完整编排、前端框架、可视化实时化）按 ADR 触发条件另行分配。
+
+13. filelock 13 个 CVE（CVE-2026-112907 到 112940）复审结论（2026-11-22）：根因是项目 pin
+    `litellm<1.106.3`（ADK 为规避 1.107.0 供应链投毒而设的上限，ADK 2.15.0 仍 cap），该上限要求
+    `filelock<4.0`；修复版 filelock 4.2.1 只在 litellm>=1.109.2 可用，故无法在不覆盖 pin 的前提下升级。
+    `.trivyignore.yaml` 的 statement 已按此更新，过期日 2027-05-01。触发条件：ADK 放宽 litellm 上限后
+    升级 litellm → 顺带升 filelock 4.2.1，移除这 13 条 ignore。应用不直接调用 filelock，CVE 为本地
+    攻击向量（AV:L），风险有限。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
