@@ -87,6 +87,8 @@ from .identity import OidcLogin, OidcLoginError
 from .logsafe import install_log_sanitizer
 from .mcp.http import resolve_port
 from .metrics import MetricsRegistry
+from .models import effective_default_model, is_valid_model_spec, set_default_model
+from .models.config_store import ModelConfigStore, ModelConfigStoreUnavailable
 from .models.gateway_llm import GatewayLlm, provider_for_model
 from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .rbac import FilePolicyStore, RolePolicyEngine
@@ -171,6 +173,8 @@ _CAPABILITIES_ALL = frozenset(
         "peers.manage",
         "policy.read",
         "policy.write",
+        "model.read",
+        "model.write",
         "ops.status",
     }
 )
@@ -184,6 +188,7 @@ _CAPABILITIES_OPERATOR = _CAPABILITIES_BASE | {
     "peers.read",
     "registry.read",
     "policy.read",
+    "model.read",
 }
 _CAPABILITIES_PUBLISHER = _CAPABILITIES_BASE | {
     "registry.read",
@@ -450,6 +455,15 @@ _INDEX_HTML = r"""<!doctype html>
 
 <section id="model" class="panel" data-capability="runs.read">
   <div id="model-cards" class="metric-grid"></div>
+  <div data-capability="model.read">
+    <h3>全局默认模型</h3>
+    <div id="model-config" class="muted"></div>
+    <div class="row" data-capability="model.write">
+      <input id="model-config-input" placeholder="litellm:deepseek/deepseek-v4-pro" autocomplete="off">
+      <button id="model-config-save">设置默认模型</button>
+    </div>
+    <div id="model-config-msg" class="panel-msg"></div>
+  </div>
 </section>
 
 <section id="semantics" class="panel" data-capability="runs.read">
@@ -865,6 +879,20 @@ async function loadOverview() {
 async function postJson(path, body) {
   const response = await fetch(path, {
     method: "POST",
+    headers: {
+      Authorization: "Bearer " + token(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  let data = null;
+  try { data = await response.json(); } catch (e) { data = null; }
+  return { ok: response.ok, status: response.status, data: data };
+}
+
+async function putJson(path, body) {
+  const response = await fetch(path, {
+    method: "PUT",
     headers: {
       Authorization: "Bearer " + token(),
       "Content-Type": "application/json",
@@ -1935,6 +1963,7 @@ async function connect() {
   if (can("audit.read")) await loadAuditPanel();
   await loadRag();
   await loadModel();
+  await loadModelConfig();
   await loadSemantics();
   startLive();
   if (can("runs.read")) await loadRuns();
@@ -2312,6 +2341,39 @@ async function loadModel() {
   }
 }
 
+async function loadModelConfig() {
+  const result = await getJson("/api/model-config");
+  const box = $("model-config");
+  if (!box) return;
+  if (!result.ok) {
+    box.textContent = "model-config unavailable (" + result.status + ")";
+    return;
+  }
+  const model = result.data && result.data.model;
+  box.textContent = "当前默认模型: " + (model || "未配置");
+}
+
+async function saveModelConfig() {
+  const box = $("model-config-msg");
+  const input = $("model-config-input");
+  box.className = "panel-msg";
+  box.textContent = "";
+  const model = input.value.trim();
+  if (!model) {
+    box.textContent = "模型字符串不能为空";
+    return;
+  }
+  const result = await putJson("/api/model-config", { model: model });
+  if (!result.ok) {
+    box.textContent = "保存失败 (" + result.status + "): " +
+      ((result.data && result.data.error) || "error");
+    return;
+  }
+  box.className = "panel-msg ok";
+  box.textContent = "已设置 " + result.data.model;
+  await loadModelConfig();
+}
+
 async function loadSemantics() {
   const result = await getJson("/api/semantics");
   const container = $("semantics-schemes");
@@ -2392,6 +2454,7 @@ async function startLive() {
           loadQuota();
           loadRag();
           loadModel();
+          loadModelConfig();
           loadSemantics();
         }
       }
@@ -2610,6 +2673,7 @@ $("approve").addEventListener("click", () => decideApproval(true));
 $("deny").addEventListener("click", () => decideApproval(false));
 $("load-policy").addEventListener("click", () => { if (can("policy.read")) loadPolicy(); });
 $("save-policy").addEventListener("click", savePolicy);
+$("model-config-save").addEventListener("click", saveModelConfig);
 $("connect").addEventListener("click", connect);
 $("send").addEventListener("click", send);
 $("msg").addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
@@ -2926,6 +2990,7 @@ def build_console_app(
     session_rls: bool = False,
     rag: Any | None = None,
     terminology: ConceptSchemeStore | None = None,
+    model_config_store: ModelConfigStore | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     install_log_sanitizer()
@@ -3246,6 +3311,61 @@ def build_console_app(
             "aliases": aliases,
             "fallbacks": fallbacks,
         }
+
+    async def _read_default_model() -> str:
+        if model_config_store is not None:
+            try:
+                stored = await model_config_store.get()
+            except ModelConfigStoreUnavailable:
+                stored = None
+            if stored:
+                return stored
+        return effective_default_model()
+
+    @app.get("/api/model-config")
+    async def get_model_config(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "model.read")
+        if denied is not None:
+            return denied
+        return {"model": await _read_default_model()}
+
+    @app.put("/api/model-config")
+    async def put_model_config(request: Request) -> JSONResponse:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "model.write")
+        if denied is not None:
+            return denied
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid json"}, status_code=400)
+        if not isinstance(body, dict) or not isinstance(body.get("model"), str):
+            return JSONResponse({"error": "invalid_model"}, status_code=400)
+        model = body["model"].strip()
+        if not is_valid_model_spec(model):
+            return JSONResponse({"error": "invalid_model"}, status_code=400)
+        if model_config_store is not None:
+            try:
+                await model_config_store.put(model)
+            except ModelConfigStoreUnavailable:
+                return JSONResponse({"error": "model_config_unavailable"}, status_code=503)
+        set_default_model(model)
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=dev_agent_ref("model"),
+                action="model.configure",
+                target=model,
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse({"model": model})
 
     @app.get("/api/semantics")
     async def list_semantics(request: Request) -> Any:
@@ -5333,6 +5453,7 @@ def run_console(
     session_rls: bool = False,
     rag: Any | None = None,
     terminology: ConceptSchemeStore | None = None,
+    model_config_store: ModelConfigStore | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -5374,6 +5495,7 @@ def run_console(
         session_rls=session_rls,
         rag=rag,
         terminology=terminology,
+        model_config_store=model_config_store,
     )
 
     import uvicorn

@@ -171,6 +171,23 @@ def _terminology_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _model_config_store(args: argparse.Namespace) -> Any:
+    """Build the global default model store from ``--model-config-dir`` or ``--model-config-db``."""
+    from .registry.model_config import FileModelConfigStore
+    from .registry.model_config_postgres import PostgresModelConfigStore
+
+    directory = getattr(args, "model_config_dir", None)
+    url = getattr(args, "model_config_db", None)
+    if directory and url:
+        print("set exactly one of --model-config-dir or --model-config-db", file=sys.stderr)
+        raise SystemExit(1)
+    if directory:
+        return FileModelConfigStore(directory)
+    if url:
+        return PostgresModelConfigStore(url)
+    return None
+
+
 def _idempotency_store(args: argparse.Namespace) -> Any:
     """Build the tool idempotency store from ``--idempotency-dir`` or ``--idempotency-db``."""
     from .tools import FileToolIdempotencyStore, PostgresToolIdempotencyStore
@@ -1881,6 +1898,16 @@ def main(argv: list[str] | None = None) -> None:
         help="Postgres URL for the terminology store",
     )
     p_console.add_argument(
+        "--model-config-dir",
+        default=None,
+        help="directory for the global default model store (Model panel)",
+    )
+    p_console.add_argument(
+        "--model-config-db",
+        default=None,
+        help="Postgres URL for the global default model store",
+    )
+    p_console.add_argument(
         "--tool-catalog",
         default=None,
         help="read-only tool catalog JSON for the Tools panel",
@@ -3206,6 +3233,7 @@ def main(argv: list[str] | None = None) -> None:
             session_rls=session_rls,
             rag=rag_factory,
             terminology=_terminology_store(args),
+            model_config_store=_model_config_store(args),
         )
         if isinstance(audit_query, PostgresAuditQuery):
             # The pool may have opened in uvicorn's loop, which is now closed;
