@@ -343,14 +343,14 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     升级 litellm → 顺带升 filelock 4.2.1，移除这 13 条 ignore。应用不直接调用 filelock，CVE 为本地
     攻击向量（AV:L），风险有限。
 
-14. ADR-0040（全局默认模型配置与动态切换）2026-11-22 已确认，MVP 连续执行中（`docs/decisions/ADR-0040-global-default-model.md`），
+14. ADR-0040（全局默认模型配置与动态切换）2026-11-22 已确认，MVP 已关闭（`docs/decisions/ADR-0040-global-default-model.md`），
     另加 UI 实时刷新（ADR-0039 第二阶段候选 3，触发条件已确认，用 SSE，FastAPI 内置无需新依赖）：
-    - SLICE-229 UI 实时刷新：总览与各能力面板的指标经 SSE 推送，自动更新。
+    - SLICE-229 UI 实时刷新：总览与各能力面板的指标经 SSE 推送，自动更新。~~已合并 `c469261`~~
     - SLICE-230 模型配置类型与 store：`ModelConfigStore` 协议 + 文件/Postgres 双实现，`set_default_model` /
       `_default_model_config` 读 override，优先级落地。~~已合并 `fe11471`~~
     - SLICE-231 控制台端点 + 管理员 UI：`GET/PUT /api/model-config`（`model.read` admin+operator、写 admin-only），
       模型面板加「设置默认模型」，写审计 `model.configure`。~~已合并 `d23186e`~~
-    - SLICE-232 验收：`prove_it_works` 断言改配置后新 chat 用新模型，pytest 覆盖优先级与权限。
+    - SLICE-232 验收：`prove_it_works` 断言改配置后新 chat 用新模型，pytest 覆盖优先级与权限。~~已合并 `10d44c1`~~
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
