@@ -398,6 +398,8 @@ _INDEX_HTML = r"""<!doctype html>
     </div>
     <div class="nav-group">
       <div class="nav-title">治理</div>
+      <button id="tab-audit" class="tab" data-tab="audit-panel" data-capability="audit.read">Audit</button>
+      <button id="tab-quota" class="tab" data-tab="quota" data-capability="runs.read">Quota</button>
       <button id="tab-policy" class="tab" data-tab="policy" data-capability="policy.read">Policy</button>
     </div>
   </nav>
@@ -405,6 +407,17 @@ _INDEX_HTML = r"""<!doctype html>
 
 <section id="overview" class="panel active" data-capability="runs.read">
   <div id="overview-cards" class="metric-grid"></div>
+</section>
+
+<section id="audit-panel" class="panel" data-capability="audit.read">
+  <div class="row">
+    <button id="refresh-audit-panel">Refresh</button>
+  </div>
+  <div id="audit-panel-log"></div>
+</section>
+
+<section id="quota" class="panel" data-capability="runs.read">
+  <div id="quota-cards" class="metric-grid"></div>
 </section>
 
 <section id="chat" class="panel" data-capability="chat.run">
@@ -699,7 +712,7 @@ _INDEX_HTML = r"""<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "policy"];
+const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "policy"];
 let sessionId = null;
 let capabilities = null;
 let approvalsData = [];
@@ -1865,6 +1878,8 @@ async function connect() {
   info("connected: " + result.agents.map((a) => a.name).join(", "));
   await loadTenants();
   await loadOverview();
+  await loadQuota();
+  if (can("audit.read")) await loadAuditPanel();
   if (can("runs.read")) await loadRuns();
   if (can("sessions.read")) await loadSessions();
   if (can("approvals.read")) await loadApprovals();
@@ -2141,6 +2156,51 @@ async function loadAudit() {
   }
 }
 
+async function loadAuditPanel() {
+  const r = await fetch("/api/audit?limit=100", { headers: { Authorization: "Bearer " + token() } });
+  const box = $("audit-panel-log");
+  if (!box) return;
+  if (!r.ok) { box.textContent = "audit unavailable (" + r.status + ")"; return; }
+  const rows = await r.json();
+  box.innerHTML = "";
+  for (const e of rows.slice().reverse()) {
+    const line = document.createElement("div");
+    line.textContent = e.action + " " + e.target + " " + e.status + " " +
+      (e.latency_ms ?? "-") + "ms run=" + (e.run_id || "").slice(0, 8) +
+      " trace=" + (e.trace_id || "").slice(0, 8);
+    box.appendChild(line);
+  }
+}
+
+async function loadQuota() {
+  const result = await getJson("/api/quota");
+  const container = $("quota-cards");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!result.ok || !result.data) return;
+  const q = result.data;
+  const cards = [
+    { label: "窗口运行数", value: q.window_runs },
+    { label: "活跃并发", value: q.active_leases },
+    { label: "运行上限", value: q.max_runs === null ? "无限" : q.max_runs },
+    { label: "并发上限", value: q.max_concurrent === null ? "无限" : q.max_concurrent },
+    { label: "窗口秒数", value: q.window_seconds },
+  ];
+  for (const card of cards) {
+    const el = document.createElement("div");
+    el.className = "stat-card";
+    const label = document.createElement("div");
+    label.className = "stat-label";
+    label.textContent = card.label;
+    const value = document.createElement("div");
+    value.className = "stat-value";
+    value.textContent = String(card.value);
+    el.appendChild(label);
+    el.appendChild(value);
+    container.appendChild(el);
+  }
+}
+
 async function loadPolicy() {
   const r = await fetch("/api/policy", { headers: { Authorization: "Bearer " + token() } });
   if (!r.ok) { $("policy-msg").textContent = "policy unavailable (" + r.status + ")"; return; }
@@ -2308,6 +2368,7 @@ $("tenant").addEventListener("change", () => {
 });
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
+$("refresh-audit-panel").addEventListener("click", loadAuditPanel);
 $("refresh-registry").addEventListener("click", loadRegistry);
 $("refresh-remote").addEventListener("click", refreshSelectedRemote);
 $("open-chat").addEventListener("click", openChat);
@@ -2944,6 +3005,20 @@ def build_console_app(
                 logger.exception("overview grants failed: tenant=%s", target)
 
         return {"cards": cards}
+
+    @app.get("/api/quota")
+    async def get_quota(request: Request) -> Any:
+        caller = _principal_for(request)
+        if quota is None or quota_config is None:
+            return JSONResponse({"error": "quota_not_configured"}, status_code=404)
+        policy = quota_config.tenants.get(caller.tenant)
+        if policy is None:
+            return JSONResponse({"error": "quota_not_configured"}, status_code=404)
+        try:
+            usage = await quota.usage(caller.tenant, policy)
+        except QuotaStoreUnavailable:
+            return JSONResponse({"error": "quota_unavailable"}, status_code=503)
+        return usage.model_dump(mode="json")
 
     @app.get("/api/agents")
     async def list_agents() -> list[dict[str, str]]:

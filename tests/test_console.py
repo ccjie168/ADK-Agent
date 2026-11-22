@@ -147,3 +147,13 @@ def test_overview_null_for_forbidden_card():
     assert response.status_code == 200
     cards = {card["key"]: card for card in response.json()["cards"]}
     assert cards["tools"]["value"] is None
+
+
+def test_index_has_audit_and_quota_panels():
+    with _client() as client:
+        page = client.get("/")
+
+    assert 'id="audit-panel"' in page.text
+    assert 'id="quota"' in page.text
+    assert "tab-audit" in page.text
+    assert "tab-quota" in page.text

@@ -21,7 +21,7 @@ from .manifest import AgentRef, ModelPolicy, PublishedAgent
 from .model import EmbeddingRequest, EmbeddingResponse, ModelRequest, ModelResponse
 from .peers import PeerGrant, PeerIdentity
 from .policy import DataClass, PolicyDecision
-from .quota import QuotaPolicy
+from .quota import QuotaPolicy, QuotaUsage
 from .remote_agents import RemoteAgent
 from .tool import ToolRequest, ToolResponse
 from .tool_grants import GrantStatus, ToolGrantRequest
@@ -211,6 +211,8 @@ class IdentityProvider(Protocol):
 
 class QuotaManager(Protocol):
     def reserve(self, tenant: str, policy: QuotaPolicy) -> AbstractAsyncContextManager[None]: ...
+
+    async def usage(self, tenant: str, policy: QuotaPolicy) -> QuotaUsage: ...
 
 
 class ApprovalGate(Protocol):

@@ -51,6 +51,17 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 每个控制台进程各自计数，不做跨副本聚合。MCP 和网关的 `/metrics` 不在本契约内。
 
+## `GET /api/overview` -> 聚合卡片
+
+```json
+{"cards": [{"key": "approvals", "label": "待审批", "value": 3, "panel": "approvals"}]}
+```
+
+- 返回四张卡片，`key` 顺序固定为 `approvals`、`agents`、`tools`、`grants`。
+- 每张卡片有 `key` / `label` / `value` / `panel`，`panel` 是深链目标面板 id。
+- 仅当调用方具备对应能力（`approvals.read` / `registry.read` / `tools.read` / `grants.read`）且对应 store 已配置时，`value` 才是计数，否则为 `null`。
+- store 不可用也返回 `null`，不报错、不泄露细节。
+
 ## `GET /api/agents` -> `[{name, description}]`
 
 ## `POST /api/chat`
@@ -203,6 +214,16 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 `limit` 上限 200。事件按时间正序，最多返回最近 200 条。需要 `audit.read` 能力，缺少返回 403 `forbidden`。非 `admin` 身份只返回自己租户的事件。聊天面板的 Recent audit 区块同样按 `audit.read` 隐藏。配置了 `--audit-url` 时从审计服务读取，服务不可用返回 502 `audit_unavailable`。
 
 事件结构见 `audit_event.schema.json`。
+
+## `GET /api/quota` -> `QuotaUsage`
+
+```json
+{"window_runs": 0, "active_leases": 0, "max_runs": 3, "max_concurrent": null, "window_seconds": 60}
+```
+
+- 返回调用方租户的配额用量与策略上限：`window_runs`（窗口内运行数）、`active_leases`（活跃并发租约）、`max_runs` / `max_concurrent` / `window_seconds`（来自该租户的 `QuotaPolicy`）。
+- 未配置 `--quota-config` 或租户不在配置里时返回 404 `{"error":"quota_not_configured"}`。
+- 配额后端不可用返回 503 `{"error":"quota_unavailable"}`。
 
 ## `GET /api/policy` -> `AccessPolicy`
 

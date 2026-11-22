@@ -176,3 +176,15 @@ def test_quota_store_unavailable(monkeypatch):
 
     assert response.status_code == 503
     assert response.json() == {"error": "quota_unavailable"}
+
+
+def test_quota_endpoint_returns_usage():
+    with _client(quota=InMemoryQuotaManager(), config=_config(max_runs=3)) as client:
+        response = client.get("/api/quota", headers=AUTH)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["window_runs"] == 0
+    assert data["active_leases"] == 0
+    assert data["max_runs"] == 3
+    assert data["window_seconds"] == 60
