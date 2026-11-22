@@ -128,7 +128,22 @@ def _normalize(spec: str | ModelConfig | None) -> ModelConfig:
     return ModelConfig(provider="litellm", name=spec)
 
 
+_default_model_override: str | None = None
+
+
+def set_default_model(spec: str | None) -> None:
+    """Set the runtime global default model (ADR-0040).
+
+    ``None`` clears the override and falls back to ``ADK_AGENT_MODEL``.
+    """
+    global _default_model_override
+    _default_model_override = spec
+
+
 def _default_model_config() -> ModelConfig:
+    if _default_model_override is not None:
+        return _normalize(_default_model_override)
+
     explicit = os.environ.get("ADK_AGENT_MODEL")
     if explicit:
         return _normalize(explicit)
@@ -148,4 +163,5 @@ __all__ = [
     "build_model_gateway_app",
     "build_providers",
     "disable_thinking",
+    "set_default_model",
 ]
