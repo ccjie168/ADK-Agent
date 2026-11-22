@@ -45,6 +45,15 @@
 - 形状 `^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$`：小写字母开头，段内小写字母、数字与下划线，段间点分隔。
 - 它是术语与工具之间的锚点；与 A2A `skills`、MCP `tools/list` 的关联由 SLICE-220 定义。
 
+## 数据本体层
+
+`DataDomain` 是一条数据的领域标注，两维正交：
+
+- `concept_id`（非空）：所属领域，引用术语层的概念 `concept_id`。租户可扩展，不限制在平台枚举。
+- `sensitivity`：敏感度，`DataClass` 四值之一，缺省 `internal`。平台固定，租户不能自定义敏感度语义。
+
+同一领域可配不同敏感度，同一敏感度可配不同领域，两者独立。
+
 ## 存储
 
 `ConceptSchemeStore` 端口存整个 `ConceptScheme`，键是 `(tenant, scheme_id)`；`tenant` 是存储键，

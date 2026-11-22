@@ -1,0 +1,35 @@
+SLICE-219 数据领域维
+日期: 2026-11-22
+依据: ADR-0038 MVP 第 3 项
+基线: `ba2361a`
+
+一、契约
+
+- `docs/contracts/semantics.md` 新增「数据本体层」一节：`DataDomain` 两维正交，`concept_id` 租户
+  可扩展、`sensitivity` 平台固定 `DataClass`。
+
+二、实现
+
+- 新建 `src/adk_agent/semantics/domain.py`：`DataDomain`（`concept_id` 非空 + `sensitivity` 缺省
+  `internal`）。`semantics` 开始依赖 `core.policy.DataClass`，方向 `semantics → core`，符合分层。
+
+三、绿态
+
+$ python -m pytest tests/test_data_domain.py -q
+4 passed
+
+$ python scripts/check.py --fast
+1959 passed, 103 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `ba2361a` 加新用例、未改实现时：
+`pytest tests/test_data_domain.py` -> 1 collection error（`ImportError: DataDomain`）。
+
+五、范围与已知缺口
+
+- 能力映射（SLICE-220）、确定性路由（SLICE-221）。
+- `DataDomain` 尚未接到 `RagChunk`/`ToolGrant` 等既有模型；`concept_id` 引用存在性校验属后续切片。
