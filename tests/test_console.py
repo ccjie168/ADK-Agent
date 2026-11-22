@@ -147,7 +147,7 @@ def test_overview_null_for_forbidden_card():
         ],
     )
     app = build_console_app(
-        _agents(), auth_token="secret", roles=["requester"], tool_catalog=catalog
+        _agents(), auth_token="secret", roles=["operator"], tool_catalog=catalog
     )
     with TestClient(app) as client:
         response = client.get("/api/overview", headers={"Authorization": "Bearer secret"})
@@ -177,7 +177,8 @@ def test_index_has_rag_and_model_panels():
 
 
 def test_rag_endpoint_returns_stats():
-    with _client() as client:
+    app = build_console_app(_agents(), auth_token="secret", roles=["operator"])
+    with TestClient(app) as client:
         response = client.get("/api/rag", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
@@ -188,7 +189,8 @@ def test_rag_endpoint_returns_stats():
 
 
 def test_model_endpoint_returns_stats():
-    with _client() as client:
+    app = build_console_app(_agents(), auth_token="secret", roles=["operator"])
+    with TestClient(app) as client:
         response = client.get("/api/model", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200

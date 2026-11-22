@@ -14,7 +14,7 @@ from adk_agent.runtime.quota import InMemoryQuotaManager
 from adk_agent.runtime.quota_postgres import QuotaStoreUnavailable
 
 AUTH = {"Authorization": "Bearer alice-token"}
-ALICE = Principal(tenant="acme", subject="alice", kind="human")
+ALICE = Principal(tenant="acme", subject="alice", kind="human", roles=["operator"])
 
 
 class _Provider:

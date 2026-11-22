@@ -1,0 +1,46 @@
+SLICE-235 只读面板可见性收紧
+日期: 2026-11-23
+依据: 用户确认「同意」：quota/rag/model/semantics/overview 面板收为 operator 及以上
+基线: `bb264cf`
+
+一、契约
+
+`docs/contracts/console.md`：`/api/overview`、`/api/quota`、`/api/rag`、`/api/semantics` 需
+`ops.read`；`/api/model` 需 `model.read`；读接口能力清单补 `ops.read` / `model.read`。
+
+二、实现
+
+- `console.py` 能力清单加 `ops.read`（`_CAPABILITIES_ALL` + `_CAPABILITIES_OPERATOR`）。
+- 服务端五个端点加能力检查（principal 解析后第一条语句）：overview/quota/rag/semantics 用
+  `ops.read`，model 用 `model.read`。
+- 前端五个 tab + 五个 section 的 `data-capability` 改为 `ops.read` / `model.read`；connect 与
+  SSE tick 里按 `can("ops.read")` / `can("model.read")` 跳过加载。
+- `tests/test_console_me.py` 的 `ALL` / `OPERATOR` 加 `ops.read`。
+
+三、红态
+
+基线 `bb264cf` 加 `tests/test_console_panel_visibility.py` 两用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console_panel_visibility.py -q
+2 failed（requester 调 /api/overview、/api/quota、/api/rag、/api/semantics 返回 200/404、
+/api/model 返回 200，期望 403）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console_panel_visibility.py \
+    tests/test_console_me.py tests/test_console.py tests/test_console_quota.py -q
+49 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+2005 passed, 103 skipped（ALL PASS，9 步，含 bandit / pip-audit / detect-secrets）
+
+五、既有用例更新（面板从基础收为 operator+ 的必然结果）
+
+`test_overview_null_for_forbidden_card` 角色 requester→operator（operator 有 ops.read 但无
+tools.read，仍验证卡片 null 门控）；`test_rag_endpoint_returns_stats` / `test_model_endpoint_returns_stats`
+改用 operator；`test_console_quota.py` 的 `ALICE` 加 `roles=["operator"]`。语义不变（仍验证返回形状）。
+
+六、范围外
+
+- ask-ai 与 import 面板仍 `runs.read`（基础可见；import 动作已由 SLICE-234 按写能力门控）。
+- overview 卡片内 null 门控保留（operator+ 里缺具体卡片能力的仍见 null）。

@@ -32,6 +32,7 @@ ALL = {
     "model.read",
     "model.write",
     "semantics.write",
+    "ops.read",
     "ops.status",
 }
 
@@ -48,6 +49,7 @@ OPERATOR = BASE | {
     "policy.read",
     "model.read",
     "semantics.write",
+    "ops.read",
 }
 
 PUBLISHER = BASE | {
