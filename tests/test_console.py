@@ -312,3 +312,35 @@ def test_import_agent_endpoint(tmp_path):
 
     assert len(listed.json()) == 1
     assert listed.json()[0]["id"] == "bot"
+
+
+def test_index_has_ask_ai_panel():
+    with _client() as client:
+        page = client.get("/")
+
+    assert 'id="ask-ai"' in page.text
+    assert "tab-ask-ai" in page.text
+
+
+def test_ask_ai_endpoint_returns_hits(tmp_path):
+    app = _semantics_app(tmp_path)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/ask-ai",
+            json={
+                "text": "show me the Order",
+                "bindings": [
+                    {
+                        "capability_id": "order.lookup",
+                        "concept_id": "order",
+                        "tool_id": "lookup_order",
+                    }
+                ],
+            },
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["hits"]) == 1
+    assert data["hits"][0]["tool_id"] == "lookup_order"
