@@ -263,6 +263,10 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 请求：`{text, bindings?}`。自动取第一个术语表，用 `route_request` 做确定性路由回放，返回 `hits`（命中的 `RoutedCapability` 列表）与 `scheme_id`。无术语表返回 `{hits: [], scheme_id: null}`；`bindings` 结构非法返回 400 `invalid_binding`。只映射不执行。
 
+## `GET /api/live` -> `text/event-stream`
+
+SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 时间戳>}`），客户端断开即停止。tick 只含时间戳，不含业务数据；业务数据仍由各 `/api/*` 按能力查询。
+
 ## `GET /api/policy` -> `AccessPolicy`
 
 返回当前访问策略，结构见 `access_policy.schema.json`。仅在配置了 `--policy` 时存在。

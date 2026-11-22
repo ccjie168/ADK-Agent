@@ -344,3 +344,22 @@ def test_ask_ai_endpoint_returns_hits(tmp_path):
     data = response.json()
     assert len(data["hits"]) == 1
     assert data["hits"][0]["tool_id"] == "lookup_order"
+
+
+def test_index_has_live_refresh():
+    with _client() as client:
+        page = client.get("/")
+
+    assert 'fetch("/api/live"' in page.text
+    assert "startLive" in page.text
+
+
+def test_live_endpoint_streams_tick():
+    with (
+        _client() as client,
+        client.stream("GET", "/api/live", headers={"Authorization": "Bearer secret"}) as response,
+    ):
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        first = next(response.iter_text())
+        assert "event: tick" in first
