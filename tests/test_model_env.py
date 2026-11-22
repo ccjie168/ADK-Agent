@@ -44,6 +44,22 @@ def test_set_default_model_priority(monkeypatch):
     models.set_default_model(None)
 
 
+def test_explicit_spec_beats_default_override(monkeypatch):
+    monkeypatch.delenv("ADK_AGENT_MODEL", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    from adk_agent import models
+
+    models.set_default_model("litellm:openai/override-model")
+    try:
+        model = models.build_model("gemini:gemini-2.5-pro")
+        assert type(model).__name__ == "Gemini"
+        assert model.model == "gemini-2.5-pro"
+    finally:
+        models.set_default_model(None)
+
+
 def test_is_valid_model_spec():
     from adk_agent.models import is_valid_model_spec
 
