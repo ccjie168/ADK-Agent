@@ -32,6 +32,16 @@ class QuotaConfig(BaseModel):
         return value
 
 
+class QuotaUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    window_runs: int = Field(ge=0)
+    active_leases: int = Field(ge=0)
+    max_runs: int | None = None
+    max_concurrent: int | None = None
+    window_seconds: float = Field(gt=0)
+
+
 class QuotaExceeded(Exception):
     """A tenant used up its run or concurrency quota."""
 

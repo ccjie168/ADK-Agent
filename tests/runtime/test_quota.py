@@ -208,3 +208,21 @@ def test_runtime_without_quota_is_unlimited():
         asyncio.run(runtime.run(_invocation(), user_id="u1", session_id="s1"))
 
     assert runner.calls == 3
+
+
+def test_inmemory_quota_usage_reflects_runs():
+    manager = InMemoryQuotaManager()
+    policy = QuotaPolicy(max_runs=2, window_seconds=60)
+
+    before = asyncio.run(manager.usage("t1", policy))
+    assert before.window_runs == 0
+    assert before.active_leases == 0
+
+    async def _reserve_once() -> Any:
+        async with manager.reserve("t1", policy):
+            return await manager.usage("t1", policy)
+
+    during = asyncio.run(_reserve_once())
+    assert during.window_runs == 1
+    assert during.max_runs == 2
+    assert during.window_seconds == 60

@@ -8,7 +8,7 @@ from collections import deque
 from collections.abc import Callable
 from types import TracebackType
 
-from ..core import QuotaExceeded, QuotaPolicy
+from ..core import QuotaExceeded, QuotaPolicy, QuotaUsage
 
 
 class InMemoryQuotaManager:
@@ -52,6 +52,22 @@ class InMemoryQuotaManager:
             return
         async with self._lock:
             self._active[tenant] = max(0, self._active.get(tenant, 0) - 1)
+
+    async def usage(self, tenant: str, policy: QuotaPolicy) -> QuotaUsage:
+        async with self._lock:
+            now = self._clock()
+            window = self._windows.get(tenant, deque())
+            if policy.max_runs is not None:
+                cutoff = now - policy.window_seconds
+                while window and window[0] <= cutoff:
+                    window.popleft()
+            return QuotaUsage(
+                window_runs=len(window),
+                active_leases=self._active.get(tenant, 0),
+                max_runs=policy.max_runs,
+                max_concurrent=policy.max_concurrent,
+                window_seconds=policy.window_seconds,
+            )
 
 
 class _Reservation:

@@ -114,7 +114,7 @@ from .ports import (
     TriggerStore,
 )
 from .progress import ProgressEvent, ProgressKind
-from .quota import QuotaConfig, QuotaExceeded, QuotaPolicy
+from .quota import QuotaConfig, QuotaExceeded, QuotaPolicy, QuotaUsage
 from .rbac import AccessPolicy, RoleBinding
 from .remote_agents import (
     RemoteAgent,
@@ -260,6 +260,7 @@ __all__ = [
     "QuotaExceeded",
     "QuotaManager",
     "QuotaPolicy",
+    "QuotaUsage",
     "RemoteAgent",
     "RemoteAgentError",
     "RemoteAgentFetchError",

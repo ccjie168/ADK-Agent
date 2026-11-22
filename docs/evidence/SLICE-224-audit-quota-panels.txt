@@ -1,0 +1,50 @@
+SLICE-224 审计面板 + 配额面板
+日期: 2026-11-22
+依据: ADR-0039 MVP 第 3 项（治理能力补全：审计面板 + 配额面板）
+基线: `8ad77bc`
+
+一、契约
+
+- `docs/contracts/console.md` 补 `GET /api/overview`（SLICE-223 遗漏）与 `GET /api/quota` 两节。
+- `QuotaManager`（`core/ports.py`）端口新增 `usage(tenant, policy) -> QuotaUsage`；`QuotaUsage` 随
+  `core/quota.py` 导出（`window_runs`/`active_leases`/`max_runs`/`max_concurrent`/`window_seconds`）。
+
+二、实现
+
+- `core/quota.py`：新增 `QuotaUsage`（冻结、`window_runs`/`active_leases` 非负、`window_seconds` 正）。
+- `core/ports.py`：`QuotaManager` 协议加 `async def usage(...)`。
+- `runtime/quota.py`：`InMemoryQuotaManager.usage` 清理过期窗口后返回运行数/活跃并发/策略。
+- `runtime/quota_postgres.py`：`PostgresQuotaManager.usage` 设 `app.tenant_id`（RLS）、清理过期运行与
+  租约后 `count(*)` 返回；失败映射 `QuotaStoreUnavailable`。
+- `console.py`：新增 `GET /api/quota`（未配置或租户不在配置里 404 `quota_not_configured`，后端不可用
+  503 `quota_unavailable`）；新增审计面板 `section#audit-panel` 与配额面板 `section#quota`，导航「治理」
+  组加 Audit / Quota tab；`loadAuditPanel`/`loadQuota` 渲染，登录后与租户切换时拉取。
+- `scripts/prove_it_works.py`：`check_console_ui`（P13）额外断言 `id="audit-panel"` 与 `id="quota"`。
+
+三、红态
+
+基线 `8ad77bc` 加三个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_audit_and_quota_panels \
+    tests/runtime/test_quota.py::test_inmemory_quota_usage_reflects_runs \
+    tests/test_console_quota.py::test_quota_endpoint_returns_usage -q
+3 failed（面板 marker 不存在、`InMemoryQuotaManager.usage` `AttributeError`、`/api/quota` 404）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_audit_and_quota_panels \
+    tests/runtime/test_quota.py::test_inmemory_quota_usage_reflects_runs \
+    tests/test_console_quota.py::test_quota_endpoint_returns_usage -q
+3 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1976 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- 配额面板只读，不做写入/调整。
+- 审计面板只展示最近事件，完整的时间/租户过滤 UI 属后续增强。
+- RAG / 模型网关 / 语义层面板从 SLICE-225/226 起。

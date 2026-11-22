@@ -1967,14 +1967,17 @@ def check_console_ui(proof: Proof) -> Result:
         [card["key"] for card in cards] == ["approvals", "agents", "tools", "grants"],
         f"unexpected overview cards: {cards}",
     )
+    require('id="audit-panel"' in html, "missing audit panel")
+    require('id="quota"' in html, "missing quota panel")
     return Result(
-        "P13 console UI baseline and overview",
+        "P13 console UI baseline, overview and panels",
         True,
-        "index HTML carries the design tokens, metric-card system and overview panel",
+        "index HTML carries the design tokens, metric-card system, overview, audit and quota panels",
         [
             "design tokens --radius-lg/--shadow-card/--space-1 present",
             "metric-card classes .metric-grid/.stat-card/.stat-label/.stat-value/.stat-delta present",
             "overview panel + /api/overview with 4 cards present",
+            "audit-panel and quota panels present",
         ],
     )
 

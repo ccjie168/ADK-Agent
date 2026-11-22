@@ -10,7 +10,7 @@ from collections.abc import Callable
 from types import TracebackType
 from typing import Any
 
-from ..core import QuotaExceeded, QuotaManager, QuotaPolicy
+from ..core import QuotaExceeded, QuotaManager, QuotaPolicy, QuotaUsage
 from ..pg import LazyPool
 from .quota import InMemoryQuotaManager
 
@@ -179,6 +179,39 @@ class PostgresQuotaManager:
                 )
         except Exception:  # noqa: BLE001
             logger.exception("failed to release quota lease %s", lease_id)
+
+    async def usage(self, tenant: str, policy: QuotaPolicy) -> QuotaUsage:
+        try:
+            pool = await self._ensure_pool()
+            now = float(self._clock())
+            cutoff = now - policy.window_seconds
+            async with pool.acquire() as conn, conn.transaction():
+                await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant)
+                await conn.execute(
+                    "DELETE FROM adk_quota_runs WHERE tenant = $1 AND ran_at <= $2",
+                    tenant,
+                    cutoff,
+                )
+                window_runs = await conn.fetchval(
+                    "SELECT count(*) FROM adk_quota_runs WHERE tenant = $1", tenant
+                )
+                await conn.execute(
+                    "DELETE FROM adk_quota_leases WHERE tenant = $1 AND expires_at <= $2",
+                    tenant,
+                    now,
+                )
+                active_leases = await conn.fetchval(
+                    "SELECT count(*) FROM adk_quota_leases WHERE tenant = $1", tenant
+                )
+            return QuotaUsage(
+                window_runs=int(window_runs),
+                active_leases=int(active_leases),
+                max_runs=policy.max_runs,
+                max_concurrent=policy.max_concurrent,
+                window_seconds=policy.window_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise QuotaStoreUnavailable(f"quota usage failed ({type(exc).__name__})") from exc
 
 
 class _Reservation:
