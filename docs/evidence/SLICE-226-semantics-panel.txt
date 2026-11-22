@@ -1,0 +1,49 @@
+SLICE-226 语义层面板
+日期: 2026-11-22
+依据: ADR-0039 MVP 第 5 项（语义层面板：术语表、概念、能力绑定、路由回放）
+基线: `550872c`
+
+一、契约
+
+- `docs/contracts/console.md` 补 `GET /api/semantics` 与 `POST /api/semantics/route` 两节，
+  写明 `bindings` 由调用方随请求传入、路由只映射不执行。
+
+二、实现
+
+- `console.py`：`build_console_app` / `run_console` 新增 `terminology: ConceptSchemeStore | None`，
+  新增 `GET /api/semantics`（list 术语表，未配置 404 `terminology_not_configured`、存储不可用
+  503 `terminology_unavailable`）与 `POST /api/semantics/route`（`route_request` 确定性回放，
+  `CapabilityBinding` 随请求传入，字段非法 400、`scheme_id` 不存在 404）。
+- 新增语义层面板 `section#semantics`（术语表 `.stat-card` + 路由回放输入框），导航新增「数据」组，
+  `loadSemantics`/`runSemanticsRoute` 在登录后拉取。
+- `cli.py`：新增 `--terminology-dir` / `--terminology-db`，`_terminology_store` 构建文件/Postgres
+  双后端 store，传给 `run_console`。
+- `scripts/prove_it_works.py`：`check_console_ui`（P13）额外断言 `id="semantics"`。
+
+三、红态
+
+基线 `550872c` 加三个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_semantics_panel \
+    tests/test_console.py::test_semantics_endpoint_lists_schemes \
+    tests/test_console.py::test_semantics_route_endpoint_replays -q
+3 failed（面板 marker 不存在、`build_console_app` 无 `terminology` 参数 TypeError、端点 404）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_semantics_panel \
+    tests/test_console.py::test_semantics_endpoint_lists_schemes \
+    tests/test_console.py::test_semantics_route_endpoint_replays -q
+3 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1982 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- 术语表写入/编辑 UI 不做（写入走 CLI 或 SLICE-227 通用导入）。
+- 能力绑定没有持久化 store，本切片由调用方随请求传入（绑定 store 另开切片）。
+- 前端路由回放用空 `bindings` 占位；真实绑定接入属 SLICE-228 Ask AI。
