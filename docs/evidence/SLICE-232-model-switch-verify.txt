@@ -1,0 +1,44 @@
+SLICE-232 验收：改配置后新 chat 用新模型
+日期: 2026-11-22
+依据: ADR-0040 MVP 第 3 项（prove_it_works 断言 + pytest 覆盖优先级与权限）
+基线: `131ae75`
+
+一、契约
+
+无对外接口变更。`prove_it_works.py` 是验收脚本，非框架库接口；`/api/model-config` 契约已随
+SLICE-231 落地。
+
+二、实现
+
+- `scripts/prove_it_works.py`：新增 P14 `check_model_switch`——控制台配 `--model-config-dir`，
+  `GET /api/model-config` 读默认（`litellm:openai/proof-stub`）→ `PUT` 换 `litellm:openai/proof-stub-2`
+  → 按需加载新 agent → 新 chat 的 `model.call` 审计 `target` 变为 `litellm:openai/proof-stub-2`。
+- `tests/test_model_env.py`：新增 `test_explicit_spec_beats_default_override`（显式 spec 优先于
+  override，ADR-0040 优先级第 1 对第 2 级）。
+
+三、反例
+
+本切片是验收，无新行为要红。基线 `131ae75`：`prove_it_works.py --only P14` 报 `unknown check`
+（P14 不存在），`test_explicit_spec_beats_default_override` 因用例不存在而「未收集」。落地后即绿，
+属「验证既有行为」而非「先红后绿」，已在 spec 说明。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_model_env.py -q
+5 passed
+
+$ NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost \
+    .venv/Scripts/python.exe scripts/prove_it_works.py --only P14 --keep
+[PASS] P14 model switch  ... (19.4s)
+       - default before: litellm:openai/proof-stub
+       - default after PUT: litellm:openai/proof-stub-2
+       - model.call target: 'litellm:openai/proof-stub' (before) -> 'litellm:openai/proof-stub-2' (after)
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+1999 passed, 103 skipped（ALL PASS，9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- 多副本同步（ADR-0040 第二阶段）。
+- P14 只证明单控制台进程内动态生效（内存 override），跨副本一致性不在 MVP。
+- P1-P13 上一会话已 13/13 通过；本切片加 P14 后全套为 P1-P14。

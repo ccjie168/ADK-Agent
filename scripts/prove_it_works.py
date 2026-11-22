@@ -1997,6 +1997,107 @@ def check_console_ui(proof: Proof) -> Result:
     )
 
 
+def check_model_switch(proof: Proof) -> Result:
+    """P14: PUT /api/model-config changes the default and a new chat uses it."""
+    keys = _write_keys(proof.work)
+    artifacts = proof.work / "artifacts-switch"
+    artifacts.mkdir(exist_ok=True)
+    env = proof.service_env()
+    env["PROOF_TOKEN"] = ADMIN_TOKEN
+
+    project_a = _write_agent_project(proof.work, "proof_switch_a")
+    project_b = _write_agent_project(proof.work, "proof_switch_b")
+    registry, registry_url = _start_registry(proof, keys, artifacts, env)
+    _publish(proof, project_a, keys, registry_url, env)
+    _publish(proof, project_b, keys, registry_url, env)
+
+    model_dir = proof.work / "model-config"
+    console = proof.start_service(
+        "console-switch",
+        [
+            "console",
+            "--registry-url",
+            registry_url,
+            "--registry-token-env",
+            "PROOF_TOKEN",
+            "--agent-ref",
+            "acme/proof_switch_a@1.0.0",
+            "--artifact-dir",
+            str(artifacts),
+            "--artifact-keys",
+            str(keys["artifact_keys"]),
+            "--audit-db",
+            proof.pg_url,
+            "--model-config-dir",
+            str(model_dir),
+            "--allow-unauthenticated",
+            "--role",
+            "admin",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "{port}",
+        ],
+        health="http://127.0.0.1:{port}/healthz",
+        env=env,
+    )
+    base = f"http://127.0.0.1:{console.port}"
+
+    default = httpx.get(f"{base}/api/model-config", timeout=10)
+    require(default.status_code == 200, default.text)
+    default_before = default.json()["model"]
+    require(default_before == f"litellm:{STUB_MODEL}", default_before)
+
+    chat_a = httpx.post(
+        f"{base}/api/chat", json={"agent": "proof_switch_a", "message": "hello a"}, timeout=60
+    )
+    require(chat_a.status_code == 200, chat_a.text)
+    require(chat_a.json()["reply"].startswith("PROOF-OK"), chat_a.text)
+
+    switched = httpx.put(
+        f"{base}/api/model-config",
+        json={"model": "litellm:openai/proof-stub-2"},
+        timeout=10,
+    )
+    require(switched.status_code == 200, switched.text)
+    after = httpx.get(f"{base}/api/model-config", timeout=10)
+    require(after.json()["model"] == "litellm:openai/proof-stub-2", after.text)
+
+    loaded = httpx.post(
+        f"{base}/api/registry/load",
+        json={"tenant": "acme", "id": "proof_switch_b", "version": "1.0.0"},
+        timeout=60,
+    )
+    require(loaded.status_code == 200, loaded.text)
+    chat_b = httpx.post(
+        f"{base}/api/chat", json={"agent": "proof_switch_b", "message": "hello b"}, timeout=60
+    )
+    require(chat_b.status_code == 200, chat_b.text)
+    require(chat_b.json()["reply"].startswith("PROOF-OK"), chat_b.text)
+
+    target_a = proof.psql(
+        "select distinct event->>'target' from adk_audit_records "
+        "where action = 'model.call' and event->'agent_ref'->>'id' = 'proof_switch_a'"
+    )
+    target_b = proof.psql(
+        "select distinct event->>'target' from adk_audit_records "
+        "where action = 'model.call' and event->'agent_ref'->>'id' = 'proof_switch_b'"
+    )
+    require(target_a == f"litellm:{STUB_MODEL}", f"agent A target: {target_a}")
+    require(target_b == "litellm:openai/proof-stub-2", f"agent B target: {target_b}")
+
+    return Result(
+        "P14 model switch",
+        True,
+        "default model switched via /api/model-config; a fresh chat on a newly loaded agent used it",
+        [
+            f"default before: {default_before}",
+            f"default after PUT: {after.json()['model']}",
+            f"model.call target: {target_a!r} (before) -> {target_b!r} (after)",
+        ],
+    )
+
+
 CHECKS = {
     "P1": check_env,
     "P2": check_audit,
@@ -2011,6 +2112,7 @@ CHECKS = {
     "P11": check_quota,
     "P12": check_backup,
     "P13": check_console_ui,
+    "P14": check_model_switch,
 }
 SMOKE_CHECKS = ("P1", "P2", "P3", "P4")
 
