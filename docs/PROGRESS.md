@@ -328,7 +328,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 12. ADR-0039（控制台全平台能力总览与 Ask AI 入口）2026-11-22 已确认，MVP 连续执行中（`docs/decisions/ADR-0039-console-capability-overview.md`）：
     - SLICE-222 UI 视觉基线：侧边栏 + 卡片系统 + 浅色优先主题，升级现有 12 面板骨架，不新增功能。~~已合并 `7e87006`~~
-    - SLICE-223 总览首页：聚合卡片网格，深链到各面板。
+    - SLICE-223 总览首页：聚合卡片网格，深链到各面板。~~已合并 `8ad77bc`~~
     - SLICE-224 审计面板 + 配额面板：只读查询可视化。
     - SLICE-225 RAG 面板 + 模型网关面板：只读查询可视化。
     - SLICE-226 语义层面板：术语表、概念、能力绑定、路由回放。
