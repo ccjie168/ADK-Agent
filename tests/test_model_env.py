@@ -28,3 +28,17 @@ def test_gemini_key_does_not_override_env(monkeypatch):
     )
     build_model(cfg)
     assert os.environ["GOOGLE_API_KEY"] == "existing"  # pragma: allowlist secret
+
+
+def test_set_default_model_priority(monkeypatch):
+    monkeypatch.setenv("ADK_AGENT_MODEL", "litellm:openai/env-model")
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    from adk_agent import models
+
+    models.set_default_model("litellm:openai/override-model")
+    cfg = models._default_model_config()
+    assert cfg.provider == "litellm"
+    assert cfg.name == "openai/override-model"
+    models.set_default_model(None)

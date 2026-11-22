@@ -1,0 +1,43 @@
+SLICE-230 模型配置类型与 store
+日期: 2026-11-22
+依据: ADR-0040 MVP 第 1 项（配置类型 + store + override 优先级）
+基线: `c469261`
+
+一、契约
+
+无对外接口变更。`ModelConfigStore` 是框架内部端口，`/api/model-config` 属 SLICE-231。
+
+二、实现
+
+- `models/config_store.py`：`ModelConfigStore` 协议（`get` / `put`）与 `ModelConfigStoreUnavailable`。
+- `registry/model_config.py`：`FileModelConfigStore`（`<root>/model.txt`，tempfile fsync + os.replace 原子写）。
+- `registry/model_config_postgres.py`：`PostgresModelConfigStore`（`adk_model_config` 单行，`ON CONFLICT DO UPDATE`，
+  `LazyPool` / `normalize_dsn`）。
+- `models/__init__.py`：模块级 `_default_model_override` + `set_default_model(spec)`；
+  `_default_model_config()` 读 override 优先于 `ADK_AGENT_MODEL` 与 fallback（优先级 2/3/4）。
+
+三、红态
+
+基线 `c469261` 加两个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_model_env.py::test_set_default_model_priority \
+    tests/test_model_config_store.py::test_file_model_config_store_roundtrip -q
+2 failed（`adk_agent.registry.model_config` 模块不存在 ImportError、`set_default_model` 不存在）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_model_env.py::test_set_default_model_priority \
+    tests/test_model_config_store.py::test_file_model_config_store_roundtrip -q
+2 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1991 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- 控制台 `/api/model-config` 端点与管理员 UI 属 SLICE-231。
+- Postgres 实现未做 live 库往返（需 `TEST_POSTGRES_URL`），文件实现已往返。
+- 多副本同步属 ADR-0040 第二阶段。
