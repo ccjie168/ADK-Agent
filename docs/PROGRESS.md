@@ -345,7 +345,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 14. ADR-0040（全局默认模型配置与动态切换）2026-11-22 已确认，MVP 连续执行中（`docs/decisions/ADR-0040-global-default-model.md`），
     另加 UI 实时刷新（ADR-0039 第二阶段候选 3，触发条件已确认，用 SSE，FastAPI 内置无需新依赖）：
-    - SLICE-229 UI 实时刷新：总览与各能力面板的指标经 SSE 推送，自动更新。
+    - SLICE-229 UI 实时刷新：总览与各能力面板的指标经 SSE 推送，自动更新。~~已合并 `c469261`~~
     - SLICE-230 模型配置类型与 store：`ModelConfigStore` 协议 + 文件/Postgres 双实现，`set_default_model` /
       `_default_model_config` 读 override，优先级落地。
     - SLICE-231 控制台端点 + 管理员 UI：`GET/PUT /api/model-config`（`model.read` admin+operator、写 admin-only），
