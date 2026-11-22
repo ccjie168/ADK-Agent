@@ -21,8 +21,8 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - `capabilities` 由服务端按角色映射计算，映射只在一处定义。同一主体有多个角色时取并集。未知角色只得到基础能力。
 - 基础能力是 `chat.run`、`runs.read`、`sessions.read`。
 - 读接口按消费它的面板检查能力：审计 `audit.read`，策略 `policy.read`，注册表与评测 `registry.read`，工具目录 `tools.read`，工具授权 `grants.read`，连接器、连接器申请与凭据 `connectors.read`，对端与远程目录 `peers.read`。
-- 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`。写接口的能力检查先于请求体解析、配置 404 与租户检查。
-- 运行、计划、trace、会话与聊天接口检查基础能力 `runs.read`、`sessions.read`、`chat.run`。这些能力按现有角色表对每个主体都为真，检查用于未来增加受限角色时的防御；租户可见性仍由既有的租户过滤决定。带显式租户参数的读接口保持租户检查先于能力检查。
+- 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`、决定 `grants.decide`，连接器/凭据/连接器申请决定 `connectors.manage`，对端/远程目录 `peers.manage`，全局默认模型 `model.write`。能力检查一律先于请求体解析、配置 404、非法参数 400 与租户检查。
+- 运行、计划、trace、会话与聊天接口检查基础能力 `runs.read`、`sessions.read`、`chat.run`。这些能力按现有角色表对每个主体都为真，检查用于未来增加受限角色时的防御；租户可见性仍由既有的租户过滤决定。带显式租户参数的读接口同样能力检查先于租户检查。
 - `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。
 - `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
 - 其余管理能力只由 `admin` 得到，包括 `grants.decide`、`connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
@@ -304,7 +304,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 ## `GET /api/registry?tenant=<name>` -> `[RegistryEntry]`
 
-返回该租户的已发布版本与远端目录记录。`tenant` 缺失时用当前 principal 的租户。需要 `registry.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。本地条目按 `(id, version)` 排序，远端条目按 `id` 排序；混合视图按 `id` 排序，同 `id` 时 `local` 在前。
+返回该租户的已发布版本与远端目录记录。`tenant` 缺失时用当前 principal 的租户。需要 `registry.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。本地条目按 `(id, version)` 排序，远端条目按 `id` 排序；混合视图按 `id` 排序，同 `id` 时 `local` 在前。
 
 ```json
 {
@@ -392,7 +392,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 ## `GET /api/tools?tenant=<name>` -> `[ToolEntry]`
 
-只读工具目录。每个条目附带该租户已发布版本里引用它的 agent。需要 `tools.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
+只读工具目录。每个条目附带该租户已发布版本里引用它的 agent。需要 `tools.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
 
 ```json
 {
@@ -419,7 +419,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 只读连接器列表，按 `connector_id` 排序。全局连接器（`tenant` 为 `null`）对所有租户可见。
 
-- 需要 `connectors.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
+- 需要 `connectors.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
 - 由 `console --connectors-dir DIR`（文件存储）或已有的 `--registry-url`（控制面）提供；都未配置时返回 404 `connectors_not_configured`。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
 - 存储不可达返回 503 `connector_store_unavailable`。
@@ -441,7 +441,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 }
 ```
 
-- 只有 `admin` 能注册，非 admin 返回 403 `forbidden`。
+- 需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
 - 请求体不是 JSON 或不是对象 400 `invalid_request`；`ConnectorSpec` 校验失败 400 `invalid_connector`。
 - 同 id 同定义重发 201，幂等；不同定义 409 `connector_conflict`。
 - 成功 201，写 `connector.register` 审计，`target` 是 `<tenant>/<id>` 或 `global/<id>`。
@@ -450,7 +450,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 ## `POST /api/connectors/{connector_id}/disable` -> `ConnectorSpec`
 
-- 只有 `admin` 能停用，非 admin 403 `forbidden`。
+- 需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
 - 不存在 404 `connector_not_found`。
 - 成功 200，重复停用幂等，写 `connector.disable` 审计。
 - 未配置存储 404 `connectors_not_configured`；存储不可达 503 `connector_store_unavailable`。
@@ -470,7 +470,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 }
 ```
 
-- 只有 `admin` 能触发，非 admin 403 `forbidden`。
+- 需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
 - 不存在 404 `connector_not_found`；属于其他租户且调用方不是 admin 403 `tenant_forbidden`。
 - 未配置存储 404 `connectors_not_configured`；存储不可达 503 `connector_store_unavailable`。
 - 探测从控制台进程发出，`GET` 连接器的第一个路径前缀，不带凭据，不跟随重定向，超时取连接器配置与 5 秒的较小值，不读取响应体。
@@ -481,16 +481,16 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 只读凭据引用清单，按 `credential_id` 排序。记录只含元数据，没有密钥值。形状与存储见 `credentials.md`。
 
-- 需要 `connectors.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
+- 需要 `connectors.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
 - 由 `console --credentials-dir DIR` 或 `--credential-db URL`（都未给时读 `CREDENTIAL_DATABASE_URL`）提供；未配置返回 404 `credentials_not_configured`。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
 - `tenant` 不符合安全字符集（`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`）返回 400 `unsafe_tenant`；
-  这个检查先于能力检查，与注册表列表一致。
+  能力检查先于此校验。
 - 存储不可达返回 503 `credential_store_unavailable`。
 
 ## `POST /api/credentials` -> `CredentialBinding`
 
-- 只有 `admin` 能登记，非 admin 403 `forbidden`。
+- 需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
 - 请求体不是 JSON 或不是对象 400 `invalid_request`；`CredentialBinding` 校验失败（含跨租户引用）400 `invalid_credential`。
 - 请求体不接受 `wrapped_secret`、`secret_key_id`、`secret_version` 等密文字段；出现即 400 `invalid_credential`。
   密文只由控制面在写入 `secret` 明文时加密产生，控制台只登记引用元数据。
@@ -501,7 +501,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 ## `POST /api/credentials/{credential_id}/disable?tenant=<name>` -> `CredentialBinding`
 
-- 只有 `admin` 能停用，非 admin 403 `forbidden`。
+- 需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
 - `tenant` 缺失时用当前 principal 的租户；给了其他租户按该租户定位。
 - 不存在 404 `credential_not_found`。
 - 成功 200，重复停用幂等，写 `credential.disable` 审计。
@@ -511,11 +511,11 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 形状与存储见 `connector_requests.md`。
 
-`GET /api/connector-requests?tenant=<name>&status=<status>` -> `[ConnectorRequest]`：按 `requested_at` 倒序。需要 `connectors.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。`tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`；`status` 不在 `pending`、`approved`、`denied` 中 400 `invalid_status`。由 `console --connector-requests-dir DIR` 或 `--connector-request-db URL`（都未给时读 `CONNECTOR_REQUEST_DATABASE_URL`）提供；未配置 404 `connector_requests_not_configured`；存储失败 503 `connector_request_store_unavailable`。
+`GET /api/connector-requests?tenant=<name>&status=<status>` -> `[ConnectorRequest]`：按 `requested_at` 倒序。需要 `connectors.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。`tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`；`status` 不在 `pending`、`approved`、`denied` 中 400 `invalid_status`。由 `console --connector-requests-dir DIR` 或 `--connector-request-db URL`（都未给时读 `CONNECTOR_REQUEST_DATABASE_URL`）提供；未配置 404 `connector_requests_not_configured`；存储失败 503 `connector_request_store_unavailable`。
 
 `POST /api/connector-requests` -> `ConnectorRequest`：请求 `{spec, reason}`，任何已认证主体可提交。服务端取调用主体作为 `tenant` 与 `requested_by`，生成 `request_id`；`spec.tenant` 必须等于调用方租户，否则 400 `invalid_connector_request`。成功 201，写 `connector.request` 审计。
 
-`POST /api/connector-requests/{request_id}/decide` -> `ConnectorRequest`：仅 `admin`。请求 `{approved, reason}`。
+`POST /api/connector-requests/{request_id}/decide` -> `ConnectorRequest`：需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于请求体解析。请求 `{approved, reason}`。
 
 - 拒绝把状态改为 denied，不写连接器存储，写 `connector.request.decide` 审计，状态 `denied`。
 - 批准先查凭据绑定，未绑定 400 `credential_unbound`；再登记连接器，冲突 409 `connector_conflict`；登记成功后标记 approved，写 `registered_connector`，并写 `connector.register` 与 `connector.request.decide` 审计。
@@ -525,7 +525,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 只读 peer 与其授权。按 `peer_id` 排序。
 
-- 需要 `peers.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
+- 需要 `peers.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
 - 由 `console --peer-dir DIR`（文件）或 `--peer-db URL`（Postgres）提供；都未配置返回 404 `peers_not_configured`。
 - 非 `admin` 只返回自己租户的 peer；`admin` 可按 `tenant` 取一个租户，缺省返回全部。
 - 存储不可达返回 503 `peer_store_unavailable`。
@@ -536,14 +536,14 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 {"peer_id": "peer-a", "tenant": "acme", "subject": "sub-1", "kind": "service", "roles": []}
 ```
 
-- 只有 `admin` 能写，非 admin 403 `forbidden`。
+- 需要 `peers.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
 - 请求体不是对象 400 `invalid_request`；校验失败 400 `invalid_peer`。
 - 新 peer 返回 200；已存在且字段一致幂等返回 200；已存在但改 `tenant` 返回 409 `peer_tenant_immutable`。
 - 成功写 `peer.register` 审计，`target` 是 peer id，tenant 是调用方租户。
 
 ## `POST /api/peers/{peer_id}/disable` -> `PeerIdentity`
 
-- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 需要 `peers.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置与租户检查。
 - 不存在 404 `peer_not_found`；重复停用幂等返回 200。
 - 成功写 `peer.disable` 审计。
 
@@ -553,14 +553,14 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 {"agent_id": "bot", "actions": ["read", "invoke"]}
 ```
 
-- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 需要 `peers.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置与租户检查。
 - peer 不存在 404 `peer_not_found`；`actions` 为空或含未知值 400 `invalid_grant`。
 - 授权记录的 `tenant` 取 peer 的租户，请求体不接受 `tenant`。
 - 写入按 `(peer_id, agent_id)` 覆盖，成功返回 200 并写 `peer.grant` 审计，`target` 是 `<peer_id>/<agent_id>`。
 
 ## `DELETE /api/peers/{peer_id}/grants/{agent_id}` -> `{"revoked": bool}`
 
-- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 需要 `peers.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置与租户检查。
 - peer 不存在 404 `peer_not_found`；授权不存在返回 `{"revoked": false}` 与 200。
 - 实际删除时写 `peer.revoke` 审计。
 
@@ -584,7 +584,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 }
 ```
 
-- 需要 `peers.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
+- 需要 `peers.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
 - 由 `console --peer-dir DIR` 或 `--peer-db URL` 提供；未配置返回 404 `remote_agents_not_configured`。
 - 非 `admin` 只返回自己租户的记录；`admin` 可按 `tenant` 过滤，缺省返回全部。
 - 存储不可达返回 503 `remote_agent_store_unavailable`。
@@ -597,7 +597,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
  "credential_ref": "secret://acme/token", "label": "CRM bot"}
 ```
 
-- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 需要 `peers.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置与租户检查。
 - 请求体非法 400 `invalid_request`；字段校验失败 400 `invalid_remote_agent`。
 - peer 不存在或未启用 404 `peer_not_found`；记录租户与 peer 租户不一致 400 `tenant_mismatch`。
 - 用 `credential_ref` 经 `SecretProvider` 解析凭据拉取 card，要求 card 的 `name` 等于 `remote_id`。引用是两段 `secret://tenant/name` 时首段必须等于记录租户，否则按解析失败处理。
@@ -607,14 +607,14 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 ## `POST /api/remote-agents/{remote_id}/refresh` -> `RemoteAgent`
 
-- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 需要 `peers.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置与租户检查。
 - 不存在 404 `remote_agent_not_found`。
 - 重新拉取并比较摘要。一致记 `pinned` 并清空 `observed_digest`；不一致保留 `card_digest`，把新摘要写入 `observed_digest` 并记 `changed`；拉取或凭据失败保留两个摘要，记 `unreachable`。三种情况都更新 `checked_at`。
 - 写 `remote_agent.refresh` 审计。
 
 ## `POST /api/remote-agents/{remote_id}/disable` -> `RemoteAgent`
 
-- 只有 `admin` 能写，非 admin 403 `forbidden`；跨租户 403 `tenant_forbidden`。
+- 需要 `peers.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置与租户检查。
 - 不存在 404 `remote_agent_not_found`；重复停用幂等。
 - 写 `remote_agent.disable` 审计。
 
@@ -622,7 +622,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 
 列出工具临时授权请求，按 `requested_at` 倒序。`status` 取 `pending`、`approved`、`denied`、`expired`、`cancelled`，其他值 400 `invalid_status`。
 
-- 需要 `grants.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
+- 需要 `grants.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
 - 未配置授权存储返回 404 `tool_grants_not_configured`。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
 - 存储不可达返回 503 `grant_store_unavailable`。
@@ -635,7 +635,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 {"tool_id": "crm.read", "allowed": 3, "denied": 1, "temporary": 2}
 ```
 
-- 需要 `grants.read` 能力，缺少返回 403 `forbidden`；租户参数检查先于能力检查。
+- 需要 `grants.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
 - 事件来源与控制台审计面板相同（共享审计或进程缓冲），上限 1000 条。
 - 非 `admin` 只能看自己的租户；审计服务不可用返回 502 `audit_unavailable`。
 - Grants 面板对已批准且 24 小时内到期的请求显示 expiring 徽标。
@@ -668,7 +668,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 {"approved": true, "reason": "ok"}
 ```
 
-- 只有 `admin` 能审批，非 admin 返回 403 `forbidden`。
+- 需要 `grants.decide` 能力（仅 admin），缺少返回 403 `forbidden`，先于请求体解析。
 - 请求不存在 404 `grant_not_found`；终态 409 `grant_already_decided`；待审但已过期 410 `grant_expired`。
 - 成功 200，写 `tool_grant.decide` 审计。
 

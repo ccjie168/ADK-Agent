@@ -1,0 +1,49 @@
+SLICE-233 控制台路由权限一致性
+日期: 2026-11-22
+依据: ADR-0022 + ADR-0030 收尾；用户确认「权限收紧」方向
+基线: `10d44c1`
+
+一、契约
+
+`docs/contracts/console.md`：写接口改列 `connectors.manage`/`peers.manage`/`grants.decide` 等能力；
+能力检查一律先于请求体解析、配置 404、非法参数 400 与租户检查。读接口的「租户参数检查先于能力检查」
+改为「能力检查先于租户参数检查」。
+
+二、实现
+
+- 读路由把 `_forbidden_if_missing` 移到 `_principal_for` 之后第一条语句（registry、eval、tools、
+  tool-grants、tool-grants/usage、connectors、connector-requests、credentials、peers、
+  remote-agents）。
+- 写路由把 `if "admin" not in caller.roles` 换成能力检查：连接器/凭据/连接器申请决定
+  `connectors.manage`，对端/远程目录 `peers.manage`，工具授权决定 `grants.decide`（行为不变，
+  admin 判定与 admin-only 能力等价）。
+
+三、红态
+
+基线 `10d44c1` 加 `tests/test_console_permission_hygiene.py` 两用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console_permission_hygiene.py -q
+2 failed（requester 调未配置的 `/api/credentials`、`/api/connector-requests`、`/api/peers`、
+`/api/remote-agents`、`/api/connectors/*/check`、`/api/peers/*/disable|grants`、
+`/api/remote-agents/*/refresh` 返回 404，配置存在性泄漏，期望 403）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console_permission_hygiene.py -q
+2 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+2001 passed, 103 skipped（ALL PASS，9 步，含 bandit / pip-audit / detect-secrets）
+
+五、既有用例更新（能力检查前移的必然结果，非削弱）
+
+6 个既有用例把 `tenant_forbidden` 改为 `forbidden`（调用方缺能力，能力检查先于租户检查命中）：
+`test_console_peers.py::test_cross_tenant_forbidden`、`test_console_connectors.py::test_check_missing_and_tenant`、
+`test_console_tools.py::test_cross_tenant_forbidden`、`test_console_remote_agents.py::test_admin_only_and_tenant`、
+`test_console_oidc.py::test_registry_tenant_is_enforced`、`test_console_oidc.py::test_eval_report_tenant_is_enforced`。
+每个用例仍断言 403，安全保证不变。
+
+六、范围外（待你另行拍板，本切片未动）
+
+- `POST /api/import/terminology`、`POST /api/import/agent` 无能力检查（基础角色也能写）。
+- 只读面板（quota/rag/model/semantics/overview）仍是 `runs.read` 基础可见。

@@ -89,7 +89,7 @@ def test_cross_tenant_forbidden(tmp_path):
         response = _tools(client, tenant="acme")
 
     assert response.status_code == 403
-    assert response.json() == {"error": "tenant_forbidden"}
+    assert response.json() == {"error": "forbidden"}
 
 
 def test_no_catalog(tmp_path):

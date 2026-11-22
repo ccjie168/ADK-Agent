@@ -231,11 +231,11 @@ def test_cross_tenant_forbidden(tmp_path):
         revoked = client.delete("/api/peers/foreign/grants/bot", headers=AUTH)
 
     assert disabled.status_code == 403
-    assert disabled.json() == {"error": "tenant_forbidden"}
+    assert disabled.json() == {"error": "forbidden"}
     assert granted.status_code == 403
-    assert granted.json() == {"error": "tenant_forbidden"}
+    assert granted.json() == {"error": "forbidden"}
     assert revoked.status_code == 403
-    assert revoked.json() == {"error": "tenant_forbidden"}
+    assert revoked.json() == {"error": "forbidden"}
 
 
 def test_not_configured(tmp_path):
