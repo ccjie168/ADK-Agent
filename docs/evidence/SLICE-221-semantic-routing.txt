@@ -1,0 +1,37 @@
+SLICE-221 确定性语义路由
+日期: 2026-11-22
+依据: ADR-0038 MVP 第 5 项（最后一刀）
+基线: `4daa518`
+
+一、契约
+
+- `docs/contracts/semantics.md` 新增「编排层（确定性路由）」：`RoutedCapability` 与 `route_request`
+  的匹配方式、顺序、空命中语义。
+
+二、实现
+
+- `src/adk_agent/semantics/routing.py`：`RoutedCapability`（capability_id/concept_id/tool_id/
+  matched_label）与 `route_request(text, scheme, bindings)`。大小写不敏感匹配概念标签（pref/alt/
+  hidden），命中的概念按 `CapabilityBinding` 映射到工具，返回按概念顺序排列的命中列表；无命中空列表。
+  只做映射，不执行工具。
+
+三、绿态
+
+$ python -m pytest tests/test_semantic_routing.py -q
+4 passed
+
+$ python scripts/check.py --fast
+1968 passed, 103 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `4daa518` 加新用例、未改实现时：
+`pytest tests/test_semantic_routing.py` -> 1 collection error（`ImportError: RoutedCapability`）。
+
+五、范围与已知缺口
+
+- 「计划结构怎么选」的模型填空属第二阶段，不在本切片。
+- 词义/向量匹配需真实 embedding 后评估；tool → agent 的映射尚未定义。

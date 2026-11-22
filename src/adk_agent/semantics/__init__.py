@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .capability import CapabilityBinding, CapabilityId, validate_capability_bindings
 from .domain import DataDomain
+from .routing import RoutedCapability, route_request
 from .store import ConceptSchemeStore, ConceptSchemeStoreUnavailable
 from .terminology import Concept, ConceptMapping, ConceptScheme, MappingKind, Term
 
@@ -17,6 +18,8 @@ __all__ = [
     "ConceptSchemeStoreUnavailable",
     "DataDomain",
     "MappingKind",
+    "RoutedCapability",
     "Term",
+    "route_request",
     "validate_capability_bindings",
 ]
