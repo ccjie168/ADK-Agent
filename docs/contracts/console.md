@@ -243,6 +243,14 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 返回最近审计窗口内 `model.call` 事件的条数、用到的 `model_alias` 去重集合、`fallback_count` 总和。
 - 统计基于最近 200 条审计事件，是窗口摘要。审计不可用返回 502 `audit_unavailable`。
 
+## `GET /api/semantics` -> `[ConceptScheme]`
+
+返回当前租户的术语表列表，结构见 ADR-0038 的 `ConceptScheme`。未配置 `--terminology-dir` / `--terminology-db` 返回 404 `{"error":"terminology_not_configured"}`；存储不可用返回 503 `{"error":"terminology_unavailable"}`。
+
+## `POST /api/semantics/route` -> `[RoutedCapability]`
+
+请求：`{scheme_id, text, bindings}`。`bindings` 是 `CapabilityBinding` 数组，由调用方随请求传入。用 `route_request` 做确定性路由回放，返回命中的 `RoutedCapability` 列表（需求 → 概念 → 能力 → 工具）。只做映射，不执行工具。字段缺失或非法返回 400 `invalid_request` / `invalid_binding`，`scheme_id` 不存在返回 404 `scheme_not_found`。
+
 ## `GET /api/policy` -> `AccessPolicy`
 
 返回当前访问策略，结构见 `access_policy.schema.json`。仅在配置了 `--policy` 时存在。

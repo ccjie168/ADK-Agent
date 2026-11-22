@@ -121,6 +121,12 @@ from .secretstore import (
     TenantSecretProvider,
     load_key_backend,
 )
+from .semantics import (
+    CapabilityBinding,
+    ConceptSchemeStore,
+    ConceptSchemeStoreUnavailable,
+    route_request,
+)
 from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_declared_guards
 from .tracing import resolve_trace_id
 
@@ -404,6 +410,10 @@ _INDEX_HTML = r"""<!doctype html>
       <button id="tab-quota" class="tab" data-tab="quota" data-capability="runs.read">Quota</button>
       <button id="tab-policy" class="tab" data-tab="policy" data-capability="policy.read">Policy</button>
     </div>
+    <div class="nav-group">
+      <div class="nav-title">数据</div>
+      <button id="tab-semantics" class="tab" data-tab="semantics" data-capability="runs.read">Semantics</button>
+    </div>
   </nav>
   <main id="main">
 
@@ -428,6 +438,15 @@ _INDEX_HTML = r"""<!doctype html>
 
 <section id="model" class="panel" data-capability="runs.read">
   <div id="model-cards" class="metric-grid"></div>
+</section>
+
+<section id="semantics" class="panel" data-capability="runs.read">
+  <div class="row">
+    <input id="semantics-route-text" placeholder="输入需求，回放语义路由..." autocomplete="off">
+    <button id="semantics-route-run">Route</button>
+  </div>
+  <div id="semantics-schemes" class="metric-grid"></div>
+  <div id="semantics-route-result"></div>
 </section>
 
 <section id="chat" class="panel" data-capability="chat.run">
@@ -722,7 +741,7 @@ _INDEX_HTML = r"""<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "rag", "model", "policy"];
+const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "rag", "model", "semantics", "policy"];
 let sessionId = null;
 let capabilities = null;
 let approvalsData = [];
@@ -1892,6 +1911,7 @@ async function connect() {
   if (can("audit.read")) await loadAuditPanel();
   await loadRag();
   await loadModel();
+  await loadSemantics();
   if (can("runs.read")) await loadRuns();
   if (can("sessions.read")) await loadSessions();
   if (can("approvals.read")) await loadApprovals();
@@ -2267,6 +2287,42 @@ async function loadModel() {
   }
 }
 
+async function loadSemantics() {
+  const result = await getJson("/api/semantics");
+  const container = $("semantics-schemes");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!result.ok) return;
+  for (const scheme of result.data || []) {
+    const el = document.createElement("div");
+    el.className = "stat-card";
+    const label = document.createElement("div");
+    label.className = "stat-label";
+    label.textContent = "术语表";
+    const value = document.createElement("div");
+    value.className = "stat-value";
+    value.textContent = scheme.scheme_id + " (" + ((scheme.concepts || []).length) + " 概念)";
+    el.appendChild(label);
+    el.appendChild(value);
+    container.appendChild(el);
+  }
+}
+
+async function runSemanticsRoute() {
+  const text = $("semantics-route-text").value;
+  if (!text) return;
+  const schemes = await getJson("/api/semantics");
+  const schemeId = schemes.data && schemes.data.length ? schemes.data[0].scheme_id : null;
+  if (!schemeId) { $("semantics-route-result").textContent = "no scheme"; return; }
+  const result = await postJson("/api/semantics/route", {
+    scheme_id: schemeId,
+    text: text,
+    bindings: [],
+  });
+  const box = $("semantics-route-result");
+  box.textContent = result.ok ? JSON.stringify(result.data) : "route failed (" + result.status + ")";
+}
+
 async function loadPolicy() {
   const r = await fetch("/api/policy", { headers: { Authorization: "Bearer " + token() } });
   if (!r.ok) { $("policy-msg").textContent = "policy unavailable (" + r.status + ")"; return; }
@@ -2435,6 +2491,7 @@ $("tenant").addEventListener("change", () => {
 $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-audit-panel").addEventListener("click", loadAuditPanel);
+$("semantics-route-run").addEventListener("click", runSemanticsRoute);
 $("refresh-registry").addEventListener("click", loadRegistry);
 $("refresh-remote").addEventListener("click", refreshSelectedRemote);
 $("open-chat").addEventListener("click", openChat);
@@ -2788,6 +2845,7 @@ def build_console_app(
     session_tenant_scope: bool = False,
     session_rls: bool = False,
     rag: Any | None = None,
+    terminology: ConceptSchemeStore | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     install_log_sanitizer()
@@ -3108,6 +3166,47 @@ def build_console_app(
             "aliases": aliases,
             "fallbacks": fallbacks,
         }
+
+    @app.get("/api/semantics")
+    async def list_semantics(request: Request) -> Any:
+        if terminology is None:
+            return JSONResponse({"error": "terminology_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            schemes = await terminology.list(caller.tenant)
+        except ConceptSchemeStoreUnavailable:
+            return JSONResponse({"error": "terminology_unavailable"}, status_code=503)
+        return [scheme.model_dump(mode="json") for scheme in schemes]
+
+    @app.post("/api/semantics/route")
+    async def route_semantics(request: Request) -> Any:
+        if terminology is None:
+            return JSONResponse({"error": "terminology_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        scheme_id = body.get("scheme_id")
+        text = body.get("text")
+        raw_bindings = body.get("bindings")
+        if not isinstance(scheme_id, str) or not isinstance(text, str) or not text.strip():
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(raw_bindings, list):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            scheme = await terminology.get(caller.tenant, scheme_id)
+            if scheme is None:
+                return JSONResponse({"error": "scheme_not_found"}, status_code=404)
+            bindings = [CapabilityBinding.model_validate(b) for b in raw_bindings]
+        except ConceptSchemeStoreUnavailable:
+            return JSONResponse({"error": "terminology_unavailable"}, status_code=503)
+        except ValidationError:
+            return JSONResponse({"error": "invalid_binding"}, status_code=400)
+        routed = route_request(text, scheme, bindings)
+        return [item.model_dump(mode="json") for item in routed]
 
     @app.get("/api/agents")
     async def list_agents() -> list[dict[str, str]]:
@@ -5036,6 +5135,7 @@ def run_console(
     session_tenant_scope: bool = False,
     session_rls: bool = False,
     rag: Any | None = None,
+    terminology: ConceptSchemeStore | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -5076,6 +5176,7 @@ def run_console(
         session_tenant_scope=session_tenant_scope,
         session_rls=session_rls,
         rag=rag,
+        terminology=terminology,
     )
 
     import uvicorn

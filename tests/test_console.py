@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 
 from adk_agent.console import build_console_app
+from adk_agent.registry.terminology import FileConceptSchemeStore
+from adk_agent.semantics import Concept, ConceptScheme, Term
 from adk_agent.tools import ToolCatalog, ToolEntry
 
 
@@ -189,3 +193,64 @@ def test_model_endpoint_returns_stats():
     assert data["recent_calls"] == 0
     assert data["aliases"] == []
     assert data["fallbacks"] == 0
+
+
+def _semantics_app(tmp_path):
+    store = FileConceptSchemeStore(tmp_path / "terminology")
+    scheme = ConceptScheme(
+        scheme_id="products",
+        concepts=[
+            Concept(
+                concept_id="order",
+                pref_labels=[Term(value="Order", language="en")],
+                alt_labels=[Term(value="Purchase", language="en")],
+            ),
+        ],
+    )
+    asyncio.run(store.put("local", scheme))
+    return build_console_app(_agents(), auth_token="secret", roles=["admin"], terminology=store)
+
+
+def test_index_has_semantics_panel():
+    with _client() as client:
+        page = client.get("/")
+
+    assert 'id="semantics"' in page.text
+    assert "tab-semantics" in page.text
+
+
+def test_semantics_endpoint_lists_schemes(tmp_path):
+    app = _semantics_app(tmp_path)
+    with TestClient(app) as client:
+        response = client.get("/api/semantics", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    schemes = response.json()
+    assert len(schemes) == 1
+    assert schemes[0]["scheme_id"] == "products"
+
+
+def test_semantics_route_endpoint_replays(tmp_path):
+    app = _semantics_app(tmp_path)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/semantics/route",
+            json={
+                "scheme_id": "products",
+                "text": "show me the Order",
+                "bindings": [
+                    {
+                        "capability_id": "order.lookup",
+                        "concept_id": "order",
+                        "tool_id": "lookup_order",
+                    }
+                ],
+            },
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    routed = response.json()
+    assert len(routed) == 1
+    assert routed[0]["capability_id"] == "order.lookup"
+    assert routed[0]["tool_id"] == "lookup_order"

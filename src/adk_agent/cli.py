@@ -154,6 +154,23 @@ def _tool_grant_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _terminology_store(args: argparse.Namespace) -> Any:
+    """Build the terminology store from ``--terminology-dir`` or ``--terminology-db``."""
+    from .registry.terminology import FileConceptSchemeStore
+    from .registry.terminology_postgres import PostgresConceptSchemeStore
+
+    directory = getattr(args, "terminology_dir", None)
+    url = getattr(args, "terminology_db", None)
+    if directory and url:
+        print("set exactly one of --terminology-dir or --terminology-db", file=sys.stderr)
+        raise SystemExit(1)
+    if directory:
+        return FileConceptSchemeStore(directory)
+    if url:
+        return PostgresConceptSchemeStore(url)
+    return None
+
+
 def _idempotency_store(args: argparse.Namespace) -> Any:
     """Build the tool idempotency store from ``--idempotency-dir`` or ``--idempotency-db``."""
     from .tools import FileToolIdempotencyStore, PostgresToolIdempotencyStore
@@ -1854,6 +1871,16 @@ def main(argv: list[str] | None = None) -> None:
     _add_credential_store_args(p_console)
     _add_peer_store_args(p_console)
     p_console.add_argument(
+        "--terminology-dir",
+        default=None,
+        help="terminology store directory for the Semantics panel",
+    )
+    p_console.add_argument(
+        "--terminology-db",
+        default=None,
+        help="Postgres URL for the terminology store",
+    )
+    p_console.add_argument(
         "--tool-catalog",
         default=None,
         help="read-only tool catalog JSON for the Tools panel",
@@ -3178,6 +3205,7 @@ def main(argv: list[str] | None = None) -> None:
             session_tenant_scope=args.session_tenant_scope,
             session_rls=session_rls,
             rag=rag_factory,
+            terminology=_terminology_store(args),
         )
         if isinstance(audit_query, PostgresAuditQuery):
             # The pool may have opened in uvicorn's loop, which is now closed;
