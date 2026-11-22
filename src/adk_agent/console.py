@@ -376,8 +376,12 @@ _INDEX_HTML = r"""<!doctype html>
   </header>
   <nav id="tabs">
     <div class="nav-group">
+      <div class="nav-title">总览</div>
+      <button id="tab-overview" class="tab active" data-tab="overview" data-capability="runs.read">Overview</button>
+    </div>
+    <div class="nav-group">
       <div class="nav-title">运营</div>
-      <button id="tab-chat" class="tab active" data-tab="chat" data-capability="chat.run">Chat</button>
+      <button id="tab-chat" class="tab" data-tab="chat" data-capability="chat.run">Chat</button>
       <button id="tab-runs" class="tab" data-tab="runs" data-capability="runs.read">Runs</button>
       <button id="tab-sessions" class="tab" data-tab="sessions" data-capability="sessions.read">Sessions</button>
       <button id="tab-approvals" class="tab" data-tab="approvals" data-capability="approvals.read">Approvals</button>
@@ -399,7 +403,11 @@ _INDEX_HTML = r"""<!doctype html>
   </nav>
   <main id="main">
 
-<section id="chat" class="panel active" data-capability="chat.run">
+<section id="overview" class="panel active" data-capability="runs.read">
+  <div id="overview-cards" class="metric-grid"></div>
+</section>
+
+<section id="chat" class="panel" data-capability="chat.run">
   <div id="log"></div>
   <div class="row">
     <input id="msg" placeholder="Ask the agent..." autocomplete="off">
@@ -691,7 +699,7 @@ _INDEX_HTML = r"""<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "policy"];
+const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "policy"];
 let sessionId = null;
 let capabilities = null;
 let approvalsData = [];
@@ -759,6 +767,33 @@ async function getJson(path) {
   let data = null;
   try { data = await response.json(); } catch (e) { data = null; }
   return { ok: response.ok, status: response.status, data: data };
+}
+
+async function loadOverview() {
+  const result = await getJson("/api/overview");
+  const container = $("overview-cards");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!result.ok || !result.data || !result.data.cards) return;
+  for (const card of result.data.cards) {
+    const el = document.createElement("div");
+    el.className = "stat-card";
+    el.setAttribute("role", "button");
+    el.setAttribute("tabindex", "0");
+    el.addEventListener("click", () => showTab(card.panel));
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showTab(card.panel); }
+    });
+    const label = document.createElement("div");
+    label.className = "stat-label";
+    label.textContent = card.label;
+    const value = document.createElement("div");
+    value.className = "stat-value";
+    value.textContent = card.value === null ? "未配置" : String(card.value);
+    el.appendChild(label);
+    el.appendChild(value);
+    container.appendChild(el);
+  }
 }
 
 async function postJson(path, body) {
@@ -1829,6 +1864,7 @@ async function connect() {
   $("who").textContent = "已连接";
   info("connected: " + result.agents.map((a) => a.name).join(", "));
   await loadTenants();
+  await loadOverview();
   if (can("runs.read")) await loadRuns();
   if (can("sessions.read")) await loadSessions();
   if (can("approvals.read")) await loadApprovals();
@@ -2262,6 +2298,7 @@ async function bootstrap() {
 }
 
 $("tenant").addEventListener("change", () => {
+  loadOverview();
   if (can("registry.read")) loadRegistry();
   if (can("tools.read")) loadTools();
   if (can("connectors.read")) loadConnectors();
@@ -2866,6 +2903,47 @@ def build_console_app(
             "roles": list(caller.roles),
             "capabilities": _capabilities_for(caller.roles),
         }
+
+    @app.get("/api/overview")
+    async def overview(request: Request) -> Any:
+        caller = _principal_for(request)
+        caps = set(_capabilities_for(caller.roles))
+        target = caller.tenant
+        cards: list[dict[str, Any]] = [
+            {"key": "approvals", "label": "待审批", "panel": "approvals", "value": None},
+            {"key": "agents", "label": "已注册 Agent", "panel": "registry", "value": None},
+            {"key": "tools", "label": "工具", "panel": "tools", "value": None},
+            {"key": "grants", "label": "待处理授权", "panel": "grants", "value": None},
+        ]
+
+        if approvals is not None and "approvals.read" in caps:
+            try:
+                pending = approvals.pending()
+                if inspect.isawaitable(pending):
+                    pending = await pending
+                if "admin" not in caller.roles:
+                    pending = [item for item in pending if item.principal.tenant == target]
+                cards[0]["value"] = len(pending)
+            except ApprovalInboxUnavailable:
+                logger.exception("overview approvals failed: tenant=%s", target)
+
+        if registry is not None and "registry.read" in caps:
+            try:
+                cards[1]["value"] = len(await registry.list(target))
+            except (RegistryIntegrityError, ValueError):
+                logger.exception("overview registry failed: tenant=%s", target)
+
+        if tool_catalog is not None and "tools.read" in caps:
+            cards[2]["value"] = len(tool_catalog.tools)
+
+        if tool_grants is not None and "grants.read" in caps:
+            try:
+                records = await tool_grants.list(target, status=cast(GrantStatus, "pending"))
+                cards[3]["value"] = len(records)
+            except GrantStoreError:
+                logger.exception("overview grants failed: tenant=%s", target)
+
+        return {"cards": cards}
 
     @app.get("/api/agents")
     async def list_agents() -> list[dict[str, str]]:

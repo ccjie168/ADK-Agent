@@ -1,0 +1,43 @@
+SLICE-223 控制台总览首页
+日期: 2026-11-22
+依据: ADR-0039 MVP 第 2 项（总览首页，聚合卡片网格，深链到各面板）
+基线: `7e87006`
+
+一、契约
+
+无对外接口变更。`/api/overview` 是控制台内部只读接口，由前端消费，不进 `docs/contracts/`。
+
+二、实现
+
+- `src/adk_agent/console.py` 新增 `GET /api/overview`：返回四张聚合卡片（approvals / agents /
+  tools / grants），每张有 `key`/`label`/`value`/`panel`；只有调用方具备对应能力且 store 已配置时
+  `value` 才是计数，否则 `null`。store 不可用返回 `null`，不泄露异常细节。
+- 新增总览面板 `section#overview`（默认激活），用 `.metric-grid` + `.stat-card` 渲染；卡片点击/键盘
+  深链到 `showTab(panel)`；`loadOverview()` 在登录后与租户切换时拉取。
+- 导航新增「总览」组（`tab-overview`），`TABS` 数组加 `"overview"`。
+- `scripts/prove_it_works.py` 的 `check_console_ui`（P13）扩展：额外断言 `id="overview"` 存在且
+  `/api/overview` 返回 4 张卡片、key 顺序正确。
+
+三、红态
+
+基线 `7e87006` 加三个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py -k overview -q
+3 failed（`/api/overview` 404、`id="overview"` 不存在）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py -k overview -q
+3 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1973 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- 审计 / 配额 / RAG / 模型网关 / 语义层的卡片随面板（SLICE-224/225/226）补，本切片只有四张。
+- 卡片无实时刷新，MVP 用进入面板/租户切换时拉一次。
+- 前端框架与构建链已被 ADR-0039 否决，保持单文件内联 HTML/CSS/JS。
