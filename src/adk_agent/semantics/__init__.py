@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .capability import CapabilityId
+from .store import ConceptSchemeStore, ConceptSchemeStoreUnavailable
 from .terminology import Concept, ConceptMapping, ConceptScheme, MappingKind, Term
 
 __all__ = [
@@ -10,6 +11,8 @@ __all__ = [
     "Concept",
     "ConceptMapping",
     "ConceptScheme",
+    "ConceptSchemeStore",
+    "ConceptSchemeStoreUnavailable",
     "MappingKind",
     "Term",
 ]
