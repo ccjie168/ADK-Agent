@@ -1,0 +1,46 @@
+SLICE-227 通用导入
+日期: 2026-11-22
+依据: ADR-0039 MVP 第 6 项（通用导入：术语表 / agent 定义 / RAG 语料）
+基线: `ce0c554`
+
+一、契约
+
+- `docs/contracts/console.md` 补 `POST /api/import/terminology` 与 `POST /api/import/agent` 两节。
+
+二、实现
+
+- `console.py` 新增 `POST /api/import/terminology`：`ConceptScheme` 校验后落到 `terminology` store
+  （写 `terminology.import` 审计），结构非法 400 `invalid_scheme`、未配置 404、存储不可用 503。
+- 新增 `POST /api/import/agent`：`AgentManifest` 校验后走 `published_from` + `registry.publish`
+  （manifest-only，写 `agent.import` 审计），结构非法 400 `invalid_manifest`、跨租户非 admin 403。
+- 新增导入面板 `section#import`（kind 选择 + JSON 粘贴框），导航「数据」组加 Import tab，
+  `runImport` 前端调用。
+- `scripts/prove_it_works.py`：`check_console_ui`（P13）额外断言 `id="import"`。
+
+三、红态
+
+基线 `ce0c554` 加三个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_import_panel \
+    tests/test_console.py::test_import_terminology_endpoint \
+    tests/test_console.py::test_import_agent_endpoint -q
+3 failed（面板 marker 不存在、两个导入端点 404）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_import_panel \
+    tests/test_console.py::test_import_terminology_endpoint \
+    tests/test_console.py::test_import_agent_endpoint -q
+3 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1985 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- RAG 语料的 UI 导入未做（需要 embedding 管线，复用现有 CLI `rag ingest`，后续切片）。
+- 术语表 / agent 只做 JSON，不做批量 CSV。
+- 能力绑定的导入 store 未做（另开切片）。
