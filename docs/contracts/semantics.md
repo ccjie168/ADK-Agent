@@ -45,6 +45,15 @@
 - 形状 `^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$`：小写字母开头，段内小写字母、数字与下划线，段间点分隔。
 - 它是术语与工具之间的锚点；与 A2A `skills`、MCP `tools/list` 的关联由 SLICE-220 定义。
 
+`CapabilityBinding` 把一个能力 id 显式绑定到概念与工具：
+
+- `capability_id`：dot-namespaced 能力 id。
+- `concept_id`：关联的术语层概念。
+- `tool_id`：关联的具体工具，对应 `tool_grants` 的 `tool_id` 或 A2A skill id。
+
+`validate_capability_bindings(bindings, concept_ids, tool_ids)` 做集合级校验：能力 id 唯一、概念引用
+存在、工具引用存在；任一悬空抛 `ValueError`。
+
 ## 数据本体层
 
 `DataDomain` 是一条数据的领域标注，两维正交：

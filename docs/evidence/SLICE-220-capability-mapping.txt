@@ -1,0 +1,37 @@
+SLICE-220 能力映射
+日期: 2026-11-22
+依据: ADR-0038 MVP 第 4 项
+基线: `a14c331`
+
+一、契约
+
+- `docs/contracts/semantics.md` 的能力层补 `CapabilityBinding`（capability_id / concept_id / tool_id）
+  与 `validate_capability_bindings` 的不悬空校验。
+
+二、实现
+
+- `src/adk_agent/semantics/capability.py`：`CapabilityBinding`（dot-namespaced `CapabilityId` +
+  非空 `concept_id`/`tool_id`）与 `validate_capability_bindings(bindings, concept_ids, tool_ids)`，
+  校验能力 id 唯一、概念引用存在、工具引用存在。
+- 从 `semantics/__init__.py` 导出。
+
+三、绿态
+
+$ python -m pytest tests/test_capability_mapping.py -q
+5 passed
+
+$ python scripts/check.py --fast
+1964 passed, 103 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `a14c331` 加新用例、未改实现时：
+`pytest tests/test_capability_mapping.py` -> 1 collection error（`ImportError: CapabilityBinding`）。
+
+五、范围与已知缺口
+
+- 确定性路由（SLICE-221）。
+- 能力 id 与 A2A skill 具体字段（tags/examples）的完整映射未做，MVP 用 `tool_id` 作统一锚点。
