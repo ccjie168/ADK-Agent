@@ -336,6 +336,13 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - SLICE-228 全局 Ask AI：确定性语义路由展示 + 深链。~~已合并 `d1fbe5f`~~
     第二阶段（Ask AI 完整编排、前端框架、可视化实时化）按 ADR 触发条件另行分配。
 
+13. filelock 13 个 CVE（CVE-2026-112907 到 112940）复审结论（2026-11-22）：根因是项目 pin
+    `litellm<1.106.3`（ADK 为规避 1.107.0 供应链投毒而设的上限，ADK 2.15.0 仍 cap），该上限要求
+    `filelock<4.0`；修复版 filelock 4.2.1 只在 litellm>=1.109.2 可用，故无法在不覆盖 pin 的前提下升级。
+    `.trivyignore.yaml` 的 statement 已按此更新，过期日 2027-05-01。触发条件：ADK 放宽 litellm 上限后
+    升级 litellm → 顺带升 filelock 4.2.1，移除这 13 条 ignore。应用不直接调用 filelock，CVE 为本地
+    攻击向量（AV:L），风险有限。
+
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
 MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
