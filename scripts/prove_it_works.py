@@ -1974,6 +1974,10 @@ def check_console_ui(proof: Proof) -> Result:
     require('id="semantics"' in html, "missing semantics panel")
     require('id="import"' in html, "missing import panel")
     require('id="ask-ai"' in html, "missing ask-ai panel")
+    with httpx.stream(f"http://127.0.0.1:{console.port}/api/live", timeout=10) as live:
+        require(live.status_code == 200, f"live status {live.status_code}")
+        first = next(live.iter_text())
+        require("event: tick" in first, f"live first event: {first!r}")
     rag = httpx.get(f"http://127.0.0.1:{console.port}/api/rag", timeout=10)
     require(rag.status_code == 200, rag.text)
     require("recent_retrievals" in rag.json(), rag.text)

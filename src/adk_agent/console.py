@@ -13,7 +13,7 @@ import json
 import logging
 import re
 import uuid
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 
@@ -1936,6 +1936,7 @@ async function connect() {
   await loadRag();
   await loadModel();
   await loadSemantics();
+  startLive();
   if (can("runs.read")) await loadRuns();
   if (can("sessions.read")) await loadSessions();
   if (can("approvals.read")) await loadApprovals();
@@ -2368,6 +2369,36 @@ async function runAskAi() {
   box.textContent = result.ok
     ? JSON.stringify(result.data)
     : "ask failed (" + result.status + "): " + ((result.data && result.data.error) || "error");
+}
+
+async function startLive() {
+  const r = await fetch("/api/live", { headers: { Authorization: "Bearer " + token() } });
+  if (!r.ok) return;
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      let index;
+      while ((index = buffer.indexOf(String.fromCharCode(10) + String.fromCharCode(10))) >= 0) {
+        const block = buffer.slice(0, index);
+        buffer = buffer.slice(index + 2);
+        const ev = parseEvent(block);
+        if (ev.name === "tick") {
+          loadOverview();
+          loadQuota();
+          loadRag();
+          loadModel();
+          loadSemantics();
+        }
+      }
+    }
+  } finally {
+    setTimeout(startLive, 3000);
+  }
 }
 
 async function loadPolicy() {
@@ -3368,6 +3399,17 @@ def build_console_app(
         return [
             {"name": name, "description": agent.description or ""} for name, agent in agents.items()
         ]
+
+    @app.get("/api/live")
+    async def live(request: Request) -> Any:
+        async def events() -> AsyncGenerator[str, None]:
+            while True:
+                if await request.is_disconnected():
+                    break
+                yield _sse("tick", {"ts": datetime.now(timezone.utc).isoformat()})
+                await asyncio.sleep(5)
+
+        return StreamingResponse(events(), media_type="text/event-stream")
 
     @app.get("/api/audit")
     async def list_audit(request: Request, limit: int = 50) -> Any:

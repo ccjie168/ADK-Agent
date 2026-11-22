@@ -1,0 +1,44 @@
+SLICE-229 UI 实时刷新（SSE）
+日期: 2026-11-22
+依据: ADR-0039 第二阶段候选 3（可视化实时化，触发条件已确认）；SSE 用 FastAPI 内置，无新依赖
+基线: `19bdcbd`
+
+一、契约
+
+- `docs/contracts/console.md` 补 `GET /api/live` 一节（text/event-stream，每 5 秒一个 tick）。
+
+二、实现
+
+- `console.py` 新增 `GET /api/live`：SSE 流，`async def events() -> AsyncGenerator[str, None]`，
+  循环 yield `_sse("tick", {"ts": iso})` 后 `asyncio.sleep(5)`，`request.is_disconnected()` 即停。
+- 前端新增 `startLive()`：fetch `/api/live`（带 Authorization header）+ ReadableStream 读 SSE，
+  收到 `tick` 就 `loadOverview/loadQuota/loadRag/loadModel/loadSemantics`；读流结束 `setTimeout` 3s 重连。
+- `connect()` 登录后调 `startLive()`。
+- `scripts/prove_it_works.py`：`check_console_ui`（P13）额外用 `httpx.stream` 断言 `/api/live` 首个
+  事件含 `event: tick`。
+
+三、红态
+
+基线 `19bdcbd` 加两个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_live_refresh \
+    tests/test_console.py::test_live_endpoint_streams_tick -q
+2 failed（`/api/live` 404、首页无 `fetch("/api/live"` 订阅代码）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_live_refresh \
+    tests/test_console.py::test_live_endpoint_streams_tick -q
+2 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1989 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- tick 只推心跳不含业务数据，业务数据仍由各面板按能力查询。
+- 「有变化才推」的服务端变更检测后续做；WebSocket 不需要（SSE 够单向推送）。
+- 各面板收到 tick 全量刷新，不做增量更新。
