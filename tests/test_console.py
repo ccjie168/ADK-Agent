@@ -157,3 +157,35 @@ def test_index_has_audit_and_quota_panels():
     assert 'id="quota"' in page.text
     assert "tab-audit" in page.text
     assert "tab-quota" in page.text
+
+
+def test_index_has_rag_and_model_panels():
+    with _client() as client:
+        page = client.get("/")
+
+    assert 'id="rag"' in page.text
+    assert 'id="model"' in page.text
+    assert "tab-rag" in page.text
+    assert "tab-model" in page.text
+
+
+def test_rag_endpoint_returns_stats():
+    with _client() as client:
+        response = client.get("/api/rag", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["recent_retrievals"] == 0
+    assert "last_top_k" in data
+    assert "last_returned" in data
+
+
+def test_model_endpoint_returns_stats():
+    with _client() as client:
+        response = client.get("/api/model", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["recent_calls"] == 0
+    assert data["aliases"] == []
+    assert data["fallbacks"] == 0

@@ -1,0 +1,47 @@
+SLICE-225 RAG 面板 + 模型网关面板
+日期: 2026-11-22
+依据: ADR-0039 MVP 第 4 项（构建能力补全：RAG 面板 + 模型网关面板）
+基线: `f58ec0e`
+
+一、契约
+
+- `docs/contracts/console.md` 补 `GET /api/rag` 与 `GET /api/model` 两节，写明「最近 200 条审计
+  事件的窗口摘要」语义。
+
+二、实现
+
+- `console.py` 新增 `GET /api/rag`：统计 `rag.retrieve` 条数与最近一次 `rag_top_k`/`rag_returned`。
+- `console.py` 新增 `GET /api/model`：统计 `model.call` 条数、去重的 `model_alias` 集合与
+  `fallback_count` 总和。
+- 新增 RAG 面板 `section#rag` 与模型面板 `section#model`（`.stat-card` 展示），导航「构建」组加
+  RAG / Model tab，`loadRag`/`loadModel` 在登录后拉取。
+- `scripts/prove_it_works.py` 的 `check_console_ui`（P13）额外断言 `id="rag"`/`id="model"` 与
+  `/api/rag`/`/api/model` 端点返回 `recent_retrievals`/`recent_calls` 字段。
+
+三、红态
+
+基线 `f58ec0e` 加三个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_rag_and_model_panels \
+    tests/test_console.py::test_rag_endpoint_returns_stats \
+    tests/test_console.py::test_model_endpoint_returns_stats -q
+3 failed（面板 marker 不存在、`/api/rag` 与 `/api/model` 404）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_rag_and_model_panels \
+    tests/test_console.py::test_rag_endpoint_returns_stats \
+    tests/test_console.py::test_model_endpoint_returns_stats -q
+3 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1979 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- RAG 面板不查语料/分块数的存储级统计（需 `PgVectorRagStore` 计数方法，另开切片）。
+- 模型面板不展示实时熔断/预算余额（在独立 `serve-model-gateway` 进程里，console 不直连）。
+- 语义层面板从 SLICE-226 起。

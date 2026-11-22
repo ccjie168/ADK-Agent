@@ -225,6 +225,24 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 未配置 `--quota-config` 或租户不在配置里时返回 404 `{"error":"quota_not_configured"}`。
 - 配额后端不可用返回 503 `{"error":"quota_unavailable"}`。
 
+## `GET /api/rag` -> RAG 检索摘要
+
+```json
+{"recent_retrievals": 3, "last_top_k": 5, "last_returned": 2}
+```
+
+- 返回最近审计窗口内 `rag.retrieve` 事件的条数，以及最近一次检索的 `rag_top_k` / `rag_returned`（无事件时 `last_top_k` / `last_returned` 为 `null`）。
+- 统计基于最近 200 条审计事件，是窗口摘要，不是全局计数器。审计不可用返回 502 `audit_unavailable`。
+
+## `GET /api/model` -> 模型调用摘要
+
+```json
+{"recent_calls": 10, "aliases": ["litellm:gemini-2.5-pro"], "fallbacks": 2}
+```
+
+- 返回最近审计窗口内 `model.call` 事件的条数、用到的 `model_alias` 去重集合、`fallback_count` 总和。
+- 统计基于最近 200 条审计事件，是窗口摘要。审计不可用返回 502 `audit_unavailable`。
+
 ## `GET /api/policy` -> `AccessPolicy`
 
 返回当前访问策略，结构见 `access_policy.schema.json`。仅在配置了 `--policy` 时存在。

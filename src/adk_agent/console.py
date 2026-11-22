@@ -395,6 +395,8 @@ _INDEX_HTML = r"""<!doctype html>
       <button id="tab-connectors" class="tab" data-tab="connectors" data-capability="connectors.read">Connectors</button>
       <button id="tab-credentials" class="tab" data-tab="credentials" data-capability="connectors.read">Credentials</button>
       <button id="tab-peers" class="tab" data-tab="peers" data-capability="peers.read">Peers</button>
+      <button id="tab-rag" class="tab" data-tab="rag" data-capability="runs.read">RAG</button>
+      <button id="tab-model" class="tab" data-tab="model" data-capability="runs.read">Model</button>
     </div>
     <div class="nav-group">
       <div class="nav-title">治理</div>
@@ -418,6 +420,14 @@ _INDEX_HTML = r"""<!doctype html>
 
 <section id="quota" class="panel" data-capability="runs.read">
   <div id="quota-cards" class="metric-grid"></div>
+</section>
+
+<section id="rag" class="panel" data-capability="runs.read">
+  <div id="rag-cards" class="metric-grid"></div>
+</section>
+
+<section id="model" class="panel" data-capability="runs.read">
+  <div id="model-cards" class="metric-grid"></div>
 </section>
 
 <section id="chat" class="panel" data-capability="chat.run">
@@ -712,7 +722,7 @@ _INDEX_HTML = r"""<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "policy"];
+const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "rag", "model", "policy"];
 let sessionId = null;
 let capabilities = null;
 let approvalsData = [];
@@ -1880,6 +1890,8 @@ async function connect() {
   await loadOverview();
   await loadQuota();
   if (can("audit.read")) await loadAuditPanel();
+  await loadRag();
+  await loadModel();
   if (can("runs.read")) await loadRuns();
   if (can("sessions.read")) await loadSessions();
   if (can("approvals.read")) await loadApprovals();
@@ -2185,6 +2197,60 @@ async function loadQuota() {
     { label: "运行上限", value: q.max_runs === null ? "无限" : q.max_runs },
     { label: "并发上限", value: q.max_concurrent === null ? "无限" : q.max_concurrent },
     { label: "窗口秒数", value: q.window_seconds },
+  ];
+  for (const card of cards) {
+    const el = document.createElement("div");
+    el.className = "stat-card";
+    const label = document.createElement("div");
+    label.className = "stat-label";
+    label.textContent = card.label;
+    const value = document.createElement("div");
+    value.className = "stat-value";
+    value.textContent = String(card.value);
+    el.appendChild(label);
+    el.appendChild(value);
+    container.appendChild(el);
+  }
+}
+
+async function loadRag() {
+  const result = await getJson("/api/rag");
+  const container = $("rag-cards");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!result.ok || !result.data) return;
+  const q = result.data;
+  const cards = [
+    { label: "最近检索", value: q.recent_retrievals },
+    { label: "最近 top_k", value: q.last_top_k === null ? "—" : q.last_top_k },
+    { label: "最近返回", value: q.last_returned === null ? "—" : q.last_returned },
+  ];
+  for (const card of cards) {
+    const el = document.createElement("div");
+    el.className = "stat-card";
+    const label = document.createElement("div");
+    label.className = "stat-label";
+    label.textContent = card.label;
+    const value = document.createElement("div");
+    value.className = "stat-value";
+    value.textContent = String(card.value);
+    el.appendChild(label);
+    el.appendChild(value);
+    container.appendChild(el);
+  }
+}
+
+async function loadModel() {
+  const result = await getJson("/api/model");
+  const container = $("model-cards");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!result.ok || !result.data) return;
+  const q = result.data;
+  const cards = [
+    { label: "最近调用", value: q.recent_calls },
+    { label: "使用别名", value: q.aliases.length ? q.aliases.join(", ") : "—" },
+    { label: "降级次数", value: q.fallbacks },
   ];
   for (const card of cards) {
     const el = document.createElement("div");
@@ -3019,6 +3085,29 @@ def build_console_app(
         except QuotaStoreUnavailable:
             return JSONResponse({"error": "quota_unavailable"}, status_code=503)
         return usage.model_dump(mode="json")
+
+    @app.get("/api/rag")
+    async def get_rag(request: Request) -> Any:
+        events = await _query_events(request, limit=200)
+        retrievals = [event for event in events if event.action == "rag.retrieve"]
+        last = retrievals[-1] if retrievals else None
+        return {
+            "recent_retrievals": len(retrievals),
+            "last_top_k": last.rag_top_k if last else None,
+            "last_returned": last.rag_returned if last else None,
+        }
+
+    @app.get("/api/model")
+    async def get_model(request: Request) -> Any:
+        events = await _query_events(request, limit=200)
+        calls = [event for event in events if event.action == "model.call"]
+        aliases = sorted({event.model_alias for event in calls if event.model_alias})
+        fallbacks = sum(event.fallback_count for event in calls)
+        return {
+            "recent_calls": len(calls),
+            "aliases": aliases,
+            "fallbacks": fallbacks,
+        }
 
     @app.get("/api/agents")
     async def list_agents() -> list[dict[str, str]]:
