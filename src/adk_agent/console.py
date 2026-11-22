@@ -386,6 +386,7 @@ _INDEX_HTML = r"""<!doctype html>
     <div class="nav-group">
       <div class="nav-title">总览</div>
       <button id="tab-overview" class="tab active" data-tab="overview" data-capability="runs.read">Overview</button>
+      <button id="tab-ask-ai" class="tab" data-tab="ask-ai" data-capability="runs.read">Ask AI</button>
     </div>
     <div class="nav-group">
       <div class="nav-title">运营</div>
@@ -422,6 +423,14 @@ _INDEX_HTML = r"""<!doctype html>
 
 <section id="overview" class="panel active" data-capability="runs.read">
   <div id="overview-cards" class="metric-grid"></div>
+</section>
+
+<section id="ask-ai" class="panel" data-capability="runs.read">
+  <div class="row">
+    <input id="ask-ai-text" placeholder="用自然语言描述需求..." autocomplete="off">
+    <button id="ask-ai-run">Ask</button>
+  </div>
+  <div id="ask-ai-result"></div>
 </section>
 
 <section id="audit-panel" class="panel" data-capability="audit.read">
@@ -756,7 +765,7 @@ _INDEX_HTML = r"""<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "rag", "model", "semantics", "import", "policy"];
+const TABS = ["overview", "ask-ai", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "rag", "model", "semantics", "import", "policy"];
 let sessionId = null;
 let capabilities = null;
 let approvalsData = [];
@@ -2351,6 +2360,16 @@ async function runImport() {
     : "import failed (" + result.status + "): " + ((result.data && result.data.error) || "error");
 }
 
+async function runAskAi() {
+  const text = $("ask-ai-text").value;
+  if (!text) return;
+  const result = await postJson("/api/ask-ai", { text: text, bindings: [] });
+  const box = $("ask-ai-result");
+  box.textContent = result.ok
+    ? JSON.stringify(result.data)
+    : "ask failed (" + result.status + "): " + ((result.data && result.data.error) || "error");
+}
+
 async function loadPolicy() {
   const r = await fetch("/api/policy", { headers: { Authorization: "Bearer " + token() } });
   if (!r.ok) { $("policy-msg").textContent = "policy unavailable (" + r.status + ")"; return; }
@@ -2521,6 +2540,7 @@ $("refresh").addEventListener("click", loadAudit);
 $("refresh-audit-panel").addEventListener("click", loadAuditPanel);
 $("semantics-route-run").addEventListener("click", runSemanticsRoute);
 $("import-run").addEventListener("click", runImport);
+$("ask-ai-run").addEventListener("click", runAskAi);
 $("refresh-registry").addEventListener("click", loadRegistry);
 $("refresh-remote").addEventListener("click", refreshSelectedRemote);
 $("open-chat").addEventListener("click", openChat);
@@ -3309,6 +3329,39 @@ def build_console_app(
             )
         )
         return {"id": manifest.id, "version": manifest.version}
+
+    @app.post("/api/ask-ai")
+    async def ask_ai(request: Request) -> Any:
+        if terminology is None:
+            return JSONResponse({"error": "terminology_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        text = body.get("text")
+        raw_bindings = body.get("bindings", [])
+        if not isinstance(text, str) or not text.strip():
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(raw_bindings, list):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            schemes = await terminology.list(caller.tenant)
+            bindings = [CapabilityBinding.model_validate(b) for b in raw_bindings]
+        except ConceptSchemeStoreUnavailable:
+            return JSONResponse({"error": "terminology_unavailable"}, status_code=503)
+        except ValidationError:
+            return JSONResponse({"error": "invalid_binding"}, status_code=400)
+        if not schemes:
+            return {"hits": [], "scheme_id": None}
+        scheme = schemes[0]
+        routed = route_request(text, scheme, bindings)
+        return {
+            "hits": [item.model_dump(mode="json") for item in routed],
+            "scheme_id": scheme.scheme_id,
+        }
 
     @app.get("/api/agents")
     async def list_agents() -> list[dict[str, str]]:

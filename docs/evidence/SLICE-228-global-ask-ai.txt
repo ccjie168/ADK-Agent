@@ -1,0 +1,43 @@
+SLICE-228 全局 Ask AI
+日期: 2026-11-22
+依据: ADR-0039 MVP 第 7 项（全局 Ask AI：确定性语义路由展示 + 深链）
+基线: `2bc1fa2`
+
+一、契约
+
+- `docs/contracts/console.md` 补 `POST /api/ask-ai` 一节。
+
+二、实现
+
+- `console.py` 新增 `POST /api/ask-ai`：输入 `{text, bindings?}`，自动取第一个术语表，用
+  `route_request` 做确定性路由回放，返回 `{hits, scheme_id}`；无术语表返回空命中，`bindings`
+  非法 400 `invalid_binding`、存储不可用 503。
+- 新增 Ask AI 面板 `section#ask-ai`（自然语言输入框），导航「总览」组加 Ask AI tab，
+  `runAskAi` 前端调用，命中结果展示（`tool_id` 可深链 Tools）。
+- `scripts/prove_it_works.py`：`check_console_ui`（P13）额外断言 `id="ask-ai"`。
+
+三、红态
+
+基线 `2bc1fa2` 加两个新用例、未改实现时：
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_ask_ai_panel \
+    tests/test_console.py::test_ask_ai_endpoint_returns_hits -q
+2 failed（面板 marker 不存在、`/api/ask-ai` 404）。
+
+四、绿态
+
+$ .venv/Scripts/python.exe -m pytest tests/test_console.py::test_index_has_ask_ai_panel \
+    tests/test_console.py::test_ask_ai_endpoint_returns_hits -q
+2 passed
+
+$ .venv/Scripts/python.exe scripts/check.py --fast
+1987 passed, 103 skipped（ALL PASS，7 步）
+
+$ .venv/Scripts/python.exe scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+五、范围与已知缺口
+
+- 完整多 agent 编排（计划结构选择的模型填空）属 ADR-0038 第二阶段。
+- 能力绑定的持久化 store 未做，bindings 由调用方随请求传入。
+- 命中的自动执行/触发未做（MVP 只展示 + 深链）。

@@ -259,6 +259,10 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 请求体是 `AgentManifest` JSON。校验后走 registry publish（manifest-only，不含工件字节），返回 `{id, version}`，并写一条 `agent.import` 审计。未配置返回 404 `registry_not_configured`；结构非法返回 400 `invalid_manifest`；跨租户且非 admin 返回 403 `tenant_forbidden`。
 
+## `POST /api/ask-ai` -> `{hits, scheme_id}`
+
+请求：`{text, bindings?}`。自动取第一个术语表，用 `route_request` 做确定性路由回放，返回 `hits`（命中的 `RoutedCapability` 列表）与 `scheme_id`。无术语表返回 `{hits: [], scheme_id: null}`；`bindings` 结构非法返回 400 `invalid_binding`。只映射不执行。
+
 ## `GET /api/policy` -> `AccessPolicy`
 
 返回当前访问策略，结构见 `access_policy.schema.json`。仅在配置了 `--policy` 时存在。
