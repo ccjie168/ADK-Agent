@@ -63,6 +63,15 @@
 
 同一领域可配不同敏感度，同一敏感度可配不同领域，两者独立。
 
+## 编排层（确定性路由）
+
+`RoutedCapability` 是一次命中，含 `capability_id`/`concept_id`/`tool_id` 与命中的 `matched_label`，
+让「需求 → 概念 → 能力 → 工具」整条链可审计。
+
+`route_request(text, scheme, bindings)` 做确定性映射：需求文本大小写不敏感地匹配概念标签
+（`pref_labels`/`alt_labels`/`hidden_labels`），命中的概念经 `CapabilityBinding` 映射到工具，返回按
+概念顺序排列的 `RoutedCapability` 列表，无命中返回空列表。只做映射，不执行工具。
+
 ## 存储
 
 `ConceptSchemeStore` 端口存整个 `ConceptScheme`，键是 `(tenant, scheme_id)`；`tenant` 是存储键，
