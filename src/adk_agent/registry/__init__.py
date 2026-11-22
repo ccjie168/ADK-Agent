@@ -60,6 +60,8 @@ from .remote_agents_postgres import PostgresRemoteAgentStore
 from .reports import EvalReportConflict, FileEvalReportStore
 from .reports_postgres import PostgresEvalReportStore
 from .signing import PublishUnavailable, load_private_key, sign_digest, verify_digest
+from .terminology import FileConceptSchemeStore
+from .terminology_postgres import PostgresConceptSchemeStore
 from .tool_grants import FileToolGrantStore
 from .tool_grants_postgres import PostgresToolGrantStore
 from .trigger_runs import FileTriggerFireStore
@@ -81,6 +83,7 @@ __all__ = [
     "FileConnectorRequestStore",
     "FileConnectorStore",
     "FileCredentialStore",
+    "FileConceptSchemeStore",
     "FileArtifactStore",
     "FilePeerGrantStore",
     "FilePeerStore",
@@ -101,6 +104,7 @@ __all__ = [
     "PostgresConnectorRequestStore",
     "PostgresConnectorStore",
     "PostgresCredentialStore",
+    "PostgresConceptSchemeStore",
     "PostgresEvalReportStore",
     "PostgresPeerGrantStore",
     "PostgresPeerStore",

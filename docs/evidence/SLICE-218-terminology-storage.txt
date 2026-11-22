@@ -1,0 +1,43 @@
+SLICE-218 术语层存储
+日期: 2026-11-22
+依据: ADR-0038 MVP 第 2 项
+基线: `e8cf480`
+
+一、契约
+
+- `docs/contracts/semantics.md` 新增「存储」一节：`ConceptSchemeStore` 端口（put/get/list），键
+  `(tenant, scheme_id)`，put 是 upsert，租户隔离靠应用层过滤，失败映射 `ConceptSchemeStoreUnavailable`。
+
+二、实现
+
+- `src/adk_agent/semantics/store.py`：`ConceptSchemeStore` 协议与 `ConceptSchemeStoreUnavailable`。
+- `src/adk_agent/registry/terminology.py`：`FileConceptSchemeStore`，`safe_join` 分租户目录，临时文件
+  `fsync` 后 `os.replace` 原子 upsert。
+- `src/adk_agent/registry/terminology_postgres.py`：`PostgresConceptSchemeStore`，`adk_terminology`
+  表（jsonb + `ON CONFLICT DO UPDATE`），`LazyPool`/`normalize_dsn`，`aclose`。
+- 两个 store 从 `registry/__init__.py` 导出，`store.py` 从 `semantics/__init__.py` 导出。
+
+三、绿态
+
+$ python -m pytest tests/test_terminology_store.py -q
+5 passed, 1 skipped（Postgres live 需 `TEST_POSTGRES_URL`）
+
+$ TEST_POSTGRES_URL=<本地 Postgres 容器的 DSN> python -m pytest tests/test_terminology_store.py -q
+6 passed（本地 `postgres:15-alpine` 容器，含 Postgres 往返）
+
+$ python scripts/check.py --fast
+1955 passed, 103 skipped（ALL PASS，7 步）
+
+$ python scripts/check.py --full
+ALL PASS（9 步，含 bandit / pip-audit / detect-secrets）
+
+四、红态
+
+基线 `e8cf480` 加新用例、未改实现时：
+`pytest tests/test_terminology_store.py` -> 1 collection error
+（`ModuleNotFoundError: adk_agent.registry.terminology`，端口与双后端都不存在。）
+
+五、范围与已知缺口
+
+- 数据领域维（SLICE-219）、能力映射（SLICE-220）、确定性路由（SLICE-221）。
+- 术语表删除与版本化未做；RLS 未引入（应用层过滤，与 trigger store 一致）。
