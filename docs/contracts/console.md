@@ -251,6 +251,14 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 请求：`{scheme_id, text, bindings}`。`bindings` 是 `CapabilityBinding` 数组，由调用方随请求传入。用 `route_request` 做确定性路由回放，返回命中的 `RoutedCapability` 列表（需求 → 概念 → 能力 → 工具）。只做映射，不执行工具。字段缺失或非法返回 400 `invalid_request` / `invalid_binding`，`scheme_id` 不存在返回 404 `scheme_not_found`。
 
+## `POST /api/import/terminology` -> `ConceptScheme`
+
+请求体是 `ConceptScheme` JSON。校验后落到调用方租户的术语表 store，返回导入的 `ConceptScheme`，并写一条 `terminology.import` 审计。未配置返回 404 `terminology_not_configured`；结构非法返回 400 `invalid_scheme`。
+
+## `POST /api/import/agent` -> `{id, version}`
+
+请求体是 `AgentManifest` JSON。校验后走 registry publish（manifest-only，不含工件字节），返回 `{id, version}`，并写一条 `agent.import` 审计。未配置返回 404 `registry_not_configured`；结构非法返回 400 `invalid_manifest`；跨租户且非 admin 返回 403 `tenant_forbidden`。
+
 ## `GET /api/policy` -> `AccessPolicy`
 
 返回当前访问策略，结构见 `access_policy.schema.json`。仅在配置了 `--policy` 时存在。

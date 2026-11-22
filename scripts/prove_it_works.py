@@ -1972,6 +1972,7 @@ def check_console_ui(proof: Proof) -> Result:
     require('id="rag"' in html, "missing rag panel")
     require('id="model"' in html, "missing model panel")
     require('id="semantics"' in html, "missing semantics panel")
+    require('id="import"' in html, "missing import panel")
     rag = httpx.get(f"http://127.0.0.1:{console.port}/api/rag", timeout=10)
     require(rag.status_code == 200, rag.text)
     require("recent_retrievals" in rag.json(), rag.text)

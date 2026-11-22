@@ -101,6 +101,7 @@ from .registry import (
     credential_is_bound,
     fetch_agent_card,
     load_sandbox_agent,
+    published_from,
     verify_published_artifact,
 )
 from .runtime import AgentRuntime, dev_agent_ref
@@ -123,6 +124,7 @@ from .secretstore import (
 )
 from .semantics import (
     CapabilityBinding,
+    ConceptScheme,
     ConceptSchemeStore,
     ConceptSchemeStoreUnavailable,
     route_request,
@@ -413,6 +415,7 @@ _INDEX_HTML = r"""<!doctype html>
     <div class="nav-group">
       <div class="nav-title">数据</div>
       <button id="tab-semantics" class="tab" data-tab="semantics" data-capability="runs.read">Semantics</button>
+      <button id="tab-import" class="tab" data-tab="import" data-capability="runs.read">Import</button>
     </div>
   </nav>
   <main id="main">
@@ -447,6 +450,18 @@ _INDEX_HTML = r"""<!doctype html>
   </div>
   <div id="semantics-schemes" class="metric-grid"></div>
   <div id="semantics-route-result"></div>
+</section>
+
+<section id="import" class="panel" data-capability="runs.read">
+  <div class="row">
+    <select id="import-kind">
+      <option value="terminology">术语表</option>
+      <option value="agent">Agent 定义</option>
+    </select>
+    <input id="import-payload" placeholder='粘贴 JSON（ConceptScheme 或 manifest）' autocomplete="off">
+    <button id="import-run">Import</button>
+  </div>
+  <div id="import-result"></div>
 </section>
 
 <section id="chat" class="panel" data-capability="chat.run">
@@ -741,7 +756,7 @@ _INDEX_HTML = r"""<!doctype html>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "rag", "model", "semantics", "policy"];
+const TABS = ["overview", "chat", "registry", "tools", "connectors", "credentials", "peers", "runs", "sessions", "approvals", "grants", "plans", "audit-panel", "quota", "rag", "model", "semantics", "import", "policy"];
 let sessionId = null;
 let capabilities = null;
 let approvalsData = [];
@@ -2323,6 +2338,19 @@ async function runSemanticsRoute() {
   box.textContent = result.ok ? JSON.stringify(result.data) : "route failed (" + result.status + ")";
 }
 
+async function runImport() {
+  const kind = $("import-kind").value;
+  const raw = $("import-payload").value;
+  if (!raw) return;
+  let payload;
+  try { payload = JSON.parse(raw); } catch (e) { $("import-result").textContent = "invalid json"; return; }
+  const result = await postJson("/api/import/" + kind, payload);
+  const box = $("import-result");
+  box.textContent = result.ok
+    ? JSON.stringify(result.data)
+    : "import failed (" + result.status + "): " + ((result.data && result.data.error) || "error");
+}
+
 async function loadPolicy() {
   const r = await fetch("/api/policy", { headers: { Authorization: "Bearer " + token() } });
   if (!r.ok) { $("policy-msg").textContent = "policy unavailable (" + r.status + ")"; return; }
@@ -2492,6 +2520,7 @@ $("session-agent").addEventListener("change", loadSessions);
 $("refresh").addEventListener("click", loadAudit);
 $("refresh-audit-panel").addEventListener("click", loadAuditPanel);
 $("semantics-route-run").addEventListener("click", runSemanticsRoute);
+$("import-run").addEventListener("click", runImport);
 $("refresh-registry").addEventListener("click", loadRegistry);
 $("refresh-remote").addEventListener("click", refreshSelectedRemote);
 $("open-chat").addEventListener("click", openChat);
@@ -3207,6 +3236,79 @@ def build_console_app(
             return JSONResponse({"error": "invalid_binding"}, status_code=400)
         routed = route_request(text, scheme, bindings)
         return [item.model_dump(mode="json") for item in routed]
+
+    @app.post("/api/import/terminology")
+    async def import_terminology(request: Request) -> Any:
+        if terminology is None:
+            return JSONResponse({"error": "terminology_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            scheme = ConceptScheme.model_validate(body)
+        except ValidationError:
+            return JSONResponse({"error": "invalid_scheme"}, status_code=400)
+        try:
+            await terminology.put(caller.tenant, scheme)
+        except ConceptSchemeStoreUnavailable:
+            return JSONResponse({"error": "terminology_unavailable"}, status_code=503)
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(id="terminology", version="0", digest="sha256:" + "0" * 64),
+                action="terminology.import",
+                target=f"{caller.tenant}/{scheme.scheme_id}",
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return scheme.model_dump(mode="json")
+
+    @app.post("/api/import/agent")
+    async def import_agent(request: Request) -> Any:
+        if registry is None:
+            return JSONResponse({"error": "registry_not_configured"}, status_code=404)
+        caller = _principal_for(request)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            manifest = AgentManifest.model_validate(body)
+        except ValidationError:
+            return JSONResponse({"error": "invalid_manifest"}, status_code=400)
+        if manifest.tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        record = published_from(manifest)
+        try:
+            await registry.publish(record)
+        except Exception:  # noqa: BLE001
+            return JSONResponse({"error": "registry_unavailable"}, status_code=503)
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(id=manifest.id, version=manifest.version, digest=record.digest),
+                action="agent.import",
+                target=f"{manifest.tenant}/{manifest.id}@{manifest.version}",
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return {"id": manifest.id, "version": manifest.version}
 
     @app.get("/api/agents")
     async def list_agents() -> list[dict[str, str]]:

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 
 from adk_agent.console import build_console_app
+from adk_agent.registry import FileAgentRegistry
 from adk_agent.registry.terminology import FileConceptSchemeStore
 from adk_agent.semantics import Concept, ConceptScheme, Term
 from adk_agent.tools import ToolCatalog, ToolEntry
@@ -254,3 +255,60 @@ def test_semantics_route_endpoint_replays(tmp_path):
     assert len(routed) == 1
     assert routed[0]["capability_id"] == "order.lookup"
     assert routed[0]["tool_id"] == "lookup_order"
+
+
+def test_index_has_import_panel():
+    with _client() as client:
+        page = client.get("/")
+
+    assert 'id="import"' in page.text
+    assert "tab-import" in page.text
+
+
+def test_import_terminology_endpoint(tmp_path):
+    store = FileConceptSchemeStore(tmp_path / "terminology")
+    app = build_console_app(_agents(), auth_token="secret", roles=["admin"], terminology=store)
+    scheme = {
+        "scheme_id": "products",
+        "concepts": [
+            {
+                "concept_id": "order",
+                "pref_labels": [{"value": "Order", "language": "en"}],
+            }
+        ],
+    }
+    with TestClient(app) as client:
+        imported = client.post(
+            "/api/import/terminology",
+            json=scheme,
+            headers={"Authorization": "Bearer secret"},
+        )
+        assert imported.status_code == 200
+        listed = client.get("/api/semantics", headers={"Authorization": "Bearer secret"})
+
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["scheme_id"] == "products"
+
+
+def test_import_agent_endpoint(tmp_path):
+    registry = FileAgentRegistry(tmp_path / "registry")
+    app = build_console_app(_agents(), auth_token="secret", roles=["admin"], registry=registry)
+    manifest = {
+        "id": "bot",
+        "version": "1.0.0",
+        "tenant": "local",
+        "owner": "local",
+        "description": "bot",
+        "model_policy": {"provider_allowlist": ["litellm"]},
+    }
+    with TestClient(app) as client:
+        imported = client.post(
+            "/api/import/agent",
+            json=manifest,
+            headers={"Authorization": "Bearer secret"},
+        )
+        assert imported.status_code == 200
+        listed = client.get("/api/registry", headers={"Authorization": "Bearer secret"})
+
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["id"] == "bot"
