@@ -1958,13 +1958,23 @@ def check_console_ui(proof: Proof) -> Result:
         ".stat-delta",
     ):
         require(marker in html, f"missing marker {marker}")
+    require('id="overview"' in html, "missing overview panel")
+    overview = httpx.get(f"http://127.0.0.1:{console.port}/api/overview", timeout=10)
+    require(overview.status_code == 200, overview.text)
+    cards = overview.json().get("cards", [])
+    require(len(cards) == 4, f"expected 4 overview cards, got {len(cards)}")
+    require(
+        [card["key"] for card in cards] == ["approvals", "agents", "tools", "grants"],
+        f"unexpected overview cards: {cards}",
+    )
     return Result(
-        "P13 console UI baseline",
+        "P13 console UI baseline and overview",
         True,
-        "index HTML carries the design tokens and metric-card system",
+        "index HTML carries the design tokens, metric-card system and overview panel",
         [
             "design tokens --radius-lg/--shadow-card/--space-1 present",
             "metric-card classes .metric-grid/.stat-card/.stat-label/.stat-value/.stat-delta present",
+            "overview panel + /api/overview with 4 cards present",
         ],
     )
 

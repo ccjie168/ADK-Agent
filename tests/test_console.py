@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 
 from adk_agent.console import build_console_app
+from adk_agent.tools import ToolCatalog, ToolEntry
 
 
 def _agents() -> dict[str, LlmAgent]:
@@ -102,3 +103,47 @@ def test_index_has_metric_card_system():
 
     for cls in (".metric-grid", ".stat-card", ".stat-label", ".stat-value", ".stat-delta"):
         assert cls in page.text
+
+
+def test_index_has_overview_panel():
+    with _client() as client:
+        page = client.get("/")
+
+    assert 'id="overview"' in page.text
+    assert "metric-grid" in page.text
+
+
+def test_overview_endpoint_returns_cards():
+    app = build_console_app(_agents(), auth_token="secret", roles=["admin"])
+    with TestClient(app) as client:
+        response = client.get("/api/overview", headers={"Authorization": "Bearer secret"})
+    assert response.status_code == 200
+    cards = response.json()["cards"]
+    assert [card["key"] for card in cards] == ["approvals", "agents", "tools", "grants"]
+    for card in cards:
+        assert card["label"]
+        assert card["panel"]
+        assert card["value"] is None
+
+
+def test_overview_null_for_forbidden_card():
+    catalog = ToolCatalog(
+        version=1,
+        tools=[
+            ToolEntry(
+                tool_id="crm.read",
+                description="crm read",
+                source="function",
+                data_classes=["internal"],
+                requires_approval=False,
+            )
+        ],
+    )
+    app = build_console_app(
+        _agents(), auth_token="secret", roles=["requester"], tool_catalog=catalog
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/overview", headers={"Authorization": "Bearer secret"})
+    assert response.status_code == 200
+    cards = {card["key"]: card for card in response.json()["cards"]}
+    assert cards["tools"]["value"] is None
