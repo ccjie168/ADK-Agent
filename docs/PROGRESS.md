@@ -347,7 +347,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     另加 UI 实时刷新（ADR-0039 第二阶段候选 3，触发条件已确认，用 SSE，FastAPI 内置无需新依赖）：
     - SLICE-229 UI 实时刷新：总览与各能力面板的指标经 SSE 推送，自动更新。
     - SLICE-230 模型配置类型与 store：`ModelConfigStore` 协议 + 文件/Postgres 双实现，`set_default_model` /
-      `_default_model_config` 读 override，优先级落地。
+      `_default_model_config` 读 override，优先级落地。~~已合并 `fe11471`~~
     - SLICE-231 控制台端点 + 管理员 UI：`GET/PUT /api/model-config`（`model.read` admin+operator、写 admin-only），
       模型面板加「设置默认模型」，写审计 `model.configure`。
     - SLICE-232 验收：`prove_it_works` 断言改配置后新 chat 用新模型，pytest 覆盖优先级与权限。
