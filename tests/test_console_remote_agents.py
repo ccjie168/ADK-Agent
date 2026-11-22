@@ -445,7 +445,7 @@ def test_admin_only_and_tenant(tmp_path, monkeypatch):
     assert registered.json() == {"error": "forbidden"}
     assert [row["remote_id"] for row in operator_list.json()] == ["local-bot"]
     assert cross_refresh.status_code == 403
-    assert cross_refresh.json() == {"error": "tenant_forbidden"}
+    assert cross_refresh.json() == {"error": "forbidden"}
 
     with TestClient(_app(tmp_path)) as client:
         everything = client.get("/api/remote-agents", headers=AUTH)

@@ -191,7 +191,7 @@ def test_registry_tenant_is_enforced(tmp_path):
         admin_tenants = client.get("/api/tenants", headers=AUTH_ADMIN)
 
     assert foreign.status_code == 403
-    assert foreign.json() == {"error": "tenant_forbidden"}
+    assert foreign.json() == {"error": "forbidden"}
     assert own.status_code == 200
     assert own.json() == []
     assert guest_tenants.json() == []
@@ -211,7 +211,7 @@ def test_eval_report_tenant_is_enforced(tmp_path):
         allowed = client.get("/api/registry/team-a/support-bot/1.0.0/eval", headers=AUTH_ADMIN)
 
     assert foreign.status_code == 403
-    assert foreign.json() == {"error": "tenant_forbidden"}
+    assert foreign.json() == {"error": "forbidden"}
     assert allowed.status_code == 200
     assert allowed.json()["suite_id"] == "smoke"
 

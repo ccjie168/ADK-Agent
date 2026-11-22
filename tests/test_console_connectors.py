@@ -140,7 +140,7 @@ def test_check_missing_and_tenant(tmp_path):
     assert missing.status_code == 404
     assert missing.json() == {"error": "connector_not_found"}
     assert foreign.status_code == 403
-    assert foreign.json() == {"error": "tenant_forbidden"}
+    assert foreign.json() == {"error": "forbidden"}
 
 
 def test_check_healthy(tmp_path, monkeypatch):
