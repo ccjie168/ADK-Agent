@@ -176,6 +176,7 @@ _CAPABILITIES_ALL = frozenset(
         "model.read",
         "model.write",
         "semantics.write",
+        "ops.read",
         "ops.status",
     }
 )
@@ -191,6 +192,7 @@ _CAPABILITIES_OPERATOR = _CAPABILITIES_BASE | {
     "policy.read",
     "model.read",
     "semantics.write",
+    "ops.read",
 }
 _CAPABILITIES_PUBLISHER = _CAPABILITIES_BASE | {
     "registry.read",
@@ -392,7 +394,7 @@ _INDEX_HTML = r"""<!doctype html>
   <nav id="tabs">
     <div class="nav-group">
       <div class="nav-title">总览</div>
-      <button id="tab-overview" class="tab active" data-tab="overview" data-capability="runs.read">Overview</button>
+      <button id="tab-overview" class="tab active" data-tab="overview" data-capability="ops.read">Overview</button>
       <button id="tab-ask-ai" class="tab" data-tab="ask-ai" data-capability="runs.read">Ask AI</button>
     </div>
     <div class="nav-group">
@@ -411,24 +413,24 @@ _INDEX_HTML = r"""<!doctype html>
       <button id="tab-connectors" class="tab" data-tab="connectors" data-capability="connectors.read">Connectors</button>
       <button id="tab-credentials" class="tab" data-tab="credentials" data-capability="connectors.read">Credentials</button>
       <button id="tab-peers" class="tab" data-tab="peers" data-capability="peers.read">Peers</button>
-      <button id="tab-rag" class="tab" data-tab="rag" data-capability="runs.read">RAG</button>
-      <button id="tab-model" class="tab" data-tab="model" data-capability="runs.read">Model</button>
+      <button id="tab-rag" class="tab" data-tab="rag" data-capability="ops.read">RAG</button>
+      <button id="tab-model" class="tab" data-tab="model" data-capability="model.read">Model</button>
     </div>
     <div class="nav-group">
       <div class="nav-title">治理</div>
       <button id="tab-audit" class="tab" data-tab="audit-panel" data-capability="audit.read">Audit</button>
-      <button id="tab-quota" class="tab" data-tab="quota" data-capability="runs.read">Quota</button>
+      <button id="tab-quota" class="tab" data-tab="quota" data-capability="ops.read">Quota</button>
       <button id="tab-policy" class="tab" data-tab="policy" data-capability="policy.read">Policy</button>
     </div>
     <div class="nav-group">
       <div class="nav-title">数据</div>
-      <button id="tab-semantics" class="tab" data-tab="semantics" data-capability="runs.read">Semantics</button>
+      <button id="tab-semantics" class="tab" data-tab="semantics" data-capability="ops.read">Semantics</button>
       <button id="tab-import" class="tab" data-tab="import" data-capability="runs.read">Import</button>
     </div>
   </nav>
   <main id="main">
 
-<section id="overview" class="panel active" data-capability="runs.read">
+<section id="overview" class="panel active" data-capability="ops.read">
   <div id="overview-cards" class="metric-grid"></div>
 </section>
 
@@ -447,15 +449,15 @@ _INDEX_HTML = r"""<!doctype html>
   <div id="audit-panel-log"></div>
 </section>
 
-<section id="quota" class="panel" data-capability="runs.read">
+<section id="quota" class="panel" data-capability="ops.read">
   <div id="quota-cards" class="metric-grid"></div>
 </section>
 
-<section id="rag" class="panel" data-capability="runs.read">
+<section id="rag" class="panel" data-capability="ops.read">
   <div id="rag-cards" class="metric-grid"></div>
 </section>
 
-<section id="model" class="panel" data-capability="runs.read">
+<section id="model" class="panel" data-capability="model.read">
   <div id="model-cards" class="metric-grid"></div>
   <div data-capability="model.read">
     <h3>全局默认模型</h3>
@@ -468,7 +470,7 @@ _INDEX_HTML = r"""<!doctype html>
   </div>
 </section>
 
-<section id="semantics" class="panel" data-capability="runs.read">
+<section id="semantics" class="panel" data-capability="ops.read">
   <div class="row">
     <input id="semantics-route-text" placeholder="输入需求，回放语义路由..." autocomplete="off">
     <button id="semantics-route-run">Route</button>
@@ -1960,13 +1962,17 @@ async function connect() {
   $("who").textContent = "已连接";
   info("connected: " + result.agents.map((a) => a.name).join(", "));
   await loadTenants();
-  await loadOverview();
-  await loadQuota();
+  if (can("ops.read")) {
+    await loadOverview();
+    await loadQuota();
+    await loadRag();
+    await loadSemantics();
+  }
   if (can("audit.read")) await loadAuditPanel();
-  await loadRag();
-  await loadModel();
-  await loadModelConfig();
-  await loadSemantics();
+  if (can("model.read")) {
+    await loadModel();
+    await loadModelConfig();
+  }
   startLive();
   if (can("runs.read")) await loadRuns();
   if (can("sessions.read")) await loadSessions();
@@ -2452,12 +2458,16 @@ async function startLive() {
         buffer = buffer.slice(index + 2);
         const ev = parseEvent(block);
         if (ev.name === "tick") {
-          loadOverview();
-          loadQuota();
-          loadRag();
-          loadModel();
-          loadModelConfig();
-          loadSemantics();
+          if (can("ops.read")) {
+            loadOverview();
+            loadQuota();
+            loadRag();
+            loadSemantics();
+          }
+          if (can("model.read")) {
+            loadModel();
+            loadModelConfig();
+          }
         }
       }
     }
@@ -3239,6 +3249,9 @@ def build_console_app(
     @app.get("/api/overview")
     async def overview(request: Request) -> Any:
         caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "ops.read")
+        if denied is not None:
+            return denied
         caps = set(_capabilities_for(caller.roles))
         target = caller.tenant
         cards: list[dict[str, Any]] = [
@@ -3280,6 +3293,9 @@ def build_console_app(
     @app.get("/api/quota")
     async def get_quota(request: Request) -> Any:
         caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "ops.read")
+        if denied is not None:
+            return denied
         if quota is None or quota_config is None:
             return JSONResponse({"error": "quota_not_configured"}, status_code=404)
         policy = quota_config.tenants.get(caller.tenant)
@@ -3293,6 +3309,10 @@ def build_console_app(
 
     @app.get("/api/rag")
     async def get_rag(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "ops.read")
+        if denied is not None:
+            return denied
         events = await _query_events(request, limit=200)
         retrievals = [event for event in events if event.action == "rag.retrieve"]
         last = retrievals[-1] if retrievals else None
@@ -3304,6 +3324,10 @@ def build_console_app(
 
     @app.get("/api/model")
     async def get_model(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "model.read")
+        if denied is not None:
+            return denied
         events = await _query_events(request, limit=200)
         calls = [event for event in events if event.action == "model.call"]
         aliases = sorted({event.model_alias for event in calls if event.model_alias})
@@ -3371,9 +3395,12 @@ def build_console_app(
 
     @app.get("/api/semantics")
     async def list_semantics(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = _forbidden_if_missing(caller, "ops.read")
+        if denied is not None:
+            return denied
         if terminology is None:
             return JSONResponse({"error": "terminology_not_configured"}, status_code=404)
-        caller = _principal_for(request)
         try:
             schemes = await terminology.list(caller.tenant)
         except ConceptSchemeStoreUnavailable:
