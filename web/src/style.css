@@ -231,6 +231,19 @@ body {
   border-bottom: none;
 }
 
+.select-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.select-row select {
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
 .login {
   max-width: 360px;
   margin: 4rem auto;

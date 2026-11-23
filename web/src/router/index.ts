@@ -13,6 +13,7 @@ import RagView from "../views/RagView.vue";
 import RegistryView from "../views/RegistryView.vue";
 import RunsView from "../views/RunsView.vue";
 import SemanticsView from "../views/SemanticsView.vue";
+import SessionsView from "../views/SessionsView.vue";
 import ToolsView from "../views/ToolsView.vue";
 
 const routes = [
@@ -30,6 +31,7 @@ const routes = [
   { path: "/rag", name: "rag", component: RagView },
   { path: "/runs", name: "runs", component: RunsView },
   { path: "/semantics", name: "semantics", component: SemanticsView },
+  { path: "/sessions", name: "sessions", component: SessionsView },
   { path: "/tools", name: "tools", component: ToolsView },
   { path: "/settings", name: "settings", component: PlaceholderView },
 ];
