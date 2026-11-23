@@ -30,6 +30,10 @@ from .audit import AuditQuery, AuditQueryUnavailable, ListAuditSink, query_event
 from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from .core import (
+    CAPABILITIES_ALL,
+    CAPABILITIES_BASE,
+    CAPABILITIES_OPERATOR,
+    CAPABILITIES_PUBLISHER,
     AccessPolicy,
     AgentLifecycle,
     AgentLifecycleStore,
@@ -152,72 +156,17 @@ _SAFE_TENANT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}")
 _GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})
 _CONNECTOR_REQUEST_STATUSES = frozenset({"pending", "approved", "denied"})
 
-_CAPABILITIES_ALL = frozenset(
-    {
-        "chat.run",
-        "runs.read",
-        "sessions.read",
-        "approvals.read",
-        "approvals.decide",
-        "grants.read",
-        "grants.request",
-        "grants.decide",
-        "audit.read",
-        "registry.read",
-        "registry.publish",
-        "registry.load",
-        "eval.read",
-        "tools.read",
-        "lifecycle.read",
-        "connectors.read",
-        "connectors.manage",
-        "peers.read",
-        "peers.manage",
-        "policy.read",
-        "policy.write",
-        "model.read",
-        "model.write",
-        "semantics.write",
-        "ops.read",
-        "ops.status",
-    }
-)
-_CAPABILITIES_BASE = frozenset({"chat.run", "runs.read", "sessions.read"})
-_CAPABILITIES_OPERATOR = _CAPABILITIES_BASE | {
-    "approvals.read",
-    "approvals.decide",
-    "grants.read",
-    "audit.read",
-    "connectors.read",
-    "peers.read",
-    "registry.read",
-    "policy.read",
-    "model.read",
-    "semantics.write",
-    "ops.read",
-}
-_CAPABILITIES_PUBLISHER = _CAPABILITIES_BASE | {
-    "registry.read",
-    "registry.publish",
-    "registry.load",
-    "eval.read",
-    "tools.read",
-    "lifecycle.read",
-    "grants.read",
-    "grants.request",
-}
-
 
 def _capabilities_for(roles: Iterable[str]) -> list[str]:
     granted: set[str] = set()
     for role in roles:
         if role == "admin":
-            granted |= _CAPABILITIES_ALL
+            granted |= CAPABILITIES_ALL
         elif role in {"operator", "ops", "approver"}:
-            granted |= _CAPABILITIES_OPERATOR
+            granted |= CAPABILITIES_OPERATOR
         elif role in {"publisher", "developer"}:
-            granted |= _CAPABILITIES_PUBLISHER
-    return sorted(granted or _CAPABILITIES_BASE)
+            granted |= CAPABILITIES_PUBLISHER
+    return sorted(granted or CAPABILITIES_BASE)
 
 
 def _forbidden_if_missing(caller: Principal, capability: str) -> JSONResponse | None:

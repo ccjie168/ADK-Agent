@@ -23,6 +23,7 @@ from .peers import PeerGrant, PeerIdentity
 from .policy import DataClass, PolicyDecision
 from .quota import QuotaPolicy, QuotaUsage
 from .remote_agents import RemoteAgent
+from .roles import RoleDefinition
 from .tool import ToolRequest, ToolResponse
 from .tool_grants import GrantStatus, ToolGrantRequest
 from .tool_idempotency import ToolExecutionRecord, ToolExecutionStatus
@@ -114,6 +115,16 @@ class CredentialStore(Protocol):
     async def list(self, tenant: str) -> builtins.list[CredentialBinding]: ...
 
     async def disable(self, tenant: str, credential_id: str, *, by: str) -> CredentialBinding: ...
+
+
+class RoleStore(Protocol):
+    async def add(self, role: RoleDefinition) -> RoleDefinition: ...
+
+    async def get(self, name: str) -> RoleDefinition | None: ...
+
+    async def list(self) -> builtins.list[RoleDefinition]: ...
+
+    async def delete(self, name: str) -> bool: ...
 
 
 class TriggerStore(Protocol):
