@@ -636,6 +636,34 @@ def _seed_role_store(store: Any) -> None:
         raise SystemExit(1) from None
 
 
+def _user_binding_store(args: argparse.Namespace) -> Any:
+    """Build the user binding store from ``--user-binding-store-dir`` or ``-db``."""
+    from .registry import FileUserBindingStore, PostgresUserBindingStore
+
+    directory = getattr(args, "user_binding_store_dir", None)
+    url = getattr(args, "user_binding_store_db", None)
+    env_url = os.environ.get("USER_BINDING_DATABASE_URL")
+    if directory and url:
+        print(
+            "set exactly one of --user-binding-store-dir or --user-binding-store-db",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    if directory and env_url:
+        print("--user-binding-store-dir conflicts with USER_BINDING_DATABASE_URL", file=sys.stderr)
+        raise SystemExit(2)
+    if url and env_url:
+        print("--user-binding-store-db conflicts with USER_BINDING_DATABASE_URL", file=sys.stderr)
+        raise SystemExit(2)
+    if directory:
+        return FileUserBindingStore(directory)
+    if url:
+        return PostgresUserBindingStore(url)
+    if env_url:
+        return PostgresUserBindingStore(env_url)
+    return None
+
+
 def _add_role_store_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--role-store-dir", default=None, help="file store root for role definitions"
@@ -644,6 +672,14 @@ def _add_role_store_args(parser: argparse.ArgumentParser) -> None:
         "--role-store-db",
         default=None,
         help="Postgres URL for role definitions (defaults to $ROLE_DATABASE_URL)",
+    )
+    parser.add_argument(
+        "--user-binding-store-dir", default=None, help="file store root for user bindings"
+    )
+    parser.add_argument(
+        "--user-binding-store-db",
+        default=None,
+        help="Postgres URL for user bindings (defaults to $USER_BINDING_DATABASE_URL)",
     )
 
 
@@ -3257,6 +3293,7 @@ def main(argv: list[str] | None = None) -> None:
         role_store = _role_store(args)
         if role_store is not None:
             _seed_role_store(role_store)
+        user_binding_store = _user_binding_store(args)
         run_console(
             agents=agents,
             host=args.host,
@@ -3300,6 +3337,7 @@ def main(argv: list[str] | None = None) -> None:
             terminology=_terminology_store(args),
             model_config_store=_model_config_store(args),
             role_store=role_store,
+            user_binding_store=user_binding_store,
             ui=args.ui,
         )
         if isinstance(audit_query, PostgresAuditQuery):

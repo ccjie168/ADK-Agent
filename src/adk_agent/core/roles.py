@@ -42,6 +42,8 @@ CAPABILITIES_ALL = frozenset(
         "semantics.write",
         "ops.read",
         "ops.status",
+        "roles.read",
+        "roles.manage",
     }
 )
 CAPABILITIES_BASE = frozenset({"chat.run", "runs.read", "sessions.read"})

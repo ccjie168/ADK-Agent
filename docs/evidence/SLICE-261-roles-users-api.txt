@@ -1,0 +1,45 @@
+SLICE-261 角色与用户管理接口 — 证据
+====================================
+
+日期: 2026-11-23
+分支: slice-261-roles-users-api
+
+## 反例（先红）
+
+实现前运行 tests/test_console_roles_api.py:
+
+    9 failed
+    TypeError: build_console_app() got an unexpected keyword argument 'user_binding_store'
+    角色/用户路由不存在（404），CAPABILITIES_ALL 无 roles.read / roles.manage
+
+## 实现（后绿）
+
+- core/roles.py：CAPABILITIES_ALL 新增 roles.read、roles.manage（只发给 admin；OPERATOR/PUBLISHER/BASE 不变）。
+  tests/test_console_me.py 的期望全量集合同步新增这两项（仅新增，未放宽任何断言；已在会话中确认）。
+- console.py：
+  - `build_console_app`/`run_console` 新增 `user_binding_store`。
+  - `GET /api/roles`（roles.read）、`PUT /api/roles/{name}`、`DELETE /api/roles/{name}`（roles.manage）；
+    PUT 先查存在性，存在则先删后加覆盖写，且保留 builtin 标记（否则编辑过的内置角色可被删除）；
+    内置角色 DELETE 返回 409 builtin_role_immutable；未配置 store 三个接口 404 role_store_not_configured。
+  - `GET /api/users`（roles.read）、`PUT /api/users/{subject}`、`DELETE /api/users/{subject}`（roles.manage）；
+    默认只作用于调用方租户，admin 可用 `?tenant=`；非 admin 带该参数 403，非法租户 400。
+  - 写审计 role.define / role.remove / user.bind / user.unbind，审计失败只记日志不回滚写入。
+- cli.py：`--user-binding-store-dir` / `--user-binding-store-db`（env USER_BINDING_DATABASE_URL），
+  互斥与 env 冲突退出 2。
+- docs/contracts/console.md 新增「角色与用户管理」一节（端点、能力、错误码、租户规则）。
+
+    python -m pytest tests/test_console_roles_api.py -q
+    10 passed
+    python -m pytest tests/test_console_roles_api.py tests/test_console_me.py -q
+    18 passed
+
+## 门禁
+
+    python scripts/check.py --fast   -> 2103 passed / 105 skipped（首轮 types 失败：mypy 无法收窄闭包内的
+                                        Optional store；已改为把 store 显式传入 helper）
+    python scripts/check.py --full   -> 9 步 ALL PASS
+
+## 实机验证（能力词表变更后重跑控制台基线）
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (3.0s)
