@@ -1,0 +1,35 @@
+SLICE-256 迁移 Ask AI 面板到 Vue — 证据
+
+日期: 2026-11-23
+分支: slice-256-askai-vue
+ADR: ADR-0041 阶段 0 第二十一步
+
+## 门禁（python scripts/check.py --full）
+
+  [PASS] format
+  [PASS] lint
+  [PASS] types
+  [PASS] layering
+  [PASS] specs
+  [PASS] test
+  [PASS] sast
+  [PASS] deps
+  [PASS] secrets
+  ALL PASS
+
+  pytest: 2070 passed, 103 skipped
+
+## 目标用例（tests/test_console_vue_askai.py）
+
+  test_ask_ai_view_fetches_ask_ai    PASS
+  test_ask_ai_route_uses_ask_ai_view PASS
+  test_ask_ai_view_renders_fields    PASS
+
+## 前端构建（web/ 目录）
+
+  npm run build -> vite v6.4.6，76 modules transformed，dist/index.html + dist/assets/index-*.{js,css}，
+  built in 824ms（JS 129.98 kB / gzip 47.19 kB）
+
+## 反例（先红后绿）
+
+  基线（SLICE-255 状态）三个用例全部失败：无 AskAiView，路由无 /ask-ai。实现后转绿。
