@@ -11,6 +11,7 @@ import PlaceholderView from "../views/PlaceholderView.vue";
 import QuotaView from "../views/QuotaView.vue";
 import RagView from "../views/RagView.vue";
 import RegistryView from "../views/RegistryView.vue";
+import RunsView from "../views/RunsView.vue";
 import SemanticsView from "../views/SemanticsView.vue";
 import ToolsView from "../views/ToolsView.vue";
 
@@ -27,6 +28,7 @@ const routes = [
   { path: "/model", name: "model", component: ModelView },
   { path: "/quota", name: "quota", component: QuotaView },
   { path: "/rag", name: "rag", component: RagView },
+  { path: "/runs", name: "runs", component: RunsView },
   { path: "/semantics", name: "semantics", component: SemanticsView },
   { path: "/tools", name: "tools", component: ToolsView },
   { path: "/settings", name: "settings", component: PlaceholderView },
