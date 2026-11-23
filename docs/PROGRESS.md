@@ -2,8 +2,8 @@
 
 更新日期: 2026-11-23
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `4042443` feat: add user binding store (SLICE-259) (#281)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）进行中（SLICE-258 角色定义 store、SLICE-259 用户绑定 store 已交付）
+最新提交: `16acc65` feat: resolve capabilities from the role store (SLICE-260) (#283)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）进行中（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化已交付）
 
 ## 本次暂停交接
 
@@ -441,6 +441,14 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         后端对外接口无变化，绑定尚未被能力解析消费。
         全量门禁 9 步全 PASS、2085 passed / 105 skipped。证据 `docs/evidence/SLICE-259-user-binding-store.txt`。
         下一步：`_capabilities_for` 运行时化（读 role store + 用户绑定，fail-closed）。
+      - SLICE-260（能力解析运行时化）~~已合并 `16acc65`~~：`build_console_app`/`run_console` 加 `role_store`，
+        `_caps_for(caller)` 在未配置 store 时走内置角色表（行为不变），配置后按角色逐条读定义取并集；角色定义即完整能力集合，
+        未定义角色贡献空集、并集为空回落基础能力；store 读失败与白名单外角色名一律 fail-closed 到基础能力并记日志。
+        `_forbidden_if_missing` 改 async（44 处调用加 `await`），`/api/me`、`/api/overview` 与审批三处改用 `_caps_for`。
+        CLI 加 `--role-store-dir`/`--role-store-db`（env `ROLE_DATABASE_URL`，互斥退出 2），启动幂等种子且不覆盖运维改过的内置角色。
+        契约 `docs/contracts/console.md` 补能力来源与 fail-closed。
+        全量门禁 9 步全 PASS、2093 passed / 105 skipped；`prove_it_works --only P13` PASS。证据 `docs/evidence/SLICE-260-capabilities-runtime.txt`。
+        下一步：`/api/roles` 与 `/api/users` 管理接口（admin-only，写审计 role.define / user.bind）。
     - **阶段 2**：Agent 中心总览（诉求 2）。registry/lifecycle 重组为 agent 旅程视图。
     - **阶段 3**：安全合规聚合视图（诉求 5）。审计完整性、扫描、密钥轮换、策略概览。
     - **阶段 4**：MCP/API 生态展示（诉求 4）。MCP server、A2A 对端、连接器、可复用工具 + 接入引导。
