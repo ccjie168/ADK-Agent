@@ -16,10 +16,12 @@ import PolicyView from "../views/PolicyView.vue";
 import QuotaView from "../views/QuotaView.vue";
 import RagView from "../views/RagView.vue";
 import RegistryView from "../views/RegistryView.vue";
+import RolesView from "../views/RolesView.vue";
 import RunsView from "../views/RunsView.vue";
 import SemanticsView from "../views/SemanticsView.vue";
 import SessionsView from "../views/SessionsView.vue";
 import ToolsView from "../views/ToolsView.vue";
+import UsersView from "../views/UsersView.vue";
 
 const routes = [
   { path: "/", name: "home", component: OverviewView },
@@ -37,6 +39,7 @@ const routes = [
   { path: "/registry", name: "registry", component: RegistryView },
   { path: "/audit", name: "audit", component: AuditView },
   { path: "/model", name: "model", component: ModelView },
+  { path: "/roles", name: "roles", component: RolesView },
   { path: "/quota", name: "quota", component: QuotaView },
   { path: "/rag", name: "rag", component: RagView },
   { path: "/runs", name: "runs", component: RunsView },
@@ -44,6 +47,7 @@ const routes = [
   { path: "/sessions", name: "sessions", component: SessionsView },
   { path: "/tools", name: "tools", component: ToolsView },
   { path: "/settings", name: "settings", component: PlaceholderView },
+  { path: "/users", name: "users", component: UsersView },
 ];
 
 export const router = createRouter({
