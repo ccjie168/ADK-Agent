@@ -2,8 +2,8 @@
 
 更新日期: 2026-11-23
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `1c1d90c` feat: migrate Chat panel to Vue (SLICE-257) (#277)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）
+最新提交: `b91327b` feat: add role definition store (SLICE-258) (#279)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）进行中（SLICE-258 角色定义 store 已交付）
 
 ## 本次暂停交接
 
@@ -427,6 +427,13 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
       全量门禁 9 步全 PASS、2073 passed / 103 skipped。证据 `docs/evidence/SLICE-257-chat-vue.txt`。
       阶段 0 收口：20 个面板全部迁到 Vue，行为等价。
     - **阶段 1**：用户/角色/授权管理 + 统一登录（诉求 1+6）。角色定义 store + 用户绑定 store + `_capabilities_for` 运行时化 + 管理面板。
+      - SLICE-258（角色定义 store）~~已合并 `b91327b`~~：`core/roles.py` 把能力常量 `_CAPABILITIES_*` 公开为
+        `CAPABILITIES_ALL/BASE/OPERATOR/PUBLISHER`，`RoleDefinition`（name+capabilities+builtin+description，能力去重排序、
+        name 白名单）、`RoleStore` 端口与错误、`BUILTIN_ROLES` 种子（admin/operator/ops/approver/publisher/developer/base 与现网一致）
+        + `seed_builtin_roles()`；`registry/roles.py`/`roles_postgres.py` 提供文件/Postgres 双后端（`adk_roles` 幂等 insert-then-compare）；
+        `console.py` 改导入、`_capabilities_for` 行为不变。后端对外接口无变化。
+        全量门禁 9 步全 PASS、2079 passed / 104 skipped。证据 `docs/evidence/SLICE-258-role-store.txt`。
+        下一步：用户绑定 store（subject→角色，租户维度）。
     - **阶段 2**：Agent 中心总览（诉求 2）。registry/lifecycle 重组为 agent 旅程视图。
     - **阶段 3**：安全合规聚合视图（诉求 5）。审计完整性、扫描、密钥轮换、策略概览。
     - **阶段 4**：MCP/API 生态展示（诉求 4）。MCP server、A2A 对端、连接器、可复用工具 + 接入引导。
