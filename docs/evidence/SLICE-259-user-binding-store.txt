@@ -1,0 +1,36 @@
+SLICE-259 用户绑定 store — 证据
+==============================
+
+日期: 2026-11-23
+分支: slice-259-user-binding-store
+
+## 反例（先红）
+
+实现前运行 tests/test_core_user_bindings.py:
+
+    ImportError: cannot import name 'UserBinding' from 'adk_agent.core'
+
+全部用例失败（core/user_bindings.py、registry/user_bindings.py、
+registry/user_bindings_postgres.py 不存在）。
+
+## 实现（后绿）
+
+- core/user_bindings.py：UserBinding（tenant 白名单 + subject 1..256 + roles 去重排序、
+  角色名白名单）、UserBindingStore 错误类。
+- core/ports.py：UserBindingStore Protocol（add/get/list/delete）。
+- registry/user_bindings.py：FileUserBindingStore（<root>/<tenant>/<sha256(subject)>.json，
+  safe_join + 原子写，subject 任意字符不会穿越路径）。
+- registry/user_bindings_postgres.py：PostgresUserBindingStore（adk_user_bindings，
+  主键 (tenant, subject)，幂等 insert-then-compare）。
+- core/__init__.py / registry/__init__.py 导出。
+
+    python -m pytest tests/test_core_user_bindings.py -q
+    6 passed, 1 skipped in 1.82s   （1 个 Postgres 用例缺 TEST_POSTGRES_URL 跳过）
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2085 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+                                       2085 passed / 105 skipped
+
+后端对外接口无变化；用户绑定尚未被能力解析消费（运行时化是 SLICE-260）。

@@ -71,6 +71,8 @@ from .trigger_runs_postgres import PostgresTriggerFireStore
 from .triggers import FileTriggerStore
 from .triggers_postgres import PostgresTriggerStore
 from .trust import ArtifactTrustError, TrustStore
+from .user_bindings import FileUserBindingStore
+from .user_bindings_postgres import PostgresUserBindingStore
 
 __all__ = [
     "ArtifactLoadError",
@@ -94,6 +96,7 @@ __all__ = [
     "FileToolGrantStore",
     "FileTriggerFireStore",
     "FileTriggerStore",
+    "FileUserBindingStore",
     "GrantRequestConflict",
     "GrantRequestError",
     "GrantRequestExpired",
@@ -116,6 +119,7 @@ __all__ = [
     "PostgresToolGrantStore",
     "PostgresTriggerFireStore",
     "PostgresTriggerStore",
+    "PostgresUserBindingStore",
     "PublishUnavailable",
     "FileAgentRegistry",
     "FileEvalReportStore",
