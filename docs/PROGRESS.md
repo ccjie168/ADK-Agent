@@ -2,8 +2,8 @@
 
 更新日期: 2026-11-23
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `2d5eb44` feat: migrate Ask AI panel to Vue (SLICE-256) (#275)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 进行中（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI 已交付）
+最新提交: `1c1d90c` feat: migrate Chat panel to Vue (SLICE-257) (#277)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）
 
 ## 本次暂停交接
 
@@ -421,7 +421,11 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - SLICE-256（迁 Ask AI 面板）~~已合并 `2d5eb44`~~：`web/src/views/AskAiView.vue` 按 `runs.read` 门控，自然语言输入 +
       Ask 按钮 POST `/api/ask-ai`（`{text, bindings: []}`）显示结果，新增 `/ask-ai` 路由用 `AskAiView`。后端无改动。
       全量门禁 9 步全 PASS、2070 passed / 103 skipped。证据 `docs/evidence/SLICE-256-askai-vue.txt`。
-      下一步：迁最后一个面板（Chat，SSE 流式），之后阶段 0 收口。
+    - SLICE-257（迁聊天面板）~~已合并 `1c1d90c`~~：`web/src/views/ChatView.vue` 按 `chat.run` 门控，`GET /api/agents` 填选择器，
+      发送 POST `/api/chat/stream`（`{agent, message}`）用 `ReadableStream` 读 SSE 块，`done` 追加 `reply`、`error` 追加 `error`、
+      `progress` 忽略，消息日志按 you/agent/system 渲染，新增 `/chat` 路由用 `ChatView`。后端无改动。
+      全量门禁 9 步全 PASS、2073 passed / 103 skipped。证据 `docs/evidence/SLICE-257-chat-vue.txt`。
+      阶段 0 收口：20 个面板全部迁到 Vue，行为等价。
     - **阶段 1**：用户/角色/授权管理 + 统一登录（诉求 1+6）。角色定义 store + 用户绑定 store + `_capabilities_for` 运行时化 + 管理面板。
     - **阶段 2**：Agent 中心总览（诉求 2）。registry/lifecycle 重组为 agent 旅程视图。
     - **阶段 3**：安全合规聚合视图（诉求 5）。审计完整性、扫描、密钥轮换、策略概览。
