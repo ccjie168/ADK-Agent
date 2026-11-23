@@ -5,6 +5,7 @@ import GrantsView from "../views/GrantsView.vue";
 import ModelView from "../views/ModelView.vue";
 import OverviewView from "../views/OverviewView.vue";
 import PlaceholderView from "../views/PlaceholderView.vue";
+import QuotaView from "../views/QuotaView.vue";
 import RegistryView from "../views/RegistryView.vue";
 import ToolsView from "../views/ToolsView.vue";
 
@@ -16,6 +17,7 @@ const routes = [
   { path: "/registry", name: "registry", component: RegistryView },
   { path: "/audit", name: "audit", component: AuditView },
   { path: "/model", name: "model", component: ModelView },
+  { path: "/quota", name: "quota", component: QuotaView },
   { path: "/tools", name: "tools", component: ToolsView },
   { path: "/settings", name: "settings", component: PlaceholderView },
 ];

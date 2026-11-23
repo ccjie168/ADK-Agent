@@ -1,0 +1,35 @@
+SLICE-245 迁移配额面板到 Vue — 证据
+
+日期: 2026-11-23
+分支: slice-245-quota-vue
+ADR: ADR-0041 阶段 0 第十步
+
+## 门禁（python scripts/check.py --full）
+
+  [PASS] format
+  [PASS] lint
+  [PASS] types
+  [PASS] layering
+  [PASS] specs
+  [PASS] test
+  [PASS] sast
+  [PASS] deps
+  [PASS] secrets
+  ALL PASS
+
+  pytest: 2037 passed, 103 skipped
+
+## 目标用例（tests/test_console_vue_quota.py）
+
+  test_quota_view_fetches_quota    PASS
+  test_quota_route_uses_quota_view PASS
+  test_quota_view_renders_fields   PASS
+
+## 前端构建（web/ 目录）
+
+  npm run build -> vite v6.4.6，54 modules transformed，dist/index.html + dist/assets/index-*.{js,css}，
+  built in 718ms（JS 116.16 kB / gzip 44.18 kB）
+
+## 反例（先红后绿）
+
+  基线（SLICE-244 状态）三个用例全部失败：无 QuotaView，路由无 /quota。实现后转绿。
