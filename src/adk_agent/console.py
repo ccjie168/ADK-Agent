@@ -85,6 +85,8 @@ from .core import (
     RemoteAgentFetchError,
     RemoteAgentRegistration,
     RemoteAgentStore,
+    RoleStore,
+    RoleStoreError,
     SecretProvider,
     ToolGrantRequest,
     ToolGrantStore,
@@ -158,6 +160,7 @@ _CONNECTOR_REQUEST_STATUSES = frozenset({"pending", "approved", "denied"})
 
 
 def _capabilities_for(roles: Iterable[str]) -> list[str]:
+    """Hardcoded role table, used when no role definition store is configured."""
     granted: set[str] = set()
     for role in roles:
         if role == "admin":
@@ -167,12 +170,6 @@ def _capabilities_for(roles: Iterable[str]) -> list[str]:
         elif role in {"publisher", "developer"}:
             granted |= CAPABILITIES_PUBLISHER
     return sorted(granted or CAPABILITIES_BASE)
-
-
-def _forbidden_if_missing(caller: Principal, capability: str) -> JSONResponse | None:
-    if capability in _capabilities_for(caller.roles):
-        return None
-    return JSONResponse({"error": "forbidden"}, status_code=403)
 
 
 _WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
@@ -2957,6 +2954,7 @@ def build_console_app(
     rag: Any | None = None,
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
+    role_store: RoleStore | None = None,
     ui: str = "legacy",
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
@@ -2970,6 +2968,35 @@ def build_console_app(
     def _principal_for(request: Request) -> Principal:
         found = getattr(request.state, "principal", None)
         return found if found is not None else principal
+
+    async def _caps_for(caller: Principal) -> list[str]:
+        """Capabilities for a principal, from the role store when one is configured.
+
+        A role the store does not define grants nothing, so a principal whose
+        roles are all undefined gets the base floor. A store failure fails
+        closed the same way rather than falling back to the hardcoded table,
+        which would hand ``admin`` its management rights while the store is down.
+        """
+        if role_store is None:
+            return _capabilities_for(caller.roles)
+        granted: set[str] = set()
+        try:
+            for name in caller.roles:
+                definition = await role_store.get(name)
+                if definition is not None:
+                    granted |= set(definition.capabilities)
+        except (RoleStoreError, ValueError):
+            # ValueError covers a claim role name the file store's whitelist
+            # rejects; RoleDefinition.name uses the same pattern, so such a
+            # name can never name a defined role.
+            logger.exception("role store failed for tenant=%s", caller.tenant)
+            return sorted(CAPABILITIES_BASE)
+        return sorted(granted or CAPABILITIES_BASE)
+
+    async def _forbidden_if_missing(caller: Principal, capability: str) -> JSONResponse | None:
+        if capability in await _caps_for(caller):
+            return None
+        return JSONResponse({"error": "forbidden"}, status_code=403)
 
     def _session_user(caller: Principal) -> str:
         return scoped_user_id(caller) if session_tenant_scope else caller.subject
@@ -3204,16 +3231,16 @@ def build_console_app(
             "tenant": caller.tenant,
             "subject": caller.subject,
             "roles": list(caller.roles),
-            "capabilities": _capabilities_for(caller.roles),
+            "capabilities": await _caps_for(caller),
         }
 
     @app.get("/api/overview")
     async def overview(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "ops.read")
+        denied = await _forbidden_if_missing(caller, "ops.read")
         if denied is not None:
             return denied
-        caps = set(_capabilities_for(caller.roles))
+        caps = set(await _caps_for(caller))
         target = caller.tenant
         cards: list[dict[str, Any]] = [
             {"key": "approvals", "label": "待审批", "panel": "approvals", "value": None},
@@ -3254,7 +3281,7 @@ def build_console_app(
     @app.get("/api/quota")
     async def get_quota(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "ops.read")
+        denied = await _forbidden_if_missing(caller, "ops.read")
         if denied is not None:
             return denied
         if quota is None or quota_config is None:
@@ -3271,7 +3298,7 @@ def build_console_app(
     @app.get("/api/rag")
     async def get_rag(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "ops.read")
+        denied = await _forbidden_if_missing(caller, "ops.read")
         if denied is not None:
             return denied
         events = await _query_events(request, limit=200)
@@ -3286,7 +3313,7 @@ def build_console_app(
     @app.get("/api/model")
     async def get_model(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "model.read")
+        denied = await _forbidden_if_missing(caller, "model.read")
         if denied is not None:
             return denied
         events = await _query_events(request, limit=200)
@@ -3312,7 +3339,7 @@ def build_console_app(
     @app.get("/api/model-config")
     async def get_model_config(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "model.read")
+        denied = await _forbidden_if_missing(caller, "model.read")
         if denied is not None:
             return denied
         return {"model": await _read_default_model()}
@@ -3320,7 +3347,7 @@ def build_console_app(
     @app.put("/api/model-config")
     async def put_model_config(request: Request) -> JSONResponse:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "model.write")
+        denied = await _forbidden_if_missing(caller, "model.write")
         if denied is not None:
             return denied
         try:
@@ -3357,7 +3384,7 @@ def build_console_app(
     @app.get("/api/semantics")
     async def list_semantics(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "ops.read")
+        denied = await _forbidden_if_missing(caller, "ops.read")
         if denied is not None:
             return denied
         if terminology is None:
@@ -3401,7 +3428,7 @@ def build_console_app(
     @app.post("/api/import/terminology")
     async def import_terminology(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "semantics.write")
+        denied = await _forbidden_if_missing(caller, "semantics.write")
         if denied is not None:
             return denied
         if terminology is None:
@@ -3439,7 +3466,7 @@ def build_console_app(
     @app.post("/api/import/agent")
     async def import_agent(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "registry.publish")
+        denied = await _forbidden_if_missing(caller, "registry.publish")
         if denied is not None:
             return denied
         if registry is None:
@@ -3530,7 +3557,7 @@ def build_console_app(
     @app.get("/api/audit")
     async def list_audit(request: Request, limit: int = 50) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "audit.read")
+        denied = await _forbidden_if_missing(caller, "audit.read")
         if denied is not None:
             return denied
         limit = min(max(limit, 1), 200)
@@ -3550,7 +3577,7 @@ def build_console_app(
     @app.get("/api/registry")
     async def list_registry(request: Request, tenant: str | None = None) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "registry.read")
+        denied = await _forbidden_if_missing(caller, "registry.read")
         if denied is not None:
             return denied
         if registry is None and remote_agents is None:
@@ -3635,7 +3662,7 @@ def build_console_app(
     @app.post("/api/registry/load")
     async def load_registry_entry(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "registry.load")
+        denied = await _forbidden_if_missing(caller, "registry.load")
         if denied is not None:
             return denied
         if registry is None:
@@ -3744,7 +3771,7 @@ def build_console_app(
     @app.post("/api/registry/unload")
     async def unload_registry_entry(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "registry.load")
+        denied = await _forbidden_if_missing(caller, "registry.load")
         if denied is not None:
             return denied
         try:
@@ -3788,7 +3815,7 @@ def build_console_app(
     @app.get("/api/registry/{tenant}/{agent_id}/{version}/eval")
     async def get_eval_report(request: Request, tenant: str, agent_id: str, version: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "registry.read")
+        denied = await _forbidden_if_missing(caller, "registry.read")
         if denied is not None:
             return denied
         if tenant != caller.tenant and "admin" not in caller.roles:
@@ -3808,7 +3835,7 @@ def build_console_app(
     @app.get("/api/tools")
     async def list_tools(request: Request, tenant: str | None = None) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "tools.read")
+        denied = await _forbidden_if_missing(caller, "tools.read")
         if denied is not None:
             return denied
         if tool_catalog is None and connectors is None:
@@ -3870,7 +3897,7 @@ def build_console_app(
     @app.get("/api/tool-grants/usage")
     async def tool_grant_usage(request: Request, tenant: str | None = None) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "grants.read")
+        denied = await _forbidden_if_missing(caller, "grants.read")
         if denied is not None:
             return denied
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
@@ -3894,7 +3921,7 @@ def build_console_app(
     @app.get("/api/connectors")
     async def list_connectors(request: Request, tenant: str | None = None) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.read")
+        denied = await _forbidden_if_missing(caller, "connectors.read")
         if denied is not None:
             return denied
         if connectors is None:
@@ -3912,7 +3939,7 @@ def build_console_app(
     @app.post("/api/connectors")
     async def register_connector(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.manage")
+        denied = await _forbidden_if_missing(caller, "connectors.manage")
         if denied is not None:
             return denied
         if connectors is None:
@@ -3969,7 +3996,7 @@ def build_console_app(
     @app.post("/api/connectors/{connector_id}/disable")
     async def disable_connector(request: Request, connector_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.manage")
+        denied = await _forbidden_if_missing(caller, "connectors.manage")
         if denied is not None:
             return denied
         if connectors is None:
@@ -4011,7 +4038,7 @@ def build_console_app(
     @app.post("/api/connectors/{connector_id}/check")
     async def check_connector_health(request: Request, connector_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.manage")
+        denied = await _forbidden_if_missing(caller, "connectors.manage")
         if denied is not None:
             return denied
         if connectors is None:
@@ -4033,7 +4060,7 @@ def build_console_app(
         request: Request, tenant: str | None = None, status: str | None = None
     ) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.read")
+        denied = await _forbidden_if_missing(caller, "connectors.read")
         if denied is not None:
             return denied
         if connector_requests is None:
@@ -4122,7 +4149,7 @@ def build_console_app(
     @app.post("/api/connector-requests/{request_id}/decide")
     async def decide_connector_request(request: Request, request_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.manage")
+        denied = await _forbidden_if_missing(caller, "connectors.manage")
         if denied is not None:
             return denied
         try:
@@ -4226,7 +4253,7 @@ def build_console_app(
     @app.get("/api/credentials")
     async def list_credentials(request: Request, tenant: str | None = None) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.read")
+        denied = await _forbidden_if_missing(caller, "connectors.read")
         if denied is not None:
             return denied
         if credentials is None:
@@ -4246,7 +4273,7 @@ def build_console_app(
     @app.post("/api/credentials")
     async def register_credential(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.manage")
+        denied = await _forbidden_if_missing(caller, "connectors.manage")
         if denied is not None:
             return denied
         if credentials is None:
@@ -4311,7 +4338,7 @@ def build_console_app(
         request: Request, credential_id: str, tenant: str | None = None
     ) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "connectors.manage")
+        denied = await _forbidden_if_missing(caller, "connectors.manage")
         if denied is not None:
             return denied
         if credentials is None:
@@ -4356,7 +4383,7 @@ def build_console_app(
     @app.get("/api/peers")
     async def list_peers(request: Request, tenant: str | None = None) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.read")
+        denied = await _forbidden_if_missing(caller, "peers.read")
         if denied is not None:
             return denied
         if peers is None or peer_grants is None:
@@ -4395,7 +4422,7 @@ def build_console_app(
     @app.post("/api/peers")
     async def register_peer(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.manage")
+        denied = await _forbidden_if_missing(caller, "peers.manage")
         if denied is not None:
             return denied
         if peers is None or peer_grants is None:
@@ -4436,7 +4463,7 @@ def build_console_app(
     @app.post("/api/peers/{peer_id}/disable")
     async def disable_peer(request: Request, peer_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.manage")
+        denied = await _forbidden_if_missing(caller, "peers.manage")
         if denied is not None:
             return denied
         if peers is None or peer_grants is None:
@@ -4470,7 +4497,7 @@ def build_console_app(
     @app.post("/api/peers/{peer_id}/grants")
     async def put_peer_grant(request: Request, peer_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.manage")
+        denied = await _forbidden_if_missing(caller, "peers.manage")
         if denied is not None:
             return denied
         if peers is None or peer_grants is None:
@@ -4529,7 +4556,7 @@ def build_console_app(
     @app.delete("/api/peers/{peer_id}/grants/{agent_id}")
     async def revoke_peer_grant(request: Request, peer_id: str, agent_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.manage")
+        denied = await _forbidden_if_missing(caller, "peers.manage")
         if denied is not None:
             return denied
         if peers is None or peer_grants is None:
@@ -4565,7 +4592,7 @@ def build_console_app(
     @app.get("/api/remote-agents")
     async def list_remote_agents(request: Request, tenant: str | None = None) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.read")
+        denied = await _forbidden_if_missing(caller, "peers.read")
         if denied is not None:
             return denied
         if remote_agents is None:
@@ -4588,7 +4615,7 @@ def build_console_app(
     @app.post("/api/remote-agents")
     async def register_remote_agent(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.manage")
+        denied = await _forbidden_if_missing(caller, "peers.manage")
         if denied is not None:
             return denied
         if remote_agents is None or peers is None:
@@ -4673,7 +4700,7 @@ def build_console_app(
     @app.post("/api/remote-agents/{remote_id}/refresh")
     async def refresh_remote_agent(request: Request, remote_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.manage")
+        denied = await _forbidden_if_missing(caller, "peers.manage")
         if denied is not None:
             return denied
         if remote_agents is None:
@@ -4729,7 +4756,7 @@ def build_console_app(
     @app.post("/api/remote-agents/{remote_id}/disable")
     async def disable_remote_agent(request: Request, remote_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "peers.manage")
+        denied = await _forbidden_if_missing(caller, "peers.manage")
         if denied is not None:
             return denied
         if remote_agents is None:
@@ -4767,7 +4794,7 @@ def build_console_app(
         request: Request, tenant: str | None = None, status: str | None = None
     ) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "grants.read")
+        denied = await _forbidden_if_missing(caller, "grants.read")
         if denied is not None:
             return denied
         if tool_grants is None:
@@ -4791,7 +4818,7 @@ def build_console_app(
     @app.post("/api/tool-grants")
     async def create_tool_grant(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "grants.request")
+        denied = await _forbidden_if_missing(caller, "grants.request")
         if denied is not None:
             return denied
         try:
@@ -4914,7 +4941,7 @@ def build_console_app(
     @app.post("/api/tool-grants/{request_id}/decide")
     async def decide_tool_grant(request: Request, request_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "grants.decide")
+        denied = await _forbidden_if_missing(caller, "grants.decide")
         if denied is not None:
             return denied
         try:
@@ -4967,7 +4994,7 @@ def build_console_app(
     @app.get("/api/runs")
     async def list_runs(request: Request, limit: int = 50) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "runs.read")
+        denied = await _forbidden_if_missing(caller, "runs.read")
         if denied is not None:
             return denied
         events = _visible_events(await _query_events(request), caller)
@@ -4976,7 +5003,7 @@ def build_console_app(
     @app.get("/api/approvals")
     async def list_approvals(request: Request) -> Any:
         caller = _principal_for(request)
-        if "approvals.read" not in _capabilities_for(caller.roles):
+        if "approvals.read" not in await _caps_for(caller):
             return JSONResponse({"error": "forbidden"}, status_code=403)
         if approvals is None:
             return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
@@ -4999,7 +5026,7 @@ def build_console_app(
     @app.post("/api/approvals/{request_id}")
     async def decide_approval(request: Request, request_id: str) -> Any:
         caller = _principal_for(request)
-        if "approvals.decide" not in _capabilities_for(caller.roles):
+        if "approvals.decide" not in await _caps_for(caller):
             return JSONResponse({"error": "forbidden"}, status_code=403)
         if approvals is None:
             return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
@@ -5093,7 +5120,7 @@ def build_console_app(
     @app.get("/api/approvals/history")
     async def approval_history(request: Request, limit: int = 50, status: str | None = None) -> Any:
         caller = _principal_for(request)
-        if "approvals.read" not in _capabilities_for(caller.roles):
+        if "approvals.read" not in await _caps_for(caller):
             return JSONResponse({"error": "forbidden"}, status_code=403)
         if approvals is None:
             return JSONResponse({"error": "approvals_not_configured"}, status_code=404)
@@ -5123,7 +5150,7 @@ def build_console_app(
     @app.get("/api/plans")
     async def list_plans(request: Request, limit: int = 50) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "runs.read")
+        denied = await _forbidden_if_missing(caller, "runs.read")
         if denied is not None:
             return denied
         events = _visible_events(await _query_events(request), caller)
@@ -5132,7 +5159,7 @@ def build_console_app(
     @app.get("/api/sessions")
     async def list_sessions(request: Request, agent: str | None = None) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "sessions.read")
+        denied = await _forbidden_if_missing(caller, "sessions.read")
         if denied is not None:
             return denied
         if agent not in agents:
@@ -5157,7 +5184,7 @@ def build_console_app(
         @app.get("/api/policy")
         async def get_policy(request: Request) -> Any:
             caller = _principal_for(request)
-            denied = _forbidden_if_missing(caller, "policy.read")
+            denied = await _forbidden_if_missing(caller, "policy.read")
             if denied is not None:
                 return denied
             return policy_engine.policy.model_dump(mode="json")
@@ -5221,7 +5248,7 @@ def build_console_app(
     @app.post("/api/chat")
     async def chat(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "chat.run")
+        denied = await _forbidden_if_missing(caller, "chat.run")
         if denied is not None:
             return denied
         try:
@@ -5291,7 +5318,7 @@ def build_console_app(
     @app.post("/api/chat/stream")
     async def chat_stream(request: Request) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "chat.run")
+        denied = await _forbidden_if_missing(caller, "chat.run")
         if denied is not None:
             return denied
         try:
@@ -5398,7 +5425,7 @@ def build_console_app(
     @app.get("/api/traces/{trace_id}")
     async def get_trace(request: Request, trace_id: str) -> Any:
         caller = _principal_for(request)
-        denied = _forbidden_if_missing(caller, "runs.read")
+        denied = await _forbidden_if_missing(caller, "runs.read")
         if denied is not None:
             return denied
         if not _TRACE_ID.fullmatch(trace_id):
@@ -5471,6 +5498,7 @@ def run_console(
     rag: Any | None = None,
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
+    role_store: RoleStore | None = None,
     ui: str = "legacy",
 ) -> None:
     """Serve the console (blocking)."""
@@ -5514,6 +5542,7 @@ def run_console(
         rag=rag,
         terminology=terminology,
         model_config_store=model_config_store,
+        role_store=role_store,
         ui=ui,
     )
 

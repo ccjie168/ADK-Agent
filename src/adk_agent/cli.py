@@ -592,6 +592,61 @@ def _add_credential_store_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _role_store(args: argparse.Namespace) -> Any:
+    """Build the role definition store from ``--role-store-dir`` or ``--role-store-db``."""
+    from .registry import FileRoleStore, PostgresRoleStore
+
+    directory = getattr(args, "role_store_dir", None)
+    url = getattr(args, "role_store_db", None)
+    env_url = os.environ.get("ROLE_DATABASE_URL")
+    if directory and url:
+        print("set exactly one of --role-store-dir or --role-store-db", file=sys.stderr)
+        raise SystemExit(2)
+    if directory and env_url:
+        print("--role-store-dir conflicts with ROLE_DATABASE_URL", file=sys.stderr)
+        raise SystemExit(2)
+    if url and env_url:
+        print("--role-store-db conflicts with ROLE_DATABASE_URL", file=sys.stderr)
+        raise SystemExit(2)
+    if directory:
+        return FileRoleStore(directory)
+    if url:
+        return PostgresRoleStore(url)
+    if env_url:
+        return PostgresRoleStore(env_url)
+    return None
+
+
+def _seed_role_store(store: Any) -> None:
+    """Write the built-in role seeds if absent, so ``admin`` keeps working."""
+    from .core import RoleConflict, seed_builtin_roles
+
+    async def seed() -> None:
+        for role in seed_builtin_roles():
+            try:
+                await store.add(role)
+            except RoleConflict:
+                # An operator-customized builtin wins over the seed.
+                continue
+
+    try:
+        asyncio.run(seed())
+    except Exception as exc:  # noqa: BLE001
+        print(f"could not seed role definitions ({type(exc).__name__})", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
+def _add_role_store_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--role-store-dir", default=None, help="file store root for role definitions"
+    )
+    parser.add_argument(
+        "--role-store-db",
+        default=None,
+        help="Postgres URL for role definitions (defaults to $ROLE_DATABASE_URL)",
+    )
+
+
 def _add_trigger_store_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dir", default=None, help="file store root for triggers")
     parser.add_argument(
@@ -1886,6 +1941,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Postgres URL for connector requests (defaults to $CONNECTOR_REQUEST_DATABASE_URL)",
     )
     _add_credential_store_args(p_console)
+    _add_role_store_args(p_console)
     _add_peer_store_args(p_console)
     p_console.add_argument(
         "--terminology-dir",
@@ -3198,6 +3254,9 @@ def main(argv: list[str] | None = None) -> None:
             console_peers, console_peer_grants = _peer_stores(args)
             console_remote_agents = _remote_agent_store(args)
         rag_factory = _rag_factory(args)
+        role_store = _role_store(args)
+        if role_store is not None:
+            _seed_role_store(role_store)
         run_console(
             agents=agents,
             host=args.host,
@@ -3240,6 +3299,7 @@ def main(argv: list[str] | None = None) -> None:
             rag=rag_factory,
             terminology=_terminology_store(args),
             model_config_store=_model_config_store(args),
+            role_store=role_store,
             ui=args.ui,
         )
         if isinstance(audit_query, PostgresAuditQuery):

@@ -1,0 +1,53 @@
+SLICE-260 能力解析运行时化 — 证据
+==================================
+
+日期: 2026-11-23
+分支: slice-260-capabilities-runtime
+
+## 反例（先红）
+
+实现前运行 tests/test_console_capabilities_runtime.py:
+
+    6 failed
+    TypeError: build_console_app() got an unexpected keyword argument 'role_store'
+    AttributeError: module 'adk_agent.cli' has no attribute '_role_store'
+
+## 实现（后绿）
+
+- console.py：`build_console_app`/`run_console` 新增 `role_store`；新增闭包 `_caps_for(caller)`：
+  无 store 时走 `_capabilities_for`（与改动前逐项一致），有 store 时按 `caller.roles` 逐个查定义取并集，
+  未定义角色贡献空集、并集为空回落 `CAPABILITIES_BASE`，`RoleStoreError` 时记日志并返回基础能力（fail-closed）。
+  `_forbidden_if_missing` 改为 async 闭包，44 处调用加 `await`；`/api/me`、`/api/overview` 与审批三处
+  直连判断改用 `await _caps_for(caller)`；删除已被遮蔽的模块级旧实现。
+- cli.py：`--role-store-dir` / `--role-store-db`（env `ROLE_DATABASE_URL`），互斥与 env 冲突均退出 2；
+  配置 store 时启动用 `seed_builtin_roles()` 幂等写入，空 store 上 admin 仍可用。
+- docs/contracts/console.md：补「能力来源 / fail-closed / 内置角色即默认种子」三条。
+
+独立验证代理发现两点后修正（均为健壮性，非授权绕过）：
+
+1. 白名单外的角色名（来自 token claim）原先让文件 store 抛 `UnsafePath(ValueError)` 变成 500；
+   `_caps_for` 现在同时捕获 `ValueError`，按未定义角色处理 → 基础能力。
+2. 启动种子遇到运维改过的内置角色（`RoleConflict`）原先退出 1；现在跳过该角色、保留运维版本。
+
+    python -m pytest tests/test_console_capabilities_runtime.py -q
+    8 passed
+    python -m pytest tests/test_console_me.py tests/test_console_panel_visibility.py \
+        tests/test_console_permission_hygiene.py tests/test_console_hardening.py -q
+    15 passed
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2093 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+                                       （含验证代理修正后的重跑：2093 passed / 105 skipped）
+
+## 实机验证（ADR 要求 prove_it_works 权限语义不回退）
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (3.0s)
+
+## 语义说明
+
+角色定义是「该角色的完整能力集合」：store 中只写 `tools.read` 的自定义角色不会自动附带基础能力，
+需要运维在定义里显式写入。内置种子沿用现有三档（每个都含基础能力），因此不配置 store 或使用种子时
+行为与改动前一致（`test_capabilities_unchanged_without_store`、`test_seed_builtin_roles_keeps_admin_working`）。

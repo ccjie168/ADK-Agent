@@ -26,11 +26,18 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 
 - 鉴权与其他 `/api/*` 相同，缺少或错误的 token 返回 401 `{"error":"unauthorized"}`。
 - `capabilities` 由服务端按角色映射计算，映射只在一处定义。同一主体有多个角色时取并集。未知角色只得到基础能力。
+- 能力来源：未配置角色定义 store 时用内置角色表（即下文 `operator`/`publisher`/`admin` 三档）；配置了
+  `--role-store-dir` 或 `--role-store-db`（env `ROLE_DATABASE_URL`）后改读 store，每个角色取其定义中的能力集合，
+  角色定义缺省的能力不会被补上。store 中未定义的角色贡献空集；并集为空时回落基础能力。
+- store 读失败时 **fail-closed**：返回基础能力并记录类型级日志，不回落到内置角色表（否则 store 故障期间
+  `admin` 仍能管理，违背 fail-closed 方向）。启动时 `console` 会把内置角色幂等写入 store，因此空 store 上
+  `admin` 仍可用。
 - 基础能力是 `chat.run`、`runs.read`、`sessions.read`。
 - 读接口按消费它的面板检查能力：审计 `audit.read`，策略 `policy.read`，注册表与评测 `registry.read`，工具目录 `tools.read`，工具授权 `grants.read`，连接器、连接器申请与凭据 `connectors.read`，对端与远程目录 `peers.read`，总览/配额/RAG/语义 `ops.read`，模型 `model.read`。
 - 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`、决定 `grants.decide`，连接器/凭据/连接器申请决定 `connectors.manage`，对端/远程目录 `peers.manage`，全局默认模型 `model.write`，术语表导入 `semantics.write`，agent 导入 `registry.publish`。能力检查一律先于请求体解析、配置 404、非法参数 400 与租户检查。
 - 运行、计划、trace、会话与聊天接口检查基础能力 `runs.read`、`sessions.read`、`chat.run`。这些能力按现有角色表对每个主体都为真，检查用于未来增加受限角色时的防御；租户可见性仍由既有的租户过滤决定。带显式租户参数的读接口同样能力检查先于租户检查。
-- `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。
+- 以下三档是内置角色表（未配置角色 store 时生效，也是 store 的默认种子定义）。
+- `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。另含 `model.read`、`semantics.write`、`ops.read`。
 - `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
 - 其余管理能力只由 `admin` 得到，包括 `grants.decide`、`connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
 - 工具授权的申请与决定分离：有 `grants.request` 的角色可以提交，只有 `admin` 能批准或拒绝；
