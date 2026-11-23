@@ -349,3 +349,39 @@ button.link {
   padding: 0.35rem 0.5rem;
   border-bottom: 1px solid var(--line);
 }
+
+.lifecycle-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.85rem;
+}
+
+.lifecycle-row {
+  display: grid;
+  grid-template-columns: 7rem 1fr 3rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lifecycle-bar {
+  display: block;
+  height: 0.5rem;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.agent-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.agent-card header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}

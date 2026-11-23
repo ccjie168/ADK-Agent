@@ -1,0 +1,171 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
+import { getJson } from "../api/client";
+import { useAuthStore } from "../stores/auth";
+
+interface ArtifactInfo {
+  digest: string;
+  size: number;
+  key_id: string | null;
+  status: string;
+}
+
+interface LifecycleInfo {
+  status: string;
+  updated_at?: string;
+  updated_by?: string;
+  reason?: string;
+}
+
+interface TrustInfo {
+  status: string;
+}
+
+interface RegistryEntry {
+  tenant: string;
+  id: string;
+  source: "local" | "remote";
+  version?: string;
+  description?: string;
+  label?: string;
+  published_at?: string;
+  has_eval_report?: boolean;
+  artifact?: ArtifactInfo | null;
+  lifecycle?: LifecycleInfo;
+  trust?: TrustInfo;
+  peer_id?: string;
+}
+
+interface AgentGroup {
+  id: string;
+  description: string;
+  entries: RegistryEntry[];
+}
+
+const auth = useAuthStore();
+const entries = ref<RegistryEntry[]>([]);
+const error = ref("");
+const denied = computed(() => !auth.hasCapability("registry.read"));
+
+const agents = computed<AgentGroup[]>(() => {
+  const groups = new Map<string, AgentGroup>();
+  for (const entry of entries.value) {
+    const group = groups.get(entry.id) ?? {
+      id: entry.id,
+      description: entry.description ?? entry.label ?? "",
+      entries: [],
+    };
+    group.entries.push(entry);
+    groups.set(entry.id, group);
+  }
+  return [...groups.values()].sort((a, b) => a.id.localeCompare(b.id));
+});
+
+const lifecycleCounts = computed(() => {
+  const counts: Record<string, number> = { published: 0, deprecated: 0, retired: 0 };
+  for (const entry of entries.value) {
+    const status = entry.lifecycle?.status;
+    if (status && status in counts) counts[status] += 1;
+  }
+  return counts;
+});
+
+const localCount = computed(() => entries.value.filter((entry) => entry.source === "local").length);
+const remoteCount = computed(() => entries.value.length - localCount.value);
+const lifecycleTotal = computed(() =>
+  Object.values(lifecycleCounts.value).reduce((sum, value) => sum + value, 0),
+);
+
+function barWidth(count: number): string {
+  if (lifecycleTotal.value === 0) return "0%";
+  return `${Math.round((count / lifecycleTotal.value) * 100)}%`;
+}
+
+function artifactStatus(entry: RegistryEntry): string {
+  if (entry.source === "remote") return entry.trust?.status ?? "unknown";
+  return entry.artifact?.status ?? "none";
+}
+
+onMounted(async () => {
+  if (denied.value) return;
+  try {
+    entries.value = await getJson<RegistryEntry[]>("/api/registry");
+  } catch {
+    error.value = "registry unavailable";
+  }
+});
+</script>
+
+<template>
+  <div class="panel">
+    <h1>Agent 中心</h1>
+    <p v-if="denied" class="placeholder">无访问权限</p>
+    <p v-else-if="error" class="login-msg">{{ error }}</p>
+    <template v-else>
+      <div class="metric-grid">
+        <div class="stat-card">
+          <span class="stat-label">Agent</span>
+          <span class="stat-value">{{ agents.length }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">版本</span>
+          <span class="stat-value">{{ localCount }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">发布中</span>
+          <span class="stat-value">{{ lifecycleCounts.published }}</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">已弃用 / 已退役</span>
+          <span class="stat-value">
+            {{ lifecycleCounts.deprecated }} / {{ lifecycleCounts.retired }}
+          </span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">远端</span>
+          <span class="stat-value">{{ remoteCount }}</span>
+        </div>
+      </div>
+
+      <h2>生命周期分布</h2>
+      <div class="lifecycle-bars">
+        <div v-for="(count, status) in lifecycleCounts" :key="status" class="lifecycle-row">
+          <span class="lifecycle-label">{{ status }}</span>
+          <span class="lifecycle-bar" :style="{ width: barWidth(count) }" />
+          <span class="lifecycle-count">{{ count }}</span>
+        </div>
+      </div>
+
+      <h2>Agent 旅程</h2>
+      <p v-if="agents.length === 0" class="placeholder">暂无 Agent</p>
+      <section v-for="agent in agents" :key="agent.id" class="agent-card">
+        <header>
+          <strong>{{ agent.id }}</strong>
+          <span class="placeholder">{{ agent.description }}</span>
+        </header>
+        <table>
+          <thead>
+            <tr>
+              <th>版本</th>
+              <th>生命周期</th>
+              <th>评测</th>
+              <th>工件 / 信任</th>
+              <th>发布时间</th>
+              <th>来源</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(entry, index) in agent.entries" :key="entry.id + ':' + index">
+              <td>{{ entry.version ?? "—" }}</td>
+              <td>{{ entry.lifecycle?.status ?? "—" }}</td>
+              <td>{{ entry.has_eval_report ? "有" : "无" }}</td>
+              <td>{{ artifactStatus(entry) }}</td>
+              <td>{{ entry.published_at ?? "—" }}</td>
+              <td>{{ entry.source === "remote" ? `remote · ${entry.peer_id ?? ""}` : "local" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </template>
+  </div>
+</template>
