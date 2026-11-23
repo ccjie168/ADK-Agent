@@ -1,10 +1,17 @@
 # Console HTTP 契约
 
-`GET /`、`GET /healthz`、`GET /auth/config`、`GET /auth/callback` 和 `POST /auth/token` 开放。其余 `/api/*` 需要 `Authorization: Bearer <token>`。
+`GET /`、`GET /healthz`、`GET /auth/config`、`GET /auth/callback` 和 `POST /auth/token` 开放。`--ui vue` 且 `web/dist/assets` 存在时，`/assets/*` 前缀同样开放（静态产物，无敏感信息）。其余 `/api/*` 需要 `Authorization: Bearer <token>`。
 
 鉴权有两种模式。静态 token 模式比较启动时给的单一 token。OIDC 模式验证 JWT，把解析出的 `Principal` 挂到请求上。OIDC 模式下 token 不合法返回 401 `{"error":"unauthorized"}`，签发方不可达返回 503 `{"error":"identity_unavailable"}`。
 
 OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份只能读自己租户的注册表，越权返回 403 `{"error":"tenant_forbidden"}`。策略更新仍由 `policy.update` 的 RBAC 判定，角色来自 token。
+
+## 前端壳（`--ui`）
+
+`console` 命令加 `--ui {legacy,vue}`，默认 `legacy`。
+
+- `legacy`：`GET /` 与 `GET /auth/callback` 返回内联 HTML 壳（既有行为不变）。
+- `vue`：当 `web/dist/assets` 存在时，`GET /` 与 `GET /auth/callback` 返回 `web/dist/index.html`，`/assets` 挂载 `web/dist/assets`。`/api/*` 路由两种模式相同。
 
 ## `GET /api/me` -> 能力清单
 

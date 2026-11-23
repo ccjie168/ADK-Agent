@@ -24,6 +24,11 @@ def _unauthorized() -> JSONResponse:
     )
 
 
+def _is_open(path: str, open_paths: frozenset[str], open_prefixes: frozenset[str]) -> bool:
+    """True when ``path`` needs no auth, either an exact match or under an open prefix."""
+    return path in open_paths or any(path.startswith(prefix) for prefix in open_prefixes)
+
+
 class BearerAuthMiddleware(BaseHTTPMiddleware):
     """Reject requests without ``Authorization: Bearer <token>``."""
 
@@ -32,13 +37,15 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         token: str,
         open_paths: frozenset[str] = OPEN_PATHS,
+        open_prefixes: frozenset[str] = frozenset(),
     ) -> None:
         super().__init__(app)
         self.token = token
         self.open_paths = open_paths
+        self.open_prefixes = open_prefixes
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if request.url.path in self.open_paths:
+        if _is_open(request.url.path, self.open_paths, self.open_prefixes):
             return await call_next(request)
         header = request.headers.get("authorization", "")
         parts = header.split(None, 1)
@@ -60,13 +67,15 @@ class OidcAuthMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         provider: IdentityProvider,
         open_paths: frozenset[str] = OPEN_PATHS,
+        open_prefixes: frozenset[str] = frozenset(),
     ) -> None:
         super().__init__(app)
         self.provider = provider
         self.open_paths = open_paths
+        self.open_prefixes = open_prefixes
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        if request.url.path in self.open_paths:
+        if _is_open(request.url.path, self.open_paths, self.open_prefixes):
             return await call_next(request)
         header = request.headers.get("authorization", "")
         parts = header.split()
