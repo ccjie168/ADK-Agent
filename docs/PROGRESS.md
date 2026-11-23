@@ -2,8 +2,8 @@
 
 更新日期: 2026-11-23
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `837696c` feat: serve Vue scaffold behind --ui vue (SLICE-236) (#235)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 进行中（SLICE-236 脚手架已交付）
+最新提交: `992c63c` feat: wire Vue router, pinia and bearer-auth client (SLICE-237) (#237)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 进行中（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流已交付）
 
 ## 本次暂停交接
 
@@ -359,8 +359,12 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
       Vite + TS，`web/dist/` 随仓库提交，免运行时构建），`console --ui {legacy,vue}`（默认 `legacy`），`vue` 时 `/` 与
       `/auth/callback` 返回 `dist/index.html`、`/assets` 挂载静态产物，`/assets/*` 作为鉴权公开前缀（`open_prefixes`）。
       `npm run build` 成功，全量门禁 9 步全 PASS、2008 passed / 103 skipped。证据 `docs/evidence/SLICE-236-vue-scaffold.txt`。
-      下一步：加 Vue Router + Pinia + SPA 鉴权流（token 存 `sessionStorage`，复用 `/auth/config` PKCE 与 `/auth/token`），
-      然后把约 20 个面板逐一迁到 Vue（行为等价）。
+    - SLICE-237（路由 + Pinia + SPA 鉴权流）~~已合并 `992c63c`~~：加 `vue-router`（^4）与 `pinia`（^3），
+      `web/src/router/index.ts` 用 `createWebHashHistory` 定义 `/` + 面板占位路由，`web/src/stores/auth.ts` 复刻 legacy
+      PKCE 流（token 存 `sessionStorage["adk_token"]`，`/auth/config` + `/auth/token` + `/api/me`），`web/src/api/client.ts`
+      加 `Authorization: Bearer`、401 清 token，`main.ts` 安装 pinia+router，`App.vue` 用 `<RouterView>` + 登录屏。后端无改动。
+      全量门禁 9 步全 PASS、2013 passed / 103 skipped。证据 `docs/evidence/SLICE-237-router-pinia-auth.txt`。
+      下一步：把约 20 个面板逐一迁到 Vue（行为等价），总览（Overview）先迁。
     - **阶段 1**：用户/角色/授权管理 + 统一登录（诉求 1+6）。角色定义 store + 用户绑定 store + `_capabilities_for` 运行时化 + 管理面板。
     - **阶段 2**：Agent 中心总览（诉求 2）。registry/lifecycle 重组为 agent 旅程视图。
     - **阶段 3**：安全合规聚合视图（诉求 5）。审计完整性、扫描、密钥轮换、策略概览。
