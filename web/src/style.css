@@ -81,6 +81,35 @@ body {
   text-transform: capitalize;
 }
 
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+}
+
+.stat-card:hover {
+  border-color: var(--accent);
+}
+
+.stat-label {
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.stat-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
 .login {
   max-width: 360px;
   margin: 4rem auto;
