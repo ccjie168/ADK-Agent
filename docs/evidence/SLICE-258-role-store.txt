@@ -1,0 +1,34 @@
+SLICE-258 角色定义 store — 证据
+============================
+
+日期: 2026-11-23
+分支: slice-258-role-store
+
+## 反例（先红）
+
+实现前运行 tests/test_core_roles.py:
+
+    ImportError: cannot import name 'CAPABILITIES_ALL' from 'adk_agent.core'
+
+6 个用例全部失败（core/roles.py、registry/roles.py、registry/roles_postgres.py 不存在，
+能力常量仍在 console.py 内联）。
+
+## 实现（后绿）
+
+- core/roles.py：能力常量 CAPABILITIES_ALL/BASE/OPERATOR/PUBLISHER、RoleDefinition、
+  RoleStore 错误、BUILTIN_ROLES 种子（7 角色）、seed_builtin_roles()。
+- core/ports.py：RoleStore Protocol（add/get/list/delete）。
+- registry/roles.py：FileRoleStore（每角色一个 <name>.json，safe_join + 原子写）。
+- registry/roles_postgres.py：PostgresRoleStore（adk_roles，幂等 insert-then-compare）。
+- console.py：移除内联 _CAPABILITIES_*，改从 .core 导入（_capabilities_for 行为不变）。
+
+    python -m pytest tests/test_core_roles.py -q
+    6 passed, 1 skipped in 2.03s   （1 个 Postgres 用例缺 TEST_POSTGRES_URL 跳过）
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2079 passed / 104 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+                                       2079 passed / 104 skipped
+
+后端对外接口无变化；`_capabilities_for` 仍走硬编码映射，权限语义未回退。
