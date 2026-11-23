@@ -1,0 +1,35 @@
+SLICE-265 模型默认值就近配置 — 证据
+===================================
+
+日期: 2026-11-24
+分支: slice-265-model-config
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_model_config.py:
+
+    2 failed
+    ModelView.vue 无 `/api/model-config`、无 `method: "PUT"`、无 `model.write`。
+
+## 实现（后绿）
+
+- `web/src/views/ModelView.vue`：保留原有 `/api/model` 摘要卡，新增「默认模型」区——挂载时
+  `GET /api/model-config` 显示当前值并填充草稿；`model.write` 权限下显示输入框与保存按钮，
+  `PUT /api/model-config` 保存；400 文案「模型名无效」，其他失败显示状态码；只读用户只看当前值。
+- 重建 `web/dist/`。后端无改动（`GET/PUT /api/model-config` 与 `model.write` 校验、
+  `model.configure` 审计均为既有实现）。
+
+    python -m pytest tests/test_console_vue_model_config.py -q
+    2 passed
+    cd web && npm run build   -> ✓ built in 937ms
+
+## 实机验证（8020 演示实例，重启加载新 dist）
+
+    GET /                    -> 200，引用 index-B6N2WGWP.js
+    GET /api/model-config    -> {"model":"litellm:deepseek/deepseek-v4-pro"}
+    PUT /api/model-config    -> {"model":"litellm:deepseek/deepseek-v4-pro"}（admin，model.write）
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2128 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
