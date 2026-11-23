@@ -1908,6 +1908,12 @@ def main(argv: list[str] | None = None) -> None:
         help="Postgres URL for the global default model store",
     )
     p_console.add_argument(
+        "--ui",
+        choices=("legacy", "vue"),
+        default="legacy",
+        help="console renderer: legacy inline HTML or the Vue SPA (default: legacy)",
+    )
+    p_console.add_argument(
         "--tool-catalog",
         default=None,
         help="read-only tool catalog JSON for the Tools panel",
@@ -3234,6 +3240,7 @@ def main(argv: list[str] | None = None) -> None:
             rag=rag_factory,
             terminology=_terminology_store(args),
             model_config_store=_model_config_store(args),
+            ui=args.ui,
         )
         if isinstance(audit_query, PostgresAuditQuery):
             # The pool may have opened in uvicorn's loop, which is now closed;

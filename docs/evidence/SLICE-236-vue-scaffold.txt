@@ -1,0 +1,36 @@
+SLICE-236 Vue 前端脚手架 + FastAPI 挂载 — 证据
+
+日期: 2026-11-23
+分支: slice-236-vue-scaffold
+ADR: ADR-0041（已合并 master 8aaae3b）
+
+## 门禁（python scripts/check.py --full）
+
+  [PASS] format
+  [PASS] lint
+  [PASS] types
+  [PASS] layering
+  [PASS] specs
+  [PASS] test
+  [PASS] sast
+  [PASS] deps
+  [PASS] secrets
+  ALL PASS
+
+  pytest: 2008 passed, 103 skipped
+
+## 目标用例（tests/test_console_vue.py）
+
+  test_vue_shell_served      PASS
+  test_legacy_shell_default  PASS
+  test_vue_assets_served     PASS
+
+## 前端构建（web/ 目录）
+
+  npm run build -> vite v6.4.6，11 modules transformed，dist/index.html + dist/assets/index-*.{js,css}，
+  built in 417ms
+
+## 反例（先红后绿）
+
+  基线（无 open_prefixes 豁免）时 test_vue_assets_served 因 /assets 命中鉴权中间件精确匹配而返回 401，
+  断言 401 == 200 失败；加 open_prefixes=frozenset({"/assets/"}) 后转绿。

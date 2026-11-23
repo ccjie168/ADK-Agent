@@ -15,10 +15,12 @@ import re
 import uuid
 from collections.abc import AsyncGenerator, Iterable
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from google.adk.models import BaseLlm
 from pydantic import ValidationError
 
@@ -222,6 +224,9 @@ def _forbidden_if_missing(caller: Principal, capability: str) -> JSONResponse | 
     if capability in _capabilities_for(caller.roles):
         return None
     return JSONResponse({"error": "forbidden"}, status_code=403)
+
+
+_WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 
 _INDEX_HTML = r"""<!doctype html>
@@ -3003,6 +3008,7 @@ def build_console_app(
     rag: Any | None = None,
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
+    ui: str = "legacy",
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     install_log_sanitizer()
@@ -3194,13 +3200,19 @@ def build_console_app(
             metrics.render(), media_type="text/plain; version=0.0.4; charset=utf-8"
         )
 
+    if ui == "vue" and (_WEB_DIST / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=_WEB_DIST / "assets"), name="vue-assets")
+        shell = (_WEB_DIST / "index.html").read_text(encoding="utf-8")
+    else:
+        shell = _INDEX_HTML
+
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
-        return _INDEX_HTML
+        return shell
 
     @app.get("/auth/callback", response_class=HTMLResponse)
     async def auth_callback() -> str:
-        return _INDEX_HTML
+        return shell
 
     @app.get("/auth/config")
     async def auth_config() -> Any:
@@ -5453,10 +5465,17 @@ def build_console_app(
             exempt=frozenset({"/healthz", "/metrics"}),
             metrics=metrics,
         )
+    open_prefixes = (
+        frozenset({"/assets/"}) if ui == "vue" and (_WEB_DIST / "assets").is_dir() else frozenset()
+    )
     if oidc is not None:
-        app.add_middleware(OidcAuthMiddleware, provider=oidc, open_paths=_OPEN_PATHS)
+        app.add_middleware(
+            OidcAuthMiddleware, provider=oidc, open_paths=_OPEN_PATHS, open_prefixes=open_prefixes
+        )
     elif token:
-        app.add_middleware(BearerAuthMiddleware, token=token, open_paths=_OPEN_PATHS)
+        app.add_middleware(
+            BearerAuthMiddleware, token=token, open_paths=_OPEN_PATHS, open_prefixes=open_prefixes
+        )
 
     return app
 
@@ -5503,6 +5522,7 @@ def run_console(
     rag: Any | None = None,
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
+    ui: str = "legacy",
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -5545,6 +5565,7 @@ def run_console(
         rag=rag,
         terminology=terminology,
         model_config_store=model_config_store,
+        ui=ui,
     )
 
     import uvicorn
