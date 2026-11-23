@@ -27,8 +27,8 @@ SLICE-264 Agent 中心总览 — 证据
 ## 实机验证
 
     启动 `console --ui vue --role admin --allow-unauthenticated --port 8020`
-    GET /                     -> 200，返回 SPA（引用 dist 中的 index-e0ZdnAkc.js）
-    GET /assets/index-e0ZdnAkc.js -> 200（141,631 字节）
+    GET /                     -> 200，返回 SPA（提交的 dist 引用 index-Dk92TpjJ.js）
+    GET /assets/index-Dk92TpjJ.js -> 200（141,631 字节，由第二个提交重构建）
     GET /api/me               -> 200，admin 能力清单
     GET /api/registry         -> 200，[]（该实例未配置 registry，面板显示「暂无 Agent」，符合预期）
 
