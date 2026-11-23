@@ -88,6 +88,9 @@ body {
 }
 
 .stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
