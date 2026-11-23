@@ -2,8 +2,8 @@
 
 更新日期: 2026-11-23
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `772a5d6` feat: migrate Tools catalog panel to Vue (SLICE-240) (#243)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 进行中（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录已交付）
+最新提交: `39ddd5c` feat: migrate Grants panel to Vue (SLICE-241) (#245)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 进行中（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权已交付）
 
 ## 本次暂停交接
 
@@ -373,7 +373,10 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - SLICE-240（迁工具目录面板）~~已合并 `772a5d6`~~：`web/src/views/ToolsView.vue` 按 `tools.read` 拉取 `GET /api/tools`
       渲染表格（工具 ID/来源/数据分级/需审批/授权 Agent），`/tools` 改用 `ToolsView`。后端无改动。
       全量门禁 9 步全 PASS、2022 passed / 103 skipped。证据 `docs/evidence/SLICE-240-tools-vue.txt`。
-      下一步：继续迁其余约 17 个面板（Grants 先迁）。
+    - SLICE-241（迁工具授权面板）~~已合并 `39ddd5c`~~：`web/src/views/GrantsView.vue` 按 `grants.read` 拉取 `GET /api/tool-grants`
+      渲染表格（工具 ID/Agent/版本/状态 + 24h 内到期 expiring 徽标/到期时间），`/grants` 改用 `GrantsView`。后端无改动。
+      全量门禁 9 步全 PASS、2025 passed / 103 skipped。证据 `docs/evidence/SLICE-241-grants-vue.txt`。
+      下一步：继续迁其余约 16 个面板（Approvals 先迁）。
     - **阶段 1**：用户/角色/授权管理 + 统一登录（诉求 1+6）。角色定义 store + 用户绑定 store + `_capabilities_for` 运行时化 + 管理面板。
     - **阶段 2**：Agent 中心总览（诉求 2）。registry/lifecycle 重组为 agent 旅程视图。
     - **阶段 3**：安全合规聚合视图（诉求 5）。审计完整性、扫描、密钥轮换、策略概览。
