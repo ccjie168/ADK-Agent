@@ -1,0 +1,35 @@
+SLICE-240 迁移工具目录面板到 Vue — 证据
+
+日期: 2026-11-23
+分支: slice-240-tools-vue
+ADR: ADR-0041 阶段 0 第五步
+
+## 门禁（python scripts/check.py --full）
+
+  [PASS] format
+  [PASS] lint
+  [PASS] types
+  [PASS] layering
+  [PASS] specs
+  [PASS] test
+  [PASS] sast
+  [PASS] deps
+  [PASS] secrets
+  ALL PASS
+
+  pytest: 2022 passed, 103 skipped
+
+## 目标用例（tests/test_console_vue_tools.py）
+
+  test_tools_view_fetches_tools       PASS
+  test_tools_route_uses_tools_view    PASS
+  test_tools_view_renders_columns     PASS
+
+## 前端构建（web/ 目录）
+
+  npm run build -> vite v6.4.6，44 modules transformed，dist/index.html + dist/assets/index-*.{js,css}，
+  built in 565ms（JS 109.74 kB / gzip 42.70 kB）
+
+## 反例（先红后绿）
+
+  基线（SLICE-239 状态）三个用例全部失败：无 ToolsView，/tools 路由用 PlaceholderView。实现后转绿。
