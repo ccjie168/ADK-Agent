@@ -29,6 +29,7 @@ from .tool_grants import GrantStatus, ToolGrantRequest
 from .tool_idempotency import ToolExecutionRecord, ToolExecutionStatus
 from .trigger_runs import TriggerFire, TriggerFireStatus
 from .triggers import AgentTrigger
+from .user_bindings import UserBinding
 
 
 class AgentRegistry(Protocol):
@@ -125,6 +126,16 @@ class RoleStore(Protocol):
     async def list(self) -> builtins.list[RoleDefinition]: ...
 
     async def delete(self, name: str) -> bool: ...
+
+
+class UserBindingStore(Protocol):
+    async def add(self, binding: UserBinding) -> UserBinding: ...
+
+    async def get(self, tenant: str, subject: str) -> UserBinding | None: ...
+
+    async def list(self, tenant: str) -> builtins.list[UserBinding]: ...
+
+    async def delete(self, tenant: str, subject: str) -> bool: ...
 
 
 class TriggerStore(Protocol):

@@ -113,6 +113,7 @@ from .ports import (
     ToolIdempotencyStore,
     TriggerFireStore,
     TriggerStore,
+    UserBindingStore,
 )
 from .progress import ProgressEvent, ProgressKind
 from .quota import QuotaConfig, QuotaExceeded, QuotaPolicy, QuotaUsage
@@ -174,6 +175,13 @@ from .triggers import (
     TriggerNotFound,
     TriggerStoreUnavailable,
     hash_webhook_token,
+)
+from .user_bindings import (
+    UserBinding,
+    UserBindingConflict,
+    UserBindingNotFound,
+    UserBindingStoreError,
+    UserBindingStoreUnavailable,
 )
 
 __all__ = [
@@ -327,6 +335,12 @@ __all__ = [
     "TriggerNotFound",
     "TriggerStore",
     "TriggerStoreUnavailable",
+    "UserBinding",
+    "UserBindingConflict",
+    "UserBindingNotFound",
+    "UserBindingStore",
+    "UserBindingStoreError",
+    "UserBindingStoreUnavailable",
     "credential_env_name",
     "credential_version",
     "declared_execution_tier",
