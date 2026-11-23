@@ -213,6 +213,24 @@ body {
   color: #b45309;
 }
 
+.audit-log {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.audit-line {
+  padding: 0.15rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.audit-line:last-child {
+  border-bottom: none;
+}
+
 .login {
   max-width: 360px;
   margin: 4rem auto;

@@ -1,0 +1,50 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
+import { getJson } from "../api/client";
+import { useAuthStore } from "../stores/auth";
+
+interface AuditEvent {
+  action: string;
+  target?: string;
+  status?: string;
+  latency_ms?: number | null;
+  run_id?: string;
+  trace_id?: string;
+}
+
+const auth = useAuthStore();
+const events = ref<AuditEvent[]>([]);
+const error = ref("");
+const denied = computed(() => !auth.hasCapability("audit.read"));
+
+function lineOf(event: AuditEvent): string {
+  const latency = event.latency_ms ?? "-";
+  const run = String(event.run_id ?? "").slice(0, 8);
+  const trace = String(event.trace_id ?? "").slice(0, 8);
+  return `${event.action} ${event.target ?? ""} ${event.status ?? ""} ${latency}ms run=${run} trace=${trace}`;
+}
+
+onMounted(async () => {
+  if (denied.value) return;
+  try {
+    const rows = await getJson<AuditEvent[]>("/api/audit?limit=100");
+    events.value = rows.slice().reverse();
+  } catch {
+    error.value = "audit unavailable";
+  }
+});
+</script>
+
+<template>
+  <div class="panel">
+    <h1>审计</h1>
+    <p v-if="denied" class="placeholder">无访问权限</p>
+    <p v-else-if="error" class="login-msg">{{ error }}</p>
+    <div v-else class="audit-log">
+      <div v-for="(event, index) in events" :key="index" class="audit-line">
+        {{ lineOf(event) }}
+      </div>
+      <p v-if="events.length === 0" class="placeholder">暂无审计事件</p>
+    </div>
+  </div>
+</template>
