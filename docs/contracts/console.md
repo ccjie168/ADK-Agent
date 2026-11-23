@@ -32,6 +32,10 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - store 读失败时 **fail-closed**：返回基础能力并记录类型级日志，不回落到内置角色表（否则 store 故障期间
   `admin` 仍能管理，违背 fail-closed 方向）。启动时 `console` 会把内置角色幂等写入 store，因此空 store 上
   `admin` 仍可用。
+- 有效角色 = token 里的角色 ∪ 该主体在当前租户的用户绑定角色（配置了
+  `--user-binding-store-dir|--user-binding-store-db` 时；绑定按 `caller.tenant` 查，请求参数不能指定租户）。
+  并集只做加法，不会削减 token 已有角色的能力。绑定 store 读失败时只用 token 角色继续解析（既不放行也不剥夺），
+  并记录类型级日志。启动种子对已存在的内置角色只增不减地补齐当前种子新增的能力。
 - 基础能力是 `chat.run`、`runs.read`、`sessions.read`。
 - 读接口按消费它的面板检查能力：审计 `audit.read`，策略 `policy.read`，注册表与评测 `registry.read`，工具目录 `tools.read`，工具授权 `grants.read`，连接器、连接器申请与凭据 `connectors.read`，对端与远程目录 `peers.read`，总览/配额/RAG/语义 `ops.read`，模型 `model.read`。
 - 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`、决定 `grants.decide`，连接器/凭据/连接器申请决定 `connectors.manage`，对端/远程目录 `peers.manage`，全局默认模型 `model.write`，术语表导入 `semantics.write`，agent 导入 `registry.publish`。能力检查一律先于请求体解析、配置 404、非法参数 400 与租户检查。

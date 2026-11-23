@@ -1,0 +1,39 @@
+SLICE-262 用户绑定并入能力解析 — 证据
+=====================================
+
+日期: 2026-11-24
+分支: slice-262-binding-capabilities
+
+## 反例（先红）
+
+实现前运行 tests/test_console_binding_capabilities.py:
+
+    test_binding_roles_join_token_roles  FAILED   （base 用户绑定 operator 后仍只得基础能力）
+    test_bound_user_gains_panel_access   FAILED   （绑定 operator 的 base 用户读 /api/audit 仍 403）
+    其余 5 个用例与现状一致，作为不回归的守卫。
+
+`user_binding_store` 在 SLICE-261 已传入 `build_console_app`，但 `_caps_for` 完全不读它。
+
+## 实现（后绿）
+
+- console.py：新增 `_effective_roles(caller)` = `caller.roles ∪ 该租户绑定角色`；绑定按 `caller.tenant` 查，
+  请求参数无法指定租户；`UserBindingStoreError`/`ValueError` 时记日志并**只用 token 角色**继续解析。
+  `_caps_for` 改用有效角色集，其余逻辑（未定义角色空集、空则基础能力、role store 失败 fail-closed）不变。
+- docs/contracts/console.md：能力来源一节补「有效角色 = token ∪ 租户绑定」、并集只加不减、
+  绑定故障保留 token 角色。
+
+    python -m pytest tests/test_console_binding_capabilities.py -q
+    7 passed
+    python -m pytest tests/test_console_capabilities_runtime.py tests/test_console_roles_api.py \
+        tests/test_console_me.py tests/test_console_permission_hygiene.py tests/test_console_panel_visibility.py -q
+    36 passed
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2116 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+
+## 实机验证
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (2.9s)
