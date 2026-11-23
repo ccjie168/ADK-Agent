@@ -17,7 +17,8 @@
    - 按 `roles.read` 门控；`GET /api/users` 渲染绑定表（租户 / 主体 / 角色）。
    - 绑定/改绑：主体输入 + 角色多选 → `PUT /api/users/{subject}`；解绑 → `DELETE /api/users/{subject}`。
    - 写按钮按 `roles.manage` 显示。
-3. 路由：新增 `/roles` 与 `/users`，侧边导航加两项（按能力显示）。
+3. 路由：新增 `/roles` 与 `/users`，侧边导航加两项（与其他导航一致，无条件显示；
+   无权限时由面板本身显示「无访问权限」）。
 4. 能力词表常量在 `web/src/api/capabilities.ts` 里维护一份（与后端 `CAPABILITIES_ALL` 同名单），用于多选框。
 
 后端无改动。

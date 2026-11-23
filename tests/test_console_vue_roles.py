@@ -60,6 +60,10 @@ def test_capabilities_constant_matches_backend():
     from adk_agent.core import CAPABILITIES_ALL
 
     src = _read("src", "api", "capabilities.ts")
-    missing = [capability for capability in CAPABILITIES_ALL if f'"{capability}"' not in src]
+    listed = {
+        line.strip().strip(",").strip().strip('"')
+        for line in src.splitlines()
+        if line.strip().startswith('"')
+    }
 
-    assert missing == []
+    assert listed == set(CAPABILITIES_ALL)
