@@ -200,6 +200,19 @@ body {
   border-bottom: none;
 }
 
+.expiry {
+  background: #e6f5ea;
+  color: #047857;
+  border-radius: 4px;
+  padding: 0 0.35rem;
+  font-size: 0.75rem;
+}
+
+.expiry.soon {
+  background: #fef3c7;
+  color: #b45309;
+}
+
 .login {
   max-width: 360px;
   margin: 4rem auto;
