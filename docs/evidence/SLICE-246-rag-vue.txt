@@ -1,0 +1,35 @@
+SLICE-246 迁移 RAG 面板到 Vue — 证据
+
+日期: 2026-11-23
+分支: slice-246-rag-vue
+ADR: ADR-0041 阶段 0 第十一步
+
+## 门禁（python scripts/check.py --full）
+
+  [PASS] format
+  [PASS] lint
+  [PASS] types
+  [PASS] layering
+  [PASS] specs
+  [PASS] test
+  [PASS] sast
+  [PASS] deps
+  [PASS] secrets
+  ALL PASS
+
+  pytest: 2040 passed, 103 skipped
+
+## 目标用例（tests/test_console_vue_rag.py）
+
+  test_rag_view_fetches_rag    PASS
+  test_rag_route_uses_rag_view PASS
+  test_rag_view_renders_fields PASS
+
+## 前端构建（web/ 目录）
+
+  npm run build -> vite v6.4.6，56 modules transformed，dist/index.html + dist/assets/index-*.{js,css}，
+  built in 662ms（JS 117.29 kB / gzip 44.39 kB）
+
+## 反例（先红后绿）
+
+  基线（SLICE-245 状态）三个用例全部失败：无 RagView，路由无 /rag。实现后转绿。
