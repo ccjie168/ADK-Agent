@@ -39,10 +39,16 @@ async function save() {
     message.value = "JSON 格式无效";
     return;
   }
-  const response = await apiFetch("/api/policy", {
-    method: "PUT",
-    body: JSON.stringify(parsed),
-  });
+  let response: Response;
+  try {
+    response = await apiFetch("/api/policy", {
+      method: "PUT",
+      body: JSON.stringify(parsed),
+    });
+  } catch {
+    message.value = "保存失败: 网络错误";
+    return;
+  }
   if (response.ok) {
     applyPolicy((await response.json()) as AccessPolicy);
     message.value = "已保存";
