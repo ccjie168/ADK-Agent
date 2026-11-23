@@ -2976,6 +2976,24 @@ def build_console_app(
         found = getattr(request.state, "principal", None)
         return found if found is not None else principal
 
+    async def _effective_roles(caller: Principal) -> set[str]:
+        """Token roles plus the tenant-scoped user binding's roles.
+
+        A binding store failure keeps the token roles: a store hiccup must not
+        strip capabilities the token already grants, nor add any.
+        """
+        roles = set(caller.roles)
+        if user_binding_store is None:
+            return roles
+        try:
+            binding = await user_binding_store.get(caller.tenant, caller.subject)
+        except (UserBindingStoreError, ValueError):
+            logger.exception("user binding read failed for tenant=%s", caller.tenant)
+            return roles
+        if binding is not None:
+            roles |= set(binding.roles)
+        return roles
+
     async def _caps_for(caller: Principal) -> list[str]:
         """Capabilities for a principal, from the role store when one is configured.
 
@@ -2985,10 +3003,10 @@ def build_console_app(
         which would hand ``admin`` its management rights while the store is down.
         """
         if role_store is None:
-            return _capabilities_for(caller.roles)
+            return _capabilities_for(await _effective_roles(caller))
         granted: set[str] = set()
         try:
-            for name in caller.roles:
+            for name in await _effective_roles(caller):
                 definition = await role_store.get(name)
                 if definition is not None:
                     granted |= set(definition.capabilities)
