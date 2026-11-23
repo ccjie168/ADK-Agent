@@ -2,8 +2,8 @@
 
 更新日期: 2026-11-23
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `d4c1727` feat: migrate Overview panel to Vue (SLICE-238) (#239)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 进行中（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览面板已交付）
+最新提交: `0f3b57b` feat: migrate Registry panel to Vue (SLICE-239) (#241)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 进行中（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表已交付）
 
 ## 本次暂停交接
 
@@ -367,7 +367,10 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - SLICE-238（迁总览面板）~~已合并 `d4c1727`~~：`web/src/views/OverviewView.vue` 按 `ops.read` 拉取 `GET /api/overview`
       渲染 4 张计数卡片（`null` 显示「未配置」），卡片点击按 `panel` 映射到路由；`/` 改用 `OverviewView`，补 `/approvals`、
       `/grants` 占位路由。后端无改动。全量门禁 9 步全 PASS、2016 passed / 103 skipped。证据 `docs/evidence/SLICE-238-overview-vue.txt`。
-      下一步：继续迁其余约 19 个面板（Registry 先迁）。
+    - SLICE-239（迁注册表面板）~~已合并 `0f3b57b`~~：`web/src/views/RegistryView.vue` 按 `registry.read` 拉取 `GET /api/registry`
+      渲染卡片列表（id/版本/描述 + 徽标 + 元信息），徽标色调复刻 legacy `BADGE_TONES`；`/registry` 改用 `RegistryView`。
+      后端无改动。全量门禁 9 步全 PASS、2019 passed / 103 skipped。证据 `docs/evidence/SLICE-239-registry-vue.txt`。
+      下一步：继续迁其余约 18 个面板（Tools 先迁）。
     - **阶段 1**：用户/角色/授权管理 + 统一登录（诉求 1+6）。角色定义 store + 用户绑定 store + `_capabilities_for` 运行时化 + 管理面板。
     - **阶段 2**：Agent 中心总览（诉求 2）。registry/lifecycle 重组为 agent 旅程视图。
     - **阶段 3**：安全合规聚合视图（诉求 5）。审计完整性、扫描、密钥轮换、策略概览。
