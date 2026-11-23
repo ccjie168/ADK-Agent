@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
 
 from adk_agent.console import build_console_app
-from adk_agent.core import CAPABILITIES_ALL, seed_builtin_roles
+from adk_agent.core import CAPABILITIES_ALL, RoleDefinition, seed_builtin_roles
 from adk_agent.registry import FileRoleStore, FileUserBindingStore
 
 AUTH = {"Authorization": "Bearer secret"}
@@ -164,3 +164,60 @@ def test_editing_a_builtin_keeps_it_immutable(tmp_path):
     assert set(put.json()["capabilities"]) == {"chat.run"}
     assert delete.status_code == 409
     assert delete.json() == {"error": "builtin_role_immutable"}
+
+
+def test_seed_backfills_new_capabilities_into_builtin(tmp_path):
+    from adk_agent import cli
+
+    store = FileRoleStore(tmp_path / "roles")
+    # A store seeded before roles.read/roles.manage existed.
+    asyncio.run(
+        store.add(RoleDefinition(name="admin", capabilities=("chat.run", "ops.read"), builtin=True))
+    )
+    asyncio.run(store.add(RoleDefinition(name="qa", capabilities=("tools.read",))))
+
+    cli._seed_role_store(store)
+
+    admin = asyncio.run(store.get("admin"))
+    assert admin.builtin is True
+    assert {"roles.read", "roles.manage", "chat.run", "ops.read"} <= set(admin.capabilities)
+    # Operator-defined roles are left exactly as written.
+    assert asyncio.run(store.get("qa")) == RoleDefinition(name="qa", capabilities=("tools.read",))
+
+
+def test_user_write_requires_capability(tmp_path):
+    client, _, store = _client(tmp_path, roles=["operator"])
+    with client:
+        put = client.put("/api/users/alice", headers=AUTH, content=json.dumps({"roles": ["admin"]}))
+        delete = client.delete("/api/users/alice", headers=AUTH)
+
+    assert put.status_code == 403
+    assert delete.status_code == 403
+    assert asyncio.run(store.list("local")) == []
+
+
+def test_non_admin_cannot_target_another_tenant(tmp_path):
+    client, _, _ = _client(tmp_path, roles=["operator"])
+    with client:
+        response = client.get("/api/users?tenant=other", headers=AUTH)
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "forbidden"}
+
+
+def test_invalid_tenant_is_rejected(tmp_path):
+    client, _, _ = _client(tmp_path, roles=["admin"])
+    with client:
+        response = client.get("/api/users?tenant=bad/tenant", headers=AUTH)
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_tenant"}
+
+
+def test_users_api_requires_store(tmp_path):
+    client, _, _ = _client(tmp_path, roles=["admin"], with_bindings=False)
+    with client:
+        response = client.get("/api/users", headers=AUTH)
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "user_binding_store_not_configured"}

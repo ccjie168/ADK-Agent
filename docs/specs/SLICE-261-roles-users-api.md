@@ -46,6 +46,10 @@
 - [x] 未配置 store 返回 404 `role_store_not_configured` -> `test_roles_api_requires_store`
 - [x] 用户绑定读写与租户隔离 -> `test_admin_binds_user_and_audits`、`test_user_bindings_are_tenant_scoped`
 - [x] 新增两个能力后 admin 全量清单更新（仅新增，不放宽） -> `test_admin_has_role_management_capabilities`
+- [x] 旧 store 里的内置角色在启动时只增不减回填新能力 -> `test_seed_backfills_new_capabilities_into_builtin`
+- [x] 非 admin 不能写用户绑定（403） -> `test_user_write_requires_capability`
+- [x] 非 admin 不能指定其他租户（403），非法租户 400 -> `test_non_admin_cannot_target_another_tenant`、`test_invalid_tenant_is_rejected`
+- [x] 未配置绑定 store 返回 404 -> `test_users_api_requires_store`
 - [x] `--full` 门禁通过
 
 ## 反例
@@ -66,6 +70,10 @@
 
 `roles.manage` 可以给任意角色授予任意能力，等价于完整授权面。缓解：默认只有 admin 拥有；
 删除内置角色被拒绝；每次写都审计。**新增能力名属于能力词表扩展，已在会话中确认**。
+
+升级回填（会话确认的迁移）：`_seed_role_store` 对已存在的**内置**角色把当前种子新增的能力并入（只增不减，
+不动运维自定义角色），否则旧版本播种过的 `admin` 缺少新能力会锁住管理接口。回填是 delete-then-add，
+启动期间窗口极小；`_replace_role` 的覆盖写同样是 delete-then-add，中断可能让该角色缺失，重跑启动即恢复。
 
 ## 范围外（后续切片）
 

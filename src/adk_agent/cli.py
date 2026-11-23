@@ -618,16 +618,35 @@ def _role_store(args: argparse.Namespace) -> Any:
 
 
 def _seed_role_store(store: Any) -> None:
-    """Write the built-in role seeds if absent, so ``admin`` keeps working."""
-    from .core import RoleConflict, seed_builtin_roles
+    """Write the built-in role seeds, backfilling capabilities added since the seed.
+
+    A built-in role already in the store keeps its stored definition except that
+    capabilities the current seed adds are merged in. Without that, a store
+    seeded by an older build keeps a stale ``admin`` that lacks newly introduced
+    capabilities and the new endpoints refuse it; the merge never removes a
+    capability and never touches a role the operator defined (``builtin`` false).
+    """
+    from .core import RoleDefinition, seed_builtin_roles
 
     async def seed() -> None:
         for role in seed_builtin_roles():
-            try:
+            existing = await store.get(role.name)
+            if existing is None:
                 await store.add(role)
-            except RoleConflict:
-                # An operator-customized builtin wins over the seed.
                 continue
+            if not existing.builtin:
+                continue
+            added = set(role.capabilities) - set(existing.capabilities)
+            if not added:
+                continue
+            widened = RoleDefinition(
+                name=existing.name,
+                capabilities=tuple(sorted(set(existing.capabilities) | added)),
+                builtin=True,
+                description=existing.description,
+            )
+            await store.delete(role.name)
+            await store.add(widened)
 
     try:
         asyncio.run(seed())
