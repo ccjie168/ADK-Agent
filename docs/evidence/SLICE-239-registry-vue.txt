@@ -1,0 +1,36 @@
+SLICE-239 迁移注册表面板到 Vue — 证据
+
+日期: 2026-11-23
+分支: slice-239-registry-vue
+ADR: ADR-0041 阶段 0 第四步
+
+## 门禁（python scripts/check.py --full）
+
+  [PASS] format
+  [PASS] lint
+  [PASS] types
+  [PASS] layering
+  [PASS] specs
+  [PASS] test
+  [PASS] sast
+  [PASS] deps
+  [PASS] secrets
+  ALL PASS
+
+  pytest: 2019 passed, 103 skipped
+
+## 目标用例（tests/test_console_vue_registry.py）
+
+  test_registry_view_fetches_registry    PASS
+  test_registry_route_uses_registry_view PASS
+  test_registry_view_renders_badges      PASS
+
+## 前端构建（web/ 目录）
+
+  npm run build -> vite v6.4.6，42 modules transformed，dist/index.html + dist/assets/index-*.{js,css}，
+  built in 645ms（JS 108.53 kB / gzip 42.34 kB）
+
+## 反例（先红后绿）
+
+  基线（SLICE-238 状态）三个用例全部失败：无 RegistryView，/registry 路由用 PlaceholderView。
+  实现后转绿。构建中一处 `:key` 嵌套双引号导致 Vue 编译错误，改为单引号后构建通过。

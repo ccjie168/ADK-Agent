@@ -110,6 +110,69 @@ body {
   color: var(--accent);
 }
 
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.card-head {
+  font-weight: 600;
+}
+
+.card-desc {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+}
+
+.badge {
+  background: #e6f5ea;
+  color: #047857;
+  border-radius: 4px;
+  padding: 0 0.35rem;
+  font-size: 0.75rem;
+}
+
+.badge.bad {
+  background: #fde8e8;
+  color: #b91c1c;
+}
+
+.badge.warn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.badge.muted {
+  background: var(--bg);
+  color: #94a3b8;
+}
+
+.card-meta {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.muted {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
 .login {
   max-width: 360px;
   margin: 4rem auto;
