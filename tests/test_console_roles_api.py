@@ -221,3 +221,17 @@ def test_users_api_requires_store(tmp_path):
 
     assert response.status_code == 404
     assert response.json() == {"error": "user_binding_store_not_configured"}
+
+
+def test_capability_check_precedes_store_check(tmp_path):
+    # A caller without the capability is refused even when no store is
+    # configured, so the gate cannot leak which stores exist.
+    client, _, _ = _client(tmp_path, roles=["operator"], with_store=False, with_bindings=False)
+    with client:
+        roles = client.get("/api/roles", headers=AUTH)
+        users = client.get("/api/users", headers=AUTH)
+
+    assert roles.status_code == 403
+    assert roles.json() == {"error": "forbidden"}
+    assert users.status_code == 403
+    assert users.json() == {"error": "forbidden"}

@@ -29,7 +29,7 @@ SLICE-261 角色与用户管理接口 — 证据
 - docs/contracts/console.md 新增「角色与用户管理」一节（端点、能力、错误码、租户规则）。
 
     python -m pytest tests/test_console_roles_api.py -q
-    15 passed
+    16 passed
     python -m pytest tests/test_console_roles_api.py tests/test_console_capabilities_runtime.py -q
     23 passed
 
@@ -41,13 +41,15 @@ SLICE-261 角色与用户管理接口 — 证据
    不含 `roles.read`/`roles.manage`，管理接口对 admin 也 403。`_seed_role_store` 现在对已存在的**内置**角色
    把当前种子新增的能力并入（只增不减，不动运维自定义角色），并加 `test_seed_backfills_new_capabilities_into_builtin`。
 2. **负向测试缺口（已补）**：非 admin 写用户绑定 403、非 admin 跨租户 403、非法租户 400、绑定 store 未配置 404。
-3. **delete-then-add 窗口（记录）**：种子回填与 `_replace_role` 覆盖写均为先删后加，中断会让该角色缺失，
+3. **能力先于配置检查的测试强度（已补）**：新增 `test_capability_check_precedes_store_check`
+   （非 admin + 无 store 得 403 而非 404）。
+4. **delete-then-add 窗口（记录）**：种子回填与 `_replace_role` 覆盖写均为先删后加，中断会让该角色缺失，
    重跑启动即恢复；已写进 spec 的风险段。
 
 ## 门禁
 
     python scripts/check.py --fast   -> 7 步 ALL PASS、2108 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS（回填与负向测试补齐后重跑：2213 用例收集，105 skipped）
+    python scripts/check.py --full   -> 9 步 ALL PASS（回填、负向与顺序测试补齐后重跑：2214 用例收集，105 skipped）
 
     首轮 --fast 的 types 步曾失败：mypy 无法收窄闭包内的 Optional store；已改为把 store 显式传入 helper。
 

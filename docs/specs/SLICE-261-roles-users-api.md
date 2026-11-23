@@ -44,6 +44,7 @@
 - [x] 内置角色不可删除（409），未知角色 404 -> `test_builtin_role_is_immutable`、`test_remove_unknown_role_is_404`
 - [x] 编辑内置角色保留 builtin 标记，之后仍不可删 -> `test_editing_a_builtin_keeps_it_immutable`
 - [x] 未配置 store 返回 404 `role_store_not_configured` -> `test_roles_api_requires_store`
+- [x] 能力检查先于配置检查（非 admin + 无 store 得 403 而非 404） -> `test_capability_check_precedes_store_check`
 - [x] 用户绑定读写与租户隔离 -> `test_admin_binds_user_and_audits`、`test_user_bindings_are_tenant_scoped`
 - [x] 新增两个能力后 admin 全量清单更新（仅新增，不放宽） -> `test_admin_has_role_management_capabilities`
 - [x] 旧 store 里的内置角色在启动时只增不减回填新能力 -> `test_seed_backfills_new_capabilities_into_builtin`
