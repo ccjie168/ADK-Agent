@@ -1,0 +1,35 @@
+SLICE-242 迁移审批面板到 Vue — 证据
+
+日期: 2026-11-23
+分支: slice-242-approvals-vue
+ADR: ADR-0041 阶段 0 第七步
+
+## 门禁（python scripts/check.py --full）
+
+  [PASS] format
+  [PASS] lint
+  [PASS] types
+  [PASS] layering
+  [PASS] specs
+  [PASS] test
+  [PASS] sast
+  [PASS] deps
+  [PASS] secrets
+  ALL PASS
+
+  pytest: 2028 passed, 103 skipped
+
+## 目标用例（tests/test_console_vue_approvals.py）
+
+  test_approvals_view_fetches_approvals    PASS
+  test_approvals_route_uses_approvals_view PASS
+  test_approvals_view_renders_columns      PASS
+
+## 前端构建（web/ 目录）
+
+  npm run build -> vite v6.4.6，48 modules transformed，dist/index.html + dist/assets/index-*.{js,css}，
+  built in 653ms（JS 112.69 kB / gzip 43.37 kB）
+
+## 反例（先红后绿）
+
+  基线（SLICE-241 状态）三个用例全部失败：无 ApprovalsView，/approvals 路由用 PlaceholderView。实现后转绿。
