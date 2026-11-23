@@ -1,0 +1,35 @@
+SLICE-257 迁移聊天面板到 Vue — 证据
+=====================================
+
+日期: 2026-11-23
+分支: slice-257-chat-vue
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_chat.py:
+
+    test_chat_view_fetches_chat  FAILED  (FileNotFoundError: ChatView.vue)
+    test_chat_route_uses_chat_view  FAILED
+    test_chat_view_renders_fields  FAILED
+
+3 failed: ChatView.vue 不存在、路由无 /chat。
+
+## 实现（后绿）
+
+新增 web/src/views/ChatView.vue（chat.run 门控 + GET /api/agents 选择器 +
+POST /api/chat/stream SSE 流式解析 done/error/progress）；
+web/src/router/index.ts 新增 /chat 路由用 ChatView；重建 web/dist/。
+
+    python -m pytest tests/test_console_vue_chat.py -q
+    3 passed in 0.03s
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2073 passed / 103 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+                                       2073 passed / 103 skipped
+
+## 构建
+
+    cd web && npm run build
+    ✓ built in 887ms  (index.html 0.41kB / index-*.css 3.62kB / index-*.js 132.14kB)

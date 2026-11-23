@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from "vue-router";
 import ApprovalsView from "../views/ApprovalsView.vue";
 import AskAiView from "../views/AskAiView.vue";
 import AuditView from "../views/AuditView.vue";
+import ChatView from "../views/ChatView.vue";
 import ConnectorsView from "../views/ConnectorsView.vue";
 import CredentialsView from "../views/CredentialsView.vue";
 import GrantsView from "../views/GrantsView.vue";
@@ -25,6 +26,7 @@ const routes = [
   { path: "/agents", name: "agents", component: PlaceholderView },
   { path: "/approvals", name: "approvals", component: ApprovalsView },
   { path: "/ask-ai", name: "ask-ai", component: AskAiView },
+  { path: "/chat", name: "chat", component: ChatView },
   { path: "/connectors", name: "connectors", component: ConnectorsView },
   { path: "/credentials", name: "credentials", component: CredentialsView },
   { path: "/grants", name: "grants", component: GrantsView },
