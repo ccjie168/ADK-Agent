@@ -44,6 +44,34 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
   面板上的 Approve/Deny 按钮按 `grants.decide` 显示。
 - 控制台的前端只按 `capabilities` 显示导航与按钮。每个接口仍各自授权，403 语义不变。能力清单不能替代接口检查。
 - 能力清单获取失败时控制台保持现有布局，不阻断使用。
+- `roles.read`、`roles.manage` 属于管理能力，默认只发给 `admin`。
+
+## 角色与用户管理
+
+需要 `console --role-store-dir|--role-store-db`；用户绑定接口另需
+`--user-binding-store-dir|--user-binding-store-db`（env `ROLE_DATABASE_URL` /
+`USER_BINDING_DATABASE_URL`）。能力检查一律先于配置检查与请求体解析。
+
+`GET /api/roles`（`roles.read`）-> `{"roles": [{name, capabilities, builtin, description}]}`。
+未配置 store 返回 404 `role_store_not_configured`，store 不可用 503 `role_store_unavailable`。
+
+`PUT /api/roles/{name}`（`roles.manage`），请求体 `{"capabilities": [...], "description"?: str}`，
+返回角色定义。非法 name/能力名 400 `invalid_role`，store 冲突 409 `role_conflict`，写成功审计
+`role.define`（`target` 为角色名）。已存在的角色会被覆盖写（先删后加，新定义生效）。
+
+`DELETE /api/roles/{name}`（`roles.manage`）：不存在 404 `role_not_found`；内置角色（`builtin: true`）
+拒绝 409 `builtin_role_immutable`；成功返回 `{"removed": name}` 并审计 `role.remove`。
+
+`GET /api/users`（`roles.read`）-> `{"users": [{tenant, subject, roles}]}`，默认只列调用方租户；
+`admin` 可用 `?tenant=` 指定，非 admin 带该参数返回 403 `forbidden`，非法租户 400 `invalid_tenant`。
+未配置 store 返回 404 `user_binding_store_not_configured`。
+
+`PUT /api/users/{subject}`（`roles.manage`），请求体 `{"roles": [...]}`，返回
+`{tenant, subject, roles}`；非法 400 `invalid_user_binding`，冲突 409 `user_binding_conflict`，
+成功审计 `user.bind`（`target` 为 `<tenant>/<subject>`）。已存在的绑定被覆盖写。
+
+`DELETE /api/users/{subject}`（`roles.manage`）：不存在 404 `user_binding_not_found`，
+成功返回 `{"removed": subject}` 并审计 `user.unbind`。
 
 ## 浏览器登录（PKCE）
 

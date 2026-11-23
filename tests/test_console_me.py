@@ -34,6 +34,8 @@ ALL = {
     "semantics.write",
     "ops.read",
     "ops.status",
+    "roles.read",
+    "roles.manage",
 }
 
 BASE = {"chat.run", "runs.read", "sessions.read"}

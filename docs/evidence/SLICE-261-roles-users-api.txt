@@ -1,0 +1,59 @@
+SLICE-261 角色与用户管理接口 — 证据
+====================================
+
+日期: 2026-11-23
+分支: slice-261-roles-users-api
+
+## 反例（先红）
+
+实现前运行 tests/test_console_roles_api.py:
+
+    9 failed
+    TypeError: build_console_app() got an unexpected keyword argument 'user_binding_store'
+    角色/用户路由不存在（404），CAPABILITIES_ALL 无 roles.read / roles.manage
+
+## 实现（后绿）
+
+- core/roles.py：CAPABILITIES_ALL 新增 roles.read、roles.manage（只发给 admin；OPERATOR/PUBLISHER/BASE 不变）。
+  tests/test_console_me.py 的期望全量集合同步新增这两项（仅新增，未放宽任何断言；已在会话中确认）。
+- console.py：
+  - `build_console_app`/`run_console` 新增 `user_binding_store`。
+  - `GET /api/roles`（roles.read）、`PUT /api/roles/{name}`、`DELETE /api/roles/{name}`（roles.manage）；
+    PUT 先查存在性，存在则先删后加覆盖写，且保留 builtin 标记（否则编辑过的内置角色可被删除）；
+    内置角色 DELETE 返回 409 builtin_role_immutable；未配置 store 三个接口 404 role_store_not_configured。
+  - `GET /api/users`（roles.read）、`PUT /api/users/{subject}`、`DELETE /api/users/{subject}`（roles.manage）；
+    默认只作用于调用方租户，admin 可用 `?tenant=`；非 admin 带该参数 403，非法租户 400。
+  - 写审计 role.define / role.remove / user.bind / user.unbind，审计失败只记日志不回滚写入。
+- cli.py：`--user-binding-store-dir` / `--user-binding-store-db`（env USER_BINDING_DATABASE_URL），
+  互斥与 env 冲突退出 2。
+- docs/contracts/console.md 新增「角色与用户管理」一节（端点、能力、错误码、租户规则）。
+
+    python -m pytest tests/test_console_roles_api.py -q
+    16 passed
+    python -m pytest tests/test_console_roles_api.py tests/test_console_capabilities_runtime.py -q
+    23 passed
+
+## 独立验证发现与修正
+
+独立只读验证代理首轮 APPROVE（未发现授权绕过），提出三点：
+
+1. **升级自锁（已修，会话确认的迁移）**：SLICE-260 播种过 `admin` 的旧 store 升级后，存储里的 admin
+   不含 `roles.read`/`roles.manage`，管理接口对 admin 也 403。`_seed_role_store` 现在对已存在的**内置**角色
+   把当前种子新增的能力并入（只增不减，不动运维自定义角色），并加 `test_seed_backfills_new_capabilities_into_builtin`。
+2. **负向测试缺口（已补）**：非 admin 写用户绑定 403、非 admin 跨租户 403、非法租户 400、绑定 store 未配置 404。
+3. **能力先于配置检查的测试强度（已补）**：新增 `test_capability_check_precedes_store_check`
+   （非 admin + 无 store 得 403 而非 404）。
+4. **delete-then-add 窗口（记录）**：种子回填与 `_replace_role` 覆盖写均为先删后加，中断会让该角色缺失，
+   重跑启动即恢复；已写进 spec 的风险段。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2108 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（回填、负向与顺序测试补齐后重跑：2214 用例收集，105 skipped）
+
+    首轮 --fast 的 types 步曾失败：mypy 无法收窄闭包内的 Optional store；已改为把 store 显式传入 helper。
+
+## 实机验证（能力词表变更后重跑控制台基线）
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (3.0s)

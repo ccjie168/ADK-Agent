@@ -85,11 +85,17 @@ from .core import (
     RemoteAgentFetchError,
     RemoteAgentRegistration,
     RemoteAgentStore,
+    RoleConflict,
+    RoleDefinition,
     RoleStore,
     RoleStoreError,
     SecretProvider,
     ToolGrantRequest,
     ToolGrantStore,
+    UserBinding,
+    UserBindingConflict,
+    UserBindingStore,
+    UserBindingStoreError,
 )
 from .identity import OidcLogin, OidcLoginError
 from .logsafe import install_log_sanitizer
@@ -2955,6 +2961,7 @@ def build_console_app(
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
     role_store: RoleStore | None = None,
+    user_binding_store: UserBindingStore | None = None,
     ui: str = "legacy",
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
@@ -3233,6 +3240,240 @@ def build_console_app(
             "roles": list(caller.roles),
             "capabilities": await _caps_for(caller),
         }
+
+    def _role_payload(role: RoleDefinition) -> dict[str, Any]:
+        return {
+            "name": role.name,
+            "capabilities": list(role.capabilities),
+            "builtin": role.builtin,
+            "description": role.description,
+        }
+
+    async def _emit_role_event(
+        action: str, *, target: str, caller: Principal, request: Request
+    ) -> None:
+        try:
+            await audit.emit(
+                AuditEvent(
+                    event_id=uuid.uuid4().hex,
+                    run_id=uuid.uuid4().hex,
+                    trace_id=_trace_id(request),
+                    tenant=caller.tenant,
+                    principal=caller,
+                    agent_ref=AgentRef(
+                        id="roles", version="roles", digest=f"sha256:{hash_text(target)}"
+                    ),
+                    action=action,
+                    target=target,
+                    status="ok",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            )
+        except Exception:  # noqa: BLE001 - a failed audit must not undo the write
+            logger.exception("audit emit failed: action=%s target=%s", action, target)
+
+    @app.get("/api/roles")
+    async def list_roles(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "roles.read")
+        if denied is not None:
+            return denied
+        if role_store is None:
+            return JSONResponse({"error": "role_store_not_configured"}, status_code=404)
+        try:
+            roles = await role_store.list()
+        except RoleStoreError:
+            logger.exception("role store list failed")
+            return JSONResponse({"error": "role_store_unavailable"}, status_code=503)
+        return {"roles": [_role_payload(role) for role in roles]}
+
+    @app.put("/api/roles/{name}")
+    async def put_role(request: Request, name: str) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "roles.manage")
+        if denied is not None:
+            return denied
+        if role_store is None:
+            return JSONResponse({"error": "role_store_not_configured"}, status_code=404)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            role = RoleDefinition(
+                name=name,
+                capabilities=tuple(body.get("capabilities") or ()),
+                description=body.get("description") or "",
+            )
+        except (ValidationError, TypeError):
+            return JSONResponse({"error": "invalid_role"}, status_code=400)
+        existing = await _get_role(role_store, name)
+        if existing is not None:
+            # Editing must not shed the builtin flag, or a later delete of a
+            # built-in role would be allowed.
+            role = role.model_copy(update={"builtin": existing.builtin})
+            return await _replace_role(role_store, role, caller, request)
+        try:
+            stored = await role_store.add(role)
+        except RoleConflict:
+            return JSONResponse({"error": "role_conflict"}, status_code=409)
+        except RoleStoreError:
+            logger.exception("role write failed: name=%s", name)
+            return JSONResponse({"error": "role_store_unavailable"}, status_code=503)
+        await _emit_role_event("role.define", target=stored.name, caller=caller, request=request)
+        return _role_payload(stored)
+
+    async def _get_role(store: RoleStore, name: str) -> RoleDefinition | None:
+        try:
+            return await store.get(name)
+        except (RoleStoreError, ValueError):
+            return None
+
+    async def _replace_role(
+        store: RoleStore, role: RoleDefinition, caller: Principal, request: Request
+    ) -> Any:
+        # The store keeps the first definition and refuses a different one, so a
+        # changed definition is written by removing then re-adding the role.
+        try:
+            await store.delete(role.name)
+            stored = await store.add(role)
+        except RoleStoreError:
+            logger.exception("role write failed: name=%s", role.name)
+            return JSONResponse({"error": "role_store_unavailable"}, status_code=503)
+        await _emit_role_event("role.define", target=stored.name, caller=caller, request=request)
+        return _role_payload(stored)
+
+    @app.delete("/api/roles/{name}")
+    async def delete_role(request: Request, name: str) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "roles.manage")
+        if denied is not None:
+            return denied
+        if role_store is None:
+            return JSONResponse({"error": "role_store_not_configured"}, status_code=404)
+        existing = await _get_role(role_store, name)
+        if existing is None:
+            return JSONResponse({"error": "role_not_found"}, status_code=404)
+        if existing.builtin:
+            return JSONResponse({"error": "builtin_role_immutable"}, status_code=409)
+        try:
+            removed = await role_store.delete(name)
+        except RoleStoreError:
+            logger.exception("role delete failed: name=%s", name)
+            return JSONResponse({"error": "role_store_unavailable"}, status_code=503)
+        if not removed:
+            return JSONResponse({"error": "role_not_found"}, status_code=404)
+        await _emit_role_event("role.remove", target=name, caller=caller, request=request)
+        return {"removed": name}
+
+    def _binds_tenant(request: Request, caller: Principal) -> str | JSONResponse:
+        """The tenant whose bindings this caller may touch."""
+        requested = request.query_params.get("tenant")
+        if requested is None:
+            return caller.tenant
+        if "admin" not in caller.roles:
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if not _SAFE_TENANT.fullmatch(requested):
+            return JSONResponse({"error": "invalid_tenant"}, status_code=400)
+        return requested
+
+    @app.get("/api/users")
+    async def list_users(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "roles.read")
+        if denied is not None:
+            return denied
+        if user_binding_store is None:
+            return JSONResponse({"error": "user_binding_store_not_configured"}, status_code=404)
+        tenant = _binds_tenant(request, caller)
+        if isinstance(tenant, JSONResponse):
+            return tenant
+        try:
+            bindings = await user_binding_store.list(tenant)
+        except UserBindingStoreError:
+            logger.exception("user binding list failed: tenant=%s", tenant)
+            return JSONResponse({"error": "user_binding_store_unavailable"}, status_code=503)
+        return {
+            "users": [
+                {"tenant": binding.tenant, "subject": binding.subject, "roles": list(binding.roles)}
+                for binding in bindings
+            ]
+        }
+
+    @app.put("/api/users/{subject}")
+    async def put_user(request: Request, subject: str) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "roles.manage")
+        if denied is not None:
+            return denied
+        if user_binding_store is None:
+            return JSONResponse({"error": "user_binding_store_not_configured"}, status_code=404)
+        tenant = _binds_tenant(request, caller)
+        if isinstance(tenant, JSONResponse):
+            return tenant
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        try:
+            binding = UserBinding(
+                tenant=tenant, subject=subject, roles=tuple(body.get("roles") or ())
+            )
+        except (ValidationError, TypeError):
+            return JSONResponse({"error": "invalid_user_binding"}, status_code=400)
+        existing = await _get_binding(user_binding_store, tenant, subject)
+        try:
+            if existing is not None and existing.roles != binding.roles:
+                await user_binding_store.delete(tenant, subject)
+            stored = await user_binding_store.add(binding)
+        except UserBindingConflict:
+            return JSONResponse({"error": "user_binding_conflict"}, status_code=409)
+        except UserBindingStoreError:
+            logger.exception("user binding write failed: tenant=%s", tenant)
+            return JSONResponse({"error": "user_binding_store_unavailable"}, status_code=503)
+        await _emit_role_event(
+            "user.bind", target=f"{stored.tenant}/{stored.subject}", caller=caller, request=request
+        )
+        return {
+            "tenant": stored.tenant,
+            "subject": stored.subject,
+            "roles": list(stored.roles),
+        }
+
+    async def _get_binding(
+        store: UserBindingStore, tenant: str, subject: str
+    ) -> UserBinding | None:
+        try:
+            return await store.get(tenant, subject)
+        except (UserBindingStoreError, ValueError):
+            return None
+
+    @app.delete("/api/users/{subject}")
+    async def delete_user(request: Request, subject: str) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "roles.manage")
+        if denied is not None:
+            return denied
+        if user_binding_store is None:
+            return JSONResponse({"error": "user_binding_store_not_configured"}, status_code=404)
+        tenant = _binds_tenant(request, caller)
+        if isinstance(tenant, JSONResponse):
+            return tenant
+        try:
+            removed = await user_binding_store.delete(tenant, subject)
+        except UserBindingStoreError:
+            logger.exception("user binding delete failed: tenant=%s", tenant)
+            return JSONResponse({"error": "user_binding_store_unavailable"}, status_code=503)
+        if not removed:
+            return JSONResponse({"error": "user_binding_not_found"}, status_code=404)
+        await _emit_role_event(
+            "user.unbind", target=f"{tenant}/{subject}", caller=caller, request=request
+        )
+        return {"removed": subject}
 
     @app.get("/api/overview")
     async def overview(request: Request) -> Any:
@@ -5499,6 +5740,7 @@ def run_console(
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
     role_store: RoleStore | None = None,
+    user_binding_store: UserBindingStore | None = None,
     ui: str = "legacy",
 ) -> None:
     """Serve the console (blocking)."""
@@ -5543,6 +5785,7 @@ def run_console(
         terminology=terminology,
         model_config_store=model_config_store,
         role_store=role_store,
+        user_binding_store=user_binding_store,
         ui=ui,
     )
 
