@@ -1,0 +1,35 @@
+SLICE-247 迁移语义层面板到 Vue — 证据
+
+日期: 2026-11-23
+分支: slice-247-semantics-vue
+ADR: ADR-0041 阶段 0 第十二步
+
+## 门禁（python scripts/check.py --full）
+
+  [PASS] format
+  [PASS] lint
+  [PASS] types
+  [PASS] layering
+  [PASS] specs
+  [PASS] test
+  [PASS] sast
+  [PASS] deps
+  [PASS] secrets
+  ALL PASS
+
+  pytest: 2043 passed, 103 skipped
+
+## 目标用例（tests/test_console_vue_semantics.py）
+
+  test_semantics_view_fetches_semantics    PASS
+  test_semantics_route_uses_semantics_view PASS
+  test_semantics_view_renders_fields       PASS
+
+## 前端构建（web/ 目录）
+
+  npm run build -> vite v6.4.6，58 modules transformed，dist/index.html + dist/assets/index-*.{js,css}，
+  built in 773ms（JS 118.19 kB / gzip 44.59 kB）
+
+## 反例（先红后绿）
+
+  基线（SLICE-246 状态）三个用例全部失败：无 SemanticsView，路由无 /semantics。实现后转绿。
