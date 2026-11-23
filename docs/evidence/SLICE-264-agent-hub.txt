@@ -1,0 +1,41 @@
+SLICE-264 Agent 中心总览 — 证据
+==============================
+
+日期: 2026-11-24
+分支: slice-264-agent-hub
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_agent_hub.py:
+
+    4 failed
+    FileNotFoundError: web/src/views/AgentHubView.vue；/agents 仍指向 PlaceholderView。
+
+## 实现（后绿）
+
+- `web/src/views/AgentHubView.vue`：按 `registry.read` 门控，消费 `GET /api/registry`（既有字段：
+  id/version/source/lifecycle/has_eval_report/artifact/trust/peer_id），前端聚合出：
+  计数卡（Agent 数、版本数、发布中、已弃用/已退役、远端）、lifecycle 分布条（纯 CSS）、
+  按 id 分组的旅程表（版本、生命周期、评测有无、工件/信任状态、发布时间、来源）。
+- `/agents` 路由从 `PlaceholderView` 改为 `AgentHubView`；`web/src/style.css` 加分布条与卡片样式；
+  重建 `web/dist/`。后端无改动。
+
+    python -m pytest tests/test_console_vue_agent_hub.py -q
+    4 passed
+    cd web && npm run build   -> ✓ built in 799ms
+
+## 实机验证
+
+    启动 `console --ui vue --role admin --allow-unauthenticated --port 8020`
+    GET /                     -> 200，返回 SPA（提交的 dist 引用 index-Dk92TpjJ.js）
+    GET /assets/index-Dk92TpjJ.js -> 200（141,631 字节，由第二个提交重构建）
+    GET /api/me               -> 200，admin 能力清单
+    GET /api/registry         -> 200，[]（该实例未配置 registry，面板显示「暂无 Agent」，符合预期）
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2126 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (3.0s)
