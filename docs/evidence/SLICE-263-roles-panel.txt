@@ -1,0 +1,34 @@
+SLICE-263 用户/角色管理面板 — 证据
+==================================
+
+日期: 2026-11-24
+分支: slice-263-roles-panel
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_roles.py:
+
+    6 failed
+    FileNotFoundError: web/src/views/RolesView.vue、UsersView.vue、src/api/capabilities.ts；
+    路由器无 /roles、/users；App.vue 无对应导航。
+
+## 实现（后绿）
+
+- `web/src/api/capabilities.ts`：28 项能力常量（由 `CAPABILITIES_ALL` 生成，测试比对两边集合）。
+- `web/src/views/RolesView.vue`：`roles.read` 门控，GET /api/roles 渲染角色表（名称/能力数/内置/描述），
+  选中后编辑能力与描述；`roles.manage` 时才显示新增/保存/删除，PUT/DELETE /api/roles/{name}；内置角色无删除按钮。
+- `web/src/views/UsersView.vue`：`roles.read` 门控，GET /api/users 渲染绑定表（租户/主体/角色）；
+  `roles.manage` 时可按角色勾选绑定（PUT /api/users/{subject}）与解绑（DELETE）。
+- 路由加 `/roles`、`/users`；App.vue 侧边导航加「角色」「用户」。
+- `web/src/style.css` 加 `.capability-grid`、`button.link`、`.panel table` 样式；重建 `web/dist/`。
+
+    python -m pytest tests/test_console_vue_roles.py -q
+    6 passed
+    cd web && npm run build   -> ✓ built in 783ms (83 modules)
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2122 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+
+后端无改动。

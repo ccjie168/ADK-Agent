@@ -44,6 +44,8 @@ onMounted(async () => {
         <router-link to="/audit">审计</router-link>
         <router-link to="/model">模型</router-link>
         <router-link to="/tools">工具</router-link>
+        <router-link to="/roles">角色</router-link>
+        <router-link to="/users">用户</router-link>
         <router-link to="/settings">设置</router-link>
       </nav>
       <main class="main">
