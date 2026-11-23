@@ -9,6 +9,7 @@ import OverviewView from "../views/OverviewView.vue";
 import PeersView from "../views/PeersView.vue";
 import PlaceholderView from "../views/PlaceholderView.vue";
 import PlansView from "../views/PlansView.vue";
+import PolicyView from "../views/PolicyView.vue";
 import QuotaView from "../views/QuotaView.vue";
 import RagView from "../views/RagView.vue";
 import RegistryView from "../views/RegistryView.vue";
@@ -26,6 +27,7 @@ const routes = [
   { path: "/grants", name: "grants", component: GrantsView },
   { path: "/peers", name: "peers", component: PeersView },
   { path: "/plans", name: "plans", component: PlansView },
+  { path: "/policy", name: "policy", component: PolicyView },
   { path: "/registry", name: "registry", component: RegistryView },
   { path: "/audit", name: "audit", component: AuditView },
   { path: "/model", name: "model", component: ModelView },
