@@ -255,6 +255,24 @@ body {
   white-space: pre-wrap;
 }
 
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.row select,
+.row input {
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.row .grow {
+  flex: 1;
+}
+
 .login {
   max-width: 360px;
   margin: 4rem auto;

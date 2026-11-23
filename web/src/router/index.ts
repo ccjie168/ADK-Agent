@@ -4,6 +4,7 @@ import AuditView from "../views/AuditView.vue";
 import ConnectorsView from "../views/ConnectorsView.vue";
 import CredentialsView from "../views/CredentialsView.vue";
 import GrantsView from "../views/GrantsView.vue";
+import ImportView from "../views/ImportView.vue";
 import ModelView from "../views/ModelView.vue";
 import OverviewView from "../views/OverviewView.vue";
 import PeersView from "../views/PeersView.vue";
@@ -25,6 +26,7 @@ const routes = [
   { path: "/connectors", name: "connectors", component: ConnectorsView },
   { path: "/credentials", name: "credentials", component: CredentialsView },
   { path: "/grants", name: "grants", component: GrantsView },
+  { path: "/import", name: "import", component: ImportView },
   { path: "/peers", name: "peers", component: PeersView },
   { path: "/plans", name: "plans", component: PlansView },
   { path: "/policy", name: "policy", component: PolicyView },
