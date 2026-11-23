@@ -619,11 +619,15 @@ def _role_store(args: argparse.Namespace) -> Any:
 
 def _seed_role_store(store: Any) -> None:
     """Write the built-in role seeds if absent, so ``admin`` keeps working."""
-    from .core import seed_builtin_roles
+    from .core import RoleConflict, seed_builtin_roles
 
     async def seed() -> None:
         for role in seed_builtin_roles():
-            await store.add(role)
+            try:
+                await store.add(role)
+            except RoleConflict:
+                # An operator-customized builtin wins over the seed.
+                continue
 
     try:
         asyncio.run(seed())

@@ -2985,7 +2985,10 @@ def build_console_app(
                 definition = await role_store.get(name)
                 if definition is not None:
                     granted |= set(definition.capabilities)
-        except RoleStoreError:
+        except (RoleStoreError, ValueError):
+            # ValueError covers a claim role name the file store's whitelist
+            # rejects; RoleDefinition.name uses the same pattern, so such a
+            # name can never name a defined role.
             logger.exception("role store failed for tenant=%s", caller.tenant)
             return sorted(CAPABILITIES_BASE)
         return sorted(granted or CAPABILITIES_BASE)

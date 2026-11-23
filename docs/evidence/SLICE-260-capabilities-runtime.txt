@@ -23,16 +23,23 @@ SLICE-260 能力解析运行时化 — 证据
   配置 store 时启动用 `seed_builtin_roles()` 幂等写入，空 store 上 admin 仍可用。
 - docs/contracts/console.md：补「能力来源 / fail-closed / 内置角色即默认种子」三条。
 
+独立验证代理发现两点后修正（均为健壮性，非授权绕过）：
+
+1. 白名单外的角色名（来自 token claim）原先让文件 store 抛 `UnsafePath(ValueError)` 变成 500；
+   `_caps_for` 现在同时捕获 `ValueError`，按未定义角色处理 → 基础能力。
+2. 启动种子遇到运维改过的内置角色（`RoleConflict`）原先退出 1；现在跳过该角色、保留运维版本。
+
     python -m pytest tests/test_console_capabilities_runtime.py -q
-    6 passed
+    8 passed
     python -m pytest tests/test_console_me.py tests/test_console_panel_visibility.py \
         tests/test_console_permission_hygiene.py tests/test_console_hardening.py -q
     15 passed
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2091 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2093 passed / 105 skipped
     python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+                                       （含验证代理修正后的重跑：2093 passed / 105 skipped）
 
 ## 实机验证（ADR 要求 prove_it_works 权限语义不回退）
 

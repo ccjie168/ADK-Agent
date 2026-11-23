@@ -34,7 +34,9 @@
 - [x] 配置 store 后，store 中自定义角色生效 -> `test_role_store_definitions_grant_capabilities`
 - [x] store 中未定义的角色只得到基础能力 -> `test_undefined_role_falls_back_to_base`
 - [x] store 读失败时 fail-closed 到基础能力（admin 不例外） -> `test_role_store_failure_fails_closed`
+- [x] 白名单外的角色名不报 500，按未定义处理 -> `test_unrepresentable_role_name_does_not_error`
 - [x] 启动种子使内置 admin 在空 store 上仍可管理 -> `test_seed_builtin_roles_keeps_admin_working`
+- [x] 运维改过的内置角色不被种子覆盖 -> `test_seed_keeps_an_operator_customized_builtin`
 - [x] `--role-store-dir` 与 `--role-store-db` 同设退出 2 -> `test_console_rejects_two_role_stores`
 - [x] `--full` 门禁通过，且 `scripts/prove_it_works.py` 权限语义无回归
 

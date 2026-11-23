@@ -86,6 +86,14 @@ def test_role_store_failure_fails_closed():
     assert _capabilities(["admin"], role_store=BrokenStore()) == BASE
 
 
+def test_unrepresentable_role_name_does_not_error(tmp_path):
+    store = FileRoleStore(tmp_path)
+    asyncio.run(store.add(RoleDefinition(name="qa", capabilities=("tools.read",))))
+
+    # A claim role name the store whitelist rejects must not 500 the request.
+    assert _capabilities(["bad name!"], role_store=store) == BASE
+
+
 def test_seed_builtin_roles_keeps_admin_working(tmp_path):
     store = FileRoleStore(tmp_path)
     for role in seed_builtin_roles():
@@ -93,6 +101,19 @@ def test_seed_builtin_roles_keeps_admin_working(tmp_path):
 
     assert _capabilities(["admin"], role_store=store) == set(CAPABILITIES_ALL)
     assert _capabilities(["operator"], role_store=store) == set(CAPABILITIES_OPERATOR)
+
+
+def test_seed_keeps_an_operator_customized_builtin(tmp_path):
+    from adk_agent import cli
+
+    store = FileRoleStore(tmp_path)
+    asyncio.run(store.add(RoleDefinition(name="admin", capabilities=("tools.read",))))
+
+    cli._seed_role_store(store)
+
+    assert asyncio.run(store.get("admin")) == RoleDefinition(
+        name="admin", capabilities=("tools.read",)
+    )
 
 
 def test_console_rejects_two_role_stores(tmp_path, monkeypatch):
