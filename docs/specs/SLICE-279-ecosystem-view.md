@@ -10,7 +10,7 @@
 1. **统一盘点**：工具目录（来源含 `mcp` / `connector` / `function` / `openapi`）、连接器
    （其中 `kind=mcp` 即 MCP 服务器）、A2A 对端。三项各自按 `tools.read` / `connectors.read` /
    `peers.read` 拉取；只有三项都无权时才整页拒绝。
-2. **计数卡**：工具、MCP 工具、连接器、A2A 对端；无权限的项显示「—」而不是 0。
+2. **计数卡**：工具、MCP 工具、连接器、A2A 对端；无权限或读取失败的项显示「—」而不是 0，失败源对应的表格区块隐藏，顶部只给「X 不可用」。
 3. **接入引导**：三张卡片给出可复制的真实命令——登记 MCP 连接器、把 Agent 暴露为
    streamable-http MCP 服务、登记 A2A 对端——并链接到对应页面。复制用
    `navigator.clipboard`，失败给固定提示。
@@ -30,6 +30,7 @@
 - [x] 三张接入引导包含真实命令 -> `test_ecosystem_ships_onboarding_commands`
 - [x] 命令可复制 -> `test_ecosystem_copies_commands`
 - [x] 空态与无 `v-html` -> `test_ecosystem_uses_empty_states_and_no_raw_html`
+- [x] 数据源失败时计数显示「—」、区块隐藏 -> `test_ecosystem_shows_dashes_when_a_source_fails`
 - [x] `web/dist/` 重建且 `--full` 门禁通过
 
 ## 反例

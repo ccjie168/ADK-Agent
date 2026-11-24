@@ -66,6 +66,9 @@ const auth = useAuthStore();
 const tools = ref<ToolEntry[]>([]);
 const connectors = ref<ConnectorSpec[]>([]);
 const peers = ref<PeerEntry[]>([]);
+const toolsReady = ref(false);
+const connectorsReady = ref(false);
+const peersReady = ref(false);
 const errors = ref("");
 const filter = ref("all");
 const copied = ref("");
@@ -109,6 +112,7 @@ onMounted(async () => {
   if (canTools.value) {
     try {
       tools.value = await getJson<ToolEntry[]>("/api/tools");
+      toolsReady.value = true;
     } catch {
       failures.push("工具目录");
     }
@@ -116,6 +120,7 @@ onMounted(async () => {
   if (canConnectors.value) {
     try {
       connectors.value = await getJson<ConnectorSpec[]>("/api/connectors");
+      connectorsReady.value = true;
     } catch {
       failures.push("连接器");
     }
@@ -123,6 +128,7 @@ onMounted(async () => {
   if (canPeers.value) {
     try {
       peers.value = await getJson<PeerEntry[]>("/api/peers");
+      peersReady.value = true;
     } catch {
       failures.push("A2A 对端");
     }
@@ -142,19 +148,19 @@ onMounted(async () => {
       <div class="metric-grid">
         <div class="stat-card">
           <span class="stat-label">工具</span>
-          <span class="stat-value">{{ canTools ? tools.length : "—" }}</span>
+          <span class="stat-value">{{ canTools && toolsReady ? tools.length : "—" }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">MCP 工具</span>
-          <span class="stat-value">{{ canTools ? mcpTools.length : "—" }}</span>
+          <span class="stat-value">{{ canTools && toolsReady ? mcpTools.length : "—" }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">连接器</span>
-          <span class="stat-value">{{ canConnectors ? connectors.length : "—" }}</span>
+          <span class="stat-value">{{ canConnectors && connectorsReady ? connectors.length : "—" }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">A2A 对端</span>
-          <span class="stat-value">{{ canPeers ? peers.length : "—" }}</span>
+          <span class="stat-value">{{ canPeers && peersReady ? peers.length : "—" }}</span>
         </div>
       </div>
 
@@ -176,7 +182,7 @@ onMounted(async () => {
         <p v-if="copied === '复制失败，请手动选择命令'" class="login-msg">{{ copied }}</p>
       </section>
 
-      <section v-if="canTools" class="recent-activity">
+      <section v-if="canTools && toolsReady" class="recent-activity">
         <h2>工具目录</h2>
         <div class="filter-row">
           <button
@@ -212,7 +218,7 @@ onMounted(async () => {
         <EmptyState v-else>暂无匹配的工具</EmptyState>
       </section>
 
-      <section v-if="canConnectors" class="recent-activity">
+      <section v-if="canConnectors && connectorsReady" class="recent-activity">
         <h2>连接器与 MCP 服务器</h2>
         <table v-if="connectors.length" class="data-table">
           <thead>
@@ -236,7 +242,7 @@ onMounted(async () => {
         <p class="muted">其中 MCP 服务器 {{ mcpConnectors.length }} 个。</p>
       </section>
 
-      <section v-if="canPeers" class="recent-activity">
+      <section v-if="canPeers && peersReady" class="recent-activity">
         <h2>A2A 对端</h2>
         <table v-if="peers.length" class="data-table">
           <thead>

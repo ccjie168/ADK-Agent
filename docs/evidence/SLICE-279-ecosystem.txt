@@ -12,6 +12,8 @@ SLICE-279 生态展示页 — 证据
     python -m pytest tests/test_console_vue_ecosystem.py -q
     7 failed
 
+首轮 7 条全红；截图自查后补的第 8 条（失败源显示「—」）在基线上同样会红。
+
 失败项：没有 `/ecosystem` 路由与视图、没有导航入口、没有三种数据源与能力门控、
 没有来源筛选、没有接入命令与复制、没有空态。
 
@@ -31,11 +33,11 @@ SLICE-279 生态展示页 — 证据
 
     python -m pytest tests/test_console_vue_ecosystem.py tests/test_console_vue_pages.py \
         tests/test_console_vue_shell.py -q
-    21 passed in 0.13s
+    22 passed in 0.04s
 
     cd web && npm run build
     ✓ built in 1.13s
-    assets/index-DsaPtawk.css 15.40 kB / assets/index-BI2NfCZq.js 184.07 kB
+    assets/index-DsaPtawk.css 15.40 kB / assets/index-Ceshgjy_.js 184.19 kB
 
 ## 实机验证（8025，`--ui vue`，带工具目录）
 
@@ -43,8 +45,9 @@ SLICE-279 生态展示页 — 证据
 
 headless Edge 截图：
 
-- 计数卡：工具 2、MCP 工具 1、连接器 0、A2A 对端 0。
-- 未配置连接器和 peers store 时顶部显示「连接器、A2A 对端不可用」，不显示伪造的 0 成功。
+- 计数卡：工具 2、MCP 工具 1、连接器「—」、A2A 对端「—」（两个 store 未配置）。
+- 未配置连接器和 peers store 时顶部显示「连接器、A2A 对端不可用」，两张对应计数卡显示「—」、
+对应表格隐藏，不显示伪造的 0 成功。
 - 三张接入引导卡与可复制命令、工具来源筛选、工具表均正常。
 - 截图：`docs/evidence/ui/SLICE-279-ecosystem.png`。
 
@@ -53,6 +56,6 @@ headless Edge 截图：
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2219 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2219 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2220 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2220 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）

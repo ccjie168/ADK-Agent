@@ -65,3 +65,11 @@ def test_ecosystem_uses_empty_states_and_no_raw_html():
 
     assert "EmptyState" in src
     assert "v-html" not in src
+
+
+def test_ecosystem_shows_dashes_when_a_source_fails():
+    src = _read("src", "views", "EcosystemView.vue")
+
+    for ready in ("toolsReady", "connectorsReady", "peersReady"):
+        assert ready in src
+    assert '"—"' in src
