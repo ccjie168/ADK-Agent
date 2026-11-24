@@ -31,7 +31,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <PageHeader title="检索" description="检索调用与过滤" />
+    <PageHeader title="检索" description="检索调用与返回统计" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <div v-else-if="rag" class="metric-grid">

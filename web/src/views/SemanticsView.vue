@@ -30,7 +30,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <PageHeader title="语义层" description="术语表、概念与能力映射" />
+    <PageHeader title="语义层" description="术语表与概念" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <div v-else class="metric-grid">

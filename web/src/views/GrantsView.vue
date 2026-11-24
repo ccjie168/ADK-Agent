@@ -82,7 +82,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <PageHeader title="工具授权" description="工具临时授权与用量" />
+    <PageHeader title="工具授权" description="工具临时授权与到期" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>

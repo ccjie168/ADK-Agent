@@ -38,7 +38,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <PageHeader title="审计" description="共享审计事件与链校验" />
+    <PageHeader title="审计" description="共享审计事件" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <div v-else class="audit-log">

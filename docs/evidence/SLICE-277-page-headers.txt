@@ -12,7 +12,7 @@ SLICE-277 页头与信息层级收口 — 证据
     python -m pytest tests/test_console_vue_pages.py -q
     2 failed, 1 passed
 
-失败项：23 个视图各自渲染 `<h1>`、没有引用 `PageHeader`，也没有说明文字。
+失败项：24 个视图（23 个业务页 + 占位页）各自渲染 `<h1>`、没有引用 `PageHeader`，也没有说明文字。
 `test_pages_keep_their_primary_actions` 在基线上本来成立，作为守卫保留（spec 反例已注明）。
 
 ## 实现（后绿）
@@ -33,13 +33,13 @@ SLICE-277 页头与信息层级收口 — 证据
 
     cd web && npm run build
     ✓ built in 886ms
-    assets/index-Cglz6ePU.css 13.98 kB / assets/index-DpMnNf2r.js 177.63 kB
+    assets/index-Cglz6ePU.css 13.98 kB / assets/index-COKS4kck.js 177.61 kB
 
 ## 实机验证（8022，`--ui vue`）
 
 重启控制台以读取新 `dist`，headless Edge 截图：
 
-- 运行页：标题 + 「运行记录与 trace」说明，表格样式不变。
+- 运行页：标题 + 「运行记录与事件」说明，表格样式不变。
 - Agent 中心：标题 + 「注册、版本与生命周期」说明，租户切换与指标卡仍在。
 - 截图：`docs/evidence/ui/SLICE-277-runs.png`、`docs/evidence/ui/SLICE-277-agents.png`。
 
@@ -51,3 +51,18 @@ SLICE-277 页头与信息层级收口 — 证据
     python scripts/check.py --fast   -> 7 步 ALL PASS、2192 passed / 105 skipped
     python scripts/check.py --full   -> 9 步 ALL PASS、2192 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
+
+
+## 独立验证反馈修正
+
+首轮验证判 PASS，提出三处说明与页面内容不符（审计页无链校验、授权页无用量、语义页无能力映射），
+另三条措辞偏大，已一并改准：
+
+- 审计：「共享审计事件与链校验」→「共享审计事件」。
+- 授权：「工具临时授权与用量」→「工具临时授权与到期」。
+- 语义层：「术语表、概念与能力映射」→「术语表与概念」。
+- 运行：「运行记录与 trace」→「运行记录与事件」。
+- 检索：「检索调用与过滤」→「检索调用与返回统计」。
+- 注册表：「已发布版本与市场入口」→「已发布版本与远端目录」。
+
+同时把反例里的视图数从 23 更正为 24（23 个业务页 + 占位页）。

@@ -171,7 +171,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <PageHeader title="注册表" description="已发布版本与市场入口" />
+    <PageHeader title="注册表" description="已发布版本与远端目录" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>

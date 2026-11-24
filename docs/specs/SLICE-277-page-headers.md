@@ -25,7 +25,7 @@
 
 ## 反例
 
-实现前：23 个视图各自渲染 `<h1>`，没有引用 `PageHeader`；3 条用例中 2 条失败。`test_pages_keep_their_primary_actions` 在基线上本来成立，作为守卫保留。
+实现前：24 个视图（23 个业务页 + 占位页）各自渲染 `<h1>`，没有引用 `PageHeader`；3 条用例中 2 条失败。`test_pages_keep_their_primary_actions` 在基线上本来成立，作为守卫保留。
 
 ## 5 问威胁建模
 

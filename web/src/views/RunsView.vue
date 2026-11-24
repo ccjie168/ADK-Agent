@@ -43,7 +43,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <PageHeader title="运行" description="运行记录与 trace" />
+    <PageHeader title="运行" description="运行记录与事件" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <table v-else class="data-table">
