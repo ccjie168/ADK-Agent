@@ -2,13 +2,13 @@
 
 更新日期: 2026-11-24
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `2a2357d` feat: rebuild the console shell on design tokens (ADR-0041, SLICE-275) (#307)
+最新提交: `b05eb28` feat: finish the visual pass with empty states and denser tables (ADR-0041, SLICE-278) (#311)
 状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）进行中（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）
 
 ## 本次暂停交接
 
-- 代码在 `master`，`2a2357d`。SLICE-113 到 SLICE-275 已合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
-- 最近门禁: `--full` 9 步全 PASS，2179 passed, 105 skipped（PR #307 第二轮独立验证复跑，`docs/evidence/SLICE-275-visual-shell.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
+- 代码在 `master`，`b05eb28`。SLICE-113 到 SLICE-278 已合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
+- 最近门禁: `--full` 9 步全 PASS，2197 passed, 105 skipped（PR #311 第二轮独立验证复跑，`docs/evidence/SLICE-278-empty-states.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
 - 端到端验收: `python scripts/prove_it_works.py` 12 项真实进程/真实 Postgres 检查，2026-11-21 跑出 12/12 PASS（`docs/evidence/prove-2026-11-21.txt`），复盘见 `docs/reviews/retrospective-2026-11-21.md`；SLICE-204 到 216 之后于 2026-11-22 在 `3f7d325` 重跑仍是 12/12 PASS（`docs/evidence/prove-2026-11-22.txt`，含 `--smoke` 4/4）。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
@@ -519,7 +519,17 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         「能力未到、视图先挂载、页面空白」的竞态，并处理 401 清 token 与网络失败提示。
         两轮验证（REJECT 登录路径绕过门控 → 修 → PASS），最终门禁 2179 passed / 105 skipped。
         截图 `docs/evidence/ui/SLICE-275-*.png`。证据 `docs/evidence/SLICE-275-visual-shell.txt`。
-        下一步 SLICE-276（通用组件与可配置首页）、SLICE-277（逐页收口）、SLICE-278（可访问性与响应式）。
+      - SLICE-276（通用组件与可配置首页）~~已合并 `6e23653`~~：新增 `PageHeader` / `EmptyState`，
+        首页有按能力过滤的快捷操作、指标卡、最近活动与「自定义首页」（三区块显隐存 localStorage）。
+        验证发现 `/api/audit` 对查询后端返回倒序窗口却按「取末尾 N 条」截断，已在 `_query_events`
+        统一升序并补审计与 RAG 的倒序用例。两轮验证（REJECT → 修 → PASS），门禁 2189 passed / 105 skipped。
+      - SLICE-277（页头收口）~~已合并 `43afaff`~~：25 个视图统一用 `PageHeader`，各页一句说明；
+        首轮验证 PASS 后按反馈改准六处与页面内容不符的副标题。门禁 2192 passed / 105 skipped。
+      - SLICE-278（空态与表格收口）~~已合并 `b05eb28`~~：六个列表页用 `EmptyState`，五个表格页
+        `.table-wrap` 横向滚动，文本型指标缩字号，Agent 中心租户表单进工具条，徽章改用状态令牌。
+        两轮验证（PASS + 1 个 S 视觉回归 → 修 → PASS），门禁 2197 passed / 105 skipped。
+        **视觉改造四切片（275–278）收口**。下一步 SLICE-274（`scripts/security_report.py`），
+        然后阶段 4（生态展示）与阶段 5（开发向导，先写 ADR-0043）。
     - **阶段 4**：MCP/API 生态展示（诉求 4）。MCP server、A2A 对端、连接器、可复用工具 + 接入引导。
     - **阶段 5**：Agent 开发向导（诉求 3）。把 `compose` 模板做成多步 UI 向导。
 
@@ -527,7 +537,12 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 
 16. 2026-11-24 新增要求与 SLICE-272 的验证残余：
     - **安全聚合接口残余**：~~三项已由 SLICE-273（`2796404`）修复~~（scans 严格按 schema 校验、审计失败给 `audit_unavailable`、租户路径非法给 `credential_store_unavailable`）。`/api/credentials` 对调用方自身非法租户的同类问题仍未修，记为后续小项。
-    - **控制台视觉改造**：SLICE-275（令牌与外壳）已合并；剩余 276（通用组件与可配置首页）、277（逐页收口）、278（可访问性与响应式）。无新依赖，图标用内联 SVG；每片重建 `web/dist/`。
+    - **控制台视觉改造**：~~SLICE-275 到 278 已全部合并~~。残余取舍：`.table-wrap` 无可滚动的最小宽度，
+      短内容表格在窄屏只会换行；深色主题与命令面板未做。
+    - **同期发现的既有缺口（未修，记录在案）**：`--audit-file` 走 `JsonlAuditSink` 写裸事件，
+      而 `FileAuditQuery` 按 `AuditRecord` 解析，写入事件后读 `/api/audit` 会 500；
+      `publisher` 角色没有 `ops.read`，整个首页对其不可见；同一时间戳事件在 `limit` 边界上的
+      子集与后端方向有关（契约未定义同刻顺序）。
     - **阶段 5 发布方式已拍板**：用户选择「页面一键发布」，控制台持专用 compose 签名密钥。开工前先写 ADR-0043 并确认；只允许 `single-llm` 模板，新增 `registry.compose` 能力与 `agent.compose` 审计（只记模板/版本/digest，不记指令原文）。
 
 MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
