@@ -7,7 +7,7 @@
 
 ## 本次暂停交接
 
-- 代码在 `master`，`b05eb28`。SLICE-113 到 SLICE-278 已合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
+- 代码在 `master`，`b05eb28`。SLICE-113 到 273 与 275 到 278 已合并，SLICE-274 待做；没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
 - 最近门禁: `--full` 9 步全 PASS，2197 passed, 105 skipped（PR #311 第二轮独立验证复跑，`docs/evidence/SLICE-278-empty-states.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
 - 端到端验收: `python scripts/prove_it_works.py` 12 项真实进程/真实 Postgres 检查，2026-11-21 跑出 12/12 PASS（`docs/evidence/prove-2026-11-21.txt`），复盘见 `docs/reviews/retrospective-2026-11-21.md`；SLICE-204 到 216 之后于 2026-11-22 在 `3f7d325` 重跑仍是 12/12 PASS（`docs/evidence/prove-2026-11-22.txt`，含 `--smoke` 4/4）。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
@@ -523,8 +523,8 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         首页有按能力过滤的快捷操作、指标卡、最近活动与「自定义首页」（三区块显隐存 localStorage）。
         验证发现 `/api/audit` 对查询后端返回倒序窗口却按「取末尾 N 条」截断，已在 `_query_events`
         统一升序并补审计与 RAG 的倒序用例。两轮验证（REJECT → 修 → PASS），门禁 2189 passed / 105 skipped。
-      - SLICE-277（页头收口）~~已合并 `43afaff`~~：25 个视图统一用 `PageHeader`，各页一句说明；
-        首轮验证 PASS 后按反馈改准六处与页面内容不符的副标题。门禁 2192 passed / 105 skipped。
+      - SLICE-277（页头收口）~~已合并 `43afaff`~~：25 个视图统一用 `PageHeader`，业务页各一句说明（占位页无说明）；
+        首轮验证 PASS 后按反馈改准六处副标题（3 处内容不符 + 3 处措辞偏大）。门禁 2192 passed / 105 skipped。
       - SLICE-278（空态与表格收口）~~已合并 `b05eb28`~~：六个列表页用 `EmptyState`，五个表格页
         `.table-wrap` 横向滚动，文本型指标缩字号，Agent 中心租户表单进工具条，徽章改用状态令牌。
         两轮验证（PASS + 1 个 S 视觉回归 → 修 → PASS），门禁 2197 passed / 105 skipped。
