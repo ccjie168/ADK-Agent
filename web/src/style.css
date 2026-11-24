@@ -247,6 +247,18 @@ body {
   border-radius: 6px;
 }
 
+.policy-editor {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
 .policy-view {
   background: var(--panel);
   border: 1px solid var(--line);

@@ -1,0 +1,29 @@
+SLICE-266 策略页面编辑 — 证据
+============================
+
+日期: 2026-11-24
+分支: slice-266-policy-save
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_policy_write.py:
+
+    2 failed
+    PolicyView.vue 无 `method: "PUT"`、无 `policy.write`、无 `JSON.parse`（原为只读 `pre`）。
+
+## 实现（后绿）
+
+- `web/src/views/PolicyView.vue`：挂载时 `GET /api/policy` 填草稿；`policy.write` 下显示文本域与「保存」，
+  保存前 `JSON.parse` 预检（非法 JSON 提示「JSON 格式无效」且不发请求），`PUT /api/policy`；
+  400 →「策略无效」，403 →「策略被拒绝」，其他显示状态码；成功用响应回填。
+  只读用户仍看格式化 JSON。新增 `.policy-editor` 样式并重建 `web/dist/`。
+- 后端无改动：服务端 `AccessPolicy` 校验、`policy.update` RBAC 决策与 ok/denied 审计均为既有实现。
+
+    python -m pytest tests/test_console_vue_policy_write.py -q
+    2 passed
+    cd web && npm run build   -> ✓ built in 739ms
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2130 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
