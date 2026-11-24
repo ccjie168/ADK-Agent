@@ -42,7 +42,7 @@ const SNIPPETS = [
     hint: "登记为 kind=mcp 的连接器后，它的工具会出现在工具目录里。",
     to: "/connectors",
     command:
-      "adk-agent connectors register --id <id> --kind mcp --base-url https://mcp.example.com --auth-ref secret://<tenant>/<name>",
+      "adk-agent connectors register --id <id> --kind mcp --base-url https://mcp.example.com --auth-ref secret://<tenant>/<name> --connectors-dir ./connectors",
   },
   {
     key: "mcp-serve",
@@ -57,14 +57,14 @@ const SNIPPETS = [
     title: "登记 A2A 对端",
     hint: "登记对端身份，再用 serve-a2a 发布端点。",
     to: "/peers",
-    command: "adk-agent peers register --id <peer> --tenant <tenant> --kind service",
+    command: "adk-agent peers register --id <peer> --tenant <tenant> --kind service --peer-dir ./peers",
   },
   {
     key: "a2a-grant",
     title: "授权 A2A 对端",
     hint: "给对端授予读取或调用指定 Agent 的权限。",
     to: "/peers",
-    command: "adk-agent peers grant --id <peer> --agent <agent-id> --actions read,invoke",
+    command: "adk-agent peers grant --id <peer> --agent <agent-id> --actions read,invoke --peer-dir ./peers",
   },
 ];
 
@@ -84,13 +84,18 @@ const canConnectors = computed(() => auth.hasCapability("connectors.read"));
 const canPeers = computed(() => auth.hasCapability("peers.read"));
 const denied = computed(() => !canTools.value && !canConnectors.value && !canPeers.value);
 
-const mcpConnectors = computed(() => connectors.value.filter((item) => item.kind === "mcp"));
+const mcpConnectors = computed(
+  () => connectors.value.filter((item) => item.kind === "mcp" && item.enabled),
+);
 const mcpConnectorIds = computed(
   () => new Set(mcpConnectors.value.map((connector) => connector.connector_id)),
 );
 
 function isMcpTool(tool: ToolEntry): boolean {
-  return tool.source === "mcp" || mcpConnectorIds.value.has(tool.tool_id);
+  return (
+    tool.source === "mcp" ||
+    (tool.source === "connector" && mcpConnectorIds.value.has(tool.tool_id))
+  );
 }
 
 const mcpTools = computed(() => tools.value.filter(isMcpTool));
@@ -166,7 +171,7 @@ onMounted(async () => {
         </div>
         <div class="stat-card">
           <span class="stat-label">MCP 工具</span>
-          <span class="stat-value">{{ canTools && toolsReady ? mcpTools.length : "—" }}</span>
+          <span class="stat-value">{{ canTools && toolsReady && connectorsReady ? mcpTools.length : "—" }}</span>
         </div>
         <div class="stat-card">
           <span class="stat-label">连接器</span>

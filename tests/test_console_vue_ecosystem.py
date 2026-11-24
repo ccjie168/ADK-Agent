@@ -44,6 +44,8 @@ def test_ecosystem_filters_tools_by_source():
     assert "filteredTools" in src
     assert "mcpConnectorIds" in src
     assert "isMcpTool" in src
+    assert 'item.kind === "mcp" && item.enabled' in src
+    assert 'tool.source === "connector" && mcpConnectorIds.value.has(tool.tool_id)' in src
 
 
 def test_ecosystem_ships_onboarding_commands():
@@ -55,6 +57,8 @@ def test_ecosystem_ships_onboarding_commands():
     assert "peers register" in src
     assert "peers grant" in src
     assert "ADK_MCP_TOKEN=your-token" in src
+    assert "--connectors-dir ./connectors" in src
+    assert "--peer-dir ./peers" in src
 
 
 def test_ecosystem_copies_commands():
