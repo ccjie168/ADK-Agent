@@ -97,6 +97,27 @@ async function post(path: string, body: unknown): Promise<Response | null> {
   }
 }
 
+const LOAD_ERRORS: Record<string, string> = {
+  name_conflict: "名称冲突：请先卸载同名 Agent",
+  version_retired: "版本已退役，不能加载",
+  artifact_missing: "工件缺失，无法加载",
+  artifact_untrusted: "工件未通过信任校验",
+  artifact_trust_unavailable: "信任校验不可用",
+  sandbox_unavailable: "沙箱不可用",
+  tool_mediation_unavailable: "需要工具网关后才可加载",
+  load_limit: "已达加载数量上限",
+  not_found: "注册表中找不到该版本",
+};
+
+async function errorCode(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: string };
+    return body.error ?? "";
+  } catch {
+    return "";
+  }
+}
+
 async function loadAgent(entry: RegistryEntry) {
   const response = await post("/api/registry/load", {
     tenant: entry.tenant ?? auth.principal?.tenant ?? "local",
@@ -104,9 +125,11 @@ async function loadAgent(entry: RegistryEntry) {
     version: entry.version,
   });
   if (response === null) return;
-  if (response.ok) message.value = `已加载 ${entry.id}@${entry.version}`;
-  else if (response.status === 409) message.value = "名称冲突：请先卸载同名 Agent";
-  else message.value = `加载失败: ${response.status}`;
+  if (response.ok) {
+    message.value = `已加载 ${entry.id}@${entry.version}`;
+    return;
+  }
+  message.value = `加载失败: ${LOAD_ERRORS[await errorCode(response)] ?? response.status}`;
 }
 
 async function unloadAgent(entry: RegistryEntry) {
