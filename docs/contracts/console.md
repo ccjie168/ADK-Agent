@@ -66,7 +66,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 }
 ```
 
-- `audit.records` 是最近 1000 条窗口内的条数；`last_event_at` 是最新事件的提交时间。
+- `audit.records` 是最近 1000 条窗口内的条数；审计查询失败时为 `null` 并附 `error: "audit_unavailable"`（`last_event_at` 也为 `null`），不把后端故障显示成空审计。`last_event_at` 是最新事件的提交时间。
 - 只有 `?verify=1` 才校验审计链：当前仅文件后端支持，返回 `verified: true|false` 与 `checked_records`（校验条数，
   与窗口计数 `records` 区分）；校验超过 10 秒返回 `verified: null, error: "verify_timeout"`，
   链断裂返回 `error: "chain_broken"`，非文件后端返回 `error: "backend_unsupported"`，
@@ -74,7 +74,12 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
   同一文件 60 秒内复用上次结果。
 - `keys` 只给 key id、计数与布尔状态，**绝不返回密钥材料**；`needs_rewrap` 是 `secret_key_id` 与当前
   KEK 不同且已有密文的凭据数；未配置凭据 store 或 KEK 时相应字段为 `null` / 空对象。
+  凭据 store 读取失败（含非法租户路径）时 `credentials.error` 为 `credential_store_unavailable`。
 - `policy` 未配置时为 `null` 字段。
+- `scans` 按 `security_report.schema.json` 严格校验：未配置、读不出、不是 JSON 对象、必填字段
+  (`generated_at`/`codeql`/`dependencies`) 缺失或类型不符、`generated_at` 为空或仅空白、`notes` 不是字符串、
+  出现未定义字段时一律为 `null`；深层嵌套导致解析溢出同样按 `null` 处理。
+  `scans.codeql` / `scans.dependencies` 只回传 `open` / `vulnerabilities` 两个计数，其余字段不回显。
 - `scans` 来自 `console --security-report PATH` 指向的 JSON（见 `security_report.schema.json`），
   文件缺失或无法解析时为 `null`，不报错。
 

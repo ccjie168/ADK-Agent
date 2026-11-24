@@ -191,3 +191,176 @@ def test_security_lists_the_newest_memory_event(tmp_path):
 
     assert body["audit"]["backend"] == "memory"
     assert body["audit"]["last_event_at"].startswith("2026-06-01")
+
+
+class _FailingAuditQuery:
+    async def events(self, **_kwargs):
+        raise RuntimeError("audit backend down")
+
+
+class _UnsafeCredentials:
+    async def list(self, _tenant):
+        raise ValueError("unsafe tenant path")
+
+
+def test_security_reports_audit_unavailable(tmp_path):
+    app = build_console_app(
+        _agents(),
+        auth_token="secret",
+        roles=["admin"],
+        audit_query=_FailingAuditQuery(),
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    audit = response.json()["audit"]
+    assert audit["records"] is None
+    assert audit["last_event_at"] is None
+    assert audit["error"] == "audit_unavailable"
+
+
+def test_security_ignores_an_off_schema_report(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(json.dumps({"foo": "bar"}), encoding="utf-8")
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"] is None
+
+
+def test_security_survives_an_unsafe_credential_tenant(tmp_path, monkeypatch):
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    with _client(tmp_path, credentials=_UnsafeCredentials()) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["keys"]["credentials"]["error"] == "credential_store_unavailable"
+
+
+def test_security_treats_a_deeply_nested_report_as_missing(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text("[" * 200000 + "]" * 200000, encoding="utf-8")
+    with _client(tmp_path, security_report=str(report)) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["scans"] is None
+
+
+def test_security_ignores_a_report_with_wrong_notes_type(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-11-24T10:00:00Z",
+                "codeql": {},
+                "dependencies": {},
+                "notes": 123,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"] is None
+
+
+def test_security_keeps_audit_unavailable_after_verify(tmp_path):
+    app = build_console_app(
+        _agents(),
+        auth_token="secret",
+        roles=["admin"],
+        audit_query=_FailingAuditQuery(),
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/security?verify=1", headers=AUTH)
+
+    assert response.status_code == 200
+    audit = response.json()["audit"]
+    assert audit["error"] == "audit_unavailable"
+    assert audit["records"] is None
+
+
+def test_security_drops_unknown_scan_counters(tmp_path):
+    nested = '{"a":' * 200 + "{}" + "}" * 200
+    report = tmp_path / "scan.json"
+    report.write_text(
+        '{"generated_at": "2026-11-24T10:00:00Z", "codeql": '
+        + nested
+        + ', "dependencies": {"vulnerabilities": 1, "nested": '
+        + nested
+        + "}}",
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    scans = response.json()["scans"]
+    assert scans["codeql"] == {}
+    assert scans["dependencies"] == {"vulnerabilities": 1}
+
+
+def test_security_rejects_a_lone_surrogate_in_generated_at(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps({"generated_at": "\ud800", "codeql": {}, "dependencies": {}}),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["scans"] is None
+
+
+def test_security_ignores_a_report_with_null_notes(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-11-24T10:00:00Z",
+                "codeql": {},
+                "dependencies": {},
+                "notes": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"] is None
+
+
+def test_security_ignores_a_whitespace_generated_at(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps({"generated_at": "   ", "codeql": {}, "dependencies": {}}),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"] is None
+
+
+def test_security_accepts_an_integral_float_counter(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-11-24T10:00:00Z",
+                "codeql": {"open": 1.0},
+                "dependencies": {"vulnerabilities": 2.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"]["codeql"] == {"open": 1}
+    assert body["scans"]["dependencies"] == {"vulnerabilities": 2}
