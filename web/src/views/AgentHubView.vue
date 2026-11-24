@@ -52,6 +52,7 @@ const message = ref("");
 const error = ref("");
 const denied = computed(() => !auth.hasCapability("registry.read"));
 const isAdmin = computed(() => Boolean(auth.principal?.roles?.includes("admin")));
+const canCreate = computed(() => auth.hasCapability("registry.publish"));
 
 const agents = computed<AgentGroup[]>(() => {
   const groups = new Map<string, AgentGroup>();
@@ -127,6 +128,9 @@ onMounted(async () => {
 <template>
   <div class="panel">
     <PageHeader title="Agent 中心" description="注册、版本与生命周期" />
+    <div v-if="canCreate" class="row toolbar">
+      <router-link class="btn" to="/agents/new">新建 Agent</router-link>
+    </div>
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>

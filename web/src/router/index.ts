@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from "vue-router";
 import AgentHubView from "../views/AgentHubView.vue";
+import AgentWizardView from "../views/AgentWizardView.vue";
 import ApprovalsView from "../views/ApprovalsView.vue";
 import AskAiView from "../views/AskAiView.vue";
 import AuditView from "../views/AuditView.vue";
@@ -29,6 +30,7 @@ import UsersView from "../views/UsersView.vue";
 const routes = [
   { path: "/", name: "home", component: OverviewView },
   { path: "/agents", name: "agents", component: AgentHubView },
+  { path: "/agents/new", name: "agent-new", component: AgentWizardView },
   { path: "/approvals", name: "approvals", component: ApprovalsView },
   { path: "/ask-ai", name: "ask-ai", component: AskAiView },
   { path: "/chat", name: "chat", component: ChatView },
