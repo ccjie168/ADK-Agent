@@ -236,3 +236,48 @@ def test_security_survives_an_unsafe_credential_tenant(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["keys"]["credentials"]["error"] == "credential_store_unavailable"
+
+
+def test_security_treats_a_deeply_nested_report_as_missing(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text("[" * 5000 + "]" * 5000, encoding="utf-8")
+    with _client(tmp_path, security_report=str(report)) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["scans"] is None
+
+
+def test_security_ignores_a_report_with_wrong_notes_type(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-11-24T10:00:00Z",
+                "codeql": {},
+                "dependencies": {},
+                "notes": 123,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"] is None
+
+
+def test_security_keeps_audit_unavailable_after_verify(tmp_path):
+    app = build_console_app(
+        _agents(),
+        auth_token="secret",
+        roles=["admin"],
+        audit_query=_FailingAuditQuery(),
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/security?verify=1", headers=AUTH)
+
+    assert response.status_code == 200
+    audit = response.json()["audit"]
+    assert audit["error"] == "audit_unavailable"
+    assert audit["records"] is None

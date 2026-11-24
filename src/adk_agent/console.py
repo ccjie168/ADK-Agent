@@ -3630,7 +3630,8 @@ def build_console_app(
             return None
         try:
             payload = json.loads(Path(security_report).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError):
+            # Deeply nested JSON raises RecursionError; it is still "no report".
             return None
         # Strict per docs/contracts/security_report.schema.json: anything off
         # contract reads as "no report" rather than as a half-filled card.
@@ -3641,7 +3642,10 @@ def build_console_app(
         generated_at = payload.get("generated_at")
         codeql = payload.get("codeql")
         dependencies = payload.get("dependencies")
+        notes = payload.get("notes")
         if not isinstance(generated_at, str) or not generated_at.strip():
+            return None
+        if notes is not None and not isinstance(notes, str):
             return None
         if not isinstance(codeql, dict) or not isinstance(dependencies, dict):
             return None
@@ -3684,6 +3688,9 @@ def build_console_app(
             audit_block["error"] = audit_error
         if request.query_params.get("verify") == "1":
             audit_block.update(await _verify_audit_chain())
+            if audit_error is not None:
+                # The outage is the primary fact; verification must not mask it.
+                audit_block["error"] = audit_error
         policy_block = {
             "version": policy_engine.policy.version if policy_engine is not None else None,
             "bindings": len(policy_engine.policy.bindings) if policy_engine is not None else None,

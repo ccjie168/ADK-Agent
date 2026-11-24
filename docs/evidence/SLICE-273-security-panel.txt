@@ -40,18 +40,32 @@ SLICE-273 安全合规面板与接口残余修复 — 证据
 与 scans 的严格校验语义。
 
     python -m pytest tests/test_console_security.py tests/test_console_vue_security.py -q
-    17 passed in 2.80s
+    20 passed in 2.82s
 
     cd web && npm run build
     ✓ built in 1.14s
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2160 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2160 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2163 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2163 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
 
 首次 `--fast` 因 `ruff format` 未跑失败，格式化后复跑全绿。
+
+## 独立验证反馈修正
+
+首轮验证判 PASS，提出 1 个 S 与 3 个 N，已全部修：
+
+1. **S1**：含数十万层嵌套数组的扫描报告让 `json.loads` 抛 `RecursionError`，绕过 `except (OSError, ValueError)` 直冒 500。
+   现捕获 `RecursionError` 并按 null 处理；新增 `test_security_treats_a_deeply_nested_report_as_missing`。
+2. **N1**：`notes` 类型未校验。现在非字符串（且非 null）时报告整体按 null；新增
+   `test_security_ignores_a_report_with_wrong_notes_type`。
+3. **N2**：实现要求 `generated_at` 非空，比 schema 的「字符串即可」更严。把 schema 改为 `minLength: 1`
+   并在契约写明「空串按 null」，实现与契约一致。
+4. **N3**：审计后端不可用时点「校验审计链」，`backend_unsupported` 会覆盖 `audit_unavailable`。
+   现在校验结果只更新 `verified`/`checked_records`，错误码保留 `audit_unavailable`；
+   新增 `test_security_keeps_audit_unavailable_after_verify`。
 
 ## 实机验证（8021，`--ui vue`）
 

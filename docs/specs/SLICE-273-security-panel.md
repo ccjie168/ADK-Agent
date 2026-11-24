@@ -28,6 +28,9 @@
 - [x] 审计查询异常时 `records` 为 null、`error` 为 `audit_unavailable`，响应 200 -> `test_security_reports_audit_unavailable`
 - [x] 不符合 schema 的扫描报告按 null 处理 -> `test_security_ignores_an_off_schema_report`
 - [x] 凭据 store 抛 `ValueError` 不导致 500，给固定错误码 -> `test_security_survives_an_unsafe_credential_tenant`
+- [x] 深层嵌套报告解析溢出按 null 处理 -> `test_security_treats_a_deeply_nested_report_as_missing`
+- [x] `notes` 类型不符按 null 处理 -> `test_security_ignores_a_report_with_wrong_notes_type`
+- [x] 审计不可用时 `?verify=1` 不掩盖 `audit_unavailable` -> `test_security_keeps_audit_unavailable_after_verify`
 - [x] 面板按 `ops.read` 门控 -> `test_security_view_requires_ops_read`
 - [x] 面板含「校验审计链」，请求带 `verify=1` -> `test_security_view_verifies_the_audit_chain`
 - [x] 服务端固定错误码在面板上有对应文案 -> `test_security_view_maps_fixed_error_codes`
