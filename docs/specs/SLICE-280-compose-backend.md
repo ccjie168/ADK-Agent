@@ -48,6 +48,9 @@
 - [ ] publisher 角色获得 `registry.compose` -> `test_compose_capability_reaches_publisher`
 - [ ] 只给部分密钥参数启动退出 2 -> `test_console_rejects_partial_compose_keys`
 - [ ] 私钥不可读或非法启动退出 1 -> `test_console_rejects_an_invalid_compose_key`
+- [ ] 深层嵌套 JSON 返回 400 而非 500 -> `test_compose_rejects_hostile_bodies`
+- [ ] 超限字段与超长列表返回 400 -> `test_compose_rejects_oversized_fields`
+- [ ] 工件存储写入失败返回 503 `artifact_store_unavailable` -> `test_compose_publish_maps_an_artifact_store_failure`
 - [ ] `--full` 门禁通过，`web/dist/` 随能力常量重建
 
 ## 反例

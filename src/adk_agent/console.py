@@ -117,8 +117,10 @@ from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .rbac import FilePolicyStore, RolePolicyEngine
 from .registry import (
     ArtifactLoadError,
+    ArtifactStoreError,
     ArtifactTrustError,
     InProcessArtifactLoader,
+    PackagingError,
     PublishUnavailable,
     RegistryConflict,
     RegistryIntegrityError,
@@ -4368,19 +4370,30 @@ def build_console_app(
         if set(body) - allowed:
             return None, _compose_invalid()
         params: dict[str, Any] = {}
-        for field in ("template_id", "name", "version", "tenant", "instruction"):
+        limits = {
+            "template_id": 64,
+            "name": 64,
+            "version": 256,
+            "tenant": 256,
+            "instruction": 4000,
+        }
+        for field, limit in limits.items():
             value = body.get(field)
-            if not isinstance(value, str) or not value:
+            if not isinstance(value, str) or not value or len(value) > limit:
                 return None, _compose_invalid()
             params[field] = value
         for field in ("owner", "description"):
             value = body.get(field)
-            if value is not None and not isinstance(value, str):
+            if value is not None and (not isinstance(value, str) or len(value) > 2000):
                 return None, _compose_invalid()
             params[field] = value
         for field in ("tools", "data_classes"):
             value = body.get(field, [])
-            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            if (
+                not isinstance(value, list)
+                or len(value) > 16
+                or not all(isinstance(item, str) for item in value)
+            ):
                 return None, _compose_invalid()
             params[field] = value
         if params["tenant"] != caller.tenant and "admin" not in caller.roles:
@@ -4392,7 +4405,7 @@ def build_console_app(
     ) -> tuple[dict[str, Any] | None, JSONResponse | None]:
         try:
             body = await request.json()
-        except ValueError:
+        except (ValueError, RecursionError):
             return None, _compose_invalid()
         return _compose_params(body, caller)
 
@@ -4422,7 +4435,7 @@ def build_console_app(
             return _compose_invalid()
         try:
             manifest, data = build_composed(**params)
-        except (ComposeError, ValueError):
+        except (ComposeError, PackagingError, ValueError):
             return _compose_invalid()
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             agent_py = archive.read("agent.py").decode("utf-8")
@@ -4464,8 +4477,10 @@ def build_console_app(
             )
         except RegistryConflict:
             return JSONResponse({"error": "registry_conflict"}, status_code=409)
-        except (ComposeError, ValueError):
+        except (ComposeError, PackagingError, ValueError):
             return _compose_invalid()
+        except ArtifactStoreError:
+            return JSONResponse({"error": "artifact_store_unavailable"}, status_code=503)
         except PublishUnavailable:
             return JSONResponse({"error": "registry_unavailable"}, status_code=503)
         except Exception:  # noqa: BLE001

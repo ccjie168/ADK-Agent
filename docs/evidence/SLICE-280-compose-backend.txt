@@ -55,7 +55,7 @@ SLICE-280 控制台 compose 后端 — 证据
 
     python -m pytest tests/test_console_compose.py tests/test_cli_console_compose.py \
         tests/test_console_me.py tests/test_console_vue_roles.py -q
-    23 passed
+    31 passed
 
     cd web && npm run build
     dist/assets/index-DsaPtawk.css 15.40 kB / assets/index-BIsYdpVO.js 184.97 kB
@@ -98,11 +98,43 @@ CLI 参数边界：
 已知限制（记录，不修）：`publisher` 角色仍无 `audit.read`，实机审计用 `--role admin` 读取；
 发布端点写审计的 `tenant` 是调用方租户，admin 替其他租户发布时 `target` 仍是 agent id。
 
+## 独立验证反馈修正
+
+首轮独立验证判 **REJECT**（B1 + 3 个 S + 3 个 N），已处理：
+
+1. **B1（阻断）**：两个可触发的未处理异常路径——深层嵌套 JSON 让 `request.json()` 抛
+   `RecursionError`（不是 `ValueError`），预览 500、发布 500；超长自由文本让 `pack_files`
+   抛 `PackagingError`（`RuntimeError`），预览 500、发布 503。现在：
+   - `_compose_body` 捕获 `(ValueError, RecursionError)` → 400 `compose_invalid`；
+   - 预览与发布都捕获 `PackagingError` → 400 `compose_invalid`；
+   - 字段加长度上限（`template_id`/`name` 64、`version`/`tenant` 256、`owner`/`description`
+     2000、`instruction` 4000、`tools`/`data_classes` 各 16 项），写进 `console.md`；
+   - 新增 `test_compose_rejects_hostile_bodies`、`test_compose_rejects_oversized_fields`。
+2. **S1**：`console.md` 的写接口能力清单与 publisher/developer 能力汇总补上 `registry.compose`。
+3. **S2**：证据里的四文件用例数从错误的 23 改为实测 31（新增 3 条后）。
+4. **S3**：工件存储写入失败（`ArtifactStoreError`）现在映射 503 `artifact_store_unavailable`，
+   新增 `test_compose_publish_maps_an_artifact_store_failure`。写入顺序**不调整**：HTTP 注册表的
+   `PUT /v1/artifacts/{digest}` 要求版本已发布（否则 409 `artifact_not_published`），
+   先存后发的建议在该后端不可行；存储失败时注册表会留下无字节记录，`load` 返回 409
+   `artifact_missing`，同内容重试即可自愈（已在契约写明）。
+5. **N1**：审计 emit 在发布成功后无保护，与既有 `/api/import/agent` 相同；记录不修。
+6. **N3**：`web/src/api/capabilities.ts` 的 `registry.compose` 移到字母序位置。
+
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2234 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2234 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2237 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2237 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
 
 `--full` 首轮 `sast` 报两处 B101（`assert params is not None`），改为 fail-closed 的
 `if params is None: return _compose_invalid()` 后重跑全绿。
+
+## 端到端（prove_it_works，用户要求）
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py
+    14/14 PASS，exit 0
+    （P1 环境、P2 审计链、P3 发布/加载/聊天、P4 工具网关、P5 MCP、P6 A2A、P7 RAG、
+      P8 模型网关、P9 审批、P10 触发器、P11 共享配额、P12 备份恢复、P13 控制台 UI、
+      P14 默认模型切换）
+
+完整输出 `docs/evidence/prove-2026-11-25.txt`。

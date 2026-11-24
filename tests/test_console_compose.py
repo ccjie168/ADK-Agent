@@ -12,7 +12,7 @@ from google.adk.agents import LlmAgent
 from adk_agent.audit import ListAuditSink
 from adk_agent.compose import build_composed
 from adk_agent.console import build_console_app
-from adk_agent.registry import FileAgentRegistry, FileArtifactStore
+from adk_agent.registry import ArtifactStoreError, FileAgentRegistry, FileArtifactStore
 from adk_agent.registry.artifacts import artifact_digest
 from adk_agent.registry.signing import verify_digest
 
@@ -248,3 +248,65 @@ def test_compose_capability_reaches_publisher(tmp_path):
     with TestClient(app) as client:
         operator = set(client.get("/api/me", headers=AUTH).json()["capabilities"])
     assert "registry.compose" not in operator
+
+
+def test_compose_rejects_hostile_bodies(tmp_path):
+    app, _ = _app(tmp_path, keys=True)
+    deep = ("[" * 20000 + "]" * 20000).encode()
+    with TestClient(app) as client:
+        preview = client.post(
+            "/api/compose/preview",
+            content=deep,
+            headers={**AUTH, "Content-Type": "application/json"},
+        )
+        publish = client.post(
+            "/api/compose", content=deep, headers={**AUTH, "Content-Type": "application/json"}
+        )
+    for response in (preview, publish):
+        assert response.status_code == 400
+        assert response.json() == {"error": "compose_invalid"}
+
+
+def test_compose_rejects_oversized_fields(tmp_path):
+    app, _ = _app(tmp_path, keys=True)
+    cases = [
+        {**BODY, "description": "x" * 2001},
+        {**BODY, "owner": "x" * 2001},
+        {**BODY, "version": "1" * 257},
+        {**BODY, "tenant": "t" * 257},
+        {**BODY, "template_id": "t" * 65},
+        {**BODY, "data_classes": ["internal"] * 17},
+    ]
+    with TestClient(app) as client:
+        for case in cases:
+            preview = client.post("/api/compose/preview", json=case, headers=AUTH)
+            publish = client.post("/api/compose", json=case, headers=AUTH)
+            assert preview.status_code == 400, case
+            assert preview.json() == {"error": "compose_invalid"}
+            assert publish.status_code == 400, case
+            assert publish.json() == {"error": "compose_invalid"}
+    assert asyncio.run(FileAgentRegistry(tmp_path / "registry").list("local")) == []
+
+
+class _BrokenStore:
+    async def put(self, artifact, data) -> None:
+        raise ArtifactStoreError("disk full")
+
+
+def test_compose_publish_maps_an_artifact_store_failure(tmp_path):
+    key, _ = _key()
+    app = build_console_app(
+        _agents(),
+        auth_token="secret",
+        roles=["publisher"],
+        registry=FileAgentRegistry(tmp_path / "registry"),
+        artifact_store=_BrokenStore(),
+        compose_key=key,
+        compose_key_id="compose-1",
+        compose_builder_key=key,
+        compose_builder_key_id="builder-1",
+    )
+    with TestClient(app) as client:
+        response = client.post("/api/compose", json=BODY, headers=AUTH)
+    assert response.status_code == 503
+    assert response.json() == {"error": "artifact_store_unavailable"}
