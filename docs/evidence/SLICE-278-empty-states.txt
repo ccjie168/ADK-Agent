@@ -40,11 +40,11 @@ SLICE-278 空态、表格滚动与令牌化收口 — 证据
 
 1. **S（视觉回归）**：Agent 中心的租户输入容器从 `.row` 换成 `.toolbar` 后丢了输入框样式。
    现在容器是 `class="row toolbar"`，并在 `.row input/select` 上补 `font: inherit`；
-   截图里输入框与按钮同高、同圆角。
+   输入框套用行内输入的内边距、圆角与字体，与按钮视觉接近（受内边距影响略高 5px）。
 2. **N**：审计空态原本嵌在 `.audit-log`（实线框、等宽字体）里，现在移到外面，
    与其余五个页面一致；新增 `SLICE-278-audit-empty.png`。
-3. **N**：加强三条用例——检查 `overflow-x: auto`、`card.value === null`、
-   `--danger-soft` 与 `font: inherit`。
+3. **N**：加强四条断言——检查 `overflow-x: auto`、`card.value === null`、
+   `--danger-soft`，以及 `.row input/select` 规则本身包含 `font: inherit`。
 4. **N**：`.table-wrap` 没有 `min-width`，短内容表格在窄屏只会换行而不是滚动；记录为已知取舍，
    当前五张表的列宽足以触发横向滚动。
 

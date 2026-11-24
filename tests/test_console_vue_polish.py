@@ -60,4 +60,5 @@ def test_agent_hub_uses_a_toolbar():
 
     assert 'class="row toolbar"' in hub
     assert ".toolbar" in style
-    assert "font: inherit" in style
+    row_inputs = style[style.index(".row select,") : style.index(".row .grow")]
+    assert "font: inherit" in row_inputs
