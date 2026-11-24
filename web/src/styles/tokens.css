@@ -1,0 +1,62 @@
+:root {
+  color-scheme: light;
+
+  --canvas: #f6f6f7;
+  --card: #ffffff;
+  --card-muted: #fafafa;
+  --sidebar: #fbfbfc;
+  --topbar: #ffffff;
+  --overlay: rgba(17, 24, 39, 0.4);
+
+  --border: #e4e4e7;
+  --border-strong: #d2d2d7;
+  --text: #1d1d1f;
+  --text-muted: #52525b;
+  --text-subtle: #6b6b73;
+  --text-inverse: #ffffff;
+
+  --accent: #c2410c;
+  --accent-hover: #9a3412;
+  --accent-soft: #fff3ec;
+  --accent-border: #fdba74;
+
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --success: #067647;
+  --success-soft: #ecfdf3;
+  --warning: #b54708;
+  --warning-soft: #fffaeb;
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-pop: 0 8px 24px rgba(16, 24, 40, 0.12);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+
+  --topbar-height: 56px;
+  --sidebar-width: 240px;
+  --content-max: 1400px;
+
+  --bg: var(--canvas);
+  --panel: var(--card);
+  --line: var(--border);
+  --ink: var(--text);
+}
