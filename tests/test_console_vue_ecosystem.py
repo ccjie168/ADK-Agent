@@ -42,6 +42,8 @@ def test_ecosystem_filters_tools_by_source():
     for source in ('"mcp"', '"connector"', '"function"', '"openapi"'):
         assert source in src
     assert "filteredTools" in src
+    assert "mcpConnectorIds" in src
+    assert "isMcpTool" in src
 
 
 def test_ecosystem_ships_onboarding_commands():
@@ -51,6 +53,8 @@ def test_ecosystem_ships_onboarding_commands():
     assert "--kind mcp" in src
     assert "--transport streamable-http" in src
     assert "peers register" in src
+    assert "peers grant" in src
+    assert "ADK_MCP_TOKEN=your-token" in src
 
 
 def test_ecosystem_copies_commands():
@@ -72,4 +76,7 @@ def test_ecosystem_shows_dashes_when_a_source_fails():
 
     for ready in ("toolsReady", "connectorsReady", "peersReady"):
         assert ready in src
+    assert "canTools && toolsReady" in src
+    assert "canConnectors && connectorsReady" in src
+    assert "canPeers && peersReady" in src
     assert '"—"' in src

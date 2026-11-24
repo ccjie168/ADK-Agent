@@ -975,7 +975,6 @@ button.link {
   margin-bottom: var(--space-4);
 }
 
-
 .guide-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

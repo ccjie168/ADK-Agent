@@ -37,7 +37,20 @@ SLICE-279 生态展示页 — 证据
 
     cd web && npm run build
     ✓ built in 1.13s
-    assets/index-DsaPtawk.css 15.40 kB / assets/index-Ceshgjy_.js 184.19 kB
+    assets/index-DsaPtawk.css 15.40 kB / assets/index-BG06r-4j.js 184.58 kB
+
+## 独立验证反馈修正
+
+首轮验证判 PASS，提出 2 个 S 与 2 个 N，已处理：
+
+1. **S-1**：`kind=mcp` 连接器产出的工具在 `/api/tools` 里 `source` 是 `connector`，原来的
+   「MCP 工具」卡与筛选只认 `source=mcp`，登记后仍显示 0。现在按「`source=mcp` 或
+   `tool_id` 属于某个 `kind=mcp` 连接器」统计与筛选。
+2. **S-2**：MCP 服务片段没有先设置令牌环境变量，原样复制会启动失败。现在命令带
+   `ADK_MCP_TOKEN=your-token` 前缀，hint 说明先导出；A2A 拆成「登记」与「授权」两张卡，
+   补上 `peers grant` 命令。
+3. **N-1**：测试补断言 `canTools && toolsReady` 等绑定与 `mcpConnectorIds`/`isMcpTool`。
+4. **N-2**：样式新增块前的多余空行已清理。
 
 ## 实机验证（8025，`--ui vue`，带工具目录）
 
@@ -48,7 +61,7 @@ headless Edge 截图：
 - 计数卡：工具 2、MCP 工具 1、连接器「—」、A2A 对端「—」（两个 store 未配置）。
 - 未配置连接器和 peers store 时顶部显示「连接器、A2A 对端不可用」，两张对应计数卡显示「—」、
 对应表格隐藏，不显示伪造的 0 成功。
-- 三张接入引导卡与可复制命令、工具来源筛选、工具表均正常。
+- 四张接入引导卡（含 `peers grant`）与可复制命令、工具来源筛选、工具表均正常。
 - 截图：`docs/evidence/ui/SLICE-279-ecosystem.png`。
 
     NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13

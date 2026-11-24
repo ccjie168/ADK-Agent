@@ -47,18 +47,24 @@ const SNIPPETS = [
   {
     key: "mcp-serve",
     title: "把 Agent 暴露为 MCP 服务",
-    hint: "按注册表的固定版本启动 streamable-http 端点。",
+    hint: "先导出 ADK_MCP_TOKEN，再按注册表的固定版本启动 streamable-http 端点。",
     to: "/registry",
     command:
-      "adk-agent serve --agent-ref <tenant>/<id>@<version> --transport streamable-http --host 127.0.0.1 --port 8766 --auth-token-env ADK_MCP_TOKEN",
+      "ADK_MCP_TOKEN=your-token adk-agent serve --agent-ref <tenant>/<id>@<version> --transport streamable-http --host 127.0.0.1 --port 8766 --auth-token-env ADK_MCP_TOKEN",
   },
   {
     key: "a2a",
-    title: "接入 A2A 对端",
-    hint: "先登记对端身份并授权，再用 serve-a2a 发布端点。",
+    title: "登记 A2A 对端",
+    hint: "登记对端身份，再用 serve-a2a 发布端点。",
     to: "/peers",
-    command:
-      "adk-agent peers register --id <peer> --tenant <tenant> --kind service",
+    command: "adk-agent peers register --id <peer> --tenant <tenant> --kind service",
+  },
+  {
+    key: "a2a-grant",
+    title: "授权 A2A 对端",
+    hint: "给对端授予读取或调用指定 Agent 的权限。",
+    to: "/peers",
+    command: "adk-agent peers grant --id <peer> --agent <agent-id> --actions read,invoke",
   },
 ];
 
@@ -78,13 +84,21 @@ const canConnectors = computed(() => auth.hasCapability("connectors.read"));
 const canPeers = computed(() => auth.hasCapability("peers.read"));
 const denied = computed(() => !canTools.value && !canConnectors.value && !canPeers.value);
 
-const mcpTools = computed(() => tools.value.filter((tool) => tool.source === "mcp"));
-const filteredTools = computed(() =>
-  filter.value === "all"
-    ? tools.value
-    : tools.value.filter((tool) => tool.source === filter.value),
-);
 const mcpConnectors = computed(() => connectors.value.filter((item) => item.kind === "mcp"));
+const mcpConnectorIds = computed(
+  () => new Set(mcpConnectors.value.map((connector) => connector.connector_id)),
+);
+
+function isMcpTool(tool: ToolEntry): boolean {
+  return tool.source === "mcp" || mcpConnectorIds.value.has(tool.tool_id);
+}
+
+const mcpTools = computed(() => tools.value.filter(isMcpTool));
+const filteredTools = computed(() => {
+  if (filter.value === "all") return tools.value;
+  if (filter.value === "mcp") return tools.value.filter(isMcpTool);
+  return tools.value.filter((tool) => tool.source === filter.value);
+});
 
 function joinClasses(classes: string[]): string {
   return classes.join(", ") || "-";
