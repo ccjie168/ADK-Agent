@@ -14,6 +14,7 @@ VIEWS = (
     "ChatView.vue",
     "ConnectorsView.vue",
     "CredentialsView.vue",
+    "EcosystemView.vue",
     "GrantsView.vue",
     "ImportView.vue",
     "ModelView.vue",

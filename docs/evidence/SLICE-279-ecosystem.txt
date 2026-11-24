@@ -1,0 +1,103 @@
+SLICE-279 生态展示页 — 证据
+==========================
+
+日期: 2026-11-25
+分支: slice-279-ecosystem
+依据: ADR-0041 阶段 4（诉求 4）
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_vue_ecosystem.py -q
+    7 failed
+
+首轮 7 条全红；截图自查后补的第 8 条（失败源显示「—」）在基线上同样会红。
+
+失败项：没有 `/ecosystem` 路由与视图、没有导航入口、没有三种数据源与能力门控、
+没有来源筛选、没有接入命令与复制、没有空态。
+
+## 实现（后绿）
+
+- `web/src/views/EcosystemView.vue`（`/ecosystem`，导航「开发」组，内联 `network` 图标）：
+  - 工具目录读 `/api/tools`（`tools.read`）、连接器读 `/api/connectors`（`connectors.read`）、
+    A2A 对端读 `/api/peers`（`peers.read`）；只有三项都无权时整页「无访问权限」。
+  - 计数卡：工具、MCP 工具、连接器、A2A 对端；无权项显示「—」。
+  - 接入引导四张卡：登记 `--kind mcp` 连接器、`serve --transport streamable-http`、
+    登记 A2A 对端、`peers grant` 授权，
+    `peers register`；命令可复制（`navigator.clipboard`，失败给固定提示）并链接到对应页面。
+  - 工具表按来源筛选（全部 / MCP / 连接器 / 函数 / OpenAPI）；空态用 `EmptyState`。
+  - 连接器表标出 MCP 服务器数量；对端表显示授权数。
+- `web/src/router/index.ts`、`web/src/App.vue`、`NavIcon.vue`、`style.css` 增加路由、入口、
+  图标与引导/筛选样式。
+- 已把它纳入共享的页头测试与外壳导航测试。
+
+    python -m pytest tests/test_console_vue_ecosystem.py tests/test_console_vue_pages.py \
+        tests/test_console_vue_shell.py -q
+    22 passed in 0.04s
+
+    cd web && npm run build
+    ✓ built in 1.13s
+    assets/index-DsaPtawk.css 15.40 kB / assets/index-CbR77yCC.js 184.96 kB
+
+## 独立验证反馈修正
+
+首轮验证判 PASS，提出 2 个 S 与 2 个 N，已处理：
+
+1. **S-1**：`kind=mcp` 连接器产出的工具在 `/api/tools` 里 `source` 是 `connector`，原来的
+   「MCP 工具」卡与筛选只认 `source=mcp`，登记后仍显示 0。现在按「`source=mcp` 或
+   `tool_id` 属于某个 `kind=mcp` 连接器」统计与筛选。
+2. **S-2**：MCP 服务片段没有先设置令牌环境变量，原样复制会启动失败。现在命令带
+   `ADK_MCP_TOKEN=your-token` 前缀，hint 说明先导出；A2A 拆成「登记」与「授权」两张卡，
+   补上 `peers grant` 命令。
+3. **N-1**：测试补断言 `canTools && toolsReady` 等绑定与 `mcpConnectorIds`/`isMcpTool`。
+4. **N-2**：样式新增块前的多余空行已清理。
+
+## 第二轮验证反馈修正
+
+第二轮验证判 PASS，提出 2 个边界 B 与 2 个 N，已处理：
+
+1. **B-1（id 碰撞）**：`isMcpTool` 现在要求 `source === "connector"` 才按连接器 id 匹配，
+   并且只收集 `enabled` 的 `kind=mcp` 连接器；静态 function 工具与已禁用连接器不会再被误算。
+2. **B-2（无 connectors.read 的角色）**：MCP 计数卡要求 `toolsReady && connectorsReady`，
+   拿不到连接器时显示「—」，不再把「看不见连接器」显示成 0。
+3. **N-1**：spec 与证据里的「三张接入引导」改为四张。
+4. **N-2**：命令补上存储参数——连接器 `--connectors-dir ./connectors`，对端
+   `--peer-dir ./peers`，复制即可运行。
+5. **N-3**：S-1 的行为仍以源码断言锁定（`source === "connector" && mcpConnectorIds...`）；
+   实机没有连接器 store，无法走完整的「登记 mcp 连接器 → 工具变 MCP」链路，作为已知证据缺口记下。
+
+## 第三轮验证反馈修正
+
+第三轮验证判 PASS，提出 1 个边界 B 与 5 个 N，已处理：
+
+1. **B-3**：连接器表列出全部连接器，但摘要用「已启用 MCP 连接器」数，禁用后会出现表格有行、
+   摘要为 0。现在摘要用全部 `kind=mcp` 连接器数并注明「含已禁用」。
+2. **N-4**：测试补断言 MCP 卡绑定 `canTools && toolsReady && connectorsReady`、摘要用
+   `mcpServerCount`。
+3. **N-5**：无连接器数据或无权读取时，筛选区上方显示「MCP 筛选只覆盖静态目录条目」。
+4. **N-6**：实机段的计数改为现在的真实值（MCP 卡也是「—」），已随截图更新。
+5. **N-7**：spec 的「三张接入引导」改为四张；证据的四张清单补上 `peers grant`。
+6. **N-8（记录）**：手写静态目录若存在 `source="connector"` 且 id 恰好等于某个已启用 MCP
+   连接器，会被算作 MCP；store 侧 id 全局唯一，风险低，记录不修。
+
+## 实机验证（8025，`--ui vue`，带工具目录）
+
+    GET /api/tools -> 2 条（ping 为 function，crm.mcp 为 mcp）
+
+headless Edge 截图：
+
+- 计数卡：工具 2、MCP 工具「—」（连接器不可读，无法判断派生工具）、连接器「—」、A2A 对端「—」。
+- 未配置连接器和 peers store 时顶部显示「连接器、A2A 对端不可用」，两张对应计数卡显示「—」、
+对应表格隐藏，不显示伪造的 0 成功。
+- 四张接入引导卡（含 `peers grant`）与可复制命令、工具来源筛选、工具表均正常。
+- 截图：`docs/evidence/ui/SLICE-279-ecosystem.png`。
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (2.5s)
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2220 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2220 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）

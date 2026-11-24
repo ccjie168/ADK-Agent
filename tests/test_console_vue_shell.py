@@ -56,6 +56,7 @@ def test_shell_navigation_covers_every_panel():
         "/rag",
         "/quota",
         "/model",
+        "/ecosystem",
         "/import",
         "/audit",
         "/roles",

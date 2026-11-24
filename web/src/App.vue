@@ -144,6 +144,9 @@ onMounted(async () => {
           <router-link to="/model" class="nav-item" @click="closeNav">
             <NavIcon name="model" /><span>模型</span>
           </router-link>
+          <router-link to="/ecosystem" class="nav-item" @click="closeNav">
+            <NavIcon name="network" /><span>生态</span>
+          </router-link>
           <router-link to="/import" class="nav-item" @click="closeNav">
             <NavIcon name="import" /><span>导入</span>
           </router-link>
