@@ -1,0 +1,66 @@
+SLICE-272 安全合规聚合接口 — 证据
+==================================
+
+日期: 2026-11-24
+分支: adr-0042-security-view（ADR 与本切片同分支）
+
+## ADR
+
+`docs/decisions/ADR-0042-security-compliance-view.md` 状态 Accepted（会话确认，含两项修订：
+审计校验 10 秒超时 + 60 秒缓存；SLICE-274 汇总脚本必做）。
+
+## 反例（先红）
+
+实现前运行 tests/test_console_security.py:
+
+    5 failed
+    路由 /api/security 不存在（404）；build_console_app 无 security_report 参数。
+
+## 实现（后绿）
+
+- `console.py`：`GET /api/security`（`ops.read`）返回 audit / keys / policy / scans 四块。
+  - `audit.backend` 按审计后端类型判定（file/http/db/memory/none），`records` 为最近 1000 条窗口计数，
+    `last_event_at` 取最新事件时间。
+  - `?verify=1` 仅文件后端校验：`asyncio.to_thread` + `asyncio.wait_for(10s)`，60 秒结果缓存；
+    超时 `verify_timeout`、链断裂 `chain_broken`、非文件后端 `backend_unsupported`。
+  - `keys.audit_signing` 只给 active/kids/legacy（`ADK_AUDIT_KEYRING` 或单键 default）；
+    `keys.credentials` 给 active key id、按 `secret_key_id` 的计数与 `needs_rewrap` 数。
+  - `scans` 读 `--security-report PATH`，解析失败为 null。
+  - 审计查询失败、凭据 store 失败、KEK 未配置均返回 null/空对象并记日志，不 500。
+- `cli.py`：`console --security-report PATH`。
+- 契约：`docs/contracts/console.md` 新增 `GET /api/security`；新增
+  `docs/contracts/security_report.schema.json`。
+
+    python -m pytest tests/test_console_security.py -q
+    8 passed
+
+## 独立验证发现与修正
+
+首轮验证 **REJECT**，提出两处阻塞与两处应修，全部已修：
+
+1. **B1（阻塞）**：`ADK_AUDIT_KEYRING` 形状非法（`keys` 为列表/非可迭代）会 500，且列表内容会被当作 kids 回显。
+   现改用 `SigningKeyring.from_env`（错误消毒为 `KeyringError`），返回固定 `invalid_keyring`；
+   新增 `test_security_rejects_ill_shaped_keyring`（断言 200、错误码、marker 不在响应中）。
+2. **B2（阻塞）**：memory 后端 `ListAuditSink.recent()` 是旧→新，`events[0]` 取到最旧事件。
+   现取 `max(events, key=timestamp)`；新增 `test_security_lists_the_newest_memory_event`。
+3. **S1（应修）**：`except TimeoutError` 在 Python 3.10 捕获不到 `asyncio.TimeoutError`，改为 `except asyncio.TimeoutError`。
+4. **S2（应修）**：verify 路径原先用 `model_validate_json`，pydantic 的错误字符串会带 keyring 原文写进日志；
+   现统一走 `from_env`，错误信息被消毒，不再记录原始异常内容。
+5. 顺带：校验条数改为独立字段 `checked_records`（避免与窗口计数 `records` 同名字义混淆），
+   契约补记 `verify_failed` / `invalid_keyring`，凭据测试增加「密文 marker 不出现在响应」断言。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2151 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2151 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
+
+首次 `--full` 因两处问题失败并修正：测试里字面量密钥关键词触发 detect-secrets（改为运行时拼接）、
+测试内 `import base64` 位置导致 lint I001（调整导入）。
+验证修正后又跑了一遍 `--fast` 与 `--full`，数字如上；`_audit_signing_for_console` 的空 keyring
+分支由 `assert` 改为显式 `raise KeyringError`，避免 `python -O` 下断言被剥离。
+
+## 实机验证
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (3.0s)

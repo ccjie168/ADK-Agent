@@ -11,6 +11,7 @@ import asyncio
 import inspect
 import json
 import logging
+import os
 import re
 import uuid
 from collections.abc import AsyncGenerator, Iterable
@@ -2962,6 +2963,7 @@ def build_console_app(
     model_config_store: ModelConfigStore | None = None,
     role_store: RoleStore | None = None,
     user_binding_store: UserBindingStore | None = None,
+    security_report: str | None = None,
     ui: str = "legacy",
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
@@ -3492,6 +3494,186 @@ def build_console_app(
             "user.unbind", target=f"{tenant}/{subject}", caller=caller, request=request
         )
         return {"removed": subject}
+
+    def _audit_backend_name() -> str:
+        from .audit.http_sink import HttpAuditQuery
+        from .audit.postgres import PostgresAuditQuery
+        from .audit.query import FileAuditQuery
+
+        if audit_query is not None:
+            if isinstance(audit_query, FileAuditQuery):
+                return "file"
+            if isinstance(audit_query, HttpAuditQuery):
+                return "http"
+            if isinstance(audit_query, PostgresAuditQuery):
+                return "db"
+            return "unknown"
+        if isinstance(audit, ListAuditSink):
+            return "memory"
+        return "file" if getattr(audit, "path", None) is not None else "none"
+
+    def _audit_file_path() -> Path | None:
+        from .audit.query import FileAuditQuery
+
+        if isinstance(audit_query, FileAuditQuery):
+            return audit_query.path
+        path = getattr(audit, "path", None)
+        return Path(path) if path is not None else None
+
+    def _audit_signing_summary() -> dict[str, Any]:
+        from .audit.keyring import KeyringError, SigningKeyring
+
+        raw = os.environ.get("ADK_AUDIT_KEYRING")
+        if raw:
+            try:
+                keyring = SigningKeyring.from_env(raw)
+            except KeyringError:
+                # Unparseable or ill-shaped keyrings report a fixed code; the
+                # parsed values must never reach the response or the logs.
+                return {"active": None, "kids": [], "legacy": False, "error": "invalid_keyring"}
+            if keyring is None:  # pragma: no cover - raw is truthy here
+                return {"active": None, "kids": [], "legacy": False}
+            return {
+                "active": keyring.active,
+                "kids": sorted(keyring.keys),
+                "legacy": keyring.legacy is not None,
+            }
+        if os.environ.get("ADK_AUDIT_SIGNING_KEY"):
+            return {"active": "default", "kids": ["default"], "legacy": False}
+        return {"active": None, "kids": [], "legacy": False}
+
+    async def _credential_key_summary(caller: Principal) -> dict[str, Any]:
+        active_key_id: str | None = None
+        try:
+            backend = load_key_backend()
+            active_key_id = backend.current_key_id() if backend is not None else None
+        except Exception:  # noqa: BLE001 - the summary must never fail the request
+            logger.exception("key backend unavailable for the security summary")
+        by_key_id: dict[str, int] = {}
+        needs_rewrap = 0
+        if credentials is not None:
+            try:
+                bindings = await credentials.list(caller.tenant)
+            except CredentialStoreError:
+                logger.exception("credential list failed for the security summary")
+                bindings = []
+            for binding in bindings:
+                key = binding.secret_key_id or "unwrapped"
+                by_key_id[key] = by_key_id.get(key, 0) + 1
+                if (
+                    binding.wrapped_secret is not None
+                    and active_key_id is not None
+                    and binding.secret_key_id != active_key_id
+                ):
+                    needs_rewrap += 1
+        return {
+            "active_key_id": active_key_id,
+            "by_key_id": by_key_id,
+            "needs_rewrap": needs_rewrap,
+        }
+
+    _verify_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+    async def _verify_audit_chain() -> dict[str, Any]:
+        import time
+
+        path = _audit_file_path()
+        if path is None:
+            return {"verified": None, "error": "backend_unsupported"}
+        key = str(path)
+        now = time.monotonic()
+        cached = _verify_cache.get(key)
+        if cached is not None and now - cached[0] < 60:
+            return cached[1]
+        from .audit import AuditChainBroken, AuditSignatureInvalid
+        from .audit.keyring import KeyringError
+        from .audit.pipeline import verify_audit_file
+
+        try:
+            _signing_key, keyring = _audit_signing_for_console()
+        except KeyringError:
+            return {"verified": None, "error": "invalid_keyring"}
+        try:
+            count = await asyncio.wait_for(
+                asyncio.to_thread(verify_audit_file, path, keyring=keyring), timeout=10
+            )
+            result: dict[str, Any] = {"verified": True, "checked_records": count}
+        except asyncio.TimeoutError:
+            result = {"verified": None, "error": "verify_timeout"}
+        except (AuditChainBroken, AuditSignatureInvalid):
+            result = {"verified": False, "error": "chain_broken"}
+        except Exception:  # noqa: BLE001 - report a fixed code, never the contents
+            logger.exception("audit verification failed")
+            result = {"verified": False, "error": "verify_failed"}
+        _verify_cache[key] = (now, result)
+        return result
+
+    def _audit_signing_for_console() -> tuple[str | None, Any]:
+        raw = os.environ.get("ADK_AUDIT_KEYRING")
+        if raw:
+            from .audit.keyring import KeyringError, SigningKeyring
+
+            keyring = SigningKeyring.from_env(raw)
+            if keyring is None:  # pragma: no cover - raw is truthy here
+                raise KeyringError("ADK_AUDIT_KEYRING is empty")
+            return keyring.keys[keyring.active], keyring
+        return os.environ.get("ADK_AUDIT_SIGNING_KEY"), None
+
+    def _scan_summary() -> dict[str, Any] | None:
+        if security_report is None:
+            return None
+        try:
+            payload = json.loads(Path(security_report).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        return {
+            "generated_at": payload.get("generated_at"),
+            "codeql": payload.get("codeql") if isinstance(payload.get("codeql"), dict) else None,
+            "dependencies": (
+                payload.get("dependencies")
+                if isinstance(payload.get("dependencies"), dict)
+                else None
+            ),
+        }
+
+    @app.get("/api/security")
+    async def security_summary(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "ops.read")
+        if denied is not None:
+            return denied
+        try:
+            events = await _query_events(request, limit=1000)
+        except Exception:  # noqa: BLE001
+            logger.exception("audit query failed for the security summary")
+            events = []
+        audit_block: dict[str, Any] = {
+            "backend": _audit_backend_name(),
+            "records": len(events),
+            "last_event_at": (
+                max(events, key=lambda event: event.timestamp).timestamp.isoformat()
+                if events
+                else None
+            ),
+            "verified": None,
+        }
+        if request.query_params.get("verify") == "1":
+            audit_block.update(await _verify_audit_chain())
+        policy_block = {
+            "version": policy_engine.policy.version if policy_engine is not None else None,
+            "bindings": len(policy_engine.policy.bindings) if policy_engine is not None else None,
+        }
+        return {
+            "audit": audit_block,
+            "keys": {
+                "audit_signing": _audit_signing_summary(),
+                "credentials": await _credential_key_summary(caller),
+            },
+            "policy": policy_block,
+            "scans": _scan_summary(),
+        }
 
     @app.get("/api/overview")
     async def overview(request: Request) -> Any:
@@ -5759,6 +5941,7 @@ def run_console(
     model_config_store: ModelConfigStore | None = None,
     role_store: RoleStore | None = None,
     user_binding_store: UserBindingStore | None = None,
+    security_report: str | None = None,
     ui: str = "legacy",
 ) -> None:
     """Serve the console (blocking)."""
@@ -5804,6 +5987,7 @@ def run_console(
         model_config_store=model_config_store,
         role_store=role_store,
         user_binding_store=user_binding_store,
+        security_report=security_report,
         ui=ui,
     )
 
