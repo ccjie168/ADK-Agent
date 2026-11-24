@@ -42,6 +42,8 @@ def test_ecosystem_filters_tools_by_source():
     for source in ('"mcp"', '"connector"', '"function"', '"openapi"'):
         assert source in src
     assert "filteredTools" in src
+    assert "mcpServerCount" in src
+    assert "MCP 筛选只覆盖静态目录条目" in src
     assert "mcpConnectorIds" in src
     assert "isMcpTool" in src
     assert 'item.kind === "mcp" && item.enabled' in src
@@ -80,7 +82,7 @@ def test_ecosystem_shows_dashes_when_a_source_fails():
 
     for ready in ("toolsReady", "connectorsReady", "peersReady"):
         assert ready in src
-    assert "canTools && toolsReady" in src
+    assert "canTools && toolsReady && connectorsReady" in src
     assert "canConnectors && connectorsReady" in src
     assert "canPeers && peersReady" in src
     assert '"—"' in src

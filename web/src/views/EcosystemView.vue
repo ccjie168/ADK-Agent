@@ -87,6 +87,9 @@ const denied = computed(() => !canTools.value && !canConnectors.value && !canPee
 const mcpConnectors = computed(
   () => connectors.value.filter((item) => item.kind === "mcp" && item.enabled),
 );
+const mcpServerCount = computed(
+  () => connectors.value.filter((item) => item.kind === "mcp").length,
+);
 const mcpConnectorIds = computed(
   () => new Set(mcpConnectors.value.map((connector) => connector.connector_id)),
 );
@@ -203,6 +206,9 @@ onMounted(async () => {
 
       <section v-if="canTools && toolsReady" class="recent-activity">
         <h2>工具目录</h2>
+        <p v-if="!connectorsReady" class="muted">
+          连接器数据不可用或无权读取，MCP 筛选只覆盖静态目录条目。
+        </p>
         <div class="filter-row">
           <button
             v-for="option in FILTERS"
@@ -258,7 +264,7 @@ onMounted(async () => {
           </tbody>
         </table>
         <EmptyState v-else>暂无连接器</EmptyState>
-        <p class="muted">其中 MCP 服务器 {{ mcpConnectors.length }} 个。</p>
+        <p class="muted">其中 MCP 服务器 {{ mcpServerCount }} 个（含已禁用）。</p>
       </section>
 
       <section v-if="canPeers && peersReady" class="recent-activity">

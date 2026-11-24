@@ -27,7 +27,7 @@
 - [x] 三项数据源与对应能力 -> `test_ecosystem_reads_the_three_sources`
 - [x] 只有三项都无权才整页拒绝 -> `test_ecosystem_requires_one_read_capability`
 - [x] 工具可按来源过滤；MCP 筛选同时包含 `kind=mcp` 连接器产出的工具 -> `test_ecosystem_filters_tools_by_source`
-- [x] 三张接入引导包含真实命令 -> `test_ecosystem_ships_onboarding_commands`
+- [x] 四张接入引导包含真实命令 -> `test_ecosystem_ships_onboarding_commands`
 - [x] 命令可复制 -> `test_ecosystem_copies_commands`
 - [x] 空态与无 `v-html` -> `test_ecosystem_uses_empty_states_and_no_raw_html`
 - [x] 数据源失败时计数显示「—」、区块隐藏 -> `test_ecosystem_shows_dashes_when_a_source_fails`
