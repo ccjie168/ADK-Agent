@@ -1,0 +1,60 @@
+SLICE-275 视觉基座：设计令牌、应用外壳与分组导航 — 证据
+======================================================
+
+日期: 2026-11-24
+分支: slice-275-visual-shell
+依据: ADR-0041；用户 2026-11-24 要求参考 Cloudflare 仪表盘的视觉与页面组织
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_vue_shell.py -q
+    7 failed, 1 passed
+
+失败项：令牌文件不存在；App.vue 是 9 个平铺链接、无 ready 门控、无租户/主体、无移动开关；
+style.css 不含 `var(--canvas)`、仍写死 `#0f766e`；NavIcon 不存在。
+`test_shell_has_no_raw_html` 在基线上本来成立，作为守卫保留（在 spec 反例里注明）。
+
+## 实现（后绿）
+
+- `web/src/styles/tokens.css`：画布/卡片/边框/文字/主色/状态色、4–48px 间距、字号、圆角、
+  阴影、顶栏 56px、侧栏 240px、内容宽 1400px；旧变量作为别名保留，避免一次性改所有视图。
+  主色 `#c2410c`（白字对比度 5.18:1，过 AA）。
+- `web/src/components/NavIcon.vue`：26 个内联 SVG 图标，无新依赖。
+- `web/src/App.vue`：顶栏（品牌、租户、主体、退出）、五组侧栏（概览/运行/治理/开发/设置）、
+  28 个面板入口（此前只有 9 个能点）、窄屏抽屉与遮罩、登录页。
+- `web/src/stores/auth.ts`：新增 `ready`；`init` 在 `finally` 里置位，登录/登出路径同样置位。
+  `RouterView` 在 `ready` 之后才挂载，修掉「能力未到、视图先挂载、页面空白」的竞态。
+- `web/src/style.css`：删除旧的 `:root`，追加外壳与控件基线（按钮、输入、表格、卡片、
+  焦点环、`@media (max-width: 960px)`），全部走令牌。
+- `web/src/main.ts`：先加载令牌再加载主样式。
+
+    python -m pytest tests/test_console_vue_shell.py tests/test_console_vue_roles.py tests/test_console_vue_security.py -q
+    20 passed in 1.81s
+
+    cd web && npm run build
+    ✓ built in 838ms
+    assets/index-B4EH3Q_6.css 11.66 kB / assets/index-CUA7AcZp.js 170.72 kB
+
+## 实机验证（8022，`--ui vue`）
+
+重启控制台以读取新 `dist`，用 headless Edge 截图：
+
+- 总览：四张指标卡正常渲染（此前的挂载竞态已消失）。
+- 安全：四张卡片、层级与间距统一。
+- 截图：`docs/evidence/ui/SLICE-275-overview.png`、`docs/evidence/ui/SLICE-275-security.png`。
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (2.5s)
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2176 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2176 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
+
+首次 `--fast` 有两处既有用例失败：`test_console_vue_roles.py::test_router_has_roles_and_users`
+与 `test_console_vue_security.py::test_security_route_is_registered` 断言 App.vue 里存在
+`to="/roles"` 等字面量。按硬规则不改断言，改把导航从数据驱动改为显式 `router-link` 标记，
+既保留分组，也满足既有检查。

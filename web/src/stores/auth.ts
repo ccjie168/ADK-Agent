@@ -26,6 +26,7 @@ export const useAuthStore = defineStore("auth", {
     principal: null as Me | null,
     capabilities: [] as string[],
     loginError: "",
+    ready: false,
   }),
   getters: {
     isAuthenticated: (state) => Boolean(state.token),
@@ -50,15 +51,21 @@ export const useAuthStore = defineStore("auth", {
       }
     },
     async init() {
-      await this.loadConfig();
-      if (this.token) await this.fetchMe();
+      try {
+        await this.loadConfig();
+        if (this.token) await this.fetchMe();
+      } finally {
+        this.ready = true;
+      }
     },
     setTokenFromInput(token: string) {
       const trimmed = token.trim();
       if (!trimmed) return;
       setToken(trimmed);
       this.token = trimmed;
-      return this.fetchMe();
+      return this.fetchMe().finally(() => {
+        this.ready = true;
+      });
     },
     async startLogin() {
       const oidc = this.oidc;
@@ -108,6 +115,7 @@ export const useAuthStore = defineStore("auth", {
       setToken(data.access_token);
       this.token = data.access_token;
       await this.fetchMe();
+      this.ready = true;
       return true;
     },
     logout() {
@@ -115,6 +123,7 @@ export const useAuthStore = defineStore("auth", {
       this.token = "";
       this.principal = null;
       this.capabilities = [];
+      this.ready = true;
     },
   },
 });
