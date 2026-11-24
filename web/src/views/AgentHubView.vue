@@ -130,7 +130,7 @@ onMounted(async () => {
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>
-      <div v-if="isAdmin" class="row">
+      <div v-if="isAdmin" class="row toolbar">
         <input
           v-model="tenantDraft"
           class="grow"

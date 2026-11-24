@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface PeerGrant {
   agent_id: string;
@@ -158,41 +159,41 @@ onMounted(async () => {
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>对端 ID</th>
-            <th>租户</th>
-            <th>主体</th>
-            <th>类型</th>
-            <th>启用</th>
-            <th>授权</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="entry in peers" :key="entry.peer.peer_id">
-            <td>{{ entry.peer.peer_id }}</td>
-            <td>{{ entry.peer.tenant }}</td>
-            <td>{{ entry.peer.subject ?? "" }}</td>
-            <td>{{ entry.peer.kind }}</td>
-            <td>{{ entry.peer.enabled ? "yes" : "no" }}</td>
-            <td>{{ grantsLabel(entry.grants) }}</td>
-            <td>
-              <button
-                v-if="canManage && entry.peer.enabled"
-                class="link"
-                @click="disablePeer(entry)"
-              >
-                禁用
-              </button>
-            </td>
-          </tr>
-          <tr v-if="peers.length === 0">
-            <td colspan="7" class="placeholder">暂无对端</td>
-          </tr>
-        </tbody>
-      </table>
+      <EmptyState v-if="peers.length === 0">暂无对端</EmptyState>
+      <div v-else class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>对端 ID</th>
+              <th>租户</th>
+              <th>主体</th>
+              <th>类型</th>
+              <th>启用</th>
+              <th>授权</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="entry in peers" :key="entry.peer.peer_id">
+              <td>{{ entry.peer.peer_id }}</td>
+              <td>{{ entry.peer.tenant }}</td>
+              <td>{{ entry.peer.subject ?? "" }}</td>
+              <td>{{ entry.peer.kind }}</td>
+              <td>{{ entry.peer.enabled ? "yes" : "no" }}</td>
+              <td>{{ grantsLabel(entry.grants) }}</td>
+              <td>
+                <button
+                  v-if="canManage && entry.peer.enabled"
+                  class="link"
+                  @click="disablePeer(entry)"
+                >
+                  禁用
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <template v-if="canManage">
         <h2>注册对端</h2>

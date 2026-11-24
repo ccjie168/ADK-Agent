@@ -175,7 +175,12 @@ onMounted(async () => {
             @keydown.space.prevent="openPanel(card.panel)"
           >
             <div class="stat-label">{{ card.label }}</div>
-            <div class="stat-value">{{ displayValue(card.value) }}</div>
+            <div
+              class="stat-value"
+              :class="{ 'stat-value-text': card.value === null }"
+            >
+              {{ displayValue(card.value) }}
+            </div>
           </div>
         </div>
         <EmptyState v-else>暂无可展示的指标</EmptyState>

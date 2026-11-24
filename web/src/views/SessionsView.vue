@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface AgentInfo {
   name: string;
@@ -67,23 +68,23 @@ onMounted(async () => {
         </select>
       </label>
       <p v-if="error" class="login-msg">{{ error }}</p>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>会话 ID</th>
-            <th>最后更新</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="session in sessions" :key="session.session_id">
-            <td>{{ session.session_id }}</td>
-            <td>{{ updatedLabel(session.last_update_time) }}</td>
-          </tr>
-          <tr v-if="sessions.length === 0">
-            <td colspan="2" class="placeholder">暂无会话</td>
-          </tr>
-        </tbody>
-      </table>
+      <EmptyState v-else-if="sessions.length === 0">暂无会话</EmptyState>
+      <div v-else class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>会话 ID</th>
+              <th>最后更新</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="session in sessions" :key="session.session_id">
+              <td>{{ session.session_id }}</td>
+              <td>{{ updatedLabel(session.last_update_time) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </template>
   </div>
 </template>

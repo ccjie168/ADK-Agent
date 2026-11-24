@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface AuditEvent {
   action: string;
@@ -41,11 +42,11 @@ onMounted(async () => {
     <PageHeader title="审计" description="共享审计事件" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
+    <EmptyState v-else-if="events.length === 0">暂无审计事件</EmptyState>
     <div v-else class="audit-log">
       <div v-for="(event, index) in events" :key="index" class="audit-line">
         {{ lineOf(event) }}
       </div>
-      <p v-if="events.length === 0" class="placeholder">暂无审计事件</p>
     </div>
   </div>
 </template>
