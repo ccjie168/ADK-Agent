@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface AuditEvent {
   action: string;
@@ -45,7 +46,7 @@ onMounted(async () => {
       <div v-for="(event, index) in events" :key="index" class="audit-line">
         {{ lineOf(event) }}
       </div>
-      <p v-if="events.length === 0" class="placeholder">暂无审计事件</p>
+      <EmptyState v-if="events.length === 0">暂无审计事件</EmptyState>
     </div>
   </div>
 </template>

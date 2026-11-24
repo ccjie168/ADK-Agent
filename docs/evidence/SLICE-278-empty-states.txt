@@ -1,0 +1,54 @@
+SLICE-278 空态、表格滚动与令牌化收口 — 证据
+==========================================
+
+日期: 2026-11-24
+分支: slice-278-empty-states
+依据: ADR-0041；Cloudflare 风格视觉改造
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_vue_polish.py -q
+    5 failed
+
+失败项：六个列表页没有 `EmptyState`；表格没有 `.table-wrap`；`.stat-value-text`、`.toolbar`
+不存在；徽章仍是旧绿 `#e6f5ea`。
+
+## 实现（后绿）
+
+- **空态**：运行、计划、工具三个 `v-else` 表格页改为「错误 → 空态 → 表格」三分支；
+  会话与对端在各自区块内加 `EmptyState`（会话与错误串联，对端与提示并列）；
+  审计页的「暂无审计事件」换成 `EmptyState`。
+- **窄屏表格**：上述五个表格页把 `<table>` 包进 `.table-wrap`（`overflow-x: auto`），
+  空行从 `<tbody>` 里移除。
+- **指标字号**：首页「未配置」用 `.stat-value-text`（16px、`--text-muted`），数字仍是 28px。
+- **表单工具条**：Agent 中心租户输入与按钮收进 `.toolbar`（最大 520px）。
+- **徽章令牌化**：`.badge` / `.expiry` 的成功、警告、危险配色改用
+  `--success-*`、`--warning-*`、`--danger-*` 与 `--card-muted`。
+
+    python -m pytest tests/test_console_vue_polish.py tests/test_console_vue_pages.py -q
+    8 passed in 0.32s
+
+    cd web && npm run build
+    ✓ built in 831ms
+    assets/index-Bi8WEzBS.css 14.31 kB / assets/index-B303ZS87.js 177.72 kB
+
+## 实机验证（8022，`--ui vue`）
+
+重启控制台以读取新 `dist`，headless Edge 截图：
+
+- 运行页：空态为虚线卡片中的「暂无运行」。
+- 首页：文本型指标「未配置」缩小为 16px 次要色，数字仍是 28px。
+- Agent 中心：租户输入与按钮变成紧凑工具条，不再拉满整行。
+- 截图：`docs/evidence/ui/SLICE-278-runs-empty.png`、`SLICE-278-home.png`、
+  `SLICE-278-agents-toolbar.png`。
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (2.5s)
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2197 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2197 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
