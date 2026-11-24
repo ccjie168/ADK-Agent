@@ -4,6 +4,7 @@ import { getJson } from "../api/client";
 import { apiFetch } from "../api/client";
 import { CAPABILITIES } from "../api/capabilities";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface RoleEntry {
   name: string;
@@ -82,7 +83,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>用户与角色</h1>
+    <PageHeader title="用户与角色" description="角色与能力定义" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>

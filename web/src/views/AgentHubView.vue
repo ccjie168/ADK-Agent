@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface ArtifactInfo {
   digest: string;
@@ -125,7 +126,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>Agent 中心</h1>
+    <PageHeader title="Agent 中心" description="注册、版本与生命周期" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>

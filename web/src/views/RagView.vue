@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface RagSummary {
   recent_retrievals: number;
@@ -30,7 +31,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>检索</h1>
+    <PageHeader title="检索" description="检索调用与返回统计" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <div v-else-if="rag" class="metric-grid">

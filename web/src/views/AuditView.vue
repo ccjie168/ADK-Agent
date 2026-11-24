@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface AuditEvent {
   action: string;
@@ -37,7 +38,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>审计</h1>
+    <PageHeader title="审计" description="共享审计事件" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <div v-else class="audit-log">

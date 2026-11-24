@@ -1,0 +1,68 @@
+SLICE-277 页头与信息层级收口 — 证据
+==================================
+
+日期: 2026-11-24
+分支: slice-277-page-headers
+依据: ADR-0041；Cloudflare 风格视觉改造
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_vue_pages.py -q
+    2 failed, 1 passed
+
+失败项：24 个视图（23 个业务页 + 占位页）各自渲染 `<h1>`、没有引用 `PageHeader`，也没有说明文字。
+`test_pages_keep_their_primary_actions` 在基线上本来成立，作为守卫保留（spec 反例已注明）。
+
+## 实现（后绿）
+
+用一次性脚本把每个视图的标题行替换为共享组件，并补 import：
+
+- 23 个业务视图：`<h1>标题</h1>` → `<PageHeader title="标题" description="…" />`，
+  说明覆盖 Agent 中心、审批、审计、安全、注册表、运行、计划、会话等页面。
+- `PlaceholderView.vue`：`:title="String(route.name ?? '面板')"`，不加强制说明。
+- `OverviewView.vue` 已在 SLICE-276 使用 `PageHeader`，本切片不动。
+
+只改模板与 import，不动脚本逻辑、接口、权限与既有测试。
+
+    python -m pytest tests/test_console_vue_pages.py tests/test_console_vue_home.py \
+        tests/test_console_vue_security.py tests/test_console_vue_roles.py \
+        tests/test_console_vue_overview.py -q
+    26 passed in 1.75s
+
+    cd web && npm run build
+    ✓ built in 886ms
+    assets/index-Cglz6ePU.css 13.98 kB / assets/index-COKS4kck.js 177.61 kB
+
+## 实机验证（8022，`--ui vue`）
+
+重启控制台以读取新 `dist`，headless Edge 截图：
+
+- 运行页：标题 + 「运行记录与事件」说明，表格样式不变。
+- Agent 中心：标题 + 「注册、版本与生命周期」说明，租户切换与指标卡仍在。
+- 截图：`docs/evidence/ui/SLICE-277-runs.png`、`docs/evidence/ui/SLICE-277-agents.png`。
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (2.5s)
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2192 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2192 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
+
+
+## 独立验证反馈修正
+
+首轮验证判 PASS，提出三处说明与页面内容不符（审计页无链校验、授权页无用量、语义页无能力映射），
+另三条措辞偏大，已一并改准：
+
+- 审计：「共享审计事件与链校验」→「共享审计事件」。
+- 授权：「工具临时授权与用量」→「工具临时授权与到期」。
+- 语义层：「术语表、概念与能力映射」→「术语表与概念」。
+- 运行：「运行记录与 trace」→「运行记录与事件」。
+- 检索：「检索调用与过滤」→「检索调用与返回统计」。
+- 注册表：「已发布版本与市场入口」→「已发布版本与远端目录」。
+
+同时把反例里的视图数从 23 更正为 24（23 个业务页 + 占位页）。

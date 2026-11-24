@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface AuditSigning {
   active: string | null;
@@ -102,7 +103,7 @@ onMounted(() => {
 
 <template>
   <div class="panel">
-    <h1>安全</h1>
+    <PageHeader title="安全" description="审计、密钥、策略与扫描" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="loading" class="placeholder">加载中…</p>
     <p v-else-if="loadError" class="placeholder">{{ loadError }}</p>
