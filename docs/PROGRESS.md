@@ -1,14 +1,14 @@
 # 项目进度登记
 
-更新日期: 2026-11-23
+更新日期: 2026-11-24
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `65f36c1` feat: switch tenants and open eval reports in the Agent hub (SLICE-271) (#302)
+最新提交: `c6abf26` feat: security compliance summary endpoint (ADR-0042, SLICE-272) (#304)
 状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）进行中（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）
 
 ## 本次暂停交接
 
-- 代码在 `master`，`52741ad`。SLICE-113 到 SLICE-216 已通过 PR #22 到 #188 合并，PR #162 到 #164 记录进度与验收，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
-- 最近门禁: `--full` 9 步全 PASS，1943 passed, 102 skipped（`docs/evidence/SLICE-216-prove-smoke.txt`；多出的 skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
+- 代码在 `master`，`c6abf26`。SLICE-113 到 SLICE-272 已合并，没有打开的 PR。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
+- 最近门禁: `--full` 9 步全 PASS，2151 passed, 105 skipped（PR #304 的第二轮独立验证亲自复跑，`docs/evidence/SLICE-272-security-api.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
 - 端到端验收: `python scripts/prove_it_works.py` 12 项真实进程/真实 Postgres 检查，2026-11-21 跑出 12/12 PASS（`docs/evidence/prove-2026-11-21.txt`），复盘见 `docs/reviews/retrospective-2026-11-21.md`；SLICE-204 到 216 之后于 2026-11-22 在 `3f7d325` 重跑仍是 12/12 PASS（`docs/evidence/prove-2026-11-22.txt`，含 `--smoke` 4/4）。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
@@ -504,10 +504,20 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         **ADR-0041 阶段 2（Agent 中心总览）收口**：注册数、lifecycle 分布、版本、评测、跨租户与远端目录都已在
         `/agents` 呈现。下一步为阶段 3（安全合规聚合视图，诉求 5）。
     - **阶段 3**：安全合规聚合视图（诉求 5）。审计完整性、扫描、密钥轮换、策略概览。
+      - SLICE-272（安全聚合接口）~~已合并 `c6abf26`~~：`GET /api/security`（`ops.read`）返回 audit/keys/policy/scans；
+        `?verify=1` 校验文件审计链（10 秒超时、60 秒缓存、固定错误码）；密钥只给 id 与计数。
+        首轮验证 REJECT 的 B1/B2 与 S1/S2 已修（`ae8449a`），第二轮独立验证 PASS 并亲自复跑 `--full`
+        （2151 passed / 105 skipped）。残余三项见「已知缺口」第 16 条。
+        下一步 SLICE-273（`SecurityView.vue`）与 SLICE-274（`scripts/security_report.py`）。
     - **阶段 4**：MCP/API 生态展示（诉求 4）。MCP server、A2A 对端、连接器、可复用工具 + 接入引导。
     - **阶段 5**：Agent 开发向导（诉求 3）。把 `compose` 模板做成多步 UI 向导。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
+
+16. 2026-11-24 新增要求与 SLICE-272 的验证残余：
+    - **安全聚合接口残余（应修，非本轮引入）**：`scans` 未按 `security_report.schema.json` 校验，缺字段时返回全 null 的对象而不是 `scans: null`；审计查询失败被折成 `records: 0` 且没有 `error` 字段，运维会误读为「审计为空」；OIDC 租户名含 `/` 时 `FileCredentialStore.list` 抛 `UnsafePath`（`ValueError`）导致 `/api/security` 500，`/api/credentials` 有同类系统性问题。三项随 SLICE-273 一并修，或单独开小切片。
+    - **控制台视觉改造（用户 2026-11-24 要求）**：参考 Cloudflare 仪表盘（灰底白卡、细边框、分组侧栏与页头、StatTile、页面级 tab、1400px 内容宽）。计划切片：设计令牌与外壳 → 通用组件与首页可配置卡片 → 逐页收口 → 可访问性与响应式。无新依赖，图标用内联 SVG；每片重建 `web/dist/`。
+    - **阶段 5 发布方式已拍板**：用户选择「页面一键发布」，控制台持专用 compose 签名密钥。开工前先写 ADR-0043 并确认；只允许 `single-llm` 模板，新增 `registry.compose` 能力与 `agent.compose` 审计（只记模板/版本/digest，不记指令原文）。
 
 MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
 
