@@ -1,0 +1,50 @@
+SLICE-267 注册表动作与清单注册 — 证据
+=====================================
+
+日期: 2026-11-24
+分支: slice-267-registry-actions
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_registry_actions.py:
+
+    2 failed
+    RegistryView.vue 无 `/api/registry/load|unload`、无 `registry.load`、无 `/api/import/agent`、
+    无 `registry.publish`、无 `JSON.parse`（原为只读卡片）。
+
+## 实现（后绿）
+
+- `web/src/views/RegistryView.vue`：
+  - 本地卡片加「加载」「卸载」，`registry.load` 显示；加载 `POST /api/registry/load {tenant,id,version}`，
+    409 提示「名称冲突：请先卸载同名 Agent」；卸载 `POST /api/registry/unload {name}`，
+    409 提示「无法卸载：该 Agent 由启动参数加载」。
+  - 底部「注册 Agent 清单」：JSON 文本域（`registry.publish` 显示）+ 注册按钮，本地 `JSON.parse` 预检后
+    `POST /api/import/agent`；成功显示 `id@version` 并刷新；400 →「清单无效」，403 →「租户不允许」。
+  - 统一 `post()` 包装把网络失败转成「请求失败: 网络错误」，不留未处理 Promise；结果消息在面板顶部。
+- 重建 `web/dist/`。后端无改动。
+
+    python -m pytest tests/test_console_vue_registry_actions.py -q
+    2 passed
+    cd web && npm run build   -> ✓ built in 754ms
+
+## 实机验证（8020 实例）
+
+见下「实机验证」段，三次动作都在真实进程上跑过：
+
+    --agents examples/multi_agent/agent.py（无 --agent-ref，便于按需加载）
+    POST /api/registry/load  {"tenant":"local","id":"bot_a","version":"1.0.0"}
+      -> {"name":"bot_a","version":"1.0.0","loaded":true}
+    GET  /api/agents         -> [math_agent, time_agent, bot_a]
+    POST /api/registry/unload {"name":"bot_a"}
+      -> {"name":"bot_a","unloaded":true}
+    GET  /api/agents         -> [math_agent, time_agent]
+
+    POST /api/import/agent   （bot_a 的 manifest 改成 0.9.0）
+      -> {"id":"bot_a","version":"0.9.0"}
+
+    启动参数加载的 agent（--agent-ref）卸载返回 409 not_unloadable，面板对此有专门文案。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2132 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
