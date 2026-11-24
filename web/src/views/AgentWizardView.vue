@@ -273,7 +273,8 @@ async function copyCommand() {
 
     <section v-show="step === 1" class="card">
       <h2>选择模板</h2>
-      <p v-if="!templates.length" class="muted">没有可用模板。</p>
+      <p v-if="!canPreview" class="form-error">需要 registry.publish 才能读取模板与预览。</p>
+      <p v-else-if="!templates.length" class="muted">没有可用模板。</p>
       <label v-for="template in templates" :key="template.template_id" class="wizard-option">
         <input v-model="selectedId" type="radio" :value="template.template_id" />
         <span>
