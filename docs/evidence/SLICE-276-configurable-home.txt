@@ -1,0 +1,53 @@
+SLICE-276 通用组件与可配置首页 — 证据
+====================================
+
+日期: 2026-11-24
+分支: slice-276-configurable-home
+依据: ADR-0041；用户 2026-11-24 的「页面配置」要求
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_vue_home.py -q
+    5 failed, 1 passed
+
+失败项：首页没有 PageHeader/EmptyState、没有 localStorage、没有快捷操作、没有最近活动。
+`test_home_has_no_raw_html` 在基线上本来成立，作为守卫保留（spec 反例已注明）。
+
+## 实现（后绿）
+
+- `web/src/components/PageHeader.vue`：标题、说明与操作区插槽。
+- `web/src/components/EmptyState.vue`：空态插槽。
+- `web/src/views/OverviewView.vue`：
+  - 页头 + 「自定义首页」。
+  - 快捷操作按能力过滤：注册 Agent（`registry.publish`）、加载版本（`registry.load`）、
+    处理审批（`approvals.read`）、安全视图（`ops.read`）。
+  - 指标卡继续读 `/api/overview`（`ops.read`），空时用 EmptyState。
+  - 最近活动读 `/api/audit?limit=6`（`audit.read`），无权限 / 失败 / 空分别有固定文案。
+  - 三个区块可显隐，保存到 `localStorage["adk.home.sections"]`；解析失败回落默认；
+    支持「恢复默认」与「取消」。
+- `web/src/style.css`：页头、快捷操作、自定义面板、空态的样式，全部走令牌。
+
+    python -m pytest tests/test_console_vue_home.py -q
+    6 passed in 0.03s
+
+    cd web && npm run build
+    ✓ built in 933ms
+    assets/index-Cglz6ePU.css 13.98 kB / assets/index-DjdoGxxO.js 176.64 kB
+
+## 实机验证（8022，`--ui vue`）
+
+重启控制台以读取新 `dist`，headless Edge 截图：
+
+- 页头、四张快捷操作、四张指标卡与「最近活动」空态均正常渲染。
+- 截图：`docs/evidence/ui/SLICE-276-home.png`。
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (2.5s)
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2185 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2185 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
