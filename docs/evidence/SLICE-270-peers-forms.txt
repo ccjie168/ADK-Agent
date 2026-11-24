@@ -1,0 +1,43 @@
+SLICE-270 对端与远端目录表单 — 证据
+===================================
+
+日期: 2026-11-24
+分支: slice-270-peers-forms
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_peer_forms.py:
+
+    3 failed
+    PeersView.vue 无 `/api/peers` 写控件、无 `/disable`、无 `/api/remote-agents`。
+
+## 实现（后绿）
+
+- `web/src/views/PeersView.vue`：`peers.manage` 下「注册对端」表单（`peer_id`/租户/主体/类型）与每行「禁用」；
+  「登记远端 Agent」表单（`remote_id`/租户/`peer_id`/`agent_card_url`/`credential_ref`/标签）。
+  错误码按服务端实际返回映射：
+  - 对端：`invalid_peer`、`peer_tenant_immutable`、`peer_store_unavailable`
+  - 远端：`invalid_remote_agent`、`peer_not_found`、`tenant_mismatch`、`secret_unavailable`、
+    `remote_agent_tenant_immutable`、`remote_agent_store_unavailable`、`card_unreachable`、
+    `card_unauthorized`、`card_too_large`、`card_invalid`、`card_name_mismatch`
+- 所有请求经 `post()` 包装（网络失败「请求失败: 网络错误」）；重建 `web/dist/`。后端无改动。
+
+    python -m pytest tests/test_console_vue_peer_forms.py -q
+    3 passed
+    cd web && npm run build   -> ✓ built in 886ms
+
+## 实机验证（8020，带 --peer-dir 重启）
+
+    POST /api/peers {"peer_id":"peer_b","tenant":"local","subject":"svc-b","kind":"service"}
+      -> 200，enabled=true
+    POST /api/peers/peer_b/disable -> enabled=false
+    POST /api/peers peer_c         -> 200
+    POST /api/remote-agents（卡片地址 http://127.0.0.1:9/... 不可达）
+      -> 502 {"error":"card_unreachable"}（失败路径按映射显示「无法访问对端卡片地址」）
+
+    首次尝试用了已禁用的 peer_b，服务端返回 404 peer_not_found —— 该码也已纳入映射。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2141 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
