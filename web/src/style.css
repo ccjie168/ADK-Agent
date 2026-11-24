@@ -400,3 +400,44 @@ button.link {
   align-items: baseline;
   margin-bottom: 0.25rem;
 }
+
+.security-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.security-card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.security-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+}
+
+.security-card dt {
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.security-card dd {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.security-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.security-keys {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: #475569;
+}

@@ -19,6 +19,7 @@ import RagView from "../views/RagView.vue";
 import RegistryView from "../views/RegistryView.vue";
 import RolesView from "../views/RolesView.vue";
 import RunsView from "../views/RunsView.vue";
+import SecurityView from "../views/SecurityView.vue";
 import SemanticsView from "../views/SemanticsView.vue";
 import SessionsView from "../views/SessionsView.vue";
 import ToolsView from "../views/ToolsView.vue";
@@ -44,6 +45,7 @@ const routes = [
   { path: "/quota", name: "quota", component: QuotaView },
   { path: "/rag", name: "rag", component: RagView },
   { path: "/runs", name: "runs", component: RunsView },
+  { path: "/security", name: "security", component: SecurityView },
   { path: "/semantics", name: "semantics", component: SemanticsView },
   { path: "/sessions", name: "sessions", component: SessionsView },
   { path: "/tools", name: "tools", component: ToolsView },

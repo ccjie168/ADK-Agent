@@ -3551,12 +3551,15 @@ def build_console_app(
             logger.exception("key backend unavailable for the security summary")
         by_key_id: dict[str, int] = {}
         needs_rewrap = 0
+        store_error: str | None = None
         if credentials is not None:
             try:
                 bindings = await credentials.list(caller.tenant)
-            except CredentialStoreError:
+            except (CredentialStoreError, ValueError):
+                # UnsafePath is a ValueError; a malformed tenant must not 500.
                 logger.exception("credential list failed for the security summary")
                 bindings = []
+                store_error = "credential_store_unavailable"
             for binding in bindings:
                 key = binding.secret_key_id or "unwrapped"
                 by_key_id[key] = by_key_id.get(key, 0) + 1
@@ -3566,11 +3569,14 @@ def build_console_app(
                     and binding.secret_key_id != active_key_id
                 ):
                     needs_rewrap += 1
-        return {
+        summary: dict[str, Any] = {
             "active_key_id": active_key_id,
             "by_key_id": by_key_id,
             "needs_rewrap": needs_rewrap,
         }
+        if store_error is not None:
+            summary["error"] = store_error
+        return summary
 
     _verify_cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
@@ -3626,16 +3632,29 @@ def build_console_app(
             payload = json.loads(Path(security_report).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
+        # Strict per docs/contracts/security_report.schema.json: anything off
+        # contract reads as "no report" rather than as a half-filled card.
         if not isinstance(payload, dict):
             return None
+        if set(payload) - {"generated_at", "codeql", "dependencies", "notes"}:
+            return None
+        generated_at = payload.get("generated_at")
+        codeql = payload.get("codeql")
+        dependencies = payload.get("dependencies")
+        if not isinstance(generated_at, str) or not generated_at.strip():
+            return None
+        if not isinstance(codeql, dict) or not isinstance(dependencies, dict):
+            return None
+        for block, field in ((codeql, "open"), (dependencies, "vulnerabilities")):
+            value = block.get(field)
+            if field in block and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+            ):
+                return None
         return {
-            "generated_at": payload.get("generated_at"),
-            "codeql": payload.get("codeql") if isinstance(payload.get("codeql"), dict) else None,
-            "dependencies": (
-                payload.get("dependencies")
-                if isinstance(payload.get("dependencies"), dict)
-                else None
-            ),
+            "generated_at": generated_at,
+            "codeql": codeql,
+            "dependencies": dependencies,
         }
 
     @app.get("/api/security")
@@ -3644,21 +3663,25 @@ def build_console_app(
         denied = await _forbidden_if_missing(caller, "ops.read")
         if denied is not None:
             return denied
+        audit_error: str | None = None
         try:
             events = await _query_events(request, limit=1000)
         except Exception:  # noqa: BLE001
             logger.exception("audit query failed for the security summary")
             events = []
+            audit_error = "audit_unavailable"
         audit_block: dict[str, Any] = {
             "backend": _audit_backend_name(),
-            "records": len(events),
+            "records": None if audit_error else len(events),
             "last_event_at": (
                 max(events, key=lambda event: event.timestamp).timestamp.isoformat()
-                if events
+                if events and not audit_error
                 else None
             ),
             "verified": None,
         }
+        if audit_error is not None:
+            audit_block["error"] = audit_error
         if request.query_params.get("verify") == "1":
             audit_block.update(await _verify_audit_chain())
         policy_block = {

@@ -1,0 +1,64 @@
+SLICE-273 安全合规面板与接口残余修复 — 证据
+==========================================
+
+日期: 2026-11-24
+分支: slice-273-security-panel
+依据: ADR-0042；SLICE-272 第二轮独立验证的 S1/S2/S3
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_security.py tests/test_console_vue_security.py -q
+    9 failed, 8 passed
+
+失败项：审计查询异常仍是 `records: 0`；扫描报告 `{"foo":"bar"}` 仍返回全 null 对象；
+凭据 store 抛 `ValueError` 仍 500；`SecurityView.vue` 不存在、`/security` 路由未注册。
+
+## 实现（后绿）
+
+后端 `src/adk_agent/console.py`：
+
+- `_scan_summary` 按 `security_report.schema.json` 严格校验：顶层只允许
+  `generated_at`/`codeql`/`dependencies`/`notes`，`generated_at` 必须是非空字符串，
+  `codeql`/`dependencies` 必须是对象，`open`/`vulnerabilities` 若出现必须是非负整数（拒绝布尔）；
+  任何不符返回 `null`。
+- 审计查询异常时 `audit.records = null`、`last_event_at = null`，并附固定码 `audit_unavailable`，
+  不再把后端故障显示成空审计。
+- 凭据 store 捕获 `(CredentialStoreError, ValueError)`（`UnsafePath` 是 `ValueError`），
+  失败时 `keys.credentials.error = "credential_store_unavailable"`，响应 200。
+
+前端：
+
+- `web/src/views/SecurityView.vue`：`ops.read` 门控；四张卡（审计/密钥/策略/扫描）；
+  「校验审计链」调 `GET /api/security?verify=1`；后端、校验结果与错误码均有固定文案；
+  `scans` 为 null 显示「未提供扫描报告」；无 `v-html`。
+- `/security` 路由与导航「安全」；`web/src/style.css` 增加 `.security-card` 等少量样式。
+- 重建 `web/dist/`（`index-PSk9Bgot.js` / `index-ZqPjCqKj.css`）。
+
+契约：`docs/contracts/console.md` 补 `audit_unavailable`、`credential_store_unavailable`
+与 scans 的严格校验语义。
+
+    python -m pytest tests/test_console_security.py tests/test_console_vue_security.py -q
+    17 passed in 2.80s
+
+    cd web && npm run build
+    ✓ built in 1.14s
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2160 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2160 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
+
+首次 `--fast` 因 `ruff format` 未跑失败，格式化后复跑全绿。
+
+## 实机验证（8021，`--ui vue`）
+
+    GET /                                  -> assets/index-PSk9Bgot.js、index-ZqPjCqKj.css
+    GET /api/security                      -> scans 读到 codeql.open=0、dependencies.vulnerabilities=2
+    GET /api/security?verify=1             -> audit.verified=true、checked_records=0
+    报告替换为 {"foo":"bar"} 后 GET /api/security -> scans = null
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (2.5s)

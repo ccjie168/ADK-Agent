@@ -191,3 +191,48 @@ def test_security_lists_the_newest_memory_event(tmp_path):
 
     assert body["audit"]["backend"] == "memory"
     assert body["audit"]["last_event_at"].startswith("2026-06-01")
+
+
+class _FailingAuditQuery:
+    async def events(self, **_kwargs):
+        raise RuntimeError("audit backend down")
+
+
+class _UnsafeCredentials:
+    async def list(self, _tenant):
+        raise ValueError("unsafe tenant path")
+
+
+def test_security_reports_audit_unavailable(tmp_path):
+    app = build_console_app(
+        _agents(),
+        auth_token="secret",
+        roles=["admin"],
+        audit_query=_FailingAuditQuery(),
+    )
+    with TestClient(app) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    audit = response.json()["audit"]
+    assert audit["records"] is None
+    assert audit["last_event_at"] is None
+    assert audit["error"] == "audit_unavailable"
+
+
+def test_security_ignores_an_off_schema_report(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(json.dumps({"foo": "bar"}), encoding="utf-8")
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"] is None
+
+
+def test_security_survives_an_unsafe_credential_tenant(tmp_path, monkeypatch):
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    with _client(tmp_path, credentials=_UnsafeCredentials()) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["keys"]["credentials"]["error"] == "credential_store_unavailable"
