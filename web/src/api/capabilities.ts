@@ -22,6 +22,7 @@ export const CAPABILITIES: readonly string[] = [
   "policy.write",
   "registry.load",
   "registry.publish",
+  "registry.compose",
   "registry.read",
   "roles.manage",
   "roles.read",

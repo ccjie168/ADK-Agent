@@ -1,0 +1,108 @@
+SLICE-280 控制台 compose 后端 — 证据
+====================================
+
+日期: 2026-11-25
+分支: slice-280-compose-backend
+依据: ADR-0043（Accepted，2026-11-24 / 2026-11-25 会话确认）
+契约: docs/contracts/console.md、cli.md、compose.md、audit_event.schema.json
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_compose.py tests/test_cli_console_compose.py -q
+    12 failed, 2 passed
+
+说明两点「先绿」：
+
+1. `test_compose_capability_reaches_publisher` 在首轮已绿，因为角色表在本轮先行改过。
+   把 `src/adk_agent/core/roles.py`、`tests/test_console_me.py`、`web/src/api/capabilities.ts`
+   临时 stash 后单独复跑，得到真实红灯：
+
+       python -m pytest tests/test_console_compose.py::test_compose_capability_reaches_publisher \
+           tests/test_console_me.py -q
+       1 failed, 8 passed
+       AssertionError: assert 'registry.compose' in {...}
+
+2. `test_console_rejects_partial_compose_keys` 首轮为绿纯属巧合：旧 argparse 不认识新参数，
+   以 unrecognized arguments 退出 2，与「只给一部分退出 2」的断言数值相同；实现后由显式检查
+   产生同一条退出码。
+
+其余 12 条的真实红灯是：三个端点不存在（404）、`build_console_app` 不认识四个密钥参数
+（TypeError）、发布路径没有审计与工件。
+
+## 实现（后绿）
+
+- `src/adk_agent/console.py`：
+  - `GET /api/compose/templates`（`registry.publish`）返回 `{"configured", "templates"}`；
+  - `POST /api/compose/preview`（`registry.publish`）用 `build_composed` 渲染，返回
+    `manifest`、`agent_py`、`artifact_digest`、`size`；
+  - `POST /api/compose`（`registry.compose`）用控制台密钥 `compose_and_publish` 签名、发布、入库，
+    写 `agent.compose` 审计（`template_id`、`agent_ref.digest`、`agent_ref.artifact_digest`，
+    不含指令原文）。
+  - 请求体字段逐项校验（未知字段也拒绝），非法输入 400 `compose_invalid`；非 admin 跨租户
+    403 `tenant_forbidden`；未配置密钥 404 `compose_not_configured`；未配置注册表
+    404 `registry_not_configured`；无工件目的地 503 `artifact_store_unavailable`；
+    同版本不同内容 409 `registry_conflict`。
+- `src/adk_agent/cli.py`：`--compose-key/--compose-key-id/--compose-builder-key/--compose-builder-key-id`，
+  四者 all-or-none；只给一部分退出 2，私钥不可读或非法退出 1（`load_private_key` 只从文件读）。
+- `src/adk_agent/core/roles.py`：新增 `registry.compose`，加入 `CAPABILITIES_ALL` 与
+  `CAPABILITIES_PUBLISHER`；`tests/test_console_me.py` 两处期望集合同步更新（已获用户单独同意）；
+  `web/src/api/capabilities.ts` 跟随（`test_capabilities_constant_matches_backend` 按集合比对）。
+- `src/adk_agent/core/audit.py`：新增可选 `template_id`（默认不序列化）；
+  `docs/contracts/audit_event.schema.json` 与 `audit_record.schema.json` 由
+  `scripts/export_contracts.py` 重新生成。
+
+    python -m pytest tests/test_console_compose.py tests/test_cli_console_compose.py \
+        tests/test_console_me.py tests/test_console_vue_roles.py -q
+    23 passed
+
+    cd web && npm run build
+    dist/assets/index-DsaPtawk.css 15.40 kB / assets/index-BIsYdpVO.js 184.97 kB
+
+## 实机验证（8026，`--role admin`，带两个临时密钥）
+
+模板、预览、发布、冲突、审计：
+
+    GET  /api/compose/templates
+    {"configured":true,"templates":[{"template_id":"single-llm",...}]}
+
+    POST /api/compose/preview  live_bot@1.0.0
+    {"manifest":{"id":"live_bot",...},"agent_py":"...","artifact_digest":"sha256:...","size":...}
+
+    POST /api/compose          live_bot@1.0.0
+    {"tenant":"local","id":"live_bot","version":"1.0.0","digest":"0124ae17...","artifact_digest":"sha256:d53867bb..."}
+    POST /api/compose 同版本不同指令
+    {"error":"registry_conflict"}
+
+    POST /api/compose          live_bot@1.0.1
+    {"tenant":"local","id":"live_bot","version":"1.0.1","digest":"d2a43e28...","artifact_digest":"sha256:3641a707..."}
+
+    GET /api/audit?limit=10
+    [('agent.compose', 'single-llm', 'live_bot', 'ok')]
+    instruction leaked: False
+
+注册表与工件（用同一份私钥的公钥复验）：
+
+    version 1.0.1 key_id compose-1 builder builder-1
+    sig ok True
+    builder sig ok True
+    bytes stored True
+
+CLI 参数边界：
+
+    adk-agent console --help            -> 四个 --compose-* 参数在列
+    只给两个参数                        -> compose signing needs ... ; exit=2
+    --compose-key README.md             -> compose signing key could not be loaded ; exit=1
+
+已知限制（记录，不修）：`publisher` 角色仍无 `audit.read`，实机审计用 `--role admin` 读取；
+发布端点写审计的 `tenant` 是调用方租户，admin 替其他租户发布时 `target` 仍是 agent id。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2234 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2234 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
+
+`--full` 首轮 `sast` 报两处 B101（`assert params is not None`），改为 fail-closed 的
+`if params is None: return _compose_invalid()` 后重跑全绿。

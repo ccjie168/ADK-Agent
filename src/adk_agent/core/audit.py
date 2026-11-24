@@ -47,6 +47,7 @@ class AuditEvent(BaseModel):
     rag_top_k: int | None = Field(default=None, ge=0, exclude_if=_is_none)
     rag_returned: int | None = Field(default=None, ge=0, exclude_if=_is_none)
     rag_filtered: int | None = Field(default=None, ge=0, exclude_if=_is_none)
+    template_id: str | None = Field(default=None, min_length=1, exclude_if=_is_none)
     timestamp: datetime
 
     @field_validator("timestamp")

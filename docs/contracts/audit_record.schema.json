@@ -275,6 +275,19 @@
           "title": "Target",
           "type": "string"
         },
+        "template_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Template Id"
+        },
         "tenant": {
           "minLength": 1,
           "title": "Tenant",

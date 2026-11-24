@@ -446,7 +446,7 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - peer 模式与 `--auth-token-env`、`--allow-unauthenticated` 互斥，同时给出退出 2。
 - peer 模式下 principal、审计身份、动作映射与拒绝规则见 `a2a.md`；legacy 模式保持本节原有行为。
 
-## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR | --approval-db URL] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS] [--session-tenant-scope] [--session-rls]`
+## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR | --approval-db URL] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS] [--session-tenant-scope] [--session-rls] [--compose-key FILE --compose-key-id ID --compose-builder-key FILE --compose-builder-key-id ID]`
 
 启动私有控制台。
 
@@ -465,6 +465,7 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - `--rate-limit` 和 `--rate-limit-window` 启用入口限流，语义见下面的「入口限流」一节。不给 `--rate-limit` 时不限流。
 - 配置文件缺失或非法退出 1。
 - `--policy` 指向一个 `AccessPolicy` JSON 文件。给了才启用 RBAC 和 `/api/policy`。
+- `--compose-key` / `--compose-key-id` / `--compose-builder-key` / `--compose-builder-key-id` 启用页面一键发布（`POST /api/compose`，ADR-0043）。四个参数必须同时给出：只给一部分退出 2；全部缺失时该端点返回 404 `compose_not_configured`，模板列表与预览不受影响。两个 `--compose-*-key` 都只从文件读 Ed25519 私钥 PEM，不接受环境变量，且与审计签名密钥、凭据 KEK 分离；文件不可读或不是 Ed25519 私钥退出 1。`--compose-builder-key` 用于 `in_process` 工件的构建签名。
 - `--role` 可重复，设置控制台 principal 的角色。默认 `requester`（最低权限）；admin 能力必须显式 `--role admin` 或由 OIDC claim 映射。
 - `--agent-sandbox` 注册 `ProcessAgentSandbox(model=build_model())`，`--agent-ref` 与按需加载都可运行 `sandboxed` 记录；
   非 POSIX 平台默认退出 1，`--allow-unsandboxed` 才降级并在 stderr 提示。

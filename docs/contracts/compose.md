@@ -50,3 +50,10 @@
 - 成功输出 `composed tenant/id@version sha256:<digest>` 与 `artifact sha256:<hex>`，退出 0。
 - 未知模板、非法参数、非法 name、未声明工具、缺 key、存储冲突或不可达都退出 1，stderr 输出原因。
 - 生成的版本与手工发布版本没有区别：评测门禁、生命周期、市场与加载规则原样适用。
+
+## 控制台入口（ADR-0043）
+
+`console` 配置四个 compose 密钥参数后，页面可以走同一套 `build_composed` 预览与发布：
+`GET /api/compose/templates`、`POST /api/compose/preview`、`POST /api/compose`。
+请求、响应、能力与错误码见 `console.md`；密钥参数与组合规则见 `cli.md`。
+预览与发布共用这一份模板与参数校验，预览字节就是发布字节。

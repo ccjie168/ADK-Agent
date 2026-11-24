@@ -27,6 +27,7 @@ CAPABILITIES_ALL = frozenset(
         "audit.read",
         "registry.read",
         "registry.publish",
+        "registry.compose",
         "registry.load",
         "eval.read",
         "tools.read",
@@ -63,6 +64,7 @@ CAPABILITIES_OPERATOR = CAPABILITIES_BASE | {
 CAPABILITIES_PUBLISHER = CAPABILITIES_BASE | {
     "registry.read",
     "registry.publish",
+    "registry.compose",
     "registry.load",
     "eval.read",
     "tools.read",

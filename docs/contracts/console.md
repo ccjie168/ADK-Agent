@@ -473,6 +473,85 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 - 生命周期存储不可用返回 503 `lifecycle_unavailable`。
 - 成功加载写一条 `agent.load` 审计，`status=ok`，`target` 是 agent 名，`tenant` 是调用方的租户（审计事件要求租户等于 principal 的租户）。
 
+## `GET /api/compose/templates` -> `{configured, templates}`
+
+列出组合模板与参数（结构与 `compose.md` 的 `TemplateInfo` 相同），并报告控制台是否配置了发布密钥。
+
+```json
+{
+  "configured": true,
+  "templates": [
+    {
+      "template_id": "single-llm",
+      "description": "Single LlmAgent with optional built-in ping tool",
+      "parameters": [
+        {"name": "name", "description": "agent id, ADK-safe", "required": true, "default": null}
+      ],
+      "tools": ["ping"]
+    }
+  ]
+}
+```
+
+- 需要 `registry.publish` 能力，缺少返回 403 `forbidden`，先于其他检查。
+- `configured` 为 `true` 仅当四个 compose 密钥参数都已提供（见 `cli.md`）。模板与预览不签名，未配置时仍可用。
+
+## `POST /api/compose/preview` -> `{manifest, agent_py, artifact_digest}`
+
+用 `single-llm` 模板渲染一次发布内容，不签名、不写注册表。
+
+```json
+{
+  "template_id": "single-llm",
+  "name": "support-bot",
+  "version": "1.0.0",
+  "tenant": "team-a",
+  "owner": "team-a",
+  "description": "support",
+  "instruction": "You are helpful.",
+  "tools": ["ping"],
+  "data_classes": ["internal"]
+}
+```
+
+```json
+{
+  "manifest": {"id": "support-bot", "version": "1.0.0"},
+  "agent_py": "\"\"\"ADK agent generated from the single-llm template.\"\"\"\n...",
+  "artifact_digest": "sha256:...",
+  "size": 812
+}
+```
+
+- 需要 `registry.publish` 能力，缺少返回 403 `forbidden`，先于请求体解析。
+- 请求体不是 JSON 对象、字段类型不对、未知或非法模板、非法参数都返回 400 `compose_invalid`。错误体只有固定码，不回显异常原文。
+- 非 `admin` 身份的 `tenant` 必须等于调用方租户，否则返回 403 `tenant_forbidden`。
+- `artifact_digest` 与发布时写入注册表的工件 digest 相同；同参数同模板结果确定。
+- 不需要签名密钥；不存在的 `template_id` 返回 400 `compose_invalid`，不返回 404。
+
+## `POST /api/compose` -> `{tenant, id, version, digest, artifact_digest}`
+
+用控制台专用密钥签名、发布并入库一个模板实例。请求体与预览相同。
+
+```json
+{
+  "tenant": "team-a",
+  "id": "support-bot",
+  "version": "1.0.0",
+  "digest": "sha256:...",
+  "artifact_digest": "sha256:..."
+}
+```
+
+- 需要 `registry.compose` 能力，缺少返回 403 `forbidden`，先于密钥与请求体检查。
+- 未配置四个 compose 密钥参数时返回 404 `compose_not_configured`，不读取请求体。
+- 未配置注册表返回 404 `registry_not_configured`。
+- 既没有工件存储、注册表也不支持上传时返回 503 `artifact_store_unavailable`。
+- 请求体校验与预览相同：非法输入 400 `compose_invalid`，跨租户 403 `tenant_forbidden`。
+- 同版本已发布不同内容返回 409 `registry_conflict`；注册表不可达返回 503 `registry_unavailable`。模板实例不带评测套件，评测门禁恒通过（与 CLI `compose` 一致）。
+- 成功写一条 `agent.compose` 审计：`template_id` 为新字段，`agent_ref` 带 manifest digest 与 artifact digest，`target` 是 agent id，`tenant` 是调用方租户；不记录指令原文。
+- 响应不回显私钥、宿主路径或注册表内部错误。
+
 ## `GET /api/tools?tenant=<name>` -> `[ToolEntry]`
 
 只读工具目录。每个条目附带该租户已发布版本里引用它的 agent。需要 `tools.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
