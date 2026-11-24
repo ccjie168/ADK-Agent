@@ -510,7 +510,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         （2151 passed / 105 skipped）。
       - SLICE-273（安全面板 + 三处残余）~~已合并 `2796404`~~：`SecurityView.vue`（`/security`，`ops.read`）四张卡
         与「校验审计链」；`scans` 严格按 schema 校验且只回传两个计数，审计失败给 `audit_unavailable`，
-        非法租户路径给 `credential_store_unavailable`。四轮独立验证（REJECT → 修 → REJECT → PASS），
+        非法租户路径给 `credential_store_unavailable`。四轮独立验证（首轮 PASS 带 1 个 S + 3 个 N，二、三轮 REJECT，合并前复验 PASS），
         最终门禁 2168 passed / 105 skipped。证据 `docs/evidence/SLICE-273-security-panel.txt`。
         下一步 SLICE-274（`scripts/security_report.py`），之后为视觉收口与阶段 4。
     - **控制台视觉改造（用户 2026-11-24 要求，参考 Cloudflare 仪表盘）**：

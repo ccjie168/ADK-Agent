@@ -94,6 +94,8 @@ SLICE-273 安全合规面板与接口残余修复 — 证据
 3. 补两条此前缺失的回归用例：`test_security_ignores_a_report_with_null_notes`、
    `test_security_ignores_a_whitespace_generated_at`。
 
+第四轮独立验证判 **PASS**，未再提出阻塞项；核对门禁 9 步 ALL PASS、2168 passed / 105 skipped。
+
 ## 实机验证（8021，`--ui vue`）
 
     GET /                                  -> assets/index-PSk9Bgot.js、index-ZqPjCqKj.css
