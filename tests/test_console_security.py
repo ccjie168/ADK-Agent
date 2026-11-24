@@ -240,7 +240,7 @@ def test_security_survives_an_unsafe_credential_tenant(tmp_path, monkeypatch):
 
 def test_security_treats_a_deeply_nested_report_as_missing(tmp_path):
     report = tmp_path / "scan.json"
-    report.write_text("[" * 5000 + "]" * 5000, encoding="utf-8")
+    report.write_text("[" * 200000 + "]" * 200000, encoding="utf-8")
     with _client(tmp_path, security_report=str(report)) as client:
         response = client.get("/api/security", headers=AUTH)
 
@@ -281,3 +281,23 @@ def test_security_keeps_audit_unavailable_after_verify(tmp_path):
     audit = response.json()["audit"]
     assert audit["error"] == "audit_unavailable"
     assert audit["records"] is None
+
+
+def test_security_drops_unknown_scan_counters(tmp_path):
+    nested = '{"a":' * 200 + "{}" + "}" * 200
+    report = tmp_path / "scan.json"
+    report.write_text(
+        '{"generated_at": "2026-11-24T10:00:00Z", "codeql": '
+        + nested
+        + ', "dependencies": {"vulnerabilities": 1, "nested": '
+        + nested
+        + "}}",
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    scans = response.json()["scans"]
+    assert scans["codeql"] == {}
+    assert scans["dependencies"] == {"vulnerabilities": 1}

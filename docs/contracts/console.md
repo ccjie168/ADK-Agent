@@ -77,8 +77,9 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
   凭据 store 读取失败（含非法租户路径）时 `credentials.error` 为 `credential_store_unavailable`。
 - `policy` 未配置时为 `null` 字段。
 - `scans` 按 `security_report.schema.json` 严格校验：未配置、读不出、不是 JSON 对象、必填字段
-  (`generated_at`/`codeql`/`dependencies`) 缺失或类型不符、`generated_at` 为空串、`notes` 不是字符串、
+  (`generated_at`/`codeql`/`dependencies`) 缺失或类型不符、`generated_at` 为空或仅空白、`notes` 不是字符串、
   出现未定义字段时一律为 `null`；深层嵌套导致解析溢出同样按 `null` 处理。
+  `scans.codeql` / `scans.dependencies` 只回传 `open` / `vulnerabilities` 两个计数，其余字段不回显。
 - `scans` 来自 `console --security-report PATH` 指向的 JSON（见 `security_report.schema.json`），
   文件缺失或无法解析时为 `null`，不报错。
 

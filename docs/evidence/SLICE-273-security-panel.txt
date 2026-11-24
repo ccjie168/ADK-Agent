@@ -40,15 +40,15 @@ SLICE-273 安全合规面板与接口残余修复 — 证据
 与 scans 的严格校验语义。
 
     python -m pytest tests/test_console_security.py tests/test_console_vue_security.py -q
-    20 passed in 2.82s
+    21 passed in 2.44s
 
     cd web && npm run build
     ✓ built in 1.14s
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2163 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2163 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2164 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2164 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
 
 首次 `--fast` 因 `ruff format` 未跑失败，格式化后复跑全绿。
@@ -66,6 +66,20 @@ SLICE-273 安全合规面板与接口残余修复 — 证据
 4. **N3**：审计后端不可用时点「校验审计链」，`backend_unsupported` 会覆盖 `audit_unavailable`。
    现在校验结果只更新 `verified`/`checked_records`，错误码保留 `audit_unavailable`；
    新增 `test_security_keeps_audit_unavailable_after_verify`。
+
+## 第二轮验证反馈修正
+
+第二轮验证判 **REJECT**：第一轮的 S1 只修了解析期，响应序列化还有一条可达 500；另外三条为契约缝隙。
+全部已修：
+
+1. **S-new-1（阻塞）**：`codeql`/`dependencies` 内 97 层以上嵌套是 schema 合法输入，原样回显时
+   FastAPI 序列化抛 `PydanticSerializationError` → 500。现在只回传 `open` 与 `vulnerabilities`
+   两个计数，未知字段一律不回显；新增 `test_security_drops_unknown_scan_counters`。
+2. **N-new-1**：`notes: null` 被放行但 schema 拒绝。现在 `notes` 只要出现就必须是字符串。
+3. **N-new-2**：原先的深层嵌套用例只用 5000 层，在 Python 3.14 上 `json.loads` 能解析，
+   是假阳性。现已提高到 200000 层，并新增序列化路径的用例。
+4. **N-new-3**：`generated_at` 仅空白的值与 schema 不一致。schema 增加 `pattern` `\S`，
+   与实现的 `strip()` 判定对齐。
 
 ## 实机验证（8021，`--ui vue`）
 

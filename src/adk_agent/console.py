@@ -3642,23 +3642,30 @@ def build_console_app(
         generated_at = payload.get("generated_at")
         codeql = payload.get("codeql")
         dependencies = payload.get("dependencies")
-        notes = payload.get("notes")
         if not isinstance(generated_at, str) or not generated_at.strip():
             return None
-        if notes is not None and not isinstance(notes, str):
+        if "notes" in payload and not isinstance(payload["notes"], str):
             return None
         if not isinstance(codeql, dict) or not isinstance(dependencies, dict):
             return None
-        for block, field in ((codeql, "open"), (dependencies, "vulnerabilities")):
-            value = block.get(field)
-            if field in block and (
-                isinstance(value, bool) or not isinstance(value, int) or value < 0
-            ):
+        codeql_out: dict[str, int] = {}
+        dependencies_out: dict[str, int] = {}
+        for block, field, target in (
+            (codeql, "open", codeql_out),
+            (dependencies, "vulnerabilities", dependencies_out),
+        ):
+            if field not in block:
+                continue
+            value = block[field]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 return None
+            target[field] = value
+        # Echo only the two documented counters; unknown nested fields could
+        # otherwise overflow the response serializer.
         return {
             "generated_at": generated_at,
-            "codeql": codeql,
-            "dependencies": dependencies,
+            "codeql": codeql_out,
+            "dependencies": dependencies_out,
         }
 
     @app.get("/api/security")

@@ -31,6 +31,7 @@
 - [x] 深层嵌套报告解析溢出按 null 处理 -> `test_security_treats_a_deeply_nested_report_as_missing`
 - [x] `notes` 类型不符按 null 处理 -> `test_security_ignores_a_report_with_wrong_notes_type`
 - [x] 审计不可用时 `?verify=1` 不掩盖 `audit_unavailable` -> `test_security_keeps_audit_unavailable_after_verify`
+- [x] 扫描报告只回传 `open`/`vulnerabilities` 两个计数，未知嵌套字段不回显 -> `test_security_drops_unknown_scan_counters`
 - [x] 面板按 `ops.read` 门控 -> `test_security_view_requires_ops_read`
 - [x] 面板含「校验审计链」，请求带 `verify=1` -> `test_security_view_verifies_the_audit_chain`
 - [x] 服务端固定错误码在面板上有对应文案 -> `test_security_view_maps_fixed_error_codes`
