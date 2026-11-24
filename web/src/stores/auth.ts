@@ -26,7 +26,9 @@ export const useAuthStore = defineStore("auth", {
     principal: null as Me | null,
     capabilities: [] as string[],
     loginError: "",
+    meError: "",
     ready: false,
+    resolved: false,
   }),
   getters: {
     isAuthenticated: (state) => Boolean(state.token),
@@ -43,18 +45,36 @@ export const useAuthStore = defineStore("auth", {
     },
     async fetchMe() {
       if (!this.token) return;
-      const response = await apiFetch("/api/me");
-      if (response.ok) {
-        const me = (await response.json()) as Me;
-        this.principal = me;
-        this.capabilities = me.capabilities ?? [];
+      try {
+        const response = await apiFetch("/api/me");
+        if (response.status === 401) {
+          clearToken();
+          this.token = "";
+          this.principal = null;
+          this.capabilities = [];
+          return;
+        }
+        if (response.ok) {
+          const me = (await response.json()) as Me;
+          this.principal = me;
+          this.capabilities = me.capabilities ?? [];
+          this.meError = "";
+          return;
+        }
+        this.meError = "无法获取权限信息";
+      } catch {
+        this.meError = "无法获取权限信息";
       }
     },
     async init() {
       try {
         await this.loadConfig();
-        if (this.token) await this.fetchMe();
+        if (this.token) {
+          this.resolved = false;
+          await this.fetchMe();
+        }
       } finally {
+        this.resolved = true;
         this.ready = true;
       }
     },
@@ -63,8 +83,10 @@ export const useAuthStore = defineStore("auth", {
       if (!trimmed) return;
       setToken(trimmed);
       this.token = trimmed;
+      this.meError = "";
+      this.resolved = false;
       return this.fetchMe().finally(() => {
-        this.ready = true;
+        this.resolved = true;
       });
     },
     async startLogin() {
@@ -114,7 +136,11 @@ export const useAuthStore = defineStore("auth", {
       }
       setToken(data.access_token);
       this.token = data.access_token;
-      await this.fetchMe();
+      this.meError = "";
+      this.resolved = false;
+      await this.fetchMe().finally(() => {
+        this.resolved = true;
+      });
       this.ready = true;
       return true;
     },
@@ -123,6 +149,8 @@ export const useAuthStore = defineStore("auth", {
       this.token = "";
       this.principal = null;
       this.capabilities = [];
+      this.meError = "";
+      this.resolved = true;
       this.ready = true;
     },
   },

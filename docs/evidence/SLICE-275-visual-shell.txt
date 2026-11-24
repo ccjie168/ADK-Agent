@@ -12,7 +12,7 @@ SLICE-275 视觉基座：设计令牌、应用外壳与分组导航 — 证据
     python -m pytest tests/test_console_vue_shell.py -q
     7 failed, 1 passed
 
-失败项：令牌文件不存在；App.vue 是 9 个平铺链接、无 ready 门控、无租户/主体、无移动开关；
+失败项：令牌文件不存在；App.vue 是 10 个平铺链接、无 ready 门控、无租户/主体、无移动开关；
 style.css 不含 `var(--canvas)`、仍写死 `#0f766e`；NavIcon 不存在。
 `test_shell_has_no_raw_html` 在基线上本来成立，作为守卫保留（在 spec 反例里注明）。
 
@@ -23,19 +23,40 @@ style.css 不含 `var(--canvas)`、仍写死 `#0f766e`；NavIcon 不存在。
   主色 `#c2410c`（白字对比度 5.18:1，过 AA）。
 - `web/src/components/NavIcon.vue`：26 个内联 SVG 图标，无新依赖。
 - `web/src/App.vue`：顶栏（品牌、租户、主体、退出）、五组侧栏（概览/运行/治理/开发/设置）、
-  28 个面板入口（此前只有 9 个能点）、窄屏抽屉与遮罩、登录页。
-- `web/src/stores/auth.ts`：新增 `ready`；`init` 在 `finally` 里置位，登录/登出路径同样置位。
-  `RouterView` 在 `ready` 之后才挂载，修掉「能力未到、视图先挂载、页面空白」的竞态。
+  25 个面板入口（master 旧导航 10 个）、窄屏抽屉与遮罩、登录页。
+- `web/src/stores/auth.ts`：新增 `ready` 与 `resolved`；刷新、token 登录、OIDC 回调都在
+  `fetchMe` 前置 `resolved=false`、结束后置 true，`RouterView` 只在 `resolved` 后挂载，
+  修掉「能力未到、视图先挂载、页面空白」的竞态；401 清 token，网络失败给固定提示。
 - `web/src/style.css`：删除旧的 `:root`，追加外壳与控件基线（按钮、输入、表格、卡片、
   焦点环、`@media (max-width: 960px)`），全部走令牌。
 - `web/src/main.ts`：先加载令牌再加载主样式。
 
     python -m pytest tests/test_console_vue_shell.py tests/test_console_vue_roles.py tests/test_console_vue_security.py -q
-    20 passed in 1.81s
+    23 passed in 1.84s
 
     cd web && npm run build
-    ✓ built in 838ms
-    assets/index-B4EH3Q_6.css 11.66 kB / assets/index-CUA7AcZp.js 170.72 kB
+    ✓ built in 1.08s
+    assets/index-DH9ICzRh.css 11.97 kB / assets/index-DS_1Bu9T.js 171.34 kB
+
+## 独立验证反馈修正
+
+首轮验证判 **REJECT**（B1 + 5 个 S + 3 个 N），已全部修：
+
+1. **B1（阻塞）**：`ready` 只覆盖「刷新时已带 token」。token 登录与 OIDC 回调时 `ready` 早已为真，
+   `RouterView` 仍在 `/api/me` 之前挂载，落地页空白。现在新增 `resolved`，三条登录路径都在
+   `fetchMe` 前把它置 false、结束后置 true；`App.vue` 以 `!auth.resolved` 作为挂载条件。
+   新增 `test_auth_store_holds_the_shell_for_every_login_path`（断言置位顺序）。
+2. **S1**：`/api/me` 401 只清 sessionStorage，store 仍认为已登录。现在 401 同时清空
+   `token`/`principal`/`capabilities`；新增 `test_auth_store_clears_a_rejected_token`。
+3. **S2**：`/api/me` 网络异常变成未处理 rejection。现在 `fetchMe` 捕获并写 `meError`，
+   外壳顶部显示固定提示，不再抛到 `init` 之外。
+4. **S3/S4**：旧硬编码灰字（`#64748b`/`#94a3b8`）在白色表面上低于 AA，分组标签 3.15:1。
+   现在统一用 `--text-muted`（`#52525b`）与 `--text-subtle`（`#6b6b73`），并新增
+   `test_tokens_meet_text_contrast` 对四组前景/背景做 4.5:1 断言。
+5. **S5**：证据把导航写成 28 项、旧导航 9 项，实际是 25 / 10，已更正。
+6. **N1**：移动开关补 `aria-expanded`、`aria-controls` 与随状态变化的标签。
+7. **N2**：旧 `.login { max-width: 360px }` 覆盖了新宽度，已在新块里置 `max-width: none`。
+8. **N3**：补三条测试（登录路径、401、对比度），并让导航用例覆盖全部 25 条路由。
 
 ## 实机验证（8022，`--ui vue`）
 
@@ -50,8 +71,8 @@ style.css 不含 `var(--canvas)`、仍写死 `#0f766e`；NavIcon 不存在。
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2176 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2176 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2179 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2179 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
 
 首次 `--fast` 有两处既有用例失败：`test_console_vue_roles.py::test_router_has_roles_and_users`

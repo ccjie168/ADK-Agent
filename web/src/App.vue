@@ -8,7 +8,7 @@ import { useAuthStore } from "./stores/auth";
 const auth = useAuthStore();
 const tokenInput = ref("");
 const navOpen = ref(false);
-const booting = computed(() => auth.isAuthenticated && !auth.ready);
+const booting = computed(() => auth.isAuthenticated && !auth.resolved);
 
 function closeNav() {
   navOpen.value = false;
@@ -43,7 +43,9 @@ onMounted(async () => {
         <button
           v-if="auth.isAuthenticated"
           class="nav-toggle"
-          aria-label="打开导航"
+          :aria-label="navOpen ? '关闭导航' : '打开导航'"
+          :aria-expanded="navOpen"
+          aria-controls="console-nav"
           @click="navOpen = !navOpen"
         >
           <NavIcon name="menu" />
@@ -61,7 +63,7 @@ onMounted(async () => {
 
     <div v-if="auth.isAuthenticated" class="body">
       <div v-if="navOpen" class="nav-scrim" @click="closeNav"></div>
-      <nav class="sidebar" :class="{ open: navOpen }">
+      <nav id="console-nav" class="sidebar" :class="{ open: navOpen }">
         <div class="nav-group">
           <div class="nav-group-label">概览</div>
           <router-link to="/" class="nav-item" @click="closeNav">
@@ -155,7 +157,10 @@ onMounted(async () => {
       </nav>
       <main class="main">
         <div v-if="booting" class="boot">正在加载权限…</div>
-        <RouterView v-else />
+        <template v-else>
+          <p v-if="auth.meError" class="me-error">{{ auth.meError }}</p>
+          <RouterView />
+        </template>
       </main>
     </div>
 

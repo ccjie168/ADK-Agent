@@ -12,8 +12,10 @@
    作为别名保留，避免一次性改所有视图。主色用可过 AA 的深橙（白字 5.18:1）。
 2. **应用外壳** `App.vue`：顶栏（品牌、租户、主体、退出）、分组侧栏（概览/运行/治理/开发/设置）、
    导航图标、窄屏抽屉、登录页与加载态。补齐此前只靠 URL 才能进入的面板入口。
-3. **能力就绪门控**：`auth` store 增加 `ready`，`/api/me` 返回后才挂载 `RouterView`。
-   修掉「刷新后视图在能力到达前挂载、`denied` 直接 return、页面永久空白」的竞态。
+3. **能力就绪门控**：`auth` store 增加 `ready`（配置加载完）与 `resolved`（`/api/me` 结束）；
+   `RouterView` 只在 `resolved` 后挂载。刷新、token 登录、OIDC 回调三条路径都要等 `/api/me`，
+   修掉「视图在能力到达前挂载、`denied` 直接 return、页面永久空白」的竞态；401 清 token，
+   网络失败显示固定提示。
 4. **控件基线** `style.css`：按钮、输入、表格、卡片、焦点环与响应式断点统一走令牌。
 
 不新增依赖；图标是内联 SVG。
@@ -27,6 +29,9 @@
 - [x] 令牌覆盖画布、主色、文字、边框、顶栏与侧栏尺寸 -> `test_shell_tokens_cover_the_surface_scale`
 - [x] 导航覆盖现有全部面板路由 -> `test_shell_navigation_covers_every_panel`
 - [x] `/api/me` 返回前不挂载视图 -> `test_shell_waits_for_capabilities`
+- [x] 刷新、token 登录、OIDC 回调三条路径都等 `/api/me` -> `test_auth_store_holds_the_shell_for_every_login_path`
+- [x] 401 清 token、网络失败有固定提示 -> `test_auth_store_clears_a_rejected_token`
+- [x] 正文与辅助文字的对比度过 AA -> `test_tokens_meet_text_contrast`
 - [x] 顶栏显示租户与主体 -> `test_shell_shows_the_caller_identity`
 - [x] 窄屏有导航开关 -> `test_shell_has_a_mobile_navigation_toggle`
 - [x] 样式使用令牌且不再出现旧主色 -> `test_shell_styles_use_tokens`
