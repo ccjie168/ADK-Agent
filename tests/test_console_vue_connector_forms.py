@@ -36,7 +36,9 @@ def test_credentials_view_registers_credential():
 
 
 def test_credentials_view_never_sends_secret_material():
-    src = _read("src", "views", "CredentialsView.vue")
-
-    # The page registers references only; ciphertext fields are server-side.
-    assert "wrapped_secret" not in src
+    for view in ("CredentialsView.vue", "ConnectorsView.vue"):
+        src = _read("src", "views", view)
+        # The pages register references only; ciphertext and secret values are
+        # server-side concerns and must never be collected here.
+        for forbidden in ("wrapped_secret", "secret_key_id", "secret_version", 'type="password"'):
+            assert forbidden not in src
