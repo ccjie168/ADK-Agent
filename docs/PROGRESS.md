@@ -535,8 +535,8 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
       - SLICE-278（空态与表格收口）~~已合并 `b05eb28`~~：六个列表页用 `EmptyState`，五个表格页
         `.table-wrap` 横向滚动，文本型指标缩字号，Agent 中心租户表单进工具条，徽章改用状态令牌。
         两轮验证（PASS + 1 个 S 视觉回归 → 修 → PASS），门禁 2197 passed / 105 skipped。
-        **视觉改造四切片（275–278）收口**。下一步 SLICE-274（`scripts/security_report.py`），
-        然后阶段 4（生态展示）与阶段 5（开发向导，先写 ADR-0043）。
+        **视觉改造四切片（275–278）收口**。SLICE-274 随后完成；下一步为阶段 4（生态展示），
+        然后是阶段 5（开发向导，先写 ADR-0043）。
     - **阶段 4**：MCP/API 生态展示（诉求 4）。MCP server、A2A 对端、连接器、可复用工具 + 接入引导。
       - SLICE-279（生态展示页）~~已合并 `a49a5e3`~~：`/ecosystem`（导航「开发」组）统一列出工具目录、
         连接器（`kind=mcp` 即 MCP 服务器）与 A2A 对端，各按 `tools.read` / `connectors.read` / `peers.read`
@@ -557,7 +557,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
       而 `FileAuditQuery` 按 `AuditRecord` 解析，写入事件后读 `/api/audit` 会 500；
       `publisher` 角色没有 `ops.read`，整个首页对其不可见；同一时间戳事件在 `limit` 边界上的
       子集与后端方向有关（契约未定义同刻顺序）。
-    - **阶段 5 发布方式已拍板**：用户选择「页面一键发布」，控制台持专用 compose 签名密钥。开工前先写 ADR-0043 并确认；只允许 `single-llm` 模板，新增 `registry.compose` 能力与 `agent.compose` 审计（只记模板/版本/digest，不记指令原文）。用户已按硬规则单独同意新增 `registry.compose` 并同步改 `tests/test_console_me.py` 的能力集合断言。ADR-0043 正在随阶段 5 首片提交。
+    - **阶段 5 发布方式已拍板**：用户选择「页面一键发布」，控制台持专用 compose 签名密钥。开工前先写 ADR-0043 并确认；只允许 `single-llm` 模板，新增 `registry.compose` 能力与 `agent.compose` 审计（只记模板/版本/digest，不记指令原文）。用户已按硬规则单独同意新增 `registry.compose` 并同步改 `tests/test_console_me.py` 的能力集合断言；这两项随阶段 5 首片（SLICE-280）落地，ADR-0043 与 `registry.compose` 目前尚未入库。
 
 MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
 
