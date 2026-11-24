@@ -1,0 +1,106 @@
+SLICE-274 CI 扫描汇总脚本 — 证据
+==============================
+
+日期: 2026-11-25
+分支: slice-274-security-report
+依据: ADR-0042 的必做修订；`docs/contracts/security_report.schema.json`
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_security_report_script.py -q
+    ERROR tests/test_security_report_script.py - FileNotFoundError: ... scripts/security_report.py
+    Interrupted: 1 error during collection
+
+脚本不存在时测试模块在导入阶段失败，pytest 记为 1 个 collection error，用例未逐条运行；
+这是新文件的真实红灯形态（spec 反例里已注明，不假装逐条变红）。
+
+## 实现（后绿）
+
+`scripts/security_report.py`：
+
+- `count_codeql_results`：跨 run 统计未压制结果。只有 `status` 为 `accepted`（或未给 status）的
+  suppression 算关闭；`rejected` / `underReview` 仍算开放。
+- `count_dependency_vulns`：兼容 `pip-audit --format json` 的旧列表与新版 `{"dependencies": [...]}`。
+- `build_report`：UTC、秒级、`Z` 结尾的 `generated_at`，两个非负整数计数，可选 `notes`。
+- `main`：输入缺失/不可解析/形状不对，或输出不可写时退出 2 且不写文件；成功时用 `tempfile.mkstemp` 在同目录写临时文件，
+  再 `os.replace` 原子替换。失败会清理临时文件。
+- `docs/guides/operations.md` 新增「安全扫描报告（安全面板）」一节。
+
+    python -m pytest tests/test_security_report_script.py -q
+    15 passed in 0.14s
+
+    python scripts/security_report.py --help
+    usage: security_report.py [-h] --codeql-sarif CODEQL_SARIF
+                              --pip-audit-json PIP_AUDIT_JSON --out OUT
+                              [--notes NOTES]
+
+## 独立验证反馈修正
+
+首轮验证判 **REJECT**（B1 + 3 个 S + 1 个 N），已修：
+
+1. **B1（阻塞）**：写盘失败未捕获，`--out` 指向目录时以 traceback 退出 1，与「退出 2」的承诺相反。
+   现在 `mkdir`/写入/替换都在 `try` 内，失败退出 2 并清理临时文件；新增
+   `test_main_returns_2_when_output_cannot_be_written`。实测目录输出：
+   `security_report: cannot write ...: [WinError 5] ...`，`exit=2`。
+2. **S1**：任何非空 suppressions 都被当作已压制，`status: rejected` 的低报开放数。现在只有
+   `accepted`（或缺 status）算关闭；`test_codeql_counts_only_accepted_suppressions` 覆盖
+   accepted/rejected/underReview/旧格式/空列表五种情况。
+3. **S2**：`write_text` 直接截断，存在半成品风险。现在写同目录临时文件后原子替换。
+4. **S3**：补了缺失的失败分支用例（缺 `results`、非法结果形状、非法依赖形状、notes 省略、
+   非 UTC 转换、输出不可写），共 14 条。
+5. **N1**：上一版证据里脚本输出与控制台返回的 `generated_at` 不一致（摘录自两次运行）。
+   本轮用同一次生成的文件同时验证脚本输出与控制台读取，时间戳一致。
+
+## 第二轮验证反馈修正
+
+第二轮验证判 **REJECT**：`--out` 传入空 basename（`.`、`./`、`C:/`）时 `Path.with_name` 抛
+`ValueError`，仍是 traceback + exit 1。已修：
+
+1. **B2（阻塞）**：改用 `tempfile.mkstemp(dir=out.parent, prefix=".security-report.")` 生成唯一
+   临时文件，并把 `(OSError, ValueError)` 都映射为退出 2；空 basename 与根目录都能干净失败。
+   新增 `test_main_returns_2_for_an_empty_output_name`。
+2. **N3**：临时文件名由 `mkstemp` 保证唯一，不再可能误覆盖/误删同名的其他文件。
+3. 不修（记录）：`status` 为非字符串或未知字符串时按「开放」计数，属 fail-closed，spec 未定义该情形。
+
+实测：
+
+    --out .    -> security_report: cannot write .: [WinError 5] ...  exit=2，无临时文件残留
+    --out C:/  -> security_report: cannot write C:\: [Errno 13] ...   exit=2
+
+## 实机验证
+
+构造 3 条 SARIF 结果（open / accepted / rejected）与 1 个依赖漏洞：
+
+    python scripts/security_report.py --codeql-sarif codeql.sarif \
+        --pip-audit-json pip-audit.json --out scan.json
+    wrote ...\scan.json: codeql open=2, vulnerabilities=1
+
+    {
+      "codeql": {"open": 2},
+      "dependencies": {"vulnerabilities": 1},
+      "generated_at": "2026-11-24T16:50:25Z"
+    }
+
+输入缺失与输出为目录：
+
+    security_report: codeql: cannot read ...\none.sarif
+    exit=2
+    bad.json absent
+    security_report: cannot write ...: [WinError 5] ...
+    exit=2
+
+把同一份 `scan.json` 交给控制台：
+
+    python -m adk_agent console ... --port 8024 --security-report scan.json
+    GET /api/security -> {"generated_at": "2026-11-24T16:50:25Z",
+                          "codeql": {"open": 2}, "dependencies": {"vulnerabilities": 1}}
+
+与文件内容一致；面板「扫描」卡不再显示「未提供扫描报告」。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2212 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2212 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
