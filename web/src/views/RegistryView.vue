@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { getJson } from "../api/client";
+import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 
 type Tone = "good" | "bad" | "warn" | "muted";
 
 interface RegistryEntry {
   id: string;
+  tenant?: string;
   source: string;
   version?: string;
   digest?: string;
@@ -40,8 +41,12 @@ const BADGE_TONES: Record<string, Tone> = {
 
 const auth = useAuthStore();
 const entries = ref<RegistryEntry[]>([]);
+const manifestDraft = ref("");
+const message = ref("");
 const error = ref("");
 const denied = computed(() => !auth.hasCapability("registry.read"));
+const canLoad = computed(() => auth.hasCapability("registry.load"));
+const canPublish = computed(() => auth.hasCapability("registry.publish"));
 
 function badgesOf(entry: RegistryEntry): string[] {
   const local = entry.source !== "remote";
@@ -75,13 +80,68 @@ function subOf(entry: RegistryEntry): string {
   return entry.label ?? "";
 }
 
-onMounted(async () => {
-  if (denied.value) return;
+async function reload() {
   try {
     entries.value = await getJson<RegistryEntry[]>("/api/registry");
   } catch {
     error.value = "registry unavailable";
   }
+}
+
+async function post(path: string, body: unknown): Promise<Response | null> {
+  try {
+    return await apiFetch(path, { method: "POST", body: JSON.stringify(body) });
+  } catch {
+    message.value = "请求失败: 网络错误";
+    return null;
+  }
+}
+
+async function loadAgent(entry: RegistryEntry) {
+  const response = await post("/api/registry/load", {
+    tenant: entry.tenant ?? auth.principal?.tenant ?? "local",
+    id: entry.id,
+    version: entry.version,
+  });
+  if (response === null) return;
+  if (response.ok) message.value = `已加载 ${entry.id}@${entry.version}`;
+  else if (response.status === 409) message.value = "名称冲突：请先卸载同名 Agent";
+  else message.value = `加载失败: ${response.status}`;
+}
+
+async function unloadAgent(entry: RegistryEntry) {
+  const response = await post("/api/registry/unload", { name: entry.id });
+  if (response === null) return;
+  if (response.ok) message.value = `已卸载 ${entry.id}`;
+  else if (response.status === 409) message.value = "无法卸载：该 Agent 由启动参数加载";
+  else message.value = `卸载失败: ${response.status}`;
+}
+
+async function registerManifest() {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(manifestDraft.value);
+  } catch {
+    message.value = "JSON 格式无效";
+    return;
+  }
+  const response = await post("/api/import/agent", parsed);
+  if (response === null) return;
+  if (response.ok) {
+    const body = (await response.json()) as { id: string; version: string };
+    message.value = `已注册 ${body.id}@${body.version}`;
+    manifestDraft.value = "";
+    await reload();
+    return;
+  }
+  if (response.status === 400) message.value = "清单无效";
+  else if (response.status === 403) message.value = "租户不允许";
+  else message.value = `注册失败: ${response.status}`;
+}
+
+onMounted(async () => {
+  if (denied.value) return;
+  await reload();
 });
 </script>
 
@@ -90,28 +150,56 @@ onMounted(async () => {
     <h1>注册表</h1>
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
-    <div v-else class="card-grid">
-      <div v-for="entry in entries" :key="entry.source + ':' + entry.id" class="card">
-        <div class="card-head">
-          {{ entry.id }}
-          <span v-if="subOf(entry)" class="muted">{{ subOf(entry) }}</span>
+    <template v-else>
+      <p v-if="message" class="login-msg">{{ message }}</p>
+      <div class="card-grid">
+        <div
+          v-for="entry in entries"
+          :key="entry.source + ':' + entry.id"
+          class="card"
+        >
+          <div class="card-head">
+            {{ entry.id }}
+            <span v-if="subOf(entry)" class="muted">{{ subOf(entry) }}</span>
+          </div>
+          <div v-if="entry.source !== 'remote' && entry.description" class="card-desc">
+            {{ entry.description }}
+          </div>
+          <div class="card-badges">
+            <span
+              v-for="badge in badgesOf(entry)"
+              :key="badge"
+              class="badge"
+              :class="{
+                bad: toneOf(badge) === 'bad',
+                warn: toneOf(badge) === 'warn',
+                muted: toneOf(badge) === 'muted',
+              }"
+            >
+              {{ badge }}
+            </span>
+          </div>
+          <div class="card-meta">{{ metaOf(entry) }}</div>
+          <div v-if="canLoad && entry.source !== 'remote' && entry.version" class="row">
+            <button class="link" @click="loadAgent(entry)">加载</button>
+            <button class="link" @click="unloadAgent(entry)">卸载</button>
+          </div>
         </div>
-        <div v-if="entry.source !== 'remote' && entry.description" class="card-desc">
-          {{ entry.description }}
-        </div>
-        <div class="card-badges">
-          <span
-            v-for="badge in badgesOf(entry)"
-            :key="badge"
-            class="badge"
-            :class="{ bad: toneOf(badge) === 'bad', warn: toneOf(badge) === 'warn', muted: toneOf(badge) === 'muted' }"
-          >
-            {{ badge }}
-          </span>
-        </div>
-        <div class="card-meta">{{ metaOf(entry) }}</div>
+        <p v-if="entries.length === 0" class="placeholder">暂无已注册 Agent</p>
       </div>
-      <p v-if="entries.length === 0" class="placeholder">暂无已注册 Agent</p>
-    </div>
+      <template v-if="canPublish">
+        <h2>注册 Agent 清单</h2>
+        <textarea
+          v-model="manifestDraft"
+          class="policy-editor"
+          rows="10"
+          spellcheck="false"
+          placeholder='{"id": "bot_c", "version": "1.0.0", ...}'
+        />
+        <div class="row">
+          <button class="primary" @click="registerManifest">注册</button>
+        </div>
+      </template>
+    </template>
   </div>
 </template>
