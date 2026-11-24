@@ -11,7 +11,7 @@
 - 读 CodeQL SARIF 与 `pip-audit --format json` 的结果；
 - 统计**未压制**的 CodeQL 结果数（只有 `status` 为 `accepted` 或未给 status 的压制算关闭，`rejected`/`underReview` 仍算开放）与依赖漏洞数；
 - 写出一份严格符合 `docs/contracts/security_report.schema.json` 的 JSON（`generated_at` 为 UTC、秒级、`Z` 结尾）；
-- 输入缺失、形状不对或输出不可写时退出 2，不写半成品文件；成功时先写同目录临时文件再原子替换。
+- 输入缺失、形状不对或输出不可写时退出 2，不写半成品文件；成功时用 `tempfile.mkstemp` 在同目录写临时文件再原子替换，失败清理临时文件。
 
 不在运行时重跑扫描器；CI 或运维在构建流水线里跑本脚本。
 
@@ -47,6 +47,7 @@
 - [x] 端到端写出文件 -> `test_main_writes_the_report`
 - [x] 输入缺失退出 2 且不写文件 -> `test_main_returns_2_for_a_missing_artifact`
 - [x] 输出不可写退出 2 -> `test_main_returns_2_when_output_cannot_be_written`
+- [x] 输出名称为空（如 `--out .`）也退出 2，且不留临时文件 -> `test_main_returns_2_for_an_empty_output_name`
 - [x] 畸形/极深 JSON 退出 2 且不写文件 -> `test_main_returns_2_for_unusable_json`
 
 ## 反例

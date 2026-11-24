@@ -8,6 +8,7 @@ import contextlib
 import json
 import os
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -128,14 +129,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     out = Path(args.out)
-    tmp = out.with_name(f".{out.name}.tmp")
+    tmp: str | None = None
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        handle_fd, tmp = tempfile.mkstemp(dir=out.parent, prefix=".security-report.", suffix=".tmp")
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+            print(json.dumps(report, indent=2, sort_keys=True), file=handle)
         os.replace(tmp, out)
-    except OSError as exc:
-        with contextlib.suppress(OSError):
-            tmp.unlink()
+    except (OSError, ValueError) as exc:
+        if tmp is not None:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
         print(f"security_report: cannot write {out}: {exc}", file=sys.stderr)
         return 2
     print(

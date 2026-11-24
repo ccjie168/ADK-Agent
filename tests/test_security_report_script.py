@@ -200,3 +200,18 @@ def test_main_returns_2_for_unusable_json(tmp_path):
 
     assert code == 2
     assert not out.exists()
+
+
+def test_main_returns_2_for_an_empty_output_name(tmp_path, monkeypatch):
+    sarif = tmp_path / "codeql.sarif"
+    sarif.write_text('{"runs": []}', encoding="utf-8")
+    audit = tmp_path / "pip-audit.json"
+    audit.write_text("[]", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    code = security_report.main(
+        ["--codeql-sarif", str(sarif), "--pip-audit-json", str(audit), "--out", "."]
+    )
+
+    assert code == 2
+    assert not [item for item in tmp_path.iterdir() if item.name.startswith(".security-report.")]

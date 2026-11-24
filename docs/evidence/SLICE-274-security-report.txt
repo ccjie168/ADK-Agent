@@ -24,12 +24,12 @@ SLICE-274 CI 扫描汇总脚本 — 证据
   suppression 算关闭；`rejected` / `underReview` 仍算开放。
 - `count_dependency_vulns`：兼容 `pip-audit --format json` 的旧列表与新版 `{"dependencies": [...]}`。
 - `build_report`：UTC、秒级、`Z` 结尾的 `generated_at`，两个非负整数计数，可选 `notes`。
-- `main`：输入缺失/不可解析/形状不对，或输出不可写时退出 2 且不写文件；成功时先写同目录临时文件，
+- `main`：输入缺失/不可解析/形状不对，或输出不可写时退出 2 且不写文件；成功时用 `tempfile.mkstemp` 在同目录写临时文件，
   再 `os.replace` 原子替换。失败会清理临时文件。
 - `docs/guides/operations.md` 新增「安全扫描报告（安全面板）」一节。
 
     python -m pytest tests/test_security_report_script.py -q
-    14 passed in 0.18s
+    15 passed in 0.14s
 
     python scripts/security_report.py --help
     usage: security_report.py [-h] --codeql-sarif CODEQL_SARIF
@@ -52,6 +52,22 @@ SLICE-274 CI 扫描汇总脚本 — 证据
    非 UTC 转换、输出不可写），共 14 条。
 5. **N1**：上一版证据里脚本输出与控制台返回的 `generated_at` 不一致（摘录自两次运行）。
    本轮用同一次生成的文件同时验证脚本输出与控制台读取，时间戳一致。
+
+## 第二轮验证反馈修正
+
+第二轮验证判 **REJECT**：`--out` 传入空 basename（`.`、`./`、`C:/`）时 `Path.with_name` 抛
+`ValueError`，仍是 traceback + exit 1。已修：
+
+1. **B2（阻塞）**：改用 `tempfile.mkstemp(dir=out.parent, prefix=".security-report.")` 生成唯一
+   临时文件，并把 `(OSError, ValueError)` 都映射为退出 2；空 basename 与根目录都能干净失败。
+   新增 `test_main_returns_2_for_an_empty_output_name`。
+2. **N3**：临时文件名由 `mkstemp` 保证唯一，不再可能误覆盖/误删同名的其他文件。
+3. 不修（记录）：`status` 为非字符串或未知字符串时按「开放」计数，属 fail-closed，spec 未定义该情形。
+
+实测：
+
+    --out .    -> security_report: cannot write .: [WinError 5] ...  exit=2，无临时文件残留
+    --out C:/  -> security_report: cannot write C:\: [Errno 13] ...   exit=2
 
 ## 实机验证
 
@@ -85,6 +101,6 @@ SLICE-274 CI 扫描汇总脚本 — 证据
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2211 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2211 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2212 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2212 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
