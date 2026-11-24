@@ -31,6 +31,7 @@ def test_list_pages_use_empty_state():
 def test_tables_scroll_on_narrow_screens():
     style = _read("src", "style.css")
     assert ".table-wrap" in style
+    assert "overflow-x: auto" in style
     for name in TABLE_VIEWS:
         assert 'class="table-wrap"' in _read("src", "views", name), name
 
@@ -41,6 +42,7 @@ def test_text_stat_values_scale_down():
 
     assert ".stat-value-text" in style
     assert "stat-value-text" in overview
+    assert "card.value === null" in overview
 
 
 def test_badges_use_tokens():
@@ -48,6 +50,7 @@ def test_badges_use_tokens():
 
     assert "var(--success-soft)" in style
     assert "var(--warning-soft)" in style
+    assert "var(--danger-soft)" in style
     assert "#e6f5ea" not in style
 
 
@@ -55,5 +58,6 @@ def test_agent_hub_uses_a_toolbar():
     style = _read("src", "style.css")
     hub = _read("src", "views", "AgentHubView.vue")
 
-    assert 'class="toolbar"' in hub
+    assert 'class="row toolbar"' in hub
     assert ".toolbar" in style
+    assert "font: inherit" in style

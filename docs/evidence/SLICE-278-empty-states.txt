@@ -32,7 +32,21 @@ SLICE-278 空态、表格滚动与令牌化收口 — 证据
 
     cd web && npm run build
     ✓ built in 831ms
-    assets/index-Bi8WEzBS.css 14.31 kB / assets/index-B303ZS87.js 177.72 kB
+    assets/index-ByhFHtH9.css 14.33 kB / assets/index--gNWR9Sd.js 177.71 kB
+
+## 独立验证反馈修正
+
+首轮验证判 PASS，提出 1 个 S 与 3 个 N，已处理：
+
+1. **S（视觉回归）**：Agent 中心的租户输入容器从 `.row` 换成 `.toolbar` 后丢了输入框样式。
+   现在容器是 `class="row toolbar"`，并在 `.row input/select` 上补 `font: inherit`；
+   截图里输入框与按钮同高、同圆角。
+2. **N**：审计空态原本嵌在 `.audit-log`（实线框、等宽字体）里，现在移到外面，
+   与其余五个页面一致；新增 `SLICE-278-audit-empty.png`。
+3. **N**：加强三条用例——检查 `overflow-x: auto`、`card.value === null`、
+   `--danger-soft` 与 `font: inherit`。
+4. **N**：`.table-wrap` 没有 `min-width`，短内容表格在窄屏只会换行而不是滚动；记录为已知取舍，
+   当前五张表的列宽足以触发横向滚动。
 
 ## 实机验证（8022，`--ui vue`）
 
@@ -41,8 +55,9 @@ SLICE-278 空态、表格滚动与令牌化收口 — 证据
 - 运行页：空态为虚线卡片中的「暂无运行」。
 - 首页：文本型指标「未配置」缩小为 16px 次要色，数字仍是 28px。
 - Agent 中心：租户输入与按钮变成紧凑工具条，不再拉满整行。
+- 审计页：空态改为统一的虚线卡片。
 - 截图：`docs/evidence/ui/SLICE-278-runs-empty.png`、`SLICE-278-home.png`、
-  `SLICE-278-agents-toolbar.png`。
+  `SLICE-278-agents-toolbar.png`、`SLICE-278-audit-empty.png`。
 
     NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
     [PASS] P13 console UI baseline, overview and panels (2.5s)
