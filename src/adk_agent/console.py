@@ -3129,12 +3129,17 @@ def build_console_app(
     async def _query_events(request: Request, limit: int = 1000) -> list[AuditEvent]:
         if audit_query is None:
             if isinstance(audit, ListAuditSink):
-                return audit.recent(limit)
-            path = getattr(audit, "path", None)
-            return query_events(path, limit=limit, order="desc") if path is not None else []
-        caller = _principal_for(request)
-        tenant = None if "admin" in caller.roles else caller.tenant
-        return await audit_query.events(tenant=tenant, limit=limit)
+                events = audit.recent(limit)
+            else:
+                path = getattr(audit, "path", None)
+                events = query_events(path, limit=limit, order="desc") if path is not None else []
+        else:
+            caller = _principal_for(request)
+            tenant = None if "admin" in caller.roles else caller.tenant
+            events = await audit_query.events(tenant=tenant, limit=limit)
+        # Backends disagree on direction; callers slice "the last N" as the
+        # newest, so normalise to ascending time before returning.
+        return sorted(events, key=lambda event: event.timestamp)
 
     sandbox_policy = sandbox or SandboxPolicy()
     runners: dict[str, Runner] = {}

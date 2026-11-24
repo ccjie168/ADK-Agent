@@ -62,6 +62,8 @@ const router = useRouter();
 const cards = ref<Card[]>([]);
 const events = ref<AuditEvent[]>([]);
 const activityError = ref("");
+const activityLoading = ref(false);
+const overviewError = ref("");
 const loading = ref(false);
 const customizing = ref(false);
 const sections = ref<Sections>(loadSections());
@@ -77,12 +79,17 @@ function openCustomize() {
 
 function saveSections() {
   sections.value = { ...draft };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sections.value));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sections.value));
+  } catch {
+    // Private mode can refuse storage; the in-memory choice still applies.
+  }
   customizing.value = false;
 }
 
 function resetSections() {
   Object.assign(draft, DEFAULT_SECTIONS);
+  saveSections();
 }
 
 function displayValue(value: number | null): string {
@@ -94,7 +101,9 @@ function openPanel(panel: string) {
 }
 
 function timeOf(event: AuditEvent): string {
-  return event.timestamp ? new Date(event.timestamp).toLocaleString("zh-CN") : "—";
+  if (!event.timestamp) return "—";
+  const parsed = new Date(event.timestamp);
+  return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleString("zh-CN");
 }
 
 onMounted(async () => {
@@ -103,17 +112,23 @@ onMounted(async () => {
   try {
     const data = await getJson<{ cards: Card[] }>("/api/overview");
     cards.value = data.cards ?? [];
+    overviewError.value = "";
   } catch {
     cards.value = [];
+    overviewError.value = "概览数据不可用";
   } finally {
     loading.value = false;
   }
   if (!canAudit.value) return;
+  activityLoading.value = true;
   try {
     const rows = await getJson<AuditEvent[]>("/api/audit?limit=6");
-    events.value = rows.slice(0, 6);
+    events.value = rows.slice(0, 6).reverse();
+    activityError.value = "";
   } catch {
     activityError.value = "审计事件不可用";
+  } finally {
+    activityLoading.value = false;
   }
 });
 </script>
@@ -121,7 +136,7 @@ onMounted(async () => {
 <template>
   <div class="panel">
     <PageHeader title="总览" description="平台运行概况与常用入口">
-      <button class="secondary" @click="openCustomize">自定义首页</button>
+      <button v-if="!denied" class="secondary" @click="openCustomize">自定义首页</button>
     </PageHeader>
 
     <p v-if="denied" class="placeholder">无访问权限</p>
@@ -147,6 +162,7 @@ onMounted(async () => {
 
       <div v-if="sections.cards">
         <p v-if="loading" class="placeholder">加载中…</p>
+        <p v-else-if="overviewError" class="login-msg">{{ overviewError }}</p>
         <div v-else-if="cards.length" class="metric-grid">
           <div
             v-for="card in cards"
@@ -168,6 +184,7 @@ onMounted(async () => {
       <section v-if="sections.activity" class="recent-activity">
         <h2>最近活动</h2>
         <p v-if="!canAudit" class="placeholder">无权查看审计事件</p>
+        <p v-else-if="activityLoading" class="placeholder">加载中…</p>
         <p v-else-if="activityError" class="login-msg">{{ activityError }}</p>
         <table v-else-if="events.length" class="data-table">
           <thead>

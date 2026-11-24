@@ -60,3 +60,22 @@ def test_home_has_no_raw_html():
     src = _read("src", "views", "OverviewView.vue")
 
     assert "v-html" not in src
+
+
+def test_home_customization_handles_edges():
+    src = _read("src", "views", "OverviewView.vue")
+    reset = src[src.index("function resetSections") : src.index("function displayValue")]
+
+    assert "saveSections()" in reset
+    assert "catch" in src
+    assert "Number.isNaN" in src
+    assert 'v-if="!denied"' in src
+
+
+def test_home_states_are_distinct():
+    src = _read("src", "views", "OverviewView.vue")
+
+    assert "overviewError" in src
+    assert "概览数据不可用" in src
+    assert "activityLoading" in src
+    assert "审计事件不可用" in src

@@ -19,7 +19,9 @@
 
 ## 契约（先改）
 
-无后端接口变化。
+首页读取 `/api/audit?limit=6`，契约已写明 `/api/audit` 按时间正序返回。实现发现文件/Postgres/HTTP
+三类查询返回的是倒序，而端点按「取末尾 N 条」截断，导致返回窗口里最旧的 N 条。本切片在
+`console._query_events` 统一按时间升序归一（契约不变），并补 `/api/audit` 与 `/api/rag` 的倒序后端用例。
 
 ## 完成判据
 
@@ -29,6 +31,10 @@
 - [x] 快捷操作按能力过滤 -> `test_home_quick_actions_are_gated`
 - [x] 最近活动按 `audit.read` 拉取最近 6 条 -> `test_home_loads_recent_audit`
 - [x] 首页无 `v-html` -> `test_home_has_no_raw_html`
+- [x] 恢复默认立即生效、存储失败不崩、无权限不显示自定义、非法时间显示「—」 -> `test_home_customization_handles_edges`
+- [x] 加载、失败与空数据是三种不同状态 -> `test_home_states_are_distinct`
+- [x] 倒序后端下 `/api/audit` 取到最新的 N 条且按时间正序 -> `test_audit_returns_the_newest_events_in_ascending_order`
+- [x] 倒序后端下 `/api/rag` 的 last_* 取最新一条 -> `test_rag_summary_uses_the_newest_retrieval`
 - [x] `web/dist/` 重建且 `--full` 门禁通过
 
 ## 反例

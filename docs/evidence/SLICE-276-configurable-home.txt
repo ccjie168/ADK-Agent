@@ -29,12 +29,34 @@ SLICE-276 通用组件与可配置首页 — 证据
     支持「恢复默认」与「取消」。
 - `web/src/style.css`：页头、快捷操作、自定义面板、空态的样式，全部走令牌。
 
-    python -m pytest tests/test_console_vue_home.py -q
-    6 passed in 0.03s
+    python -m pytest tests/test_console_vue_home.py tests/test_console_audit_order.py -q
+    8 passed
 
     cd web && npm run build
-    ✓ built in 933ms
-    assets/index-Cglz6ePU.css 13.98 kB / assets/index-DjdoGxxO.js 176.64 kB
+    ✓ built in 978ms
+    assets/index-Cglz6ePU.css 13.98 kB / assets/index-DO0cwy1v.js 177.01 kB
+
+## 独立验证反馈修正
+
+首轮验证判 **REJECT**（B1 + 3 个 S + 5 个 N），已修：
+
+1. **B1（阻塞）**：`/api/audit` 对文件/Postgres/HTTP 查询返回的是倒序窗口，端点却按「取末尾 N 条」
+   截断，租户超过 6 条事件后首页显示的是窗口里最旧的 6 条。现在 `console._query_events` 统一按
+   `timestamp` 升序归一（与 `docs/contracts/console.md` 的正序约定一致），`/api/rag` 的
+   `last_*` 也随之一致；新增 `test_audit_returns_the_newest_events_in_ascending_order` 与
+   `test_rag_summary_uses_the_newest_retrieval`（倒序 fake query，旧实现会失败）。
+2. **S1**：「恢复默认」只改草稿。现在立即保存并生效，存储失败也不影响内存状态。
+3. **S2**：最近活动缺少加载态，慢后端会闪「暂无」。现在有独立的 `activityLoading`。
+4. **N1**：非法时间戳回落到「—」。
+5. **N2**：无权限时不显示「自定义首页」按钮。
+6. **N3**：`localStorage.setItem` 失败被捕获，面板照常关闭。
+7. **N4**：概览请求失败显示「概览数据不可用」，不再伪装成空态。
+8. **N5**：最近活动按最新在前展示，与审计面板一致。
+9. **S3**：合并前把 master 合入分支。
+
+未修并记录在案（非本切片引入）：`--audit-file` 走 `JsonlAuditSink`（裸事件）而 `FileAuditQuery`
+按 `AuditRecord` 解析，写入事件后读取会 500；`publisher` 角色没有 `ops.read`，整个首页对其不可见。
+两项分别要动审计文件格式与能力表，另开切片。
 
 ## 实机验证（8022，`--ui vue`）
 
@@ -48,6 +70,6 @@ SLICE-276 通用组件与可配置首页 — 证据
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2185 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2185 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2189 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2189 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
