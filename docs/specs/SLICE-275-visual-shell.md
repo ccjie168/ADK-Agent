@@ -41,7 +41,7 @@
 
 ## 反例
 
-实现前：`tokens.css` 不存在；`App.vue` 是 9 个平铺链接、无 ready 门控、无租户/主体、
+实现前：`tokens.css` 不存在；`App.vue` 是 10 个平铺链接、无 ready 门控、无租户/主体、
 无移动开关；`style.css` 不含 `var(--canvas)`。8 条用例中 7 条失败；`test_shell_has_no_raw_html`
 在基线上本来成立，作为守卫保留（基线无 `v-html`，不构成本切片的红测）。
 
