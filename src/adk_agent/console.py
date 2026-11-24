@@ -3521,18 +3521,23 @@ def build_console_app(
         return Path(path) if path is not None else None
 
     def _audit_signing_summary() -> dict[str, Any]:
+        from .audit.keyring import KeyringError, SigningKeyring
+
         raw = os.environ.get("ADK_AUDIT_KEYRING")
         if raw:
             try:
-                payload = json.loads(raw)
-                keys = payload.get("keys") or {}
-                return {
-                    "active": payload.get("active"),
-                    "kids": sorted(keys),
-                    "legacy": payload.get("legacy") is not None,
-                }
-            except (ValueError, AttributeError):
+                keyring = SigningKeyring.from_env(raw)
+            except KeyringError:
+                # Unparseable or ill-shaped keyrings report a fixed code; the
+                # parsed values must never reach the response or the logs.
                 return {"active": None, "kids": [], "legacy": False, "error": "invalid_keyring"}
+            if keyring is None:  # pragma: no cover - raw is truthy here
+                return {"active": None, "kids": [], "legacy": False}
+            return {
+                "active": keyring.active,
+                "kids": sorted(keyring.keys),
+                "legacy": keyring.legacy is not None,
+            }
         if os.environ.get("ADK_AUDIT_SIGNING_KEY"):
             return {"active": "default", "kids": ["default"], "legacy": False}
         return {"active": None, "kids": [], "legacy": False}
@@ -3581,15 +3586,19 @@ def build_console_app(
         if cached is not None and now - cached[0] < 60:
             return cached[1]
         from .audit import AuditChainBroken, AuditSignatureInvalid
+        from .audit.keyring import KeyringError
         from .audit.pipeline import verify_audit_file
 
         try:
             _signing_key, keyring = _audit_signing_for_console()
+        except KeyringError:
+            return {"verified": None, "error": "invalid_keyring"}
+        try:
             count = await asyncio.wait_for(
                 asyncio.to_thread(verify_audit_file, path, keyring=keyring), timeout=10
             )
-            result: dict[str, Any] = {"verified": True, "records": count}
-        except TimeoutError:
+            result: dict[str, Any] = {"verified": True, "checked_records": count}
+        except asyncio.TimeoutError:
             result = {"verified": None, "error": "verify_timeout"}
         except (AuditChainBroken, AuditSignatureInvalid):
             result = {"verified": False, "error": "chain_broken"}
@@ -3602,9 +3611,11 @@ def build_console_app(
     def _audit_signing_for_console() -> tuple[str | None, Any]:
         raw = os.environ.get("ADK_AUDIT_KEYRING")
         if raw:
-            from .audit.keyring import SigningKeyring
+            from .audit.keyring import KeyringError, SigningKeyring
 
-            keyring = SigningKeyring.model_validate_json(raw)
+            keyring = SigningKeyring.from_env(raw)
+            if keyring is None:  # pragma: no cover - raw is truthy here
+                raise KeyringError("ADK_AUDIT_KEYRING is empty")
             return keyring.keys[keyring.active], keyring
         return os.environ.get("ADK_AUDIT_SIGNING_KEY"), None
 
@@ -3641,7 +3652,11 @@ def build_console_app(
         audit_block: dict[str, Any] = {
             "backend": _audit_backend_name(),
             "records": len(events),
-            "last_event_at": events[0].timestamp.isoformat() if events else None,
+            "last_event_at": (
+                max(events, key=lambda event: event.timestamp).timestamp.isoformat()
+                if events
+                else None
+            ),
             "verified": None,
         }
         if request.query_params.get("verify") == "1":

@@ -20,10 +20,13 @@
 
 - [x] 无 `ops.read` 返回 403 `forbidden` -> `test_security_requires_capability`
 - [x] 返回 audit/policy/keys/scans 四块，未配置时为 null -> `test_security_summarises_audit_and_policy`
+- [x] 凭据存在时响应不含 `wrapped_secret` 内容（`test_security_counts_credentials_by_key` 内断言）
 - [x] `?verify=1` 对空文件链返回 verified=true -> `test_security_verifies_the_file_chain`
 - [x] 响应正文不含任何密钥值，只含 id -> `test_security_never_leaks_key_material`
 - [x] 扫描报告文件被读取 -> `test_security_reads_the_scan_report`
 - [x] 凭据按 key id 计数与 needs_rewrap -> `test_security_counts_credentials_by_key`
+- [x] 非法 keyring 形状返回 `invalid_keyring`，不 500 也不回显内容 -> `test_security_rejects_ill_shaped_keyring`
+- [x] memory 后端的 `last_event_at` 取最新事件 -> `test_security_lists_the_newest_memory_event`
 - [x] `--full` 门禁通过
 
 ## 反例

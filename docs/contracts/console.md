@@ -56,7 +56,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 
 ```json
 {
-  "audit": {"backend": "file|http|db|memory|none", "records": 0, "last_event_at": null,
+  "audit": {"backend": "file|http|db|memory|none|unknown", "records": 0, "last_event_at": null,
             "verified": null},
   "keys": {"audit_signing": {"active": "k2", "kids": ["k1", "k2"], "legacy": false},
            "credentials": {"active_key_id": "kek-2", "by_key_id": {"kek-2": 5, "kek-1": 3},
@@ -67,9 +67,11 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 ```
 
 - `audit.records` 是最近 1000 条窗口内的条数；`last_event_at` 是最新事件的提交时间。
-- 只有 `?verify=1` 才校验审计链：当前仅文件后端支持，返回 `verified: true|false` 与 `records`（校验条数）；
-  校验超过 10 秒返回 `verified: null, error: "verify_timeout"`，链断裂返回 `error: "chain_broken"`，
-  非文件后端返回 `error: "backend_unsupported"`。同一文件 60 秒内复用上次结果。
+- 只有 `?verify=1` 才校验审计链：当前仅文件后端支持，返回 `verified: true|false` 与 `checked_records`（校验条数，
+  与窗口计数 `records` 区分）；校验超过 10 秒返回 `verified: null, error: "verify_timeout"`，
+  链断裂返回 `error: "chain_broken"`，非文件后端返回 `error: "backend_unsupported"`，
+  其他校验失败返回 `error: "verify_failed"`，`ADK_AUDIT_KEYRING` 非法返回 `error: "invalid_keyring"`。
+  同一文件 60 秒内复用上次结果。
 - `keys` 只给 key id、计数与布尔状态，**绝不返回密钥材料**；`needs_rewrap` 是 `secret_key_id` 与当前
   KEK 不同且已有密文的凭据数；未配置凭据 store 或 KEK 时相应字段为 `null` / 空对象。
 - `policy` 未配置时为 `null` 字段。

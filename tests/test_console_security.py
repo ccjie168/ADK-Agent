@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 from google.adk.agents import LlmAgent
@@ -105,9 +108,6 @@ def test_security_reads_the_scan_report(tmp_path):
 
 
 def test_security_counts_credentials_by_key(tmp_path, monkeypatch):
-    import base64
-    from datetime import datetime, timezone
-
     from adk_agent.core import CredentialBinding
     from adk_agent.registry import FileCredentialStore
 
@@ -119,6 +119,7 @@ def test_security_counts_credentials_by_key(tmp_path, monkeypatch):
     )
     store = FileCredentialStore(tmp_path / "creds")
     now = datetime(2026, 11, 24, tzinfo=timezone.utc)
+    ciphertext_marker = "-".join(["cipher", "text", "marker"])
     for cid, kid in (("old", "kek-1"), ("new", "kek-2"), ("bare", None)):
         binding = CredentialBinding(
             credential_id=cid,
@@ -126,15 +127,67 @@ def test_security_counts_credentials_by_key(tmp_path, monkeypatch):
             secret_ref=f"secret://local/{cid}",
             created_by="admin",
             created_at=now,
-            wrapped_secret={"v": 1, "key_id": kid} if kid else None,
+            wrapped_secret={"v": 1, "key_id": kid, "c": ciphertext_marker} if kid else None,
             secret_key_id=kid,
         )
-        __import__("asyncio").run(store.add(binding))
+        asyncio.run(store.add(binding))
 
     with _client(tmp_path, credentials=store) as client:
-        body = client.get("/api/security", headers=AUTH).json()
+        response = client.get("/api/security", headers=AUTH)
+        body = response.json()
 
+    assert ciphertext_marker not in response.text
     keys = body["keys"]["credentials"]
     assert keys["active_key_id"] == "kek-2"
     assert keys["by_key_id"] == {"kek-1": 1, "kek-2": 1, "unwrapped": 1}
     assert keys["needs_rewrap"] == 1
+
+
+def test_security_rejects_ill_shaped_keyring(tmp_path, monkeypatch):
+    marker = "-".join(["echo", "me"])
+    monkeypatch.setenv("ADK_AUDIT_KEYRING", json.dumps({"active": "k", "keys": [marker]}))
+    monkeypatch.delenv("ADK_SECRET_KEKS", raising=False)
+    with _client(tmp_path) as client:
+        response = client.get("/api/security", headers=AUTH)
+        verified = client.get("/api/security?verify=1", headers=AUTH)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["keys"]["audit_signing"]["error"] == "invalid_keyring"
+    assert marker not in response.text
+    assert verified.status_code == 200
+    assert verified.json()["audit"]["error"] == "invalid_keyring"
+
+
+def test_security_lists_the_newest_memory_event(tmp_path):
+    from adk_agent.audit import ListAuditSink
+    from adk_agent.core import AgentRef, AuditEvent, Principal
+
+    sink = ListAuditSink()
+    principal = Principal(tenant="local", subject="u", kind="human")
+    for stamp in (
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+        datetime(2026, 6, 1, tzinfo=timezone.utc),
+    ):
+        asyncio.run(
+            sink.emit(
+                AuditEvent(
+                    event_id=f"e-{stamp.month}",
+                    run_id="r",
+                    trace_id="t",
+                    tenant="local",
+                    principal=principal,
+                    agent_ref=AgentRef(id="a", version="1", digest="sha256:x"),
+                    action="test.event",
+                    target="t",
+                    status="ok",
+                    timestamp=stamp,
+                )
+            )
+        )
+    app = build_console_app(_agents(), auth_token="secret", roles=["admin"], audit_sink=sink)
+    with TestClient(app) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["audit"]["backend"] == "memory"
+    assert body["audit"]["last_event_at"].startswith("2026-06-01")

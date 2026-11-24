@@ -32,15 +32,33 @@ SLICE-272 安全合规聚合接口 — 证据
   `docs/contracts/security_report.schema.json`。
 
     python -m pytest tests/test_console_security.py -q
-    6 passed
+    8 passed
+
+## 独立验证发现与修正
+
+首轮验证 **REJECT**，提出两处阻塞与两处应修，全部已修：
+
+1. **B1（阻塞）**：`ADK_AUDIT_KEYRING` 形状非法（`keys` 为列表/非可迭代）会 500，且列表内容会被当作 kids 回显。
+   现改用 `SigningKeyring.from_env`（错误消毒为 `KeyringError`），返回固定 `invalid_keyring`；
+   新增 `test_security_rejects_ill_shaped_keyring`（断言 200、错误码、marker 不在响应中）。
+2. **B2（阻塞）**：memory 后端 `ListAuditSink.recent()` 是旧→新，`events[0]` 取到最旧事件。
+   现取 `max(events, key=timestamp)`；新增 `test_security_lists_the_newest_memory_event`。
+3. **S1（应修）**：`except TimeoutError` 在 Python 3.10 捕获不到 `asyncio.TimeoutError`，改为 `except asyncio.TimeoutError`。
+4. **S2（应修）**：verify 路径原先用 `model_validate_json`，pydantic 的错误字符串会带 keyring 原文写进日志；
+   现统一走 `from_env`，错误信息被消毒，不再记录原始异常内容。
+5. 顺带：校验条数改为独立字段 `checked_records`（避免与窗口计数 `records` 同名字义混淆），
+   契约补记 `verify_failed` / `invalid_keyring`，凭据测试增加「密文 marker 不出现在响应」断言。
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2149 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2151 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2151 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
 
 首次 `--full` 因两处问题失败并修正：测试里字面量密钥关键词触发 detect-secrets（改为运行时拼接）、
 测试内 `import base64` 位置导致 lint I001（调整导入）。
+验证修正后又跑了一遍 `--fast` 与 `--full`，数字如上；`_audit_signing_for_console` 的空 keyring
+分支由 `assert` 改为显式 `raise KeyringError`，避免 `python -O` 下断言被剥离。
 
 ## 实机验证
 
