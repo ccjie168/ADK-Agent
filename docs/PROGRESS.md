@@ -2,7 +2,7 @@
 
 更新日期: 2026-11-23
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `52f9bc4` feat: load, unload and register agents from the registry panel (SLICE-267) (#295)
+最新提交: `0716217` feat: register peers and remote catalog entries from the page (SLICE-270) (#299)
 状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）进行中（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）
 
 ## 本次暂停交接
@@ -485,7 +485,19 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
           底部「注册 Agent 清单」（`registry.publish`，本地 JSON 预检 → `POST /api/import/agent`）；加载失败按服务端
           `error` 码给出具体文案（名称冲突/版本退役/工件缺失或不可信/沙箱不可用/达到上限）。实机验证：按需加载、卸载、
           清单注册各一次成功。全量门禁 9 步全 PASS（2237 用例收集）。证据 `docs/evidence/SLICE-267-registry-actions.txt`。
-        下一步：SLICE-268 连接器与凭据表单（`connectors.manage`），再补对端/远端目录、审批与工具授权决定按钮。
+        - SLICE-268（连接器与凭据表单）~~已合并 `6c8cbc8`~~：两个面板加 `connectors.manage` 表单与「禁用」；
+          连接器字段（ID/租户/类型/Base URL/路径前缀/凭据引用/超时/方法），凭据只登记 `secret://` 引用、
+          页面不发送任何密钥材料（测试扩展为两面板 × 四个禁名字段）。实机：注册凭据/连接器、禁用、再注册各成功。
+          证据 `docs/evidence/SLICE-268-connector-forms.txt`。
+        - SLICE-269（审批与工具授权决定）~~已合并 `0d3968f`~~：审批面板「批准/拒绝」+ 共享理由框（`approvals.decide`），
+          工具授权 pending 行「批准/拒绝」（`grants.decide`），错误码映射到固定文案；实机批准 `demo-approval-1` 成功。
+          证据 `docs/evidence/SLICE-269-decide-buttons.txt`。
+        - SLICE-270（对端与远端目录）~~已合并 `0716217`~~：对端注册表单 + 禁用、远端 Agent 登记（卡片 URL + 可选凭据引用）；
+          错误码按服务端实际返回映射（含 card_unreachable/card_unauthorized/card_too_large/card_invalid/card_name_mismatch）。
+          实机：注册与禁用对端成功；不可达卡片返回 card_unreachable。证据 `docs/evidence/SLICE-270-peers-forms.txt`。
+        **「页面可配置能力补齐」收口**：模型默认值、访问策略、注册表加载/卸载与清单注册、连接器与凭据、
+        审批与工具授权决定、对端与远端目录均可在页面操作；带签名工件的发布仍保留 CLI（私钥不进浏览器）。
+        下一步按 `docs/PROGRESS.md` 缺口清单选后续项（阶段 2 其余视图 / 阶段 3 安全合规聚合）。
     - **阶段 3**：安全合规聚合视图（诉求 5）。审计完整性、扫描、密钥轮换、策略概览。
     - **阶段 4**：MCP/API 生态展示（诉求 4）。MCP server、A2A 对端、连接器、可复用工具 + 接入引导。
     - **阶段 5**：Agent 开发向导（诉求 3）。把 `compose` 模板做成多步 UI 向导。
