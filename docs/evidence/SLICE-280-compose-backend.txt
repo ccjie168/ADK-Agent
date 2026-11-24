@@ -58,7 +58,7 @@ SLICE-280 控制台 compose 后端 — 证据
     31 passed
 
     cd web && npm run build
-    dist/assets/index-DsaPtawk.css 15.40 kB / assets/index-BIsYdpVO.js 184.97 kB
+    dist/assets/index-DsaPtawk.css 15.40 kB / assets/index-D6MEelwb.js 184.97 kB
 
 ## 实机验证（8026，`--role admin`，带两个临时密钥）
 
@@ -118,7 +118,9 @@ CLI 参数边界：
    先存后发的建议在该后端不可行；存储失败时注册表会留下无字节记录，`load` 返回 409
    `artifact_missing`，同内容重试即可自愈（已在契约写明）。
 5. **N1**：审计 emit 在发布成功后无保护，与既有 `/api/import/agent` 相同；记录不修。
-6. **N3**：`web/src/api/capabilities.ts` 的 `registry.compose` 移到字母序位置。
+6. **N2**：验证时 `docs/PROGRESS.md` 仍写「ADR-0043 与 `registry.compose` 尚未入库」，合并后会过期；
+   按 CLAUDE.md 在合并后的 PROGRESS 记录里收口（本 PR 不动 PROGRESS）。
+7. **N3**：`web/src/api/capabilities.ts` 的 `registry.compose` 移到字母序位置。
 
 ## 门禁
 

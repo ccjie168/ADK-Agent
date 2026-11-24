@@ -547,8 +547,8 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 - 需要 `registry.compose` 能力，缺少返回 403 `forbidden`，先于密钥与请求体检查。
 - 未配置四个 compose 密钥参数时返回 404 `compose_not_configured`，不读取请求体。
 - 未配置注册表返回 404 `registry_not_configured`。
-- 既没有工件存储、注册表也不支持上传时返回 503 `artifact_store_unavailable`；工件存储写入失败同样返回该码。
 - 请求体校验与预览相同：非法输入 400 `compose_invalid`，跨租户 403 `tenant_forbidden`。
+- 既没有工件存储、注册表也不支持上传时返回 503 `artifact_store_unavailable`；工件存储写入失败同样返回该码。工件目的地检查在请求体校验之后。
 - 同版本已发布不同内容返回 409 `registry_conflict`；注册表不可达返回 503 `registry_unavailable`。模板实例不带评测套件，评测门禁恒通过（与 CLI `compose` 一致）。
 - 成功写一条 `agent.compose` 审计：`template_id` 为新字段，`agent_ref` 带 manifest digest 与 artifact digest，`target` 是 agent id，`tenant` 是调用方租户；不记录指令原文。
 - 响应不回显私钥、宿主路径或注册表内部错误。
