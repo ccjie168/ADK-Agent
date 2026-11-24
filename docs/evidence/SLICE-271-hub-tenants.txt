@@ -1,0 +1,35 @@
+SLICE-271 Agent 中心：跨租户与评测下钻 — 证据
+============================================
+
+日期: 2026-11-24
+分支: slice-271-hub-tenants
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_agent_hub_tenants.py:
+
+    2 failed
+    AgentHubView.vue 无 `?tenant=` 与 `admin` 判断、无 `/eval` 调用（原为固定 `/api/registry` 只读）。
+
+## 实现（后绿）
+
+- `AgentHubView.vue`：admin 显示租户输入 + 「切换租户」，`GET /api/registry?tenant=`（留空为当前租户），
+  查看他租户时显示提示；`has_eval_report` 的版本行加「评测报告」按钮，
+  `GET /api/registry/{tenant}/{id}/{version}/eval` 以 JSON 展示并可关闭；失败提示「评测报告不可用」。
+  远端条目用条目自带的 tenant 取报告。
+- 重建 `web/dist/`。后端无改动。
+
+    python -m pytest tests/test_console_vue_agent_hub_tenants.py tests/test_console_vue_agent_hub.py -q
+    6 passed
+    cd web && npm run build   -> ✓ built in 1.24s
+
+## 实机验证（8020）
+
+    GET /                          -> 200，引用 index-BYPM0juO.js
+    GET /api/registry?tenant=local -> [(bot_a,0.9.0),(bot_a,1.0.0),(bot_b,1.0.0)]
+    GET /api/registry/local/bot_a/1.0.0/eval -> 200 {"suite_id":"demo-smoke","passed":2,"total":2,...}
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2143 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）

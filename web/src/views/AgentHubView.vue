@@ -44,8 +44,13 @@ interface AgentGroup {
 
 const auth = useAuthStore();
 const entries = ref<RegistryEntry[]>([]);
+const tenantDraft = ref("");
+const activeTenant = ref("");
+const evalReport = ref<{ title: string; body: string } | null>(null);
+const message = ref("");
 const error = ref("");
 const denied = computed(() => !auth.hasCapability("registry.read"));
+const isAdmin = computed(() => Boolean(auth.principal?.roles?.includes("admin")));
 
 const agents = computed<AgentGroup[]>(() => {
   const groups = new Map<string, AgentGroup>();
@@ -86,13 +91,35 @@ function artifactStatus(entry: RegistryEntry): string {
   return entry.artifact?.status ?? "none";
 }
 
-onMounted(async () => {
-  if (denied.value) return;
+async function load(tenant?: string) {
+  error.value = "";
+  const query = tenant ? `?tenant=${encodeURIComponent(tenant)}` : "";
   try {
-    entries.value = await getJson<RegistryEntry[]>("/api/registry");
+    entries.value = await getJson<RegistryEntry[]>(`/api/registry${query}`);
+    activeTenant.value = tenant ?? "";
   } catch {
     error.value = "registry unavailable";
   }
+}
+
+async function showEval(entry: RegistryEntry) {
+  if (!entry.version) return;
+  const tenant = entry.tenant || activeTenant.value || auth.principal?.tenant || "";
+  const path = `/api/registry/${encodeURIComponent(tenant)}/${encodeURIComponent(entry.id)}/${encodeURIComponent(entry.version)}/eval`;
+  try {
+    const report = await getJson<unknown>(path);
+    evalReport.value = {
+      title: `${entry.id}@${entry.version} 评测报告`,
+      body: JSON.stringify(report, null, 2),
+    };
+  } catch {
+    message.value = "评测报告不可用";
+  }
+}
+
+onMounted(async () => {
+  if (denied.value) return;
+  await load();
 });
 </script>
 
@@ -102,6 +129,17 @@ onMounted(async () => {
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>
+      <div v-if="isAdmin" class="row">
+        <input
+          v-model="tenantDraft"
+          class="grow"
+          placeholder="租户（留空为当前租户）"
+          autocomplete="off"
+        />
+        <button class="primary" @click="load(tenantDraft.trim())">切换租户</button>
+      </div>
+      <p v-if="message" class="login-msg">{{ message }}</p>
+      <p v-if="activeTenant" class="placeholder">正在查看租户 {{ activeTenant }}</p>
       <div class="metric-grid">
         <div class="stat-card">
           <span class="stat-label">Agent</span>
@@ -152,6 +190,7 @@ onMounted(async () => {
               <th>工件 / 信任</th>
               <th>发布时间</th>
               <th>来源</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -162,10 +201,27 @@ onMounted(async () => {
               <td>{{ artifactStatus(entry) }}</td>
               <td>{{ entry.published_at ?? "—" }}</td>
               <td>{{ entry.source === "remote" ? `remote · ${entry.peer_id ?? ""}` : "local" }}</td>
+              <td>
+                <button
+                  v-if="entry.has_eval_report"
+                  class="link"
+                  @click="showEval(entry)"
+                >
+                  评测报告
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
       </section>
+
+      <template v-if="evalReport">
+        <h2>{{ evalReport.title }}</h2>
+        <pre class="policy-view">{{ evalReport.body }}</pre>
+        <div class="row">
+          <button class="link" @click="evalReport = null">关闭</button>
+        </div>
+      </template>
     </template>
   </div>
 </template>
