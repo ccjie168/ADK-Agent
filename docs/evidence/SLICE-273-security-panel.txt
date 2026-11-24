@@ -40,15 +40,15 @@ SLICE-273 安全合规面板与接口残余修复 — 证据
 与 scans 的严格校验语义。
 
     python -m pytest tests/test_console_security.py tests/test_console_vue_security.py -q
-    21 passed in 2.44s
+    25 passed in 2.72s
 
     cd web && npm run build
     ✓ built in 1.14s
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2164 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2164 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2168 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2168 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
 
 首次 `--fast` 因 `ruff format` 未跑失败，格式化后复跑全绿。
@@ -80,6 +80,19 @@ SLICE-273 安全合规面板与接口残余修复 — 证据
    是假阳性。现已提高到 200000 层，并新增序列化路径的用例。
 4. **N-new-3**：`generated_at` 仅空白的值与 schema 不一致。schema 增加 `pattern` `\S`，
    与实现的 `strip()` 判定对齐。
+
+## 第三轮验证反馈修正
+
+第三轮验证判 **REJECT**：同类 500 还能从 `generated_at` 触发。已修：
+
+1. **S-new-2（阻塞）**：报告里的 `generated_at` 若是 JSON 转义的孤代理项（如 U+D800），能通过
+   schema 与 `strip()`，但响应序列化时 `UnicodeEncodeError` → 500。现在先做 UTF-8 可编码性检查，
+   失败按 `null`；新增 `test_security_rejects_a_lone_surrogate_in_generated_at`。
+2. **N-new-4**：JSON Schema 2020-12 把 `1.0` 视为 integer，实现只收 `int`。现在整数
+   浮点按整数接受（`1.0` → `1`），非整数浮点与布尔仍拒绝；新增
+   `test_security_accepts_an_integral_float_counter`。
+3. 补两条此前缺失的回归用例：`test_security_ignores_a_report_with_null_notes`、
+   `test_security_ignores_a_whitespace_generated_at`。
 
 ## 实机验证（8021，`--ui vue`）
 

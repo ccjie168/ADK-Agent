@@ -32,6 +32,10 @@
 - [x] `notes` 类型不符按 null 处理 -> `test_security_ignores_a_report_with_wrong_notes_type`
 - [x] 审计不可用时 `?verify=1` 不掩盖 `audit_unavailable` -> `test_security_keeps_audit_unavailable_after_verify`
 - [x] 扫描报告只回传 `open`/`vulnerabilities` 两个计数，未知嵌套字段不回显 -> `test_security_drops_unknown_scan_counters`
+- [x] `generated_at` 含孤代理项（无法编码回 UTF-8）时按 null -> `test_security_rejects_a_lone_surrogate_in_generated_at`
+- [x] `notes: null` 按 null -> `test_security_ignores_a_report_with_null_notes`
+- [x] 仅空白的时间戳按 null -> `test_security_ignores_a_whitespace_generated_at`
+- [x] 整数值的浮点计数（`1.0`）按 JSON Schema 的 integer 接受 -> `test_security_accepts_an_integral_float_counter`
 - [x] 面板按 `ops.read` 门控 -> `test_security_view_requires_ops_read`
 - [x] 面板含「校验审计链」，请求带 `verify=1` -> `test_security_view_verifies_the_audit_chain`
 - [x] 服务端固定错误码在面板上有对应文案 -> `test_security_view_maps_fixed_error_codes`

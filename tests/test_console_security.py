@@ -301,3 +301,66 @@ def test_security_drops_unknown_scan_counters(tmp_path):
     scans = response.json()["scans"]
     assert scans["codeql"] == {}
     assert scans["dependencies"] == {"vulnerabilities": 1}
+
+
+def test_security_rejects_a_lone_surrogate_in_generated_at(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps({"generated_at": "\ud800", "codeql": {}, "dependencies": {}}),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        response = client.get("/api/security", headers=AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["scans"] is None
+
+
+def test_security_ignores_a_report_with_null_notes(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-11-24T10:00:00Z",
+                "codeql": {},
+                "dependencies": {},
+                "notes": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"] is None
+
+
+def test_security_ignores_a_whitespace_generated_at(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps({"generated_at": "   ", "codeql": {}, "dependencies": {}}),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"] is None
+
+
+def test_security_accepts_an_integral_float_counter(tmp_path):
+    report = tmp_path / "scan.json"
+    report.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-11-24T10:00:00Z",
+                "codeql": {"open": 1.0},
+                "dependencies": {"vulnerabilities": 2.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with _client(tmp_path, security_report=str(report)) as client:
+        body = client.get("/api/security", headers=AUTH).json()
+
+    assert body["scans"]["codeql"] == {"open": 1}
+    assert body["scans"]["dependencies"] == {"vulnerabilities": 2}

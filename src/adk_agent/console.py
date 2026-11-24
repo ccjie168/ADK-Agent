@@ -3644,6 +3644,11 @@ def build_console_app(
         dependencies = payload.get("dependencies")
         if not isinstance(generated_at, str) or not generated_at.strip():
             return None
+        try:
+            generated_at.encode("utf-8")
+        except UnicodeEncodeError:
+            # Lone surrogates pass json.loads but cannot be serialized back.
+            return None
         if "notes" in payload and not isinstance(payload["notes"], str):
             return None
         if not isinstance(codeql, dict) or not isinstance(dependencies, dict):
@@ -3657,7 +3662,14 @@ def build_console_app(
             if field not in block:
                 continue
             value = block[field]
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            if isinstance(value, bool):
+                return None
+            if isinstance(value, float):
+                # JSON Schema counts 1.0 as an integer; keep the contract.
+                if not value.is_integer() or value < 0:
+                    return None
+                value = int(value)
+            elif not isinstance(value, int) or value < 0:
                 return None
             target[field] = value
         # Echo only the two documented counters; unknown nested fields could
