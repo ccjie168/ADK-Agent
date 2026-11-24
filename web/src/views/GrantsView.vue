@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface GrantRecord {
   request_id: string;
@@ -81,7 +82,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>工具授权</h1>
+    <PageHeader title="工具授权" description="工具临时授权与用量" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>

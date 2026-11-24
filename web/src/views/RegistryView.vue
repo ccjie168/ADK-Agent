@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 type Tone = "good" | "bad" | "warn" | "muted";
 
@@ -170,7 +171,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>注册表</h1>
+    <PageHeader title="注册表" description="已发布版本与市场入口" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>

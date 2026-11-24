@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface AgentInfo {
   name: string;
@@ -54,7 +55,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>会话</h1>
+    <PageHeader title="会话" description="会话列表" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <template v-else>
       <label class="select-row">

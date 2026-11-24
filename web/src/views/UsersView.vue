@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface UserEntry {
   tenant: string;
@@ -79,7 +80,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>用户绑定</h1>
+    <PageHeader title="用户绑定" description="用户与角色绑定" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>

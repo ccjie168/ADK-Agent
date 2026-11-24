@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { apiFetch } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 const auth = useAuthStore();
 const kind = ref("terminology");
@@ -32,7 +33,7 @@ async function runImport() {
 
 <template>
   <div class="panel">
-    <h1>导入</h1>
+    <PageHeader title="导入" description="导入术语表或 Agent 清单" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <template v-else>
       <div class="row">

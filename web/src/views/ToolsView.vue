@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface ToolEntry {
   tool_id: string;
@@ -38,7 +39,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>工具目录</h1>
+    <PageHeader title="工具目录" description="工具目录与授权关系" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <table v-else class="data-table">

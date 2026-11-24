@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface CredentialBinding {
   credential_id: string;
@@ -94,7 +95,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>凭据</h1>
+    <PageHeader title="凭据" description="租户凭据引用与状态" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>

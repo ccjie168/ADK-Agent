@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface PlanSummary {
   plan_id: string;
@@ -33,7 +34,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>计划</h1>
+    <PageHeader title="计划" description="多步计划与审批等待" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <table v-else class="data-table">

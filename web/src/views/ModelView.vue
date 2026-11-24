@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 interface ModelSummary {
   recent_calls: number;
@@ -63,7 +64,7 @@ onMounted(async () => {
 
 <template>
   <div class="panel">
-    <h1>模型</h1>
+    <PageHeader title="模型" description="调用、别名与默认模型" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>

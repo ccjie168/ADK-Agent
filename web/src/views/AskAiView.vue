@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { apiFetch } from "../api/client";
 import { useAuthStore } from "../stores/auth";
+import PageHeader from "../components/PageHeader.vue";
 
 const auth = useAuthStore();
 const text = ref("");
@@ -23,7 +24,7 @@ async function runAskAi() {
 
 <template>
   <div class="panel">
-    <h1>Ask AI</h1>
+    <PageHeader title="Ask AI" description="用术语表做确定性路由回放" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <template v-else>
       <div class="row">
