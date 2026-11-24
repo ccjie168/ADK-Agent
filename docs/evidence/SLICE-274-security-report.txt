@@ -1,0 +1,68 @@
+SLICE-274 CI 扫描汇总脚本 — 证据
+==============================
+
+日期: 2026-11-25
+分支: slice-274-security-report
+依据: ADR-0042 的必做修订；`docs/contracts/security_report.schema.json`
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_security_report_script.py -q
+    ERROR tests/test_security_report_script.py - FileNotFoundError: ... scripts/security_report.py
+    Interrupted: 1 error during collection
+
+脚本不存在时测试模块在导入阶段失败，pytest 记为 1 个 collection error，8 条用例未逐条运行；
+这是新文件的真实红灯形态（spec 反例里已注明，不假装逐条变红）。
+
+## 实现（后绿）
+
+`scripts/security_report.py`：
+
+- `count_codeql_results`：解析 SARIF，跨 run 统计 `suppressions` 为空的结果；
+- `count_dependency_vulns`：兼容 `pip-audit --format json` 的旧列表与新版 `{"dependencies": [...]}`；
+- `build_report`：UTC、秒级、`Z` 结尾的 `generated_at`，两个非负整数计数，可选 `notes`；
+- `main`：读两个输入、写 `--out`，输入缺失/不可解析/形状不对退出 2 且不写文件；写盘失败同样退出 2。
+- `docs/guides/operations.md` 新增「安全扫描报告（安全面板）」一节，写明 CI 用法与失败语义。
+
+    python -m pytest tests/test_security_report_script.py -q
+    8 passed in 0.62s
+
+    python scripts/security_report.py --help
+    usage: security_report.py [-h] --codeql-sarif CODEQL_SARIF
+                              --pip-audit-json PIP_AUDIT_JSON --out OUT
+                              [--notes NOTES]
+
+## 实机验证
+
+构造 3 条 SARIF 结果（其中 1 条被压制）与 1 个依赖漏洞：
+
+    python scripts/security_report.py --codeql-sarif codeql.sarif \
+        --pip-audit-json pip-audit.json --out scan.json
+    wrote ...\scan.json: codeql open=2, vulnerabilities=1
+    {
+      "codeql": {"open": 2},
+      "dependencies": {"vulnerabilities": 1},
+      "generated_at": "2026-11-24T16:30:00Z"
+    }
+
+输入缺失时：
+
+    security_report: codeql: cannot read ...\none.sarif
+    exit=2
+    bad.json absent
+
+把生成的 `scan.json` 交给控制台：
+
+    python -m adk_agent console ... --port 8023 --security-report scan.json
+    GET /api/security -> {'generated_at': '2026-11-24T16:30:06Z',
+                          'codeql': {'open': 2}, 'dependencies': {'vulnerabilities': 1}}
+
+与面板「扫描」卡读取的字段一致，不再显示「未提供扫描报告」。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2205 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2205 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
