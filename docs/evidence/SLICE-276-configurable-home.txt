@@ -30,7 +30,7 @@ SLICE-276 通用组件与可配置首页 — 证据
 - `web/src/style.css`：页头、快捷操作、自定义面板、空态的样式，全部走令牌。
 
     python -m pytest tests/test_console_vue_home.py tests/test_console_audit_order.py -q
-    8 passed
+    10 passed
 
     cd web && npm run build
     ✓ built in 978ms
@@ -54,9 +54,9 @@ SLICE-276 通用组件与可配置首页 — 证据
 8. **N5**：最近活动按最新在前展示，与审计面板一致。
 9. **S3**：合并前把 master 合入分支。
 
-未修并记录在案（非本切片引入）：`--audit-file` 走 `JsonlAuditSink`（裸事件）而 `FileAuditQuery`
-按 `AuditRecord` 解析，写入事件后读取会 500；`publisher` 角色没有 `ops.read`，整个首页对其不可见。
-两项分别要动审计文件格式与能力表，另开切片。
+未修并记录在案（非本切片引入）：S4 `publisher` 角色没有 `ops.read`，整个首页对其不可见；
+`--audit-file` 走 `JsonlAuditSink`（裸事件）而 `FileAuditQuery` 按 `AuditRecord` 解析，
+写入事件后读取会 500。两项分别要动能力表与审计文件格式，另开切片。
 
 ## 实机验证（8022，`--ui vue`）
 
