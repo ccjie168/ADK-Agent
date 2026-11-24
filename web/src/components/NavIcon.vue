@@ -34,6 +34,8 @@ const PATHS: Record<string, string> = {
   import: "M12 4v12M7 9l5-5 5 5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3",
   settings: "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4",
   menu: "M4 6h16M4 12h16M4 18h16",
+  network:
+    "M12 5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM19 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM12 5v6M5 17v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2",
 };
 
 const path = computed(() => PATHS[props.name] ?? PATHS.home);

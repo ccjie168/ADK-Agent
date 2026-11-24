@@ -1,0 +1,58 @@
+SLICE-279 生态展示页 — 证据
+==========================
+
+日期: 2026-11-25
+分支: slice-279-ecosystem
+依据: ADR-0041 阶段 4（诉求 4）
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_vue_ecosystem.py -q
+    7 failed
+
+失败项：没有 `/ecosystem` 路由与视图、没有导航入口、没有三种数据源与能力门控、
+没有来源筛选、没有接入命令与复制、没有空态。
+
+## 实现（后绿）
+
+- `web/src/views/EcosystemView.vue`（`/ecosystem`，导航「开发」组，内联 `network` 图标）：
+  - 工具目录读 `/api/tools`（`tools.read`）、连接器读 `/api/connectors`（`connectors.read`）、
+    A2A 对端读 `/api/peers`（`peers.read`）；只有三项都无权时整页「无访问权限」。
+  - 计数卡：工具、MCP 工具、连接器、A2A 对端；无权项显示「—」。
+  - 接入引导三张卡：登记 `--kind mcp` 连接器、`serve --transport streamable-http`、
+    `peers register`；命令可复制（`navigator.clipboard`，失败给固定提示）并链接到对应页面。
+  - 工具表按来源筛选（全部 / MCP / 连接器 / 函数 / OpenAPI）；空态用 `EmptyState`。
+  - 连接器表标出 MCP 服务器数量；对端表显示授权数。
+- `web/src/router/index.ts`、`web/src/App.vue`、`NavIcon.vue`、`style.css` 增加路由、入口、
+  图标与引导/筛选样式。
+- 已把它纳入共享的页头测试与外壳导航测试。
+
+    python -m pytest tests/test_console_vue_ecosystem.py tests/test_console_vue_pages.py \
+        tests/test_console_vue_shell.py -q
+    21 passed in 0.13s
+
+    cd web && npm run build
+    ✓ built in 1.13s
+    assets/index-DsaPtawk.css 15.40 kB / assets/index-BI2NfCZq.js 184.07 kB
+
+## 实机验证（8025，`--ui vue`，带工具目录）
+
+    GET /api/tools -> 2 条（ping 为 function，crm.mcp 为 mcp）
+
+headless Edge 截图：
+
+- 计数卡：工具 2、MCP 工具 1、连接器 0、A2A 对端 0。
+- 未配置连接器和 peers store 时顶部显示「连接器、A2A 对端不可用」，不显示伪造的 0 成功。
+- 三张接入引导卡与可复制命令、工具来源筛选、工具表均正常。
+- 截图：`docs/evidence/ui/SLICE-279-ecosystem.png`。
+
+    NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --only P13
+    [PASS] P13 console UI baseline, overview and panels (2.5s)
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2219 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2219 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）

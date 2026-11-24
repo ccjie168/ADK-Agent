@@ -6,6 +6,7 @@ import AuditView from "../views/AuditView.vue";
 import ChatView from "../views/ChatView.vue";
 import ConnectorsView from "../views/ConnectorsView.vue";
 import CredentialsView from "../views/CredentialsView.vue";
+import EcosystemView from "../views/EcosystemView.vue";
 import GrantsView from "../views/GrantsView.vue";
 import ImportView from "../views/ImportView.vue";
 import ModelView from "../views/ModelView.vue";
@@ -32,6 +33,7 @@ const routes = [
   { path: "/ask-ai", name: "ask-ai", component: AskAiView },
   { path: "/chat", name: "chat", component: ChatView },
   { path: "/connectors", name: "connectors", component: ConnectorsView },
+  { path: "/ecosystem", name: "ecosystem", component: EcosystemView },
   { path: "/credentials", name: "credentials", component: CredentialsView },
   { path: "/grants", name: "grants", component: GrantsView },
   { path: "/import", name: "import", component: ImportView },
