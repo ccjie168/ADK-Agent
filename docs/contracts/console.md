@@ -50,6 +50,32 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - 能力清单获取失败时控制台保持现有布局，不阻断使用。
 - `roles.read`、`roles.manage` 属于管理能力，默认只发给 `admin`。
 
+## `GET /api/security` -> 安全合规聚合
+
+需要 `ops.read`，缺少返回 403 `forbidden`，先于任何读取。返回四块：
+
+```json
+{
+  "audit": {"backend": "file|http|db|memory|none", "records": 0, "last_event_at": null,
+            "verified": null},
+  "keys": {"audit_signing": {"active": "k2", "kids": ["k1", "k2"], "legacy": false},
+           "credentials": {"active_key_id": "kek-2", "by_key_id": {"kek-2": 5, "kek-1": 3},
+                           "needs_rewrap": 3}},
+  "policy": {"version": "v3", "bindings": 4},
+  "scans": {"generated_at": "...", "codeql": {"open": 0}, "dependencies": {"vulnerabilities": 0}}
+}
+```
+
+- `audit.records` 是最近 1000 条窗口内的条数；`last_event_at` 是最新事件的提交时间。
+- 只有 `?verify=1` 才校验审计链：当前仅文件后端支持，返回 `verified: true|false` 与 `records`（校验条数）；
+  校验超过 10 秒返回 `verified: null, error: "verify_timeout"`，链断裂返回 `error: "chain_broken"`，
+  非文件后端返回 `error: "backend_unsupported"`。同一文件 60 秒内复用上次结果。
+- `keys` 只给 key id、计数与布尔状态，**绝不返回密钥材料**；`needs_rewrap` 是 `secret_key_id` 与当前
+  KEK 不同且已有密文的凭据数；未配置凭据 store 或 KEK 时相应字段为 `null` / 空对象。
+- `policy` 未配置时为 `null` 字段。
+- `scans` 来自 `console --security-report PATH` 指向的 JSON（见 `security_report.schema.json`），
+  文件缺失或无法解析时为 `null`，不报错。
+
 ## 角色与用户管理
 
 需要 `console --role-store-dir|--role-store-db`；用户绑定接口另需

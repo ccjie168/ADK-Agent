@@ -1997,6 +1997,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_credential_store_args(p_console)
     _add_role_store_args(p_console)
+    p_console.add_argument(
+        "--security-report",
+        default=None,
+        help="JSON file with CI scan results shown by GET /api/security",
+    )
     _add_peer_store_args(p_console)
     p_console.add_argument(
         "--terminology-dir",
@@ -3357,6 +3362,7 @@ def main(argv: list[str] | None = None) -> None:
             model_config_store=_model_config_store(args),
             role_store=role_store,
             user_binding_store=user_binding_store,
+            security_report=args.security_report,
             ui=args.ui,
         )
         if isinstance(audit_query, PostgresAuditQuery):
