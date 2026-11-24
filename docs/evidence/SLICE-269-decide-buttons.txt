@@ -1,0 +1,38 @@
+SLICE-269 审批与工具授权决定按钮 — 证据
+======================================
+
+日期: 2026-11-24
+分支: slice-269-decide-buttons
+
+## 反例（先红）
+
+实现前运行 tests/test_console_vue_decide.py:
+
+    2 failed
+    ApprovalsView.vue 无 `approvals.decide`/`approved`；GrantsView.vue 无 `grants.decide`/`/decide`。
+
+## 实现（后绿）
+
+- `ApprovalsView.vue`：`approvals.decide` 下每行「批准」「拒绝」，顶部共享「决定理由」输入框；
+  `POST /api/approvals/{id}` body `{approved, reason}`；错误码映射 approval_not_found / approval_unavailable /
+  tenant_forbidden / policy_denied；成功后刷新。
+- `GrantsView.vue`：`grants.decide` 下 `status === "pending"` 行显示「批准」「拒绝」；
+  `POST /api/tool-grants/{id}/decide`；错误码映射 grant_not_found / grant_already_decided / grant_expired /
+  grant_store_unavailable。
+- 两处请求 try/catch，网络失败「决定失败: 网络错误」；重建 `web/dist/`。后端无改动。
+
+    python -m pytest tests/test_console_vue_decide.py -q
+    2 passed
+    cd web && npm run build   -> ✓ built in 775ms
+
+## 实机验证（8020）
+
+    GET  /api/approvals  -> [("demo-approval-1","step-1")]
+    POST /api/approvals/demo-approval-1 {"approved":true,"reason":"demo approval"}
+      -> {"request_id":"demo-approval-1","approved":true,"approver":"console_user",...}
+    GET  /api/approvals  -> []（待决列表清空）
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2138 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS（format/lint/types/layering/specs/test/sast/deps/secrets）

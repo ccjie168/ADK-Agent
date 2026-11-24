@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { getJson } from "../api/client";
+import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 
 interface ApprovalRequest {
@@ -19,8 +19,11 @@ interface ExpiryLabel {
 
 const auth = useAuthStore();
 const approvals = ref<ApprovalRequest[]>([]);
+const reason = ref("");
+const message = ref("");
 const error = ref("");
 const denied = computed(() => !auth.hasCapability("approvals.read"));
+const canDecide = computed(() => auth.hasCapability("approvals.decide"));
 
 function expiryLabel(value: string | null | undefined): ExpiryLabel {
   if (!value) return { text: "no deadline", soon: false };
@@ -37,13 +40,52 @@ function requestedLabel(value: string | null | undefined): string {
   return String(value ?? "").replace("T", " ").slice(0, 19);
 }
 
-onMounted(async () => {
-  if (denied.value) return;
+async function reload() {
   try {
     approvals.value = await getJson<ApprovalRequest[]>("/api/approvals");
   } catch {
     error.value = "approvals unavailable";
   }
+}
+
+async function decide(request: ApprovalRequest, approved: boolean) {
+  let response: Response;
+  try {
+    response = await apiFetch(`/api/approvals/${encodeURIComponent(request.request_id)}`, {
+      method: "POST",
+      body: JSON.stringify({ approved, reason: reason.value }),
+    });
+  } catch {
+    message.value = "决定失败: 网络错误";
+    return;
+  }
+  if (response.ok) {
+    message.value = approved ? "已批准" : "已拒绝";
+    reason.value = "";
+    await reload();
+    return;
+  }
+  const codes: Record<string, string> = {
+    approval_not_found: "审批不存在",
+    approval_unavailable: "审批存储不可用",
+    tenant_forbidden: "租户不允许",
+    policy_denied: "策略拒绝该决定",
+  };
+  message.value = `决定失败: ${codes[await errorCode(response)] ?? response.status}`;
+}
+
+async function errorCode(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: string };
+    return body.error ?? "";
+  } catch {
+    return "";
+  }
+}
+
+onMounted(async () => {
+  if (denied.value) return;
+  await reload();
 });
 </script>
 
@@ -52,7 +94,12 @@ onMounted(async () => {
     <h1>审批</h1>
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
-    <table v-else class="data-table">
+    <template v-else>
+    <p v-if="message" class="login-msg">{{ message }}</p>
+    <div v-if="canDecide" class="row">
+      <input v-model="reason" class="grow" placeholder="决定理由（可选）" autocomplete="off" />
+    </div>
+    <table class="data-table">
       <thead>
         <tr>
           <th>请求 ID</th>
@@ -61,6 +108,7 @@ onMounted(async () => {
           <th>理由</th>
           <th>提交时间</th>
           <th>到期</th>
+          <th v-if="canDecide" />
         </tr>
       </thead>
       <tbody>
@@ -75,11 +123,16 @@ onMounted(async () => {
               {{ expiryLabel(request.expires_at).text }}
             </span>
           </td>
+          <td v-if="canDecide" class="row">
+            <button class="link" @click="decide(request, true)">批准</button>
+            <button class="link" @click="decide(request, false)">拒绝</button>
+          </td>
         </tr>
         <tr v-if="approvals.length === 0">
-          <td colspan="6" class="placeholder">没有待决审批。</td>
+          <td :colspan="canDecide ? 7 : 6" class="placeholder">没有待决审批。</td>
         </tr>
       </tbody>
     </table>
+    </template>
   </div>
 </template>
