@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,12 +43,23 @@ def count_codeql_results(payload: Any) -> int:
         for result in results:
             if not isinstance(result, dict):
                 raise SecurityReportError("codeql: every result must be an object")
-            suppressions = result.get("suppressions", [])
-            if not isinstance(suppressions, list):
-                raise SecurityReportError("codeql: suppressions must be a list")
-            if not suppressions:
+            if not _is_suppressed(result):
                 total += 1
     return total
+
+
+def _is_suppressed(result: dict[str, Any]) -> bool:
+    """Only an accepted suppression closes a result; rejected stays open."""
+    suppressions = result.get("suppressions", [])
+    if not isinstance(suppressions, list):
+        raise SecurityReportError("codeql: suppressions must be a list")
+    for entry in suppressions:
+        if not isinstance(entry, dict):
+            raise SecurityReportError("codeql: every suppression must be an object")
+        status = entry.get("status")
+        if status is None or status == "accepted":
+            return True
+    return False
 
 
 def count_dependency_vulns(payload: Any) -> int:
@@ -115,8 +128,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp = out.with_name(f".{out.name}.tmp")
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, out)
+    except OSError as exc:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        print(f"security_report: cannot write {out}: {exc}", file=sys.stderr)
+        return 2
     print(
         f"wrote {out}: codeql open={report['codeql']['open']}, "
         f"vulnerabilities={report['dependencies']['vulnerabilities']}"

@@ -337,8 +337,10 @@
         --pip-audit-json pip-audit.json \
         --out security-report.json [--notes "nightly"]
 
-- CodeQL 只统计**未压制**的 SARIF 结果（`suppressions` 非空的视为已处置），跨 run 累加。
+- CodeQL 只统计**未压制**的 SARIF 结果：只有 `status` 为 `accepted`（或未给 status）的压制算关闭，
+  `rejected`/`underReview` 仍算开放；跨 run 累加。
 - 依赖漏洞取 `pip-audit --format json` 的 `vulns` 数，兼容旧版列表与新版 `{"dependencies": [...]}` 两种布局。
 - 输出严格遵循 `docs/contracts/security_report.schema.json`；`generated_at` 为 UTC、秒级、`Z` 结尾。
-- 输入缺失、无法解析或形状不对时退出 2 且不写文件；面板保持「未提供扫描报告」，不会把失败显示成 0。
+- 输入缺失、无法解析、形状不对或输出不可写时退出 2 且不写半成品文件（先写临时文件再原子替换）；
+  面板保持「未提供扫描报告」，不会把失败显示成 0。
 - 本脚本只汇总构建产物，不在运行时重跑扫描器；把哪次流水线的产物写到哪个环境由运维决定。
