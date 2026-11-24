@@ -38,11 +38,11 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
   并记录类型级日志。启动种子对已存在的内置角色只增不减地补齐当前种子新增的能力。
 - 基础能力是 `chat.run`、`runs.read`、`sessions.read`。
 - 读接口按消费它的面板检查能力：审计 `audit.read`，策略 `policy.read`，注册表与评测 `registry.read`，工具目录 `tools.read`，工具授权 `grants.read`，连接器、连接器申请与凭据 `connectors.read`，对端与远程目录 `peers.read`，总览/配额/RAG/语义 `ops.read`，模型 `model.read`。
-- 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`、决定 `grants.decide`，连接器/凭据/连接器申请决定 `connectors.manage`，对端/远程目录 `peers.manage`，全局默认模型 `model.write`，术语表导入 `semantics.write`，agent 导入 `registry.publish`。能力检查一律先于请求体解析、配置 404、非法参数 400 与租户检查。
+- 写接口按操作检查能力：注册表按需加载与卸载 `registry.load`，工具授权申请 `grants.request`、决定 `grants.decide`，连接器/凭据/连接器申请决定 `connectors.manage`，对端/远程目录 `peers.manage`，全局默认模型 `model.write`，术语表导入 `semantics.write`，agent 导入 `registry.publish`，页面一键发布 `registry.compose`。能力检查一律先于请求体解析、配置 404、非法参数 400 与租户检查。
 - 运行、计划、trace、会话与聊天接口检查基础能力 `runs.read`、`sessions.read`、`chat.run`。这些能力按现有角色表对每个主体都为真，检查用于未来增加受限角色时的防御；租户可见性仍由既有的租户过滤决定。带显式租户参数的读接口同样能力检查先于租户检查。
 - 以下三档是内置角色表（未配置角色 store 时生效，也是 store 的默认种子定义）。
 - `operator`、`ops`、`approver` 加 `approvals.read`、`approvals.decide`、`grants.read`、`audit.read`、`connectors.read`、`peers.read`、`registry.read`、`policy.read`。另含 `model.read`、`semantics.write`、`ops.read`。
-- `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
+- `publisher`、`developer` 加 `registry.read`、`registry.publish`、`registry.compose`、`registry.load`、`eval.read`、`tools.read`、`lifecycle.read`、`grants.read`、`grants.request`。
 - 其余管理能力只由 `admin` 得到，包括 `grants.decide`、`connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
 - 工具授权的申请与决定分离：有 `grants.request` 的角色可以提交，只有 `admin` 能批准或拒绝；
   面板上的 Approve/Deny 按钮按 `grants.decide` 显示。
@@ -472,6 +472,86 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 - 工件无法加载成同名 ADK agent 返回 500 `load_failed`。
 - 生命周期存储不可用返回 503 `lifecycle_unavailable`。
 - 成功加载写一条 `agent.load` 审计，`status=ok`，`target` 是 agent 名，`tenant` 是调用方的租户（审计事件要求租户等于 principal 的租户）。
+
+## `GET /api/compose/templates` -> `{configured, templates}`
+
+列出组合模板与参数（结构与 `compose.md` 的 `TemplateInfo` 相同），并报告控制台是否配置了发布密钥。
+
+```json
+{
+  "configured": true,
+  "templates": [
+    {
+      "template_id": "single-llm",
+      "description": "Single LlmAgent with optional built-in ping tool",
+      "parameters": [
+        {"name": "name", "description": "agent id, ADK-safe", "required": true, "default": null}
+      ],
+      "tools": ["ping"]
+    }
+  ]
+}
+```
+
+- 需要 `registry.publish` 能力，缺少返回 403 `forbidden`，先于其他检查。
+- `configured` 为 `true` 仅当四个 compose 密钥参数都已提供（见 `cli.md`）。模板与预览不签名，未配置时仍可用。
+
+## `POST /api/compose/preview` -> `{manifest, agent_py, artifact_digest}`
+
+用 `single-llm` 模板渲染一次发布内容，不签名、不写注册表。
+
+```json
+{
+  "template_id": "single-llm",
+  "name": "support-bot",
+  "version": "1.0.0",
+  "tenant": "team-a",
+  "owner": "team-a",
+  "description": "support",
+  "instruction": "You are helpful.",
+  "tools": ["ping"],
+  "data_classes": ["internal"]
+}
+```
+
+```json
+{
+  "manifest": {"id": "support-bot", "version": "1.0.0"},
+  "agent_py": "\"\"\"ADK agent generated from the single-llm template.\"\"\"\n...",
+  "artifact_digest": "sha256:...",
+  "size": 812
+}
+```
+
+- 需要 `registry.publish` 能力，缺少返回 403 `forbidden`，先于请求体解析。
+- 请求体不是 JSON 对象、字段类型不对、未知字段、未知或非法模板、非法参数、超过长度上限、渲染后工件超过 8 MiB 都返回 400 `compose_invalid`。错误体只有固定码，不回显异常原文。
+- 长度上限（字符）：`template_id` 64，`name` 64，`version`/`tenant` 256，`owner`/`description` 2000，`instruction` 4000；`tools` 与 `data_classes` 各最多 16 项。`name`、`version`、`tenant` 另受 manifest 安全名模式约束。
+- 非 `admin` 身份的 `tenant` 必须等于调用方租户，否则返回 403 `tenant_forbidden`。
+- `artifact_digest` 与发布时写入注册表的工件 digest 相同；同参数同模板结果确定。
+- 不需要签名密钥；不存在的 `template_id` 返回 400 `compose_invalid`，不返回 404。
+
+## `POST /api/compose` -> `{tenant, id, version, digest, artifact_digest}`
+
+用控制台专用密钥签名、发布并入库一个模板实例。请求体与预览相同。
+
+```json
+{
+  "tenant": "team-a",
+  "id": "support-bot",
+  "version": "1.0.0",
+  "digest": "sha256:...",
+  "artifact_digest": "sha256:..."
+}
+```
+
+- 需要 `registry.compose` 能力，缺少返回 403 `forbidden`，先于密钥与请求体检查。
+- 未配置四个 compose 密钥参数时返回 404 `compose_not_configured`，不读取请求体。
+- 未配置注册表返回 404 `registry_not_configured`。
+- 请求体校验与预览相同：非法输入 400 `compose_invalid`，跨租户 403 `tenant_forbidden`。
+- 既没有工件存储、注册表也不支持上传时返回 503 `artifact_store_unavailable`；工件存储写入失败同样返回该码。工件目的地检查在请求体校验之后。
+- 同版本已发布不同内容返回 409 `registry_conflict`；注册表不可达返回 503 `registry_unavailable`。模板实例不带评测套件，评测门禁恒通过（与 CLI `compose` 一致）。
+- 成功写一条 `agent.compose` 审计：`template_id` 为新字段，`agent_ref` 带 manifest digest 与 artifact digest，`target` 是 agent id，`tenant` 是调用方租户；不记录指令原文。
+- 响应不回显私钥、宿主路径或注册表内部错误。
 
 ## `GET /api/tools?tenant=<name>` -> `[ToolEntry]`
 

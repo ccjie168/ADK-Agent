@@ -19,6 +19,7 @@ ALL = {
     "audit.read",
     "registry.read",
     "registry.publish",
+    "registry.compose",
     "registry.load",
     "eval.read",
     "tools.read",
@@ -57,6 +58,7 @@ OPERATOR = BASE | {
 PUBLISHER = BASE | {
     "registry.read",
     "registry.publish",
+    "registry.compose",
     "registry.load",
     "eval.read",
     "tools.read",

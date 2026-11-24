@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import io
 import json
 import logging
 import os
 import re
 import uuid
+import zipfile
 from collections.abc import AsyncGenerator, Iterable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -30,6 +32,12 @@ from .approvals_postgres import ApprovalInboxUnavailable
 from .audit import AuditQuery, AuditQueryUnavailable, ListAuditSink, query_events
 from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
+from .compose import (
+    ComposeError,
+    build_composed,
+    compose_and_publish,
+    list_templates,
+)
 from .core import (
     CAPABILITIES_ALL,
     CAPABILITIES_BASE,
@@ -109,11 +117,15 @@ from .ratelimit import RateLimit, RateLimitMiddleware, build_rate_limiter
 from .rbac import FilePolicyStore, RolePolicyEngine
 from .registry import (
     ArtifactLoadError,
+    ArtifactStoreError,
     ArtifactTrustError,
     InProcessArtifactLoader,
+    PackagingError,
     PublishUnavailable,
+    RegistryConflict,
     RegistryIntegrityError,
     TrustStore,
+    artifact_digest,
     check_connector,
     credential_is_bound,
     fetch_agent_card,
@@ -2965,6 +2977,10 @@ def build_console_app(
     user_binding_store: UserBindingStore | None = None,
     security_report: str | None = None,
     ui: str = "legacy",
+    compose_key: Any | None = None,
+    compose_key_id: str | None = None,
+    compose_builder_key: Any | None = None,
+    compose_builder_key_id: str | None = None,
 ) -> FastAPI:
     """Build the console FastAPI app with one Runner per agent."""
     install_log_sanitizer()
@@ -4326,6 +4342,181 @@ def build_console_app(
         if report is None:
             return JSONResponse({"error": "eval_report_not_found"}, status_code=404)
         return report.model_dump(mode="json")
+
+    compose_configured = all(
+        value is not None
+        for value in (compose_key, compose_key_id, compose_builder_key, compose_builder_key_id)
+    )
+
+    def _compose_invalid() -> JSONResponse:
+        return JSONResponse({"error": "compose_invalid"}, status_code=400)
+
+    def _compose_params(
+        body: object, caller: Principal
+    ) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+        if not isinstance(body, dict):
+            return None, _compose_invalid()
+        allowed = {
+            "template_id",
+            "name",
+            "version",
+            "tenant",
+            "owner",
+            "description",
+            "instruction",
+            "tools",
+            "data_classes",
+        }
+        if set(body) - allowed:
+            return None, _compose_invalid()
+        params: dict[str, Any] = {}
+        limits = {
+            "template_id": 64,
+            "name": 64,
+            "version": 256,
+            "tenant": 256,
+            "instruction": 4000,
+        }
+        for field, limit in limits.items():
+            value = body.get(field)
+            if not isinstance(value, str) or not value or len(value) > limit:
+                return None, _compose_invalid()
+            params[field] = value
+        for field in ("owner", "description"):
+            value = body.get(field)
+            if value is not None and (not isinstance(value, str) or len(value) > 2000):
+                return None, _compose_invalid()
+            params[field] = value
+        for field in ("tools", "data_classes"):
+            value = body.get(field, [])
+            if (
+                not isinstance(value, list)
+                or len(value) > 16
+                or not all(isinstance(item, str) for item in value)
+            ):
+                return None, _compose_invalid()
+            params[field] = value
+        if params["tenant"] != caller.tenant and "admin" not in caller.roles:
+            return None, JSONResponse({"error": "tenant_forbidden"}, status_code=403)
+        return params, None
+
+    async def _compose_body(
+        request: Request, caller: Principal
+    ) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+        try:
+            body = await request.json()
+        except (ValueError, RecursionError):
+            return None, _compose_invalid()
+        return _compose_params(body, caller)
+
+    @app.get("/api/compose/templates")
+    async def compose_templates(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "registry.publish")
+        if denied is not None:
+            return denied
+        return JSONResponse(
+            {
+                "configured": compose_configured,
+                "templates": [template.model_dump(mode="json") for template in list_templates()],
+            }
+        )
+
+    @app.post("/api/compose/preview")
+    async def compose_preview(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "registry.publish")
+        if denied is not None:
+            return denied
+        params, error = await _compose_body(request, caller)
+        if error is not None:
+            return error
+        if params is None:
+            return _compose_invalid()
+        try:
+            manifest, data = build_composed(**params)
+        except (ComposeError, PackagingError, ValueError):
+            return _compose_invalid()
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            agent_py = archive.read("agent.py").decode("utf-8")
+        return JSONResponse(
+            {
+                "manifest": manifest.model_dump(mode="json"),
+                "agent_py": agent_py,
+                "artifact_digest": artifact_digest(data),
+                "size": len(data),
+            }
+        )
+
+    @app.post("/api/compose")
+    async def compose_publish(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "registry.compose")
+        if denied is not None:
+            return denied
+        if not compose_configured:
+            return JSONResponse({"error": "compose_not_configured"}, status_code=404)
+        if registry is None:
+            return JSONResponse({"error": "registry_not_configured"}, status_code=404)
+        params, error = await _compose_body(request, caller)
+        if error is not None:
+            return error
+        if params is None:
+            return _compose_invalid()
+        if artifact_store is None and not hasattr(registry, "upload_artifact"):
+            return JSONResponse({"error": "artifact_store_unavailable"}, status_code=503)
+        try:
+            stored = await compose_and_publish(
+                **params,
+                registry=registry,
+                artifact_store=artifact_store,
+                private_key=compose_key,
+                key_id=cast("str", compose_key_id),
+                builder_key=compose_builder_key,
+                builder_key_id=cast("str", compose_builder_key_id),
+            )
+        except RegistryConflict:
+            return JSONResponse({"error": "registry_conflict"}, status_code=409)
+        except (ComposeError, PackagingError, ValueError):
+            return _compose_invalid()
+        except ArtifactStoreError:
+            return JSONResponse({"error": "artifact_store_unavailable"}, status_code=503)
+        except PublishUnavailable:
+            return JSONResponse({"error": "registry_unavailable"}, status_code=503)
+        except Exception:  # noqa: BLE001
+            logger.exception("compose publish failed for tenant=%s", caller.tenant)
+            return JSONResponse({"error": "registry_unavailable"}, status_code=503)
+        artifact = stored.artifact
+        artifact_digest_value = artifact.digest if artifact is not None else stored.digest
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=AgentRef(
+                    id=params["name"],
+                    version=params["version"],
+                    digest=stored.digest,
+                    artifact_digest=artifact_digest_value,
+                ),
+                action="agent.compose",
+                target=params["name"],
+                template_id=params["template_id"],
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return JSONResponse(
+            {
+                "tenant": params["tenant"],
+                "id": params["name"],
+                "version": params["version"],
+                "digest": stored.digest,
+                "artifact_digest": artifact_digest_value,
+            }
+        )
 
     @app.get("/api/tools")
     async def list_tools(request: Request, tenant: str | None = None) -> Any:
@@ -5997,6 +6188,10 @@ def run_console(
     user_binding_store: UserBindingStore | None = None,
     security_report: str | None = None,
     ui: str = "legacy",
+    compose_key: Any | None = None,
+    compose_key_id: str | None = None,
+    compose_builder_key: Any | None = None,
+    compose_builder_key_id: str | None = None,
 ) -> None:
     """Serve the console (blocking)."""
     app = build_console_app(
@@ -6043,6 +6238,10 @@ def run_console(
         user_binding_store=user_binding_store,
         security_report=security_report,
         ui=ui,
+        compose_key=compose_key,
+        compose_key_id=compose_key_id,
+        compose_builder_key=compose_builder_key,
+        compose_builder_key_id=compose_builder_key_id,
     )
 
     import uvicorn

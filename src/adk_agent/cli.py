@@ -2002,6 +2002,26 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="JSON file with CI scan results shown by GET /api/security",
     )
+    p_console.add_argument(
+        "--compose-key",
+        default=None,
+        help="Ed25519 private key PEM used by POST /api/compose (ADR-0043)",
+    )
+    p_console.add_argument(
+        "--compose-key-id",
+        default=None,
+        help="key id written into the composed artifact signature",
+    )
+    p_console.add_argument(
+        "--compose-builder-key",
+        default=None,
+        help="Ed25519 builder key PEM for in_process composed artifacts",
+    )
+    p_console.add_argument(
+        "--compose-builder-key-id",
+        default=None,
+        help="builder key id written into the composed artifact",
+    )
     _add_peer_store_args(p_console)
     p_console.add_argument(
         "--terminology-dir",
@@ -3225,6 +3245,38 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
         print(f"ok {count} records")
     elif args.cmd == "console":
+        compose_flags = (
+            args.compose_key,
+            args.compose_key_id,
+            args.compose_builder_key,
+            args.compose_builder_key_id,
+        )
+        compose_given = [flag for flag in compose_flags if flag is not None]
+        if 0 < len(compose_given) < 4:
+            print(
+                "compose signing needs --compose-key, --compose-key-id, "
+                "--compose-builder-key and --compose-builder-key-id",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        compose_key: Any | None = None
+        compose_key_id: str | None = None
+        compose_builder_key: Any | None = None
+        compose_builder_key_id: str | None = None
+        if len(compose_given) == 4:
+            if not args.compose_key_id.strip() or not args.compose_builder_key_id.strip():
+                print("compose key ids must not be empty", file=sys.stderr)
+                raise SystemExit(2)
+            from .registry.signing import PublishUnavailable, load_private_key
+
+            try:
+                compose_key = load_private_key(args.compose_key)
+                compose_builder_key = load_private_key(args.compose_builder_key)
+            except PublishUnavailable:
+                print("compose signing key could not be loaded", file=sys.stderr)
+                raise SystemExit(1) from None
+            compose_key_id = args.compose_key_id
+            compose_builder_key_id = args.compose_builder_key_id
         _install_agent_sandbox(args)
         rate_limit = _rate_limit(args)
         session_rls = _session_rls(args)
@@ -3364,6 +3416,10 @@ def main(argv: list[str] | None = None) -> None:
             user_binding_store=user_binding_store,
             security_report=args.security_report,
             ui=args.ui,
+            compose_key=compose_key,
+            compose_key_id=compose_key_id,
+            compose_builder_key=compose_builder_key,
+            compose_builder_key_id=compose_builder_key_id,
         )
         if isinstance(audit_query, PostgresAuditQuery):
             # The pool may have opened in uvicorn's loop, which is now closed;
