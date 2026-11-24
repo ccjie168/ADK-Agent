@@ -97,10 +97,17 @@ async function disablePeer(entry: PeerEntry) {
     {},
   );
   if (response === null) return;
-  message.value = response.ok
-    ? `已禁用 ${entry.peer.peer_id}`
-    : `禁用失败: ${response.status}`;
-  await reload();
+  if (response.ok) {
+    message.value = `已禁用 ${entry.peer.peer_id}`;
+    await reload();
+    return;
+  }
+  const codes: Record<string, string> = {
+    peer_not_found: "对端不存在",
+    tenant_forbidden: "租户不允许",
+    peer_store_unavailable: "对端存储不可用",
+  };
+  message.value = `禁用失败: ${codes[await errorCode(response)] ?? response.status}`;
 }
 
 async function registerRemote() {
@@ -127,6 +134,7 @@ async function registerRemote() {
     secret_unavailable: "对端凭据不可用",
     remote_agent_tenant_immutable: "该远端已属于其他租户",
     remote_agent_store_unavailable: "远端目录存储不可用",
+    peer_store_unavailable: "对端存储不可用",
     card_unreachable: "无法访问对端卡片地址",
     card_unauthorized: "对端卡片地址拒绝访问（凭据无效？）",
     card_too_large: "对端卡片超出大小上限",

@@ -14,8 +14,8 @@ PeersView 从只读表格变成可管理：
 3. 「登记远端 Agent」表单：`remote_id`、租户、`peer_id`、`agent_card_url`、`credential_ref`（可选）、标签
    → `POST /api/remote-agents`（服务端会抓取卡片并记录摘要）。
    错误码映射 `invalid_remote_agent`、`peer_not_found`、`tenant_mismatch`、`secret_unavailable`、
-   `remote_agent_tenant_immutable`、`remote_agent_store_unavailable`、`remote_agent_unreachable`、
-   `remote_agent_card_mismatch`，其余回退状态码。
+   `remote_agent_tenant_immutable`、`remote_agent_store_unavailable`、`card_unreachable`、
+   `card_unauthorized`、`card_too_large`、`card_invalid`、`card_name_mismatch`，其余回退状态码。
 4. 所有请求经 `post()` 包装，网络失败提示「请求失败: 网络错误」；结果消息在表格上方。
 
 后端无改动。凭据只以 `secret://` 引用形式提交，页面不接触密钥值。
