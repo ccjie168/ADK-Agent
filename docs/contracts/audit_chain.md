@@ -37,3 +37,16 @@
 `event` 列为 `jsonb`，写入时会规范化键顺序与数字表示。校验一律先取 `event::text`、按上面的规范形式
 排序后比对，不比对原始文本。实测 `jsonb` 往返在规范形式下保真（含 `0.0`、`1e-7`、大浮点、大整数与
 微秒时间戳），由 live 用例锁定。
+
+## 兼容读取（SLICE-282）
+
+查询端（`query_events`、`GET /v1/events`、控制台的审计/运行/trace 面板）先按 `AuditRecord` 解析每行，
+失败再按裸 `AuditEvent` 解析：
+
+- 链记录：`serve-audit --out`、`--audit-db` 与 `AuditPipeline` 的产物。
+- 裸事件：`console --audit-file` 等走 `JsonlAuditSink` 的命令产物，只含事件字段，没有 `prev_hash`/`hash`/签名。
+
+两种行都失败时保持原行为：当前文件的最后一行视为半写行跳过，其他位置抛错。
+
+校验侧不变：`verify-audit` 只接受链记录，裸事件文件需要改用 `serve-audit --out` 重新采集才能验链。
+读取端不做链校验，接受裸事件不会给写入者新增能力。

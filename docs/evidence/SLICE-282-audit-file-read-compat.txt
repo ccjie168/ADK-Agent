@@ -1,0 +1,54 @@
+SLICE-282 `--audit-file` 读取兼容裸事件 — 证据
+=============================================
+
+日期: 2026-11-25
+分支: slice-282-audit-file-query
+依据: PROGRESS 第 16 条既有缺口（`JsonlAuditSink` vs `FileAuditQuery`）
+
+## 反例（先红）
+
+    python -m pytest tests/audit/test_file_query_bare.py -q
+    4 failed, 2 passed
+
+失败项：裸事件文件上的 `query_events` 抛 `ValidationError`（`AuditRecord` 要求 `event`/`prev_hash`/`hash`），
+控制台 `/api/audit` 同样失败。两条通过的是回归保护（链记录读取、中间坏行报错），在旧代码上本就通过，
+证据里如实注明。
+
+## 实现（后绿）
+
+`src/adk_agent/audit/pipeline.py` 的 `query_events` 每行先按 `AuditRecord` 解析，失败再按
+`AuditEvent` 解析；两者都失败时保留原行为（当前文件最后一行视为半写行跳过，其他位置抛错）。
+写入格式与 `verify-audit` 语义不变。
+
+    python -m pytest tests/audit/test_file_query_bare.py tests/audit/test_query.py \
+        tests/audit/test_jsonl_sink.py -q
+    25 passed
+
+契约更新：`docs/contracts/cli.md`（`--audit-file` 写裸事件、读取端兼容、`verify-audit` 只认链）、
+`docs/contracts/audit_chain.md`（「兼容读取」一节）、`docs/contracts/console.md`（`GET /api/audit`
+注明兼容）。
+
+## 实机验证（8028，`--audit-file`，admin）
+
+独立进程用 `JsonlAuditSink` 追加三条裸事件（时间 10/20/30 秒），控制台进程读取：
+
+    GET /api/audit?limit=10
+    audit=200
+    ['live10', 'live20', 'live30']
+
+    GET /api/runs?limit=10
+    runs=200
+
+同一文件交给 `verify-audit`（仍按链校验）：
+
+    python -m adk_agent verify-audit ...\audit.jsonl
+    invalid audit file: 27 validation errors for AuditRecord
+    verify-exit=1
+
+即：读取端兼容裸事件，校验端仍拒绝非链文件（契约写明的取舍）。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2251 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2251 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
