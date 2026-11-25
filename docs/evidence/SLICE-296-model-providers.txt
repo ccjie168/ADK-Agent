@@ -59,7 +59,7 @@ SLICE-296 模型提供方记录与接口（方案 A）
     $ python -m pytest -q
     2332 passed, 105 skipped, 3 warnings in 185.78s
 
-（warnings 数随 asyncio 收尾噪声在 3–4 之间浮动，不是门禁判据。）
+（warnings 数随 asyncio 收尾噪声浮动，多次运行 3–5 条不等，不是门禁判据。）
 
 五、脱敏处理
 
