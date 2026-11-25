@@ -2,13 +2,13 @@
 
 更新日期: 2026-11-26
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `5141db5` feat: resolve model credentials from provider records at runtime (SLICE-298) (#344)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）已收口（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）；阶段 2（Agent 中心总览）已收口；阶段 3（安全合规聚合视图）已收口；阶段 4（MCP/API 生态展示）已收口；阶段 5（Agent 开发向导 + 页面一键发布，ADR-0043）已收口（SLICE-280 compose 后端、SLICE-281 向导）；ADR-0044（载入侧构建签名）已交付（SLICE-291）；ADR-0045 方案 A（SLICE-296）、方案 B（SLICE-297）与运行时解析（SLICE-298）已交付；模型页与手册为 SLICE-299。
+最新提交: `65654c1` feat: manage model providers and write-only keys from the model page (SLICE-299) (#346)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）已收口（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）；阶段 2（Agent 中心总览）已收口；阶段 3（安全合规聚合视图）已收口；阶段 4（MCP/API 生态展示）已收口；阶段 5（Agent 开发向导 + 页面一键发布，ADR-0043）已收口（SLICE-280 compose 后端、SLICE-281 向导）；ADR-0044（载入侧构建签名）已交付（SLICE-291）；ADR-0045 三个切片全部交付：方案 A 记录（SLICE-296）、方案 B 只写密钥（SLICE-297）、运行时解析（SLICE-298）与控制台「模型」页表单和手册（SLICE-299）。
 
 ## 本次暂停交接
 
-- 代码在 `master`，`5141db5`。SLICE-113 到 298 已合并，ADR-0041 阶段 0 到 5 全部收口，ADR-0043（控制台 compose 签名与页面一键发布）已交付，密钥运维手册已补；没有打开的实现 PR（记录型 PR 除外）。第 16 条列出的旧缺口已全部修完，剩余的是第 16 条末尾记录的新观察项。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json`、`docs/review/*.docx`、`docs/specs/*.docx` 与两件未入库的 prove 输出（`docs/evidence/prove-2026-11-22-ui.txt`、`prove-2026-11-23.txt`）是本地工具与评审输入，不入库。
-- 最近门禁: `--full` 9 步全 PASS，2353 passed, 105 skipped（在 SLICE-298 分支复跑；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
+- 代码在 `master`，`65654c1`。SLICE-113 到 299 已合并，ADR-0041 阶段 0 到 5 全部收口，ADR-0043（控制台 compose 签名与页面一键发布）已交付，密钥运维手册已补；没有打开的实现 PR（记录型 PR 除外）。第 16 条列出的旧缺口已全部修完，剩余的是第 16 条末尾记录的新观察项。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json`、`docs/review/*.docx`、`docs/specs/*.docx` 与两件未入库的 prove 输出（`docs/evidence/prove-2026-11-22-ui.txt`、`prove-2026-11-23.txt`）是本地工具与评审输入，不入库。
+- 最近门禁: `--full` 9 步全 PASS，2360 passed, 105 skipped（在 SLICE-299 分支复跑；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
 - 端到端验收: `python scripts/prove_it_works.py` 14 项真实进程/真实 Postgres 检查，2026-11-25 在 `24a4f7d`（SLICE-295）跑出 14/14 PASS（`docs/evidence/prove-2026-11-25-s295.txt`，`NO_PROXY=127.0.0.1,localhost`，litellm 1.106.2）；更早的 14/14 见 `prove-2026-11-25.txt`（SLICE-280 修复轮）；更早的 12/12 记录见 `docs/evidence/prove-2026-11-21.txt`、`prove-2026-11-22.txt`，复盘见 `docs/reviews/retrospective-2026-11-21.md`。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
@@ -660,8 +660,15 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         都接受 `--model-providers-dir`；列表接口顶层加 `key_entry`。两轮验证：本地首轮
         PASS（5 个 N 提示，均不阻断）；随后 CI 的 secrets 步命中夹具 `secret://` 引用，
         加 allowlist 后复验 PASS。证据 `docs/evidence/SLICE-298-model-runtime.txt`。
-        下一步 SLICE-299：「模型」页提供方与密钥表单、HTML 手册章节（ADR-0045 切片表把这两项
-        列在 298；因运行时解析单独成片，编号顺延为 299，内容不变）。
+      - SLICE-299 模型页提供方与密钥表单、手册 ~~已合并 `65654c1`~~（#346）：
+        `ModelView.vue` 列出提供方（类型/模型/端点/掩码/状态），admin 可创建或更新记录；
+        `key_entry` 开启时每行可只写保存密钥、吊销，密码框 + 掩码 + 固定中文错误映射，
+        写操作按 `model.write` 门控。重建 `web/dist/`；`console-ui.html`「模型」一节补
+        提供方、密钥、掩码与解析顺序。独立验证 PASS（2 个 N：密钥路径未编码、列表错误
+        文案偏 404，均无实际风险）。实机截图 `docs/evidence/ui/SLICE-299-model.png`；
+        证据 `docs/evidence/SLICE-299-model-page.txt`。
+        **ADR-0045（模型提供方与密钥配置）至此全部交付**：记录与接口、只写加密录入、
+        运行时解析、页面与手册。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
