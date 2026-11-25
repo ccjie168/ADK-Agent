@@ -100,7 +100,8 @@ onMounted(async () => {
     <div v-if="canDecide" class="row">
       <input v-model="reason" class="grow" placeholder="决定理由（可选）" autocomplete="off" />
     </div>
-    <table class="data-table">
+    <div class="table-wrap">
+  <table class="data-table">
       <thead>
         <tr>
           <th>请求 ID</th>
@@ -133,7 +134,8 @@ onMounted(async () => {
           <td :colspan="canDecide ? 7 : 6" class="placeholder">没有待决审批。</td>
         </tr>
       </tbody>
-    </table>
+      </table>
+    </div>
     </template>
   </div>
 </template>

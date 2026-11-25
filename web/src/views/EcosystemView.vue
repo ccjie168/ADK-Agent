@@ -220,7 +220,8 @@ onMounted(async () => {
             {{ option.label }}
           </button>
         </div>
-        <table v-if="filteredTools.length" class="data-table">
+        <div v-if="filteredTools.length" class="table-wrap">
+  <table class="data-table">
           <thead>
             <tr>
               <th>工具 ID</th>
@@ -239,13 +240,15 @@ onMounted(async () => {
               <td>{{ grantsLabel(tool.granted_agents) }}</td>
             </tr>
           </tbody>
-        </table>
+          </table>
+        </div>
         <EmptyState v-else>暂无匹配的工具</EmptyState>
       </section>
 
       <section v-if="canConnectors && connectorsReady" class="recent-activity">
         <h2>连接器与 MCP 服务器</h2>
-        <table v-if="connectors.length" class="data-table">
+        <div v-if="connectors.length" class="table-wrap">
+  <table class="data-table">
           <thead>
             <tr>
               <th>ID</th>
@@ -262,14 +265,16 @@ onMounted(async () => {
               <td>{{ connector.enabled ? "yes" : "no" }}</td>
             </tr>
           </tbody>
-        </table>
+          </table>
+        </div>
         <EmptyState v-else>暂无连接器</EmptyState>
         <p class="muted">其中 MCP 服务器 {{ mcpServerCount }} 个（含已禁用）。</p>
       </section>
 
       <section v-if="canPeers && peersReady" class="recent-activity">
         <h2>A2A 对端</h2>
-        <table v-if="peers.length" class="data-table">
+        <div v-if="peers.length" class="table-wrap">
+  <table class="data-table">
           <thead>
             <tr>
               <th>对端 ID</th>
@@ -288,7 +293,8 @@ onMounted(async () => {
               <td>{{ entry.grants.length }}</td>
             </tr>
           </tbody>
-        </table>
+          </table>
+        </div>
         <EmptyState v-else>暂无对端</EmptyState>
       </section>
     </template>

@@ -90,7 +90,8 @@ onMounted(async () => {
       <div class="row">
         <button v-if="canWrite" class="primary" @click="edit(null)">新增角色</button>
       </div>
-      <table>
+      <div class="table-wrap">
+  <table>
         <thead>
           <tr>
             <th>角色</th>
@@ -120,7 +121,8 @@ onMounted(async () => {
             <td colspan="5" class="placeholder">暂无角色</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
 
       <template v-if="canWrite">
         <h2>{{ selected ? `编辑 ${selected.name}` : "新增角色" }}</h2>

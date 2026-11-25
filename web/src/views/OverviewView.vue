@@ -191,7 +191,8 @@ onMounted(async () => {
         <p v-if="!canAudit" class="placeholder">无权查看审计事件</p>
         <p v-else-if="activityLoading" class="placeholder">加载中…</p>
         <p v-else-if="activityError" class="login-msg">{{ activityError }}</p>
-        <table v-else-if="events.length" class="data-table">
+        <div v-else-if="events.length" class="table-wrap">
+          <table class="data-table">
           <thead>
             <tr>
               <th>时间</th>
@@ -208,7 +209,8 @@ onMounted(async () => {
               <td>{{ event.status ?? "—" }}</td>
             </tr>
           </tbody>
-        </table>
+          </table>
+        </div>
         <EmptyState v-else>暂无审计事件</EmptyState>
       </section>
     </template>
