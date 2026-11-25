@@ -49,7 +49,17 @@ SLICE-294 控制台使用手册（HTML）
 
 手机经隧道访问 `https://<host>/guide` 即可阅读，无需先登录控制台。
 
-四、门禁
+四、首轮验证后的措辞修正
+
+独立验证 PASS，指出三处与实现不符的措辞，已改：
+
+- 错误表里的 `agent_load_failed` 是触发服务的错误码，控制台不会显示；改为
+  `artifact_untrusted / load_failed`，与控制台注册表页的提示一致。
+- 「无访问权限 / 缺少能力」第二半不是界面原文，改为 `无访问权限 / forbidden`，
+  并在说明里保留「缺少能力」的准确表述。
+- 设置页当前是占位页，手册注明「使用说明」入口在侧栏设置组，打开的是 `/guide`。
+
+五、门禁
 
     $ python scripts/check.py --full
     [PASS] format

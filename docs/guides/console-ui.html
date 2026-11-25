@@ -282,7 +282,7 @@
 <h2 id="settings">7. 设置</h2>
 <section class="page" data-route="/settings">
   <h3>设置 <span class="route">/settings</span></h3>
-  <p>控制台自身的偏好与入口，包含这份使用说明。</p>
+  <p>控制台自身的偏好页（当前是占位页）。侧栏「设置」组里的「使用说明」另开页面展示这份手册。</p>
   <p class="meta">对所有登录主体可见。</p>
 </section>
 
@@ -315,8 +315,8 @@
   <tr><td>授权存储不可用</td><td>工具授权后端缺失</td><td>加 <code>--tool-grants-dir</code> 或 <code>GRANT_URL</code></td></tr>
   <tr><td>检索统计不可用</td><td>RAG 未配置</td><td>加 <code>--rag-db</code>、<code>--rag-dimensions</code> 与 <code>--rag-model</code></td></tr>
   <tr><td>配额数据不可用</td><td>没有配额配置</td><td>加 <code>--quota-config</code></td></tr>
-  <tr><td>无访问权限 / 缺少能力</td><td>当前角色没有该页面或动作所需能力</td><td>让管理员在「角色」或「用户」页授权；不要靠改前端绕开</td></tr>
-  <tr><td>agent_load_failed</td><td>工件载入失败，常见于构建签名或发布签名不可信</td><td>确认发布端与载入端使用同一套 <code>--artifact-keys</code> 与 <code>--builder-keys</code></td></tr>
+  <tr><td>无访问权限 / forbidden</td><td>当前角色缺少能力：该页面或动作所需的能力不在你的角色里</td><td>让管理员在「角色」或「用户」页授权；不要靠改前端绕开</td></tr>
+  <tr><td>artifact_untrusted / load_failed</td><td>工件载入失败，常见于构建签名或发布签名不可信</td><td>确认发布端与载入端使用同一套 <code>--artifact-keys</code> 与 <code>--builder-keys</code></td></tr>
   <tr><td>401 unauthorized</td><td>没有令牌或令牌失效</td><td>重新登录；token 模式重新输入 Bearer token</td></tr>
 </table>
 
