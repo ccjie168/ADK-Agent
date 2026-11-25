@@ -98,7 +98,7 @@ onMounted(async () => {
         </div>
         <p v-if="log.length === 0" class="placeholder">开始对话…</p>
       </div>
-      <div class="row">
+      <div class="row chat-composer">
         <select v-model="selectedAgent">
           <option v-for="agent in agents" :key="agent.name" :value="agent.name">
             {{ agent.name }}

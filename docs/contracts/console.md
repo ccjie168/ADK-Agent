@@ -12,6 +12,8 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 
 - `legacy`：`GET /` 与 `GET /auth/callback` 返回内联 HTML 壳（既有行为不变）。
 - `vue`：当 `web/dist/assets` 存在时，`GET /` 与 `GET /auth/callback` 返回 `web/dist/index.html`，`/assets` 挂载 `web/dist/assets`。`/api/*` 路由两种模式相同。
+- `vue` 壳在 960px 以下把侧栏收成抽屉，在 600px 以下改用手机布局（页头纵向、行内控件换行、
+  表单单列、表格触屏横向滚动、聊天输入行贴底并避开手势条）；视口声明 `viewport-fit=cover`。
 
 ## `GET /api/me` -> 能力清单
 
