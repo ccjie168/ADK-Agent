@@ -181,10 +181,10 @@ _MODEL_KEY_MAX = 512
 
 
 def _model_key_hint(value: str) -> str:
-    """Mask a model key, keeping at most the first three and last four chars."""
-    tail = value[-4:] if len(value) >= 4 else ""
-    prefix = value[:3] if len(value) >= 8 else ""
-    return f"{prefix}…{tail}" if prefix else f"…{tail}"
+    """Mask a model key; short values carry no characters at all."""
+    if len(value) < 8:
+        return "…"
+    return f"{value[:3]}…{value[-4:]}"
 
 
 _GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})

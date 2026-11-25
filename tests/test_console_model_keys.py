@@ -106,6 +106,25 @@ def test_key_entry_writes_ciphertext_only(tmp_path):
     assert KEY not in str(json.loads(on_disk))
 
 
+def test_key_entry_masks_short_keys_fully(tmp_path):
+    _seed(tmp_path)
+    with TestClient(_app(tmp_path, backend=_backend())) as client:
+        short = client.put(
+            "/api/model-providers/deepseek-prod/key", headers=AUTH, json={"api_key": "abcd"}
+        )
+        seven = client.put(
+            "/api/model-providers/deepseek-prod/key", headers=AUTH, json={"api_key": "abcdefg"}
+        )
+        exact = client.put(
+            "/api/model-providers/deepseek-prod/key", headers=AUTH, json={"api_key": "abcdefgh"}
+        )
+
+    assert short.json()["key_hint"] == "…"
+    assert "abcd" not in short.text
+    assert seven.json()["key_hint"] == "…"
+    assert exact.json()["key_hint"] == "abc…efgh"
+
+
 def test_key_entry_requires_flag(tmp_path):
     _seed(tmp_path)
     with TestClient(_app(tmp_path, entry=False, backend=_backend())) as client:
@@ -218,6 +237,25 @@ def test_key_resolver_audits_decrypt_failure(tmp_path):
     dumped = " ".join(event.model_dump_json() for event in sink.events)
     assert "sk-test" not in dumped
     assert failed[0].error_code == "decrypt_failed"
+
+
+def test_key_resolver_audits_unreadable_record(tmp_path):
+    root = tmp_path / "providers" / "keys"
+    root.mkdir(parents=True)
+    (root / "deepseek-prod.json").write_text("{not json", encoding="utf-8")
+    sink = _Sink()
+    resolver = ModelKeyResolver(
+        store=FileModelProviderKeyStore(tmp_path / "providers"),
+        backend=_backend(),
+        audit=sink,
+    )
+
+    with pytest.raises(ModelKeyUnavailable):
+        asyncio.run(resolver.resolve("deepseek-prod"))
+
+    failed = [event for event in sink.events if event.action == "model.key_failed"]
+    assert failed
+    assert failed[0].error_code == "key_unreadable"
 
 
 def test_key_entry_rejects_repo_directory(monkeypatch):

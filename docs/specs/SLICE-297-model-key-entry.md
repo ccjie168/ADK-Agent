@@ -42,7 +42,9 @@ DELETE 不需要解密，照常吊销。
 - [ ] 未知提供方 404 -> `test_key_entry_unknown_provider`
 - [ ] 空 key 与超长 key 400 -> `test_key_entry_rejects_invalid_key`
 - [ ] 吊销幂等并写审计 -> `test_key_entry_revoke`
+- [ ] 短于 8 字符的 key 掩码不暴露任何字符 -> `test_key_entry_masks_short_keys_fully`
 - [ ] 解密失败写 `model.key_failed` 且不含密钥值 -> `test_key_resolver_audits_decrypt_failure`
+- [ ] 损坏的密钥记录同样审计并转 `ModelKeyUnavailable` -> `test_key_resolver_audits_unreadable_record`
 - [ ] 仓库内存储目录拒绝启动 -> `test_key_entry_rejects_repo_directory`
 - [ ] `--full` 门禁通过
 

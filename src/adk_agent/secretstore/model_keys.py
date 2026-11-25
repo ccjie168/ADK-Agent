@@ -67,7 +67,11 @@ class ModelKeyResolver:
             logger.warning("model key audit failed: %s", type(exc).__name__)
 
     async def resolve(self, provider_id: str) -> str:
-        record = await self._store.get(provider_id)
+        try:
+            record = await self._store.get(provider_id)
+        except (OSError, ValueError) as exc:
+            await self._audit_failure(provider_id, "key_unreadable")
+            raise ModelKeyUnavailable(f"model key for {provider_id!r} is unreadable") from exc
         if record is None:
             await self._audit_failure(provider_id, "key_missing")
             raise ModelKeyUnavailable(f"no model key for {provider_id!r}")

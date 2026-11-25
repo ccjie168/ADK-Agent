@@ -20,8 +20,8 @@ SLICE-297 模型密钥只写录入（方案 B）
 二、实现后：切片用例
 
     $ python -m pytest tests/test_console_model_keys.py -q
-    ..........                                                               [100%]
-    10 passed in 2.95s
+    ............                                                             [100%]
+    12 passed in 3.29s
 
 用例映射：
 
@@ -33,8 +33,10 @@ SLICE-297 模型密钥只写录入（方案 B）
 - `test_key_entry_unknown_provider`：未知提供方 404 `provider_not_found`
 - `test_key_entry_rejects_invalid_key`：空/非字符串/513 字符 400；恰好 512 字符成功
 - `test_key_entry_revoke`：两次 DELETE 均为 200，密文删除，审计 `model.key.set` 1 条、`model.key.revoke` 2 条
+- `test_key_entry_masks_short_keys_fully`：4/7 字符 key 的掩码只是 `…`，响应不含原文；8 字符给 `abc…efgh`
 - `test_key_resolver_audits_decrypt_failure`：错误 KEK 解不开时抛 `ModelKeyUnavailable`，
   写 `model.key_failed`（`error_code=decrypt_failed`），审计串不含密钥片段
+- `test_key_resolver_audits_unreadable_record`：损坏的密钥 JSON 同样审计并发 `key_unreadable`，不冒原始异常
 - `test_key_entry_rejects_repo_directory`：`--model-key-entry` 指向仓库内目录时退出 1
 
 三、CLI
@@ -59,19 +61,29 @@ SLICE-297 模型密钥只写录入（方案 B）
     ALL PASS
 
     $ python -m pytest -q
-    2342 passed, 105 skipped, 4 warnings in 186.04s
+    2344 passed, 105 skipped, 4 warnings in 192.07s
 
 五、实现要点
 
 - 明文只出现在请求体与 `backend.wrap` 调用之间；磁盘只有信封密文、`key_id` 与掩码。
   AAD 为 `adk-model-provider:<provider_id>`，与凭据的 AAD 命名空间分开。
-- 掩码保留前 3 与后 4 字符（`sk-…abcd`），短于 8 字符时只给后 4 字符。
+- 掩码保留前 3 与后 4 字符（`sk-…abcd`）；短于 8 字符时只给 `…`，不暴露任何字符。
 - 列表接口只有开启时才读取 key 目录；未开启时固定 `key_configured=false` / `key_hint=null`。
 - DELETE 不触碰密钥后端，KEK 丢失时仍可吊销。
 - 启动检查：`--model-key-entry` 必须有 `--model-providers-dir`，且该目录解析后
   不能在含 `.git` 的目录树内（ADR-0045 第一条前提）。
 
-六、范围外（SLICE-298）
+六、独立验证后的修补
+
+第一轮只读验证 PASS，记了两个应修项，已在合并前修掉：
+
+- S-1：`_model_key_hint` 对 4–7 字符的 key 会把整段或后 4 字符放进 `key_hint`。
+  现在短于 8 字符一律只回 `…`，补 4/7/8 字符边界用例。
+- S-2：`ModelKeyResolver` 在 `store.get` 抛 `ValueError`/`OSError` 时直接上抛，
+  绕过 `model.key_failed` 审计。现在读取异常统一转 `ModelKeyUnavailable` 并审计
+  `key_unreadable`，补损坏记录用例。
+
+七、范围外（SLICE-298）
 
 - 运行时把录入的密钥接进模型构建（本切片只有 `ModelKeyResolver` 与解密失败审计）。
 - 控制台「模型」页表单与使用手册章节。
