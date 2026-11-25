@@ -235,7 +235,6 @@ async function publish() {
     }
     composeResult.value = (await response.json()) as ComposeResult;
     step.value = 4;
-    message.value = `已发布 ${composeResult.value.id}@${composeResult.value.version}`;
   } catch {
     error.value = "请求失败: 网络错误";
   } finally {
@@ -268,6 +267,7 @@ async function copyCommand() {
     <p v-else-if="canPreview && !configured" class="notice">
       <strong>控制台未启用一键发布，请使用 CLI。</strong>
       预览仍可用；发布需要运维配置四个 compose 密钥参数。
+      <template v-if="!canPublish">当前角色没有 registry.compose，只能预览。</template>
     </p>
 
     <div class="wizard-steps">

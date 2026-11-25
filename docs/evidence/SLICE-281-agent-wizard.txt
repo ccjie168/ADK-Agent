@@ -39,7 +39,7 @@ SLICE-281 新建 Agent 向导 — 证据
     22 passed
 
     cd web && npm run build
-    dist/assets/index-i97u-_ES.css 17.30 kB / assets/index-PlKtD3Ax.js 196.25 kB
+    dist/assets/index-i97u-_ES.css 17.30 kB / assets/index-0-n42Fuk.js 196.30 kB
 
 ## 实机验证（8027，`--ui vue`，`--role admin`，带 compose 密钥）
 
@@ -78,6 +78,15 @@ SLICE-281 新建 Agent 向导 — 证据
    （`canCreate && !denied`）。
 5. **N4**：测试仍按仓库 Vue 切片惯例做源码检查，行为由实机截图与门禁补足。
 6. **N5**：spec 的证据路径改为三张实际截图。
+
+第二轮验证 PASS 但发现修复本身引入 1 个 S 与 2 个 N，已处理：
+
+1. **S1**：`watch(step)` 异步清空提示，`publish()` 里紧接着赋的绿色成功横幅实际不会渲染。
+   删除这条冗余 `message`；成功信号就是步骤 4 面板（版本、两个 digest、按钮）。
+   三张截图已在当前构建上重拍，发布页不再有绿色横幅。
+2. **N1**：仅 `registry.publish`、没有 `registry.compose` 又未配置密钥时，顶部提示补一句
+   「当前角色没有 registry.compose，只能预览」。
+3. **N2**：证据与截图同步改为「步骤 4 面板即成功信号」。
 
 
     python scripts/check.py --fast   -> 7 步 ALL PASS、2245 passed / 105 skipped
