@@ -52,7 +52,9 @@ const message = ref("");
 const error = ref("");
 const denied = computed(() => !auth.hasCapability("registry.read"));
 const isAdmin = computed(() => Boolean(auth.principal?.roles?.includes("admin")));
-const canCreate = computed(() => auth.hasCapability("registry.publish"));
+const canCreate = computed(
+  () => auth.hasCapability("registry.publish") || auth.hasCapability("registry.compose"),
+);
 
 const agents = computed<AgentGroup[]>(() => {
   const groups = new Map<string, AgentGroup>();

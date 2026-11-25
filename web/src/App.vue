@@ -64,93 +64,126 @@ onMounted(async () => {
     <div v-if="auth.isAuthenticated" class="body">
       <div v-if="navOpen" class="nav-scrim" @click="closeNav"></div>
       <nav id="console-nav" class="sidebar" :class="{ open: navOpen }">
-        <div class="nav-group">
+        <div v-if="auth.hasCapability('ops.read') || auth.hasCapability('registry.read')" class="nav-group">
           <div class="nav-group-label">概览</div>
-          <router-link to="/" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('ops.read')" to="/" class="nav-item" @click="closeNav">
             <NavIcon name="home" /><span>总览</span>
           </router-link>
-          <router-link to="/agents" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('registry.read')" to="/agents" class="nav-item" @click="closeNav">
             <NavIcon name="agent" /><span>Agent</span>
           </router-link>
-          <router-link to="/registry" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('registry.read')" to="/registry" class="nav-item" @click="closeNav">
             <NavIcon name="registry" /><span>注册表</span>
           </router-link>
         </div>
-        <div class="nav-group">
+        <div v-if="auth.hasCapability('runs.read') ||
+          auth.hasCapability('sessions.read') ||
+          auth.hasCapability('approvals.read') ||
+          auth.hasCapability('chat.run')" class="nav-group">
           <div class="nav-group-label">运行</div>
-          <router-link to="/runs" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('runs.read')" to="/runs" class="nav-item" @click="closeNav">
             <NavIcon name="runs" /><span>运行</span>
           </router-link>
-          <router-link to="/plans" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('runs.read')" to="/plans" class="nav-item" @click="closeNav">
             <NavIcon name="plans" /><span>计划</span>
           </router-link>
-          <router-link to="/sessions" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('sessions.read')" to="/sessions" class="nav-item" @click="closeNav">
             <NavIcon name="sessions" /><span>会话</span>
           </router-link>
-          <router-link to="/approvals" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('approvals.read')" to="/approvals" class="nav-item" @click="closeNav">
             <NavIcon name="approvals" /><span>审批</span>
           </router-link>
-          <router-link to="/chat" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('chat.run')" to="/chat" class="nav-item" @click="closeNav">
             <NavIcon name="chat" /><span>聊天</span>
           </router-link>
-          <router-link to="/ask-ai" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('runs.read')" to="/ask-ai" class="nav-item" @click="closeNav">
             <NavIcon name="sparkles" /><span>Ask AI</span>
           </router-link>
         </div>
-        <div class="nav-group">
+        <div v-if="auth.hasCapability('ops.read') ||
+          auth.hasCapability('audit.read') ||
+          auth.hasCapability('policy.read') ||
+          auth.hasCapability('roles.read') ||
+          auth.hasCapability('tools.read') ||
+          auth.hasCapability('grants.read') ||
+          auth.hasCapability('connectors.read') ||
+          auth.hasCapability('peers.read')" class="nav-group">
           <div class="nav-group-label">治理</div>
-          <router-link to="/audit" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('audit.read')" to="/audit" class="nav-item" @click="closeNav">
             <NavIcon name="audit" /><span>审计</span>
           </router-link>
-          <router-link to="/security" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('ops.read')" to="/security" class="nav-item" @click="closeNav">
             <NavIcon name="shield" /><span>安全</span>
           </router-link>
-          <router-link to="/policy" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('policy.read')" to="/policy" class="nav-item" @click="closeNav">
             <NavIcon name="policy" /><span>策略</span>
           </router-link>
-          <router-link to="/roles" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('roles.read')" to="/roles" class="nav-item" @click="closeNav">
             <NavIcon name="roles" /><span>角色</span>
           </router-link>
-          <router-link to="/users" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('roles.read')" to="/users" class="nav-item" @click="closeNav">
             <NavIcon name="users" /><span>用户</span>
           </router-link>
-          <router-link to="/tools" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('tools.read')" to="/tools" class="nav-item" @click="closeNav">
             <NavIcon name="tools" /><span>工具</span>
           </router-link>
-          <router-link to="/grants" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('grants.read')" to="/grants" class="nav-item" @click="closeNav">
             <NavIcon name="grants" /><span>授权</span>
           </router-link>
-          <router-link to="/connectors" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('connectors.read')" to="/connectors" class="nav-item" @click="closeNav">
             <NavIcon name="connectors" /><span>连接器</span>
           </router-link>
-          <router-link to="/credentials" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('connectors.read')" to="/credentials" class="nav-item" @click="closeNav">
             <NavIcon name="credentials" /><span>凭据</span>
           </router-link>
-          <router-link to="/peers" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('peers.read')" to="/peers" class="nav-item" @click="closeNav">
             <NavIcon name="peers" /><span>对端</span>
           </router-link>
-          <router-link to="/semantics" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('ops.read')" to="/semantics" class="nav-item" @click="closeNav">
             <NavIcon name="semantics" /><span>语义层</span>
           </router-link>
-          <router-link to="/rag" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('ops.read')" to="/rag" class="nav-item" @click="closeNav">
             <NavIcon name="rag" /><span>检索</span>
           </router-link>
-          <router-link to="/quota" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('ops.read')" to="/quota" class="nav-item" @click="closeNav">
             <NavIcon name="quota" /><span>配额</span>
           </router-link>
         </div>
-        <div class="nav-group">
+        <div v-if="auth.hasCapability('registry.publish') ||
+          auth.hasCapability('registry.compose') ||
+          auth.hasCapability('model.read') ||
+          auth.hasCapability('tools.read') ||
+          auth.hasCapability('connectors.read') ||
+          auth.hasCapability('peers.read') ||
+          auth.hasCapability('runs.read')" class="nav-group">
           <div class="nav-group-label">开发</div>
-          <router-link to="/agents/new" class="nav-item" @click="closeNav">
+          <router-link
+            v-if="
+              auth.hasCapability('registry.publish') ||
+              auth.hasCapability('registry.compose')
+            "
+            to="/agents/new"
+            class="nav-item"
+            @click="closeNav"
+          >
             <NavIcon name="agent" /><span>新建 Agent</span>
           </router-link>
-          <router-link to="/model" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('model.read')" to="/model" class="nav-item" @click="closeNav">
             <NavIcon name="model" /><span>模型</span>
           </router-link>
-          <router-link to="/ecosystem" class="nav-item" @click="closeNav">
+          <router-link
+            v-if="
+              auth.hasCapability('tools.read') ||
+              auth.hasCapability('connectors.read') ||
+              auth.hasCapability('peers.read')
+            "
+            to="/ecosystem"
+            class="nav-item"
+            @click="closeNav"
+          >
             <NavIcon name="network" /><span>生态</span>
           </router-link>
-          <router-link to="/import" class="nav-item" @click="closeNav">
+          <router-link v-if="auth.hasCapability('runs.read')" to="/import" class="nav-item" @click="closeNav">
             <NavIcon name="import" /><span>导入</span>
           </router-link>
         </div>
