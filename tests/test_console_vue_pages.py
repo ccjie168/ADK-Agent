@@ -8,6 +8,7 @@ _WEB = Path(__file__).resolve().parents[1] / "web"
 
 VIEWS = (
     "AgentHubView.vue",
+    "AgentWizardView.vue",
     "ApprovalsView.vue",
     "AskAiView.vue",
     "AuditView.vue",

@@ -141,6 +141,9 @@ onMounted(async () => {
         </div>
         <div class="nav-group">
           <div class="nav-group-label">开发</div>
+          <router-link to="/agents/new" class="nav-item" @click="closeNav">
+            <NavIcon name="agent" /><span>新建 Agent</span>
+          </router-link>
           <router-link to="/model" class="nav-item" @click="closeNav">
             <NavIcon name="model" /><span>模型</span>
           </router-link>

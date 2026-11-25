@@ -1,0 +1,94 @@
+SLICE-281 新建 Agent 向导 — 证据
+================================
+
+日期: 2026-11-25
+分支: slice-281-agent-wizard
+依据: ADR-0043 第 4 节；ADR-0041 阶段 5（诉求 3）
+
+## 反例（先红）
+
+实现前运行新增用例:
+
+    python -m pytest tests/test_console_vue_wizard.py -q
+    8 failed
+
+失败项：没有 `/agents/new` 路由、`AgentWizardView.vue` 与导航/中心入口，也没有模板读取、
+预览、发布门控、错误码映射、CLI 提示、上限校验与源码安全检查。
+
+## 实现（后绿）
+
+- `web/src/views/AgentWizardView.vue`（`/agents/new`，导航「开发」组「新建 Agent」，
+  Agent 中心页「新建 Agent」按钮按 `registry.publish` 显示）：
+  - 四步：模板 → 参数 → 预览 → 发布；模板与预览要求 `registry.publish`，
+    发布按钮要求 `registry.compose`，两者都无时整页「无访问权限」。
+  - 模板来自 `GET /api/compose/templates`，`configured=false` 时提示
+    「控制台未启用一键发布，请使用 CLI」并给出可复制的 `adk-agent compose` 命令。
+  - 预览调用 `POST /api/compose/preview`，展示格式化 manifest、`agent.py` 与工件 digest；
+    发布调用 `POST /api/compose`，成功后显示版本/两个 digest 并链接到注册表。
+  - 前端 `LIMITS` 与 `console.md` 的上限一致（`name` 64、`version`/`tenant` 256、
+    `owner`/`description` 2000、`instruction` 4000、`tools`/`data_classes` 各 16），
+    提交前先做本地校验，服务端仍全量校验。
+  - 错误码映射固定文案：`compose_invalid`、`tenant_forbidden`、`compose_not_configured`、
+    `registry_not_configured`、`registry_conflict`、`artifact_store_unavailable`、
+    `registry_unavailable`、`forbidden`；无 `v-html`、无 `innerHTML`、不新增依赖。
+- `web/src/router/index.ts`、`App.vue`、`AgentHubView.vue`、`style.css` 增加路由、入口与样式；
+  `tests/test_console_vue_pages.py` 的视图清单加入新页面。
+
+    python -m pytest tests/test_console_vue_wizard.py tests/test_console_vue_pages.py \
+        tests/test_console_vue_shell.py -q
+    22 passed
+
+    cd web && npm run build
+    dist/assets/index-i97u-_ES.css 17.30 kB / assets/index-0-n42Fuk.js 196.30 kB
+
+## 实机验证（8027，`--ui vue`，`--role admin`，带 compose 密钥）
+
+用无头 Edge 驱动真实页面（填表 → 预览 → 发布）：
+
+- 步骤 2 表单：模板选 `single-llm`，名称 `shot_bot`、版本 `2.0.0`、租户 `local`，
+  指令 `You are a screenshot probe.`；工具与数据分级复选正常。
+  截图 `docs/evidence/ui/SLICE-281-wizard-form.png`。
+- 步骤 3 预览：manifest 显示 `id=shot_bot`、`version=2.0.0`、`instruction` 为 `repr` 形式，
+  `agent.py` 含 `root_agent = agent`，工件 digest `sha256:888df1df...a308`（1008 字节）。
+  截图 `docs/evidence/ui/SLICE-281-wizard-preview.png`。
+- 步骤 4 发布：`local/shot_bot@2.0.0 已签名发布`，版本 digest `53353009...`、工件
+  `sha256:888df1df...a308`（与预览一致）。截图 `docs/evidence/ui/SLICE-281-wizard-published.png`。
+- 注册表与审计（同一进程）：
+
+      GET /api/registry?tenant=local
+      [('shot_bot', '2.0.0', '53353009c8c1bb09515')]
+
+      GET /api/audit?limit=10
+      [('agent.compose', 'single-llm', 'shot_bot', 'ok'), ...]
+
+  三次运行均写 `agent.compose`，`template_id=single-llm`，无指令原文。
+
+## 独立验证反馈修正
+
+首轮独立验证判 **PASS**（无 B，1 个 S + 5 个 N），已处理：
+
+1. **S1**：只有 `registry.compose`、没有 `registry.publish` 的自定义角色会看到
+   「未启用一键发布…预览仍可用」的矛盾提示。现在顶部提示分三种：两者都有但未配置密钥时显示
+   CLI 提示；只有 compose 没有 publish 时显示「无法读取模板与预览，因此不能使用向导」；
+   模板步骤也单独说明缺少 `registry.publish`。
+2. **N1**：CLI 回退命令保留 `<system instruction>` 占位符（避免把任意文本拼进 shell 命令），
+   命令参数已逐项核对存在。
+3. **N2**：切换步骤时清空 `error` 与 `message`，发布成功提示不再残留到下一步。
+4. **N3**：Agent 中心的「新建 Agent」按钮不再与「无访问权限」同时出现
+   （`canCreate && !denied`）。
+5. **N4**：测试仍按仓库 Vue 切片惯例做源码检查，行为由实机截图与门禁补足。
+6. **N5**：spec 的证据路径改为三张实际截图。
+
+第二轮验证 PASS 但发现修复本身引入 1 个 S 与 2 个 N，已处理：
+
+1. **S1**：`watch(step)` 异步清空提示，`publish()` 里紧接着赋的绿色成功横幅实际不会渲染。
+   删除这条冗余 `message`；成功信号就是步骤 4 面板（版本、两个 digest、按钮）。
+   三张截图已在当前构建上重拍，发布页不再有绿色横幅。
+2. **N1**：仅 `registry.publish`、没有 `registry.compose` 又未配置密钥时，顶部提示补一句
+   「当前角色没有 registry.compose，只能预览」。
+3. **N2**：证据与截图同步改为「步骤 4 面板即成功信号」。
+
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2245 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2245 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
