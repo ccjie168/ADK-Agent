@@ -86,7 +86,9 @@
 `adk-agent serve-triggers`：
 
 - 触发存储：`--triggers-dir DIR` 或 `--trigger-db URL`，都未给时读 `TRIGGER_DATABASE_URL`。
-- 注册表与工件：`--registry DIR` 或 `--registry-url URL`；`--artifact-dir DIR` 或 `ARTIFACT_URL`；`--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`。
+- 注册表与工件：`--registry DIR` 或 `--registry-url URL`；`--artifact-dir DIR` 或 `ARTIFACT_URL`；`--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`；`--builder-keys FILE` 或 `ADK_BUILDER_KEYS`。
+- 每次 fire 载入 `in_process`（含未声明 `execution_tier` 的历史）记录前校验构建签名（ADR-0044）：
+  信任集缺失或签名不可信时不载入、不执行，返回 502 `agent_load_failed`；`sandboxed` 记录不要求。
 - 授权与审计：`--tool-grants-dir DIR` 或 `GRANT_URL`；`--audit-file`、`--audit-url` 或 `--audit-db`。
 - 会话、配额与限流：`--session-db URL`；`--quota-config FILE`；`--rate-limit N --rate-limit-window SECONDS`。
 - 监听：`--host`、`--port`。

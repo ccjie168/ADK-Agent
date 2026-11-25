@@ -22,14 +22,22 @@ SLICE-291 载入侧校验构建签名
     FAILED tests/registry/test_loader_builder_key.py::test_load_does_not_require_builder_trust_for_sandboxed
     FAILED tests/test_cli_agent_ref_builder.py::test_console_refuses_in_process_without_builder_keys
     FAILED tests/test_cli_agent_ref_builder.py::test_console_refuses_an_untrusted_builder_key
+    FAILED tests/test_cli_agent_ref_builder.py::test_serve_accepts_builder_keys
+    FAILED tests/test_cli_agent_ref_builder.py::test_serve_many_accepts_builder_keys
+    FAILED tests/test_cli_agent_ref_builder.py::test_serve_a2a_accepts_builder_keys
+    FAILED tests/test_cli_agent_ref_builder.py::test_every_ref_command_exposes_builder_keys[serve]
+    FAILED tests/test_cli_agent_ref_builder.py::test_every_ref_command_exposes_builder_keys[serve-many]
+    FAILED tests/test_cli_agent_ref_builder.py::test_every_ref_command_exposes_builder_keys[serve-a2a]
+    FAILED tests/test_cli_agent_ref_builder.py::test_every_ref_command_exposes_builder_keys[console]
+    FAILED tests/test_cli_agent_ref_builder.py::test_every_ref_command_exposes_builder_keys[serve-triggers]
     FAILED tests/test_console_registry_builder_trust.py::test_registry_load_requires_builder_trust
     FAILED tests/test_console_registry_builder_trust.py::test_registry_load_accepts_builder_trust
     FAILED tests/test_console_registry_builder_trust.py::test_registry_load_rejects_an_untrusted_builder
-    9 failed, 1 passed in 3.05s
+    17 failed in 2.45s
 
-红灯原因是新参数在 master 上不存在（TypeError: load_agent() got an unexpected keyword
-argument 'builder_keys' / build_console_app 的 builder_keys），唯一通过的是
-test_serve_accepts_builder_keys：master 本来就不设防，所以「带信任集能载入」在旧代码上也成立。
+红灯原因是新参数与新标志在 master 上都不存在：`load_agent`/`build_console_app` 没有
+`builder_keys`（TypeError），五个命令的解析器没有 `--builder-keys`（argparse exit 2）。
+master 本来就不设防，所以「带信任集能载入」在旧代码上也无从表达，17 条全部失败。
 
 2) 触发服务用例（新增部分）：
 

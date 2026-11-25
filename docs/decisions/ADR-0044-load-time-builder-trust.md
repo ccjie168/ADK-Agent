@@ -59,8 +59,9 @@ SLICE-287 的运维手册与 PROGRESS 都记录了这条限制「文件注册表
 
 ### 4. 契约
 
-- `docs/contracts/cli.md`：四个命令的用法行与说明补 `--builder-keys`；写明
-  「载入 `in_process` 工件时必须提供，缺失退出 1」与 `ADK_BUILDER_KEYS` 回退。
+- `docs/contracts/cli.md`：五个命令（`serve`/`serve-many`/`serve-a2a`/`console`/`serve-triggers`）
+  的用法行与说明补 `--builder-keys`；写明「载入或执行 `in_process` 工件时必须提供，
+  `serve*`/`console` 启动退出 1，`serve-triggers` 该次 fire 失败」与 `ADK_BUILDER_KEYS` 回退。
 - `docs/contracts/registry_service.md`：补一句读取侧同规则，声明写入口的校验不是唯一防线。
 - `docs/contracts/trigger_service.md` 与 `cli.md` 的 `serve-triggers`：fire 时缺构建信任集或
   验签失败报 `agent_load_failed`（502）。
@@ -69,7 +70,7 @@ SLICE-287 的运维手册与 PROGRESS 都记录了这条限制「文件注册表
 
 ## 切片
 
-- SLICE-291：`load_agent`/`load_registry_agents` 增加 `builder_keys`，四个 CLI 入口接线，
+- SLICE-291：`load_agent`/`load_registry_agents` 增加 `builder_keys`，五个 CLI 入口接线，
   契约先改，反例测试（手写文件注册表记录 + 未受信构建签名在 master 上可载入、修复后拒绝），
   门禁与证据。
 - SLICE-292：三份运维/使用手册与 PROGRESS 收口，`compose-signing.md` 的残余限制段删改。
@@ -100,5 +101,6 @@ SLICE-287 的运维手册与 PROGRESS 都记录了这条限制「文件注册表
 ## 确认记录
 
 - 2026-11-25：用户从缺口清单中选择「文件注册表校验构建签名」作为下一项。
-- 2026-11-25：用户确认采用「严格失败」方案：载入 `in_process` 工件必须有构建信任集，
-  缺失即退出 1；接受受影响部署需要补 `--builder-keys` 的行为变化。
+- 2026-11-25：用户确认采用「严格失败」方案：载入或执行 `in_process` 工件必须有构建信任集；
+  `serve*`/`console` 缺失即启动退出 1，`serve-triggers` 缺失则该次 fire 报 `agent_load_failed`；
+  接受受影响部署需要补 `--builder-keys` 的行为变化。
