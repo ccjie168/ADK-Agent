@@ -2,13 +2,13 @@
 
 更新日期: 2026-11-25
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `7a49408` feat: add the guided new-agent wizard (ADR-0043, SLICE-281) (#317)
+最新提交: `634b22b` docs: add the compose signing key runbook (SLICE-287) (#324)
 状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）已收口（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）；阶段 2（Agent 中心总览）已收口；阶段 3（安全合规聚合视图）已收口；阶段 4（MCP/API 生态展示）已收口；阶段 5（Agent 开发向导 + 页面一键发布，ADR-0043）已收口（SLICE-280 compose 后端、SLICE-281 向导）。
 
 ## 本次暂停交接
 
-- 代码在 `master`，`7a49408`。SLICE-113 到 281 已合并，ADR-0041 阶段 0 到 5 全部收口，ADR-0043（控制台 compose 签名与页面一键发布）已交付；没有打开的实现 PR（记录型 PR 除外）。缺口清单剩已知小项（见第 16 条）与可选的 SLICE-282（compose 密钥托管/轮换运维手册）。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
-- 最近门禁: `--full` 9 步全 PASS，2245 passed, 105 skipped（PR #317 独立验证复跑，`docs/evidence/SLICE-281-agent-wizard.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
+- 代码在 `master`，`634b22b`。SLICE-113 到 287 已合并，ADR-0041 阶段 0 到 5 全部收口，ADR-0043（控制台 compose 签名与页面一键发布）已交付，密钥运维手册已补；没有打开的实现 PR（记录型 PR 除外）。第 16 条列出的旧缺口已全部修完，剩余的是第 16 条末尾记录的新观察项。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
+- 最近门禁: `--full` 9 步全 PASS，2270 passed, 105 skipped（`docs/evidence/SLICE-287-compose-key-runbook.txt` 之后在 `634b22b` 复跑；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
 - 端到端验收: `python scripts/prove_it_works.py` 14 项真实进程/真实 Postgres 检查，2026-11-25 在 SLICE-280 修复轮上跑出 14/14 PASS（`docs/evidence/prove-2026-11-25.txt`，`NO_PROXY=127.0.0.1,localhost`，litellm 1.106.2）；更早的 12/12 记录见 `docs/evidence/prove-2026-11-21.txt`、`prove-2026-11-22.txt`，复盘见 `docs/reviews/retrospective-2026-11-21.md`。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
@@ -561,16 +561,41 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         截图 `docs/evidence/ui/SLICE-281-wizard-{form,preview,published}.png`。
         **ADR-0041 阶段 5 收口，ADR-0041 全部阶段完成**。下一步按缺口清单选。
 
+    - **缺口清理（282–287，2026-11-25）**：
+      - SLICE-282 `--audit-file` 读取兼容裸事件 ~~已合并 `c3d8898`~~（#319）：`query_events` 先按
+        `AuditRecord` 再按 `AuditEvent` 解析，写入格式与 `verify-audit` 不变；契约收窄为
+        「`serve-audit --out` 不能直接托管纯裸文件」。两轮验证。
+      - SLICE-283 凭据接口租户校验 ~~已合并 `b02cb77`~~（#320）：`GET /api/credentials` 与 disable
+        统一校验解析后的租户（非法 400 `unsafe_tenant`），disable 另校验 `credential_id`
+        （400 `invalid_credential`）。两轮验证。
+      - SLICE-284 publisher 获得 `ops.read` ~~已合并 `075cbd6`~~（#321）：总览/配额/RAG/语义/安全面板可见，
+        能力词汇表不变；`test_console_me.py` 的 PUBLISHER 字面量经用户同意更新。四轮验证均为文档措辞。
+        截图 `docs/evidence/ui/SLICE-284-publisher-home.png`。
+      - SLICE-285 表格窄屏最小宽度 ~~已合并 `0acbc23`~~（#322）：`.table-wrap table { min-width: 720px }`，
+        480px 下横向滚动。截图 `docs/evidence/ui/SLICE-285-tools-narrow.png`。
+      - SLICE-286 审计同刻顺序 ~~已合并 `1b97f8e`~~（#323）：`_query_events` 按 `(timestamp, event_id)`
+        排序，内存/文件/HTTP 后端一致；契约写明 1000 条读取窗口。两轮验证（第二轮指出文件后端方向写反，
+        改测试写序后两种后端都能区分修复）。
+      - SLICE-287 compose 签名密钥运维手册 ~~已合并 `634b22b`~~（#324）：`docs/guides/compose-signing.md`
+        （生成、四个参数、信任集、加法轮换、泄露撤销、最小权限、文件注册表不校验构建签名），
+        `operations.md` 链接；负向断言锁定「compose 只签名不验签」。两轮验证。
+      - 仍记录未做：侧栏入口不按能力隐藏；9 个视图的表格未包在 `.table-wrap`；自定义角色授予
+        `connectors.manage` 后可跨租户停用凭据；同刻事件超过 1000 条窗口的极端情形；
+        文件注册表不校验构建签名。
+
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
 16. 2026-11-24 新增要求与 SLICE-272 的验证残余：
     - **安全聚合接口残余**：~~三项已由 SLICE-273（`2796404`）修复~~（scans 严格按 schema 校验、审计失败给 `audit_unavailable`、租户路径非法给 `credential_store_unavailable`）。`/api/credentials` 对调用方自身非法租户的同类问题仍未修，记为后续小项。
     - **控制台视觉改造**：~~SLICE-275 到 278 已全部合并~~。残余取舍：`.table-wrap` 无可滚动的最小宽度，
       短内容表格在窄屏只会换行；深色主题与命令面板未做。
-    - **同期发现的既有缺口（未修，记录在案）**：`--audit-file` 走 `JsonlAuditSink` 写裸事件，
-      而 `FileAuditQuery` 按 `AuditRecord` 解析，写入事件后读 `/api/audit` 会 500；
-      `publisher` 角色没有 `ops.read`，整个首页对其不可见；同一时间戳事件在 `limit` 边界上的
-      子集与后端方向有关（契约未定义同刻顺序）。
+    - **同期发现的既有缺口（已修，282–287）**：`--audit-file` 裸事件读取由 SLICE-282 修复；
+      `publisher` 缺 `ops.read` 由 SLICE-284 修复；同刻事件顺序由 SLICE-286 定为 `event_id` 升序；
+      `/api/credentials` 调用方非法租户 500 由 SLICE-283 修复；`.table-wrap` 最小宽度由 SLICE-285 修复；
+      compose 密钥运维手册由 SLICE-287 交付。详见下方「缺口清理（282–287）」。
+    - **仍记录未做的新观察**：侧栏入口不按能力隐藏（视图/接口仍 403）；9 个视图的表格未包在
+      `.table-wrap`，窄屏仍会压缩；自定义角色授予 `connectors.manage` 后 disable 可跨租户；
+      同刻事件超过 1000 条读取窗口的极端情形不在契约内；文件注册表不校验构建签名。
     - **阶段 5 页面一键发布已交付**：ADR-0043 已入库（`docs/decisions/ADR-0043-console-compose-signing.md`），
       SLICE-280（后端）与 SLICE-281（向导）已合并。用户按硬规则单独同意的新增 `registry.compose` 与
       `tests/test_console_me.py` 两处字面量断言已落地。剩余可选项：SLICE-282（compose 密钥托管、轮换与
