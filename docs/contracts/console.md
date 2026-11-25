@@ -378,7 +378,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
   `secret_ref` 不是 `secret://tenant/name`，都返回 400 `{"error":"invalid_provider"}`。
 - 未配置存储返回 404 `model_providers_not_configured`。
 - 成功返回 200 与记录，并写一条 `model.configure` 审计：`target` 是 provider_id，
-  不含密钥值与密文。
+  `provider_kind` 记录类型，`secret_ref` 记录引用键名（均不含密钥值与密文）。
 - 存储为文件后端（`--model-providers-dir`）；Postgres 后端不在本切片范围。
 
 ## `GET /api/semantics` -> `[ConceptScheme]`

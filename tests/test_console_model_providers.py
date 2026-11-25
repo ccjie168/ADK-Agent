@@ -93,6 +93,33 @@ def test_provider_api_rejects_unsafe_id(tmp_path):
     assert response.json() == {"error": "invalid_provider"}
 
 
+def test_provider_api_accepts_max_length_id(tmp_path):
+    provider_id = "p" * 64
+    with TestClient(_app(tmp_path)) as client:
+        response = client.put(
+            f"/api/model-providers/{provider_id}",
+            headers=AUTH,
+            json={"kind": "litellm", "model": "litellm:deepseek/deepseek-v4-pro"},
+        )
+        listed = client.get("/api/model-providers", headers=AUTH).json()["providers"]
+
+    assert response.status_code == 200
+    assert [item["provider_id"] for item in listed] == [provider_id]
+    assert (tmp_path / "providers" / f"{provider_id}.json").is_file()
+
+
+def test_provider_api_rejects_overlong_id(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        response = client.put(
+            f"/api/model-providers/{'p' * 65}",
+            headers=AUTH,
+            json={"kind": "litellm", "model": "litellm:deepseek/deepseek-v4-pro"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_provider"}
+
+
 def test_provider_api_rejects_bad_secret_ref(tmp_path):
     with TestClient(_app(tmp_path)) as client:
         response = client.put(
@@ -126,7 +153,10 @@ def test_provider_api_audits_without_key_material(tmp_path):
     assert response.json()["secret_ref"] == "secret://local/deepseek"  # pragma: allowlist secret
     configure = [event for event in events if event["action"] == "model.configure"]
     assert configure
-    dumped = str(configure[-1])
+    latest = configure[-1]
+    assert latest["provider_kind"] == "litellm"
+    assert latest["secret_ref"] == "secret://local/deepseek"  # pragma: allowlist secret
+    dumped = str(latest)
     assert "sk-" not in dumped
     assert "deepseek" in dumped
 

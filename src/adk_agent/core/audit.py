@@ -48,6 +48,11 @@ class AuditEvent(BaseModel):
     rag_returned: int | None = Field(default=None, ge=0, exclude_if=_is_none)
     rag_filtered: int | None = Field(default=None, ge=0, exclude_if=_is_none)
     template_id: str | None = Field(default=None, min_length=1, exclude_if=_is_none)
+    provider_kind: str | None = Field(default=None, min_length=1, exclude_if=_is_none)
+    # Reference only (``secret://tenant/name``); secret values never enter an event.
+    secret_ref: str | None = Field(
+        default=None, max_length=512, pattern=r"^secret://", exclude_if=_is_none
+    )
     timestamp: datetime
 
     @field_validator("timestamp")

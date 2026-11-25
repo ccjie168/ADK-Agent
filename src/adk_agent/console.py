@@ -3971,6 +3971,8 @@ def build_console_app(
                 agent_ref=dev_agent_ref("model"),
                 action="model.configure",
                 target=provider_id,
+                provider_kind=record.kind,
+                secret_ref=record.secret_ref,
                 status="ok",
                 timestamp=datetime.now(timezone.utc),
             )

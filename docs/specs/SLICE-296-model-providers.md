@@ -18,7 +18,8 @@
 - `PUT /api/model-providers/{provider_id}` -> `ModelProvider`，需要 `model.write`；
   校验 `provider_id` 安全名、`kind` 在 `litellm|gemini|claude|vertex`、
   `model` 通过 `is_valid_model_spec`、`secret_ref` 形如 `secret://tenant/name`；
-  非法返回 400 `invalid_provider`；写一条 `model.configure` 审计，只含 provider_id 与 secret_ref。
+  非法返回 400 `invalid_provider`；写一条 `model.configure` 审计，只含 provider_id、
+  provider_kind 与 secret_ref 引用键名。
 - CLI `console --model-providers-dir DIR`。
 
 ## 完成判据
@@ -27,8 +28,10 @@
 - [ ] 列表需要 model.read 且返回记录 -> `test_provider_api_lists_records`
 - [ ] 写入需要 model.write -> `test_provider_api_requires_model_write`
 - [ ] 非法 provider_id 返回 400 -> `test_provider_api_rejects_unsafe_id`
+- [ ] provider_id 恰为 64 字符可写入并落盘 -> `test_provider_api_accepts_max_length_id`
+- [ ] provider_id 65 字符返回 400 -> `test_provider_api_rejects_overlong_id`
 - [ ] 非法 secret_ref 返回 400 -> `test_provider_api_rejects_bad_secret_ref`
-- [ ] 审计不含密钥材料（记录本来只有引用） -> `test_provider_api_audits_without_key_material`
+- [ ] 审计含 provider_kind 与 secret_ref 键名、不含密钥材料 -> `test_provider_api_audits_without_key_material`
 - [ ] 未配置存储返回 404 -> `test_provider_api_404_when_store_missing`
 - [ ] `--full` 门禁通过
 

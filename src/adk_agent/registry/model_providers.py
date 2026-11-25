@@ -5,13 +5,14 @@ from __future__ import annotations
 import builtins
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 
 from ..core import ModelProviderRecord
-from .paths import safe_join
+from .paths import UnsafePath, safe_join
 
-_SAFE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"
+_SAFE_ID = r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"
 
 
 class FileModelProviderStore:
@@ -21,7 +22,9 @@ class FileModelProviderStore:
         self.root = Path(root)
 
     def _path(self, provider_id: str) -> Path:
-        return safe_join(self.root, f"{provider_id}.json", pattern=_SAFE_NAME)
+        if re.fullmatch(_SAFE_ID, provider_id) is None:
+            raise UnsafePath(f"unsafe provider id {provider_id!r}")
+        return safe_join(self.root, f"{provider_id}.json")
 
     async def get(self, provider_id: str) -> ModelProviderRecord | None:
         path = self._path(provider_id)
