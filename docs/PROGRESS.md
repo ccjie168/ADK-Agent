@@ -569,7 +569,8 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         统一校验解析后的租户（非法 400 `unsafe_tenant`），disable 另校验 `credential_id`
         （400 `invalid_credential`）。两轮验证。
       - SLICE-284 publisher 获得 `ops.read` ~~已合并 `075cbd6`~~（#321）：总览/配额/RAG/语义/安全面板可见
-        （安全面板为租户作用域的审计/凭据计数与进程级扫描计数，无密钥值），能力词汇表不变；`test_console_me.py` 的 PUBLISHER 字面量经用户同意更新。四轮验证均为文档措辞。
+        （安全面板：配置审计后端时审计计数按调用方租户、内存/文件回退为进程级；凭据计数按调用方租户；
+        扫描与签名密钥 id 为进程级；均无密钥值），能力词汇表不变；`test_console_me.py` 的 PUBLISHER 字面量经用户同意更新。四轮验证均为文档措辞。
         截图 `docs/evidence/ui/SLICE-284-publisher-home.png`。
       - SLICE-285 表格窄屏最小宽度 ~~已合并 `0acbc23`~~（#322）：`.table-wrap table { min-width: 720px }`，
         480px 下横向滚动。截图 `docs/evidence/ui/SLICE-285-tools-narrow.png`。
