@@ -64,7 +64,12 @@ def _publish(tmp_path, key, version="1.0.0"):
     data = pack_agent(project)
     digest = artifact_digest(data)
     artifact = AgentArtifact(
-        digest=digest, size=len(data), signature=sign_digest(digest, key), key_id="k1"
+        digest=digest,
+        size=len(data),
+        signature=sign_digest(digest, key),
+        key_id="k1",
+        builder_signature=sign_digest(digest, key),
+        builder_key_id="b1",
     )
     asyncio.run(FileArtifactStore(tmp_path / "store").put(artifact, data))
     registry = FileAgentRegistry(tmp_path / "registry")
@@ -81,6 +86,7 @@ def _app(tmp_path, key, *, agents=None, audit=None, oidc=None):
         artifact_store=FileArtifactStore(tmp_path / "store"),
         artifact_loader=InProcessArtifactLoader(),
         artifact_trust=TrustStore({"k1": _raw(key)}),
+        builder_keys=TrustStore({"b1": _raw(key)}),
         audit_sink=audit,
         roles=["admin"],
     )

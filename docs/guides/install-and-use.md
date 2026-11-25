@@ -149,7 +149,9 @@ PY
   所以任何 `sandboxed` 发布（带不带工件）都会被拒绝，等沙箱发布接入后再开放。
 - `in_process` 只接受构建密钥签名的工件；本地与 HTTP 发布都要求构建公钥信任文件
   （`--builder-keys` 或 `ADK_BUILDER_KEYS`）。
-- 加载时 `--artifact-keys` 提供发布公钥，`serve-registry --builder-keys` 校验构建签名。
+- 加载时 `--artifact-keys` 提供发布公钥；载入 `in_process` 工件还要求 `--builder-keys`（或
+  `ADK_BUILDER_KEYS`）提供构建公钥，否则启动退出 1（ADR-0044）；`serve-registry --builder-keys`
+  在校验登记时使用同一份信任集。
 - 没有工件的 manifest-only 发布只登记元数据，manifest 同样要写 `"execution_tier": "in_process"`。
 
 ## 服务面

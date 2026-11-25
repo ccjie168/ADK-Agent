@@ -354,7 +354,8 @@
 
 - `--agent-ref` 与 `--agents`（或 `serve`/`serve-a2a` 的 `--agent`、`serve` 的 `--config`）互斥，同时给退出 1。二者都不给也退出 1。
 - 加载前要求两个配置：工件字节来源 `--artifact-dir DIR` 或 `ARTIFACT_URL`（互斥，必须给一个），以及可信公钥 `--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`（JSON 映射 `key_id -> 64 hex 公钥`）。缺任一项退出 1。
-- 解析顺序：按租户列出注册表，找 `id@version`，用记录摘要调 `load_agent`；工件必须存在，签名必须被信任，否则退出 1。
+- 载入 `in_process` 工件（含未声明 `execution_tier` 的历史记录）时还要求可信构建公钥 `--builder-keys FILE` 或 `ADK_BUILDER_KEYS`（同格式）。缺失退出 1 且 stderr 指明缺少 `--builder-keys`；构建签名缺失或不可信同样退出 1，工件字节不执行。`sandboxed` 记录不要求构建签名，与 `serve-registry` 一致（ADR-0044）。
+- 解析顺序：按租户列出注册表，找 `id@version`，用记录摘要调 `load_agent`；工件必须存在，发布签名与（`in_process` 时）构建签名必须被信任，否则退出 1。
 - agent 的名字取 manifest 的 `id`；同一批里重名退出 1。
 - `serve` 只接受一个 `--agent-ref`。
 - 记录声明 `sandboxed` 时需要 `--agent-sandbox`；加载结果是沙箱代理，每次调用起一个子进程，工件字节不在控制台或 MCP 进程内执行。未加该 flag 时退出 1。
@@ -425,7 +426,7 @@
 - 审计的 `trace_id` 取 `traceparent` 的 trace-id，规则见 `tracing.md`。没有时每次调用新生成。
 - `serve` 和 `serve-many` 的 A2A 路径不在这一节范围内。
 
-## `adk-agent serve-a2a (--agent FILE | --agent-ref TENANT/ID@VERSION) [--registry DIR | --registry-url URL] [--artifact-dir DIR | $ARTIFACT_URL] [--artifact-keys FILE | $ADK_ARTIFACT_KEYS] [--agent-sandbox | --allow-unsandboxed] [--rpc-path PREFIX] [--host H] [--port P] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--quota-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
+## `adk-agent serve-a2a (--agent FILE | --agent-ref TENANT/ID@VERSION) [--registry DIR | --registry-url URL] [--artifact-dir DIR | $ARTIFACT_URL] [--artifact-keys FILE | $ADK_ARTIFACT_KEYS] [--builder-keys FILE | $ADK_BUILDER_KEYS] [--agent-sandbox | --allow-unsandboxed] [--rpc-path PREFIX] [--host H] [--port P] [--audit-file PATH | --audit-url URL] [--audit-token-env VAR] [--quota-config FILE] [--rate-limit N --rate-limit-window SECONDS]`
 
 把一个 agent 暴露成 A2A 端点。
 
@@ -451,7 +452,7 @@ peer 模式（ADR-0014，见 `a2a.md`）：
 - peer 模式与 `--auth-token-env`、`--allow-unauthenticated` 互斥，同时给出退出 2。
 - peer 模式下 principal、审计身份、动作映射与拒绝规则见 `a2a.md`；legacy 模式保持本节原有行为。
 
-## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR | --approval-db URL] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS] [--session-tenant-scope] [--session-rls] [--compose-key FILE --compose-key-id ID --compose-builder-key FILE --compose-builder-key-id ID]`
+## `adk-agent console [--agents FILE | --agent-ref TENANT/ID@VERSION] [--policy FILE] [--role ROLE] [--registry DIR] [--tool-catalog FILE] [--oidc-config FILE] [--quota-config FILE] [--approval-dir DIR | --approval-db URL] [--sse-queue-size N] [--rate-limit N --rate-limit-window SECONDS] [--session-tenant-scope] [--session-rls] [--builder-keys FILE | $ADK_BUILDER_KEYS] [--compose-key FILE --compose-key-id ID --compose-builder-key FILE --compose-builder-key-id ID]`
 
 启动私有控制台。
 

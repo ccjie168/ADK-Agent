@@ -140,7 +140,17 @@ class _Store:
         return self.data
 
 
-def _load(record: PublishedAgent, trust: _Trust, loader: _Loader) -> object:
+class _BuilderTrust:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def verify_builder(self, artifact: AgentArtifact) -> None:
+        self.calls += 1
+
+
+def _load(
+    record: PublishedAgent, trust: _Trust, loader: _Loader, builder_keys: object = None
+) -> object:
     data = pack_files(
         {
             "manifest.json": record.manifest.model_dump_json().encode("utf-8"),
@@ -156,6 +166,7 @@ def _load(record: PublishedAgent, trust: _Trust, loader: _Loader) -> object:
             store=_Store(data),
             loader=loader,
             trust=trust,
+            builder_keys=builder_keys,
         )
     )
 
@@ -190,7 +201,8 @@ def test_a_placeholder_backend_does_not_count():
 
 def test_load_agent_allows_legacy_and_in_process_records():
     for tier in (None, "in_process"):
-        trust, loader = _Trust(), _Loader()
-        assert _load(_with_artifact(tier), trust, loader) is not None
+        trust, loader, builder = _Trust(), _Loader(), _BuilderTrust()
+        assert _load(_with_artifact(tier), trust, loader, builder) is not None
         assert trust.calls == 1
+        assert builder.calls == 1
         assert loader.calls == 1

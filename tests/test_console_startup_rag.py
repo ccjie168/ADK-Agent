@@ -56,7 +56,12 @@ def _published(tmp_path):
     data = pack_agent(project)
     digest = artifact_digest(data)
     artifact = AgentArtifact(
-        digest=digest, size=len(data), signature=sign_digest(digest, key), key_id="k1"
+        digest=digest,
+        size=len(data),
+        signature=sign_digest(digest, key),
+        key_id="k1",
+        builder_signature=sign_digest(digest, key),
+        builder_key_id="k1",
     )
     store = FileArtifactStore(tmp_path / "store")
     asyncio.run(store.put(artifact, data))
@@ -92,6 +97,7 @@ def test_registry_ref_agent_carries_its_manifest(tmp_path):
             registry=registry,
             store=store,
             trust=trust,
+            builder_keys=trust,
             loader=InProcessArtifactLoader(),
         )
     )

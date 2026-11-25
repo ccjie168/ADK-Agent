@@ -464,6 +464,10 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 - 非 `admin` 身份加载其他租户返回 403 `tenant_forbidden`。
 - 版本不存在返回 404 `not_found`。
 - 该版本没有工件返回 409 `artifact_missing`；签名缺失或不可信返回 409 `artifact_untrusted`。
+- `in_process`（含未声明 `execution_tier` 的历史记录）还要求控制台配置了构建信任集
+  （`--builder-keys` 或 `ADK_BUILDER_KEYS`，ADR-0044）。缺少返回 503 `builder_trust_unavailable`，
+  构建签名缺失或不可信返回 409 `artifact_untrusted`；两种情况都不载入、不执行。`sandboxed`
+  记录不要求构建签名。
 - 加载前比较工件内 `manifest.json` 与记录 manifest；不一致或字节缺失返回 500 `load_failed`。
 - 记录声明 `sandboxed` 而控制台没有 agent 沙箱后端时返回 409 `sandbox_unavailable`（ADR-0024）。
 - 记录声明 `sandboxed` 且声明了工具授权、而进程沙箱没有工具执行器时返回 409 `tool_mediation_unavailable`。

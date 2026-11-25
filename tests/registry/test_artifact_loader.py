@@ -80,6 +80,8 @@ def _signed(data: bytes, key, *, kid: str = "k1", signature: str | None = None):
         size=len(data),
         signature=sign_digest(digest, key) if signature is None else signature,
         key_id=kid,
+        builder_signature=sign_digest(digest, key),
+        builder_key_id="b1",
     )
 
 
@@ -306,6 +308,7 @@ def test_load_agent(tmp_path):
             store=store,
             loader=InProcessArtifactLoader(),
             trust=_trust(key),
+            builder_keys=_trust(key, kid="b1"),
         )
     )
 
@@ -319,6 +322,7 @@ def test_load_agent(tmp_path):
                 store=store,
                 loader=InProcessArtifactLoader(),
                 trust=_trust(_key()),
+                builder_keys=_trust(key, kid="b1"),
             )
         )
 

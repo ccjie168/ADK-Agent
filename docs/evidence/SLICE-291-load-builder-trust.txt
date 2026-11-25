@@ -1,0 +1,82 @@
+SLICE-291 载入侧校验构建签名
+
+日期: 2026-11-25
+依据: ADR-0044（Accepted，用户确认严格失败）
+基线: master ec783f7（docs 记录），代码等价 63e5baf
+
+一、反例：master 检出上新增用例的红灯
+
+把三个新测试文件复制到 master 的干净检出（git archive master 解包到临时目录）后运行：
+
+    $ python -m pytest tests/registry/test_loader_builder_key.py \
+        tests/test_cli_agent_ref_builder.py \
+        tests/test_console_registry_builder_trust.py -q
+
+    FAILED tests/registry/test_loader_builder_key.py::test_load_rejects_an_in_process_artifact_without_builder_trust
+    FAILED tests/registry/test_loader_builder_key.py::test_load_rejects_an_untrusted_builder_signature
+    FAILED tests/registry/test_loader_builder_key.py::test_load_accepts_a_trusted_builder_signature
+    FAILED tests/registry/test_loader_builder_key.py::test_load_does_not_require_builder_trust_for_sandboxed
+    FAILED tests/test_cli_agent_ref_builder.py::test_console_refuses_in_process_without_builder_keys
+    FAILED tests/test_cli_agent_ref_builder.py::test_console_refuses_an_untrusted_builder_key
+    FAILED tests/test_console_registry_builder_trust.py::test_registry_load_requires_builder_trust
+    FAILED tests/test_console_registry_builder_trust.py::test_registry_load_accepts_builder_trust
+    FAILED tests/test_console_registry_builder_trust.py::test_registry_load_rejects_an_untrusted_builder
+    9 failed, 1 passed in 3.05s
+
+红灯原因是新参数在 master 上不存在（TypeError: load_agent() got an unexpected keyword
+argument 'builder_keys' / build_console_app 的 builder_keys），唯一通过的是
+test_serve_accepts_builder_keys：master 本来就不设防，所以「带信任集能载入」在旧代码上也成立。
+
+二、行为证明：master 真的执行了没有构建签名的 in_process 工件
+
+探针脚本在临时目录手工构造一条文件注册表记录：发布签名合法（publisher-1），
+builder_signature / builder_key_id 为空，execution_tier=in_process。
+
+master 源（PYTHONPATH 指向 git archive 出来的 master src）：
+
+    $ PYTHONPATH=<temp>/master/src python probe.py <temp>/master-run
+    builders: parameter absent (load_agent() got an unexpected keyword argument 'builder_keys')
+    loaded: bot
+
+分支源（当前工作区）：
+
+    $ python probe.py <temp>/branch-run
+    Traceback (most recent call last):
+      File "src\adk_agent\registry\loader.py", line 162, in load_agent
+        raise ArtifactLoadError(
+          "in_process artifacts require builder trust: "
+          "provide --builder-keys or set ADK_BUILDER_KEYS"
+    adk_agent.registry.loader.ArtifactLoadError: in_process artifacts require builder trust: provide --builder-keys or set ADK_BUILDER_KEYS
+
+即：旧代码把未经构建签名的 in_process 工件载入并执行；新代码在执行前拒绝。
+
+三、新增与改动的用例
+
+新增:
+- tests/registry/test_loader_builder_key.py（4 条）
+- tests/test_cli_agent_ref_builder.py（3 条）
+- tests/test_console_registry_builder_trust.py（3 条）
+
+按新契约调整数据、不改断言:
+- tests/test_registry_startup.py、tests/test_lifecycle_enforcement.py、
+  tests/test_console_startup_rag.py、tests/test_console_on_demand.py、
+  tests/test_console_unload.py、tests/registry/test_artifact_loader.py、
+  tests/registry/test_execution_tier_boundary.py、tests/compose/test_compose_publish.py、
+  tests/test_cli_compose.py 的 in_process 记录补构建签名与信任集。
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+    2291 passed, 105 skipped in 178.74s
+
+首轮 --full 的 format 失败来自两个新测试文件的排版，ruff format 后复跑全绿。

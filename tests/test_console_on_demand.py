@@ -118,7 +118,14 @@ def _publish(
     if artifact:
         from adk_agent.core import AgentArtifact
 
-        artifact_meta = AgentArtifact(digest=digest, size=len(data), signature=signed, key_id="k1")
+        artifact_meta = AgentArtifact(
+            digest=digest,
+            size=len(data),
+            signature=signed,
+            key_id="k1",
+            builder_signature=sign_digest(digest, key),
+            builder_key_id="b1",
+        )
         asyncio.run(FileArtifactStore(tmp_path / "store").put(artifact_meta, data))
     record = published_from(manifest, artifact=artifact_meta)
     asyncio.run(registry.publish(record))
@@ -138,6 +145,7 @@ def _app(
 ):
     key = trust_key if trust_key is not None else _key()
     trust = TrustStore({"k1": _raw(key)}) if trust_key is not False else None
+    builders = TrustStore({"b1": _raw(key)}) if trust_key is not False else None
     return build_console_app(
         agents or {},
         auth_token="secret",
@@ -146,6 +154,7 @@ def _app(
         artifact_store=FileArtifactStore(tmp_path / "store") if store else None,
         artifact_loader=InProcessArtifactLoader(),
         artifact_trust=trust,
+        builder_keys=builders,
         max_loaded_agents=max_loaded_agents,
         audit_sink=audit,
         rag=rag,

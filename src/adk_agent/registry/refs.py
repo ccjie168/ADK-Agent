@@ -32,6 +32,7 @@ async def load_registry_agents(
     registry: AgentRegistry,
     store: ArtifactStore,
     trust: TrustStore,
+    builder_keys: TrustStore | None = None,
     loader: InProcessArtifactLoader | None = None,
     lifecycle: Any = None,
 ) -> dict[str, Any]:
@@ -68,6 +69,7 @@ async def load_registry_agents(
             store=store,
             loader=artifact_loader,
             trust=trust,
+            builder_keys=builder_keys,
         )
         object.__setattr__(agent, "_adk_tool_grants", tuple(record.manifest.tool_grants))
         # The runtime needs the manifest to opt into retrieval (ADR-0036);
