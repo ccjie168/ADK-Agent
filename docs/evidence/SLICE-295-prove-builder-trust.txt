@@ -1,0 +1,88 @@
+SLICE-295 端到端验收脚本补齐构建信任
+
+日期: 2026-11-25
+依据: master `1461d08` 上重跑 prove_it_works 出现 6 项失败
+范围: `scripts/prove_it_works.py` 的六处服务调用
+
+一、修复前：master `1461d08` 的重跑
+
+    $ NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py
+    [PASS] P1 environment
+    [PASS] P2 audit chain
+    [FAIL] P3  service did not become healthy at http://127.0.0.1:53286/healthz: timed out
+    [PASS] P4 tool gateway
+    [FAIL] P5  service did not become healthy at http://127.0.0.1:50165/healthz: timed out
+    [FAIL] P6  a2a server did not start
+    [FAIL] P7  service did not become healthy at http://127.0.0.1:52598/healthz: timed out
+    [PASS] P8 model gateway
+    [PASS] P9 approvals
+    [FAIL] P10 {"error":"agent_load_failed"}
+    [PASS] P11 shared quota
+    [PASS] P12 backup/restore
+    [PASS] P13 console UI baseline
+    [FAIL] P14 service did not become healthy at http://127.0.0.1:58555/healthz: timed out
+
+8 项通过、6 项失败。
+
+二、根因
+
+脚本已经用构建私钥给工件签名（`--builder-key` / `--builder-key-id`），但启动
+`console`、`serve`、`serve-a2a`、`serve-triggers` 时只传了 `--artifact-keys`。
+SLICE-291 之后，载入 `in_process` 工件必须有构建信任集，服务在载入阶段直接拒绝启动。
+
+单跑 P3 并保留日志时，服务进程的报错是：
+
+    adk-agent console: error: argument --artifact-keys: expected one argument
+
+第一次补参数时 `--builder-keys` 被插到 `--artifact-keys` 的值前面，argparse 拒绝；
+修正插入顺序后 P3 单独通过：
+
+    [PASS] P3 publish/load/chat  signed artifacts published over HTTP; startup and on-demand load both chat and audit (19.6s)
+
+三、改动
+
+- `scripts/prove_it_works.py`：六处服务调用在 `--artifact-keys` 的值之后补
+  `--builder-keys str(keys["builder_keys"])`。
+- `tests/test_prove_harness_builder_trust.py`：每个 `--artifact-keys` 的下一行必须是非选项的值，
+  再往后必须出现 `--builder-keys`；同时锁定脚本仍使用构建私钥签名。
+- `docs/guides/slice-checklist.md`：新增「收紧载入/执行契约时 grep 全部消费端并加锁定测试」。
+- `.claude/skills/adk-slice/SKILL.md`：提交前清单加两条指针（本地 skill，不入库）。
+
+四、修复后：14/14 PASS
+
+    $ NO_PROXY=127.0.0.1,localhost python scripts/prove_it_works.py --keep
+    [PASS] P1 environment
+    [PASS] P2 audit chain
+    [PASS] P3 publish/load/chat
+    [PASS] P4 tool gateway
+    [PASS] P5 MCP HTTP
+    [PASS] P6 A2A peer
+    [PASS] P7 RAG
+    [PASS] P8 model gateway
+    [PASS] P9 approvals
+    [PASS] P10 triggers
+    [PASS] P11 shared quota
+    [PASS] P12 backup/restore
+    [PASS] P13 console UI baseline
+    [PASS] P14 model switch
+    exit=0
+
+完整输出见 `docs/evidence/prove-2026-11-25-s295.txt`。
+
+五、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+    2316 passed, 105 skipped in 178.51s
+
+首轮门禁的 7 个失败来自下一片（SLICE-294）尚未实现的红测试被误留进工作区；
+按仓库惯例移到仓库外后复跑全绿。

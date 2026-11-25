@@ -1,0 +1,72 @@
+[PASS] P1 environment                                Postgres and stub are up (stub port 64722) (0.3s)
+       - select 1 -> 1
+       - stub health -> 200
+[PASS] P2 audit chain                                file + postgres chains verify and detect tampering (3.2s)
+       - file chain: 3 events appended, verify_audit_file -> 3
+       - file chain: one tampered target -> AuditChainBroken
+       - postgres chain: verify_audit_database -> 3
+       - postgres chain: one tampered row -> AuditChainBroken
+[PASS] P3 publish/load/chat                          signed artifacts published over HTTP; startup and on-demand load both chat and audit (16.9s)
+       - registry listed ['proof_agent', 'proof_ondemand']
+       - startup chat reply: 'PROOF-OK: Answer the user. Use the echo '
+       - on-demand load + chat reply: 'PROOF-OK: Answer the user. Use the echo '
+       - agent.run audit rows: 2 (tenants: local)
+[PASS] P4 tool gateway                               grants, HITL refusal, idempotent replay and write-key enforcement all observed (8.4s)
+       - granted call: 200 {'echo': 'hi'}
+       - same idempotency key on a write tool: replay ok, handler executed 1 time
+       - ungranted tool: 403 tool_denied
+       - approval-required tool: 403, audit error_code rows 1
+       - write tool without key: 400 idempotency_missing; with key: 200
+       - tool.call audit rows: 6
+[PASS] P5 MCP HTTP                                   anonymous call refused; authenticated initialize/list/call ran the registry agent (23.1s)
+       - anonymous initialize -> 401
+       - authenticated tools: 1, reply contains PROOF-OK and the retrieved marker
+       - rag.retrieve rows: 0 -> 1
+       - agent.run audit rows: 3 (subjects: console_user,mcp_user)
+[PASS] P6 A2A peer                                   peer token required, ungranted invoke denied, granted invoke ran the agent (26.4s)
+       - agent card: anonymous -> 401, ungranted peer -> 404, after grant -> 200
+       - invoke before grant -> HTTP 403
+       - invoke after grant -> HTTP 200, reply has PROOF-OK and the retrieved marker
+       - rag.retrieve rows: 1 -> 2
+       - agent.run audit rows: 4
+[PASS] P7 RAG                                        console startup ref: pgvector ingest/search with ACL, injected context reached the model, retrieval audited (54.4s)
+       - path: console --agent-ref (startup), not the on-demand load route
+       - pgvector extension: 0.8.7
+       - ingest: {"tenant": "local", "source_id": "refunds.txt", "chunks": 1}
+       - public search as carol: 2 hit(s); restricted as carol: 0; as bob: 1
+       - chat reply contained the retrieved marker and envelope: yes
+       - rag.retrieve rows: 2 -> 3, max rag_returned: 2, chunk text in audit: no
+[PASS] P8 model gateway                              provider and model allowlists enforced by the gateway, denials audited (12.7s)
+       - allowlisted provider -> 200 'PROOF-OK: hello gate'
+       - provider outside the allowlist -> 403 model_denied
+       - model outside the allowlist -> 403 model_denied, audit error_code rows 1
+       - model.call audit rows: 6
+[PASS] P9 approvals                                  Postgres inbox shared with the console; concurrent decisions have one winner (3.1s)
+       - pending before decision: ['race-1']
+       - concurrent approve/deny -> HTTP [200, 409]
+       - history returned 1 record(s) for the decided request
+[PASS] P10 triggers                                  webhook auth, pinned run, idempotent replay and HITL refusal all observed (25.6s)
+       - anonymous fire -> 401
+       - first fire -> 200 ok
+       - same idempotency key -> duplicate=True, same run_id
+       - agent with an approval-required grant -> 409 approval_required
+       - agent.run audit rows: 6
+[PASS] P11 shared quota                              one Postgres counter is enforced across two console processes (16.2s)
+       - process 1 -> 200, process 2 -> 429
+       - process 1 again after process 2 -> 429
+[PASS] P12 backup/restore                            archive restored into a fresh directory; the audit chain still verifies (7.5s)
+       - backup entries: 4
+       - restored audit chain verifies: 1 record
+       - restored files: 3 json
+[PASS] P13 console UI baseline, overview and panels  index HTML carries the design tokens, metric-card system, overview and capability panels (3.0s)
+       - design tokens --radius-lg/--shadow-card/--space-1 present
+       - metric-card classes .metric-grid/.stat-card/.stat-label/.stat-value/.stat-delta present
+       - overview panel + /api/overview with 4 cards present
+       - audit-panel, quota, rag and model panels present
+[PASS] P14 model switch                              default model switched via /api/model-config; a fresh chat on a newly loaded agent used it (32.2s)
+       - default before: litellm:openai/proof-stub
+       - default after PUT: litellm:openai/proof-stub-2
+       - model.call target: 'litellm:openai/proof-stub' (before) -> 'litellm:openai/proof-stub-2' (after)
+
+report: C:\Users\Jie\AppData\Local\Temp\adk-prove-siy2ndkh\report.json
+exit=0
