@@ -83,6 +83,7 @@ def test_composed_agent_loads(tmp_path, monkeypatch):
             store=store,
             loader=InProcessArtifactLoader(),
             trust=TrustStore({"publisher-1": bytes.fromhex(raw)}),
+            builder_keys=TrustStore({"builder-1": bytes.fromhex(raw)}),
         )
     )
 

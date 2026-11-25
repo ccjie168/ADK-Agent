@@ -68,7 +68,12 @@ def _published(tmp_path, key, *, version="1.0.0"):
     data = pack_agent(project)
     digest = artifact_digest(data)
     artifact = AgentArtifact(
-        digest=digest, size=len(data), signature=sign_digest(digest, key), key_id="k1"
+        digest=digest,
+        size=len(data),
+        signature=sign_digest(digest, key),
+        key_id="k1",
+        builder_signature=sign_digest(digest, key),
+        builder_key_id="k1",
     )
     store = FileArtifactStore(tmp_path / "store")
     asyncio.run(store.put(artifact, data))
@@ -107,6 +112,7 @@ def test_ref_load_refuses_retired(tmp_path):
                 registry=registry,
                 store=store,
                 trust=_trust(key),
+                builder_keys=_trust(key),
                 lifecycle=_lifecycle(tmp_path),
             )
         )
@@ -124,6 +130,7 @@ def test_ref_load_allows_deprecated(tmp_path):
             registry=registry,
             store=store,
             trust=_trust(key),
+            builder_keys=_trust(key),
             lifecycle=_lifecycle(tmp_path),
         )
     )

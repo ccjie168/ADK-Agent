@@ -99,6 +99,7 @@ def test_cli_compose_and_templates(tmp_path, capsys, monkeypatch):
             store=FileArtifactStore(tmp_path / "artifacts"),
             loader=InProcessArtifactLoader(),
             trust=TrustStore({"publisher-1": bytes.fromhex(raw)}),
+            builder_keys=TrustStore({"builder-1": bytes.fromhex(raw)}),
         )
     )
 

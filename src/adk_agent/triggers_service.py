@@ -179,6 +179,7 @@ def build_triggers_app(
     artifact_store: ArtifactStore,
     trust: Any,
     loader: ArtifactLoader,
+    builder_keys: Any | None = None,
     lifecycle: AgentLifecycleStore | None = None,
     tool_grants: ToolGrantStore | None = None,
     audit: AuditSink | None = None,
@@ -480,6 +481,12 @@ def build_triggers_app(
                 if published.artifact is None:
                     raise ValueError("published agent has no artifact")
                 trust.verify(published.artifact)
+                if builder_keys is None:
+                    raise ValueError(
+                        "in_process artifacts require builder trust: "
+                        "provide --builder-keys or set ADK_BUILDER_KEYS"
+                    )
+                builder_keys.verify_builder(published.artifact)
                 await verify_published_artifact(published, store=artifact_store)
                 agent = await loader.load(published.artifact, artifact_store)
                 break

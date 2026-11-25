@@ -58,13 +58,16 @@ adk-agent console --agents agents.py --ui vue \
 | 位置 | 参数 | 环境变量 | 内容 |
 |---|---|---|---|
 | 控制台 / MCP / `serve*` 加载工件 | `--artifact-keys FILE` | `ADK_ARTIFACT_KEYS` | `{"compose-2026-11": "<32 字节 hex>"}` |
-| `serve-registry` 校验构建签名 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | `{"builder-2026-11": "<32 字节 hex>"}` |
+| 控制台 / MCP / `serve*` / `serve-triggers` 载入 `in_process` 工件 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | `{"builder-2026-11": "<32 字节 hex>"}` |
+| `serve-registry` 校验构建签名 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | 同上 |
 | CLI `publish` 自查构建签名 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | 同上 |
 
 密钥 id 要与 `--compose-key-id` / `--compose-builder-key-id` 完全一致。
 
-已知限制：文件注册表（`--registry DIR`）只存记录与字节，不校验构建签名；控制台用文件注册表
-发布时构建签名只被记录、不被验证。需要构建信任强制时用 `serve-registry`（HTTP 模式）。
+载入侧同样强制（ADR-0044）：用 `--agent-ref` 载入 `in_process` 工件时，
+`console`/`serve`/`serve-many`/`serve-a2a` 必须有构建信任集，缺失或验签失败退出 1；
+文件注册表与 HTTP 注册表走同一段载入代码，没有「文件注册表不校验」的例外。
+`sandboxed` 记录不要求构建签名。既有部署升级时把上面这行 `--builder-keys` 加到启动参数即可。
 CLI `compose` 只负责签名，不校验构建签名；需要在发布前自查构建签名时用 `publish` 的
 `--builder-keys`（或 `ADK_BUILDER_KEYS`）。
 

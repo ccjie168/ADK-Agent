@@ -82,6 +82,8 @@ def _published(
         size=len(data),
         signature=sign_digest(digest, key),
         key_id="k1",
+        builder_signature=sign_digest(digest, key),
+        builder_key_id="b1",
     )
     store = FileArtifactStore(tmp_path / "store")
     asyncio.run(store.put(artifact, data))
@@ -115,6 +117,7 @@ def test_load_registry_agents(tmp_path):
             registry=registry,
             store=store,
             trust=TrustStore({"k1": bytes.fromhex(_raw_hex(key))}),
+            builder_keys=TrustStore({"b1": bytes.fromhex(_raw_hex(key))}),
             loader=InProcessArtifactLoader(),
         )
     )
@@ -153,6 +156,7 @@ def test_duplicate_name(tmp_path):
                 registry=registry,
                 store=store,
                 trust=TrustStore({"k1": bytes.fromhex(_raw_hex(key))}),
+                builder_keys=TrustStore({"b1": bytes.fromhex(_raw_hex(key))}),
                 loader=InProcessArtifactLoader(),
             )
         )
@@ -175,6 +179,7 @@ def test_console_loads_from_registry(tmp_path, monkeypatch):
     captured: dict = {}
     monkeypatch.setattr("adk_agent.console.run_console", lambda *a, **k: captured.update(k))
     monkeypatch.setenv("ADK_ARTIFACT_KEYS", json.dumps({"k1": _raw_hex(key)}))
+    monkeypatch.setenv("ADK_BUILDER_KEYS", json.dumps({"b1": _raw_hex(key)}))
 
     cli.main(["console", *_common_args(tmp_path, key, "acme/bot@1.0.0")])
 
@@ -188,6 +193,7 @@ def test_serve_loads_from_registry(tmp_path, monkeypatch):
     captured: dict = {}
     monkeypatch.setattr("adk_agent.mcp.server.serve_agent", lambda **k: captured.update(k))
     monkeypatch.setenv("ADK_ARTIFACT_KEYS", json.dumps({"k1": _raw_hex(key)}))
+    monkeypatch.setenv("ADK_BUILDER_KEYS", json.dumps({"b1": _raw_hex(key)}))
 
     cli.main(["serve", *_common_args(tmp_path, key, "acme/bot@1.0.0")])
 

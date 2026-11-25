@@ -381,6 +381,8 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
         print("set exactly one of --artifact-dir or ARTIFACT_URL", file=sys.stderr)
         raise SystemExit(1)
 
+    builder_keys = _builder_trust(args)
+
     try:
         registry = _agent_registry(args)
         lifecycle = _lifecycle_source(args, registry)
@@ -392,6 +394,7 @@ def _registry_agents(args: argparse.Namespace) -> dict[str, Any] | None:
                     registry=registry,
                     store=store,
                     trust=trust,
+                    builder_keys=builder_keys,
                     lifecycle=lifecycle,
                 )
             finally:
@@ -782,6 +785,14 @@ def _install_agent_sandbox(args: argparse.Namespace) -> None:
             )
         tools = gateway_executor(ToolGatewayClient(str(url), token=token))
     set_agent_sandbox_backend(ProcessAgentSandbox(model=build_model(), tools=tools))
+
+
+def _add_builder_keys_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--builder-keys",
+        default=None,
+        help="JSON file mapping builder key id to a 64 hex Ed25519 public key",
+    )
 
 
 def _add_registry_client_args(parser: argparse.ArgumentParser) -> None:
@@ -1558,6 +1569,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_rag_args(p_serve)
     _add_registry_client_args(p_serve)
+    _add_builder_keys_arg(p_serve)
     p_serve.add_argument(
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
     )
@@ -1623,6 +1635,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_rag_args(p_many)
     _add_registry_client_args(p_many)
+    _add_builder_keys_arg(p_many)
     p_many.add_argument(
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
     )
@@ -1684,6 +1697,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     _add_rag_args(p_a2a)
     _add_registry_client_args(p_a2a)
+    _add_builder_keys_arg(p_a2a)
     p_a2a.add_argument(
         "--artifact-dir", default=None, help="content-addressed directory for artifact bytes"
     )
@@ -1870,6 +1884,7 @@ def main(argv: list[str] | None = None) -> None:
         "serve-triggers", help="serve the webhook trigger execution service"
     )
     _add_rag_args(p_serve_triggers)
+    _add_builder_keys_arg(p_serve_triggers)
     p_serve_triggers.add_argument(
         "--triggers-dir", default=None, help="file store root for trigger definitions and fires"
     )
@@ -1960,6 +1975,7 @@ def main(argv: list[str] | None = None) -> None:
 
     p_console = sub.add_parser("console", help="serve a private web console for agents")
     _add_rag_args(p_console)
+    _add_builder_keys_arg(p_console)
     p_console.add_argument(
         "--agents",
         default=None,
@@ -3101,6 +3117,7 @@ def main(argv: list[str] | None = None) -> None:
             artifact_store=artifact_store,
             trust=trust,
             loader=InProcessArtifactLoader(),
+            builder_keys=_builder_trust(args),
             lifecycle=_lifecycle_source(args, registry),
             tool_grants=_tool_grant_store(args),
             audit=_audit_sink(args),
@@ -3336,6 +3353,7 @@ def main(argv: list[str] | None = None) -> None:
         audit_query = _audit_query(args)
         audit_sink = _audit_sink(args)
         artifact_trust = _artifact_trust(args)
+        console_builder_keys = _builder_trust(args)
         artifact_store = _artifact_store(args)
         registry_client = _agent_registry(args)
         console_lifecycle = _lifecycle_source(args, registry_client)
@@ -3397,6 +3415,7 @@ def main(argv: list[str] | None = None) -> None:
             artifact_store=artifact_store,
             artifact_loader=InProcessArtifactLoader() if artifact_store else None,
             artifact_trust=artifact_trust,
+            builder_keys=console_builder_keys,
             max_loaded_agents=args.max_loaded_agents,
             audit_sink=audit_sink,
             audit_query=audit_query,

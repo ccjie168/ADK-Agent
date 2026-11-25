@@ -23,7 +23,7 @@ from adk_agent.core import (
     TriggerFire,
     hash_webhook_token,
 )
-from adk_agent.registry import FileTriggerFireStore, pack_files
+from adk_agent.registry import ArtifactTrustError, FileTriggerFireStore, pack_files
 from adk_agent.registry.manifest import published_from
 from adk_agent.runtime.quota import InMemoryQuotaManager
 from adk_agent.sandbox.agent import SandboxResult
@@ -105,6 +105,14 @@ class FakeTrust:
 
     def verify(self, artifact: AgentArtifact) -> None:
         self.verified.append(artifact)
+
+
+class FakeBuilderTrust:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def verify_builder(self, artifact: AgentArtifact) -> None:
+        self.calls += 1
 
 
 class FakeLoader:
@@ -193,6 +201,9 @@ def _agent() -> LlmAgent:
     return LlmAgent(name="assistant", model="gemini-2.5-pro", instruction="x")
 
 
+_DEFAULT_BUILDER = object()
+
+
 def _client(
     triggers: list[AgentTrigger],
     *,
@@ -207,16 +218,19 @@ def _client(
     sandbox=None,
     artifact_store=None,
     rag=None,
+    builder_keys: object = _DEFAULT_BUILDER,
 ):
     runner = FakeRunner()
     trust = FakeTrust()
     loader = FakeLoader(_agent())
+    builders = FakeBuilderTrust() if builder_keys is _DEFAULT_BUILDER else builder_keys
     app = build_triggers_app(
         triggers=FakeTriggerStore(triggers),
         registry=registry or FakeRegistry(published or _PUBLISHED),
         artifact_store=artifact_store or FakeArtifactStore(_zip_for(published or _PUBLISHED)),
         trust=trust,
         loader=loader,
+        builder_keys=builders,
         lifecycle=lifecycle,
         tool_grants=tool_grants,
         audit=audit,
@@ -830,3 +844,44 @@ def test_in_process_trigger_denies_when_retrieval_fails():
     events = audit.recent(50)
     fired = [e for e in events if e.action == "trigger.fire" and e.status == "error"]
     assert [e.error_code for e in fired] == ["rag_unavailable"]
+
+
+class _RejectingBuilderTrust:
+    def verify_builder(self, artifact: AgentArtifact) -> None:
+        raise ArtifactTrustError("artifact builder signature is not trusted")
+
+
+def test_fire_refuses_in_process_without_builder_trust():
+    client, runner, _, loader = _client([_webhook()], builder_keys=None)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 502
+    assert response.json() == {"error": "agent_load_failed"}
+    assert loader.loaded == []
+    assert runner.calls == 0
+
+
+def test_fire_refuses_an_untrusted_builder_signature():
+    client, runner, _, loader = _client([_webhook()], builder_keys=_RejectingBuilderTrust())
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 502
+    assert response.json() == {"error": "agent_load_failed"}
+    assert loader.loaded == []
+    assert runner.calls == 0
+
+
+def test_fire_verifies_the_builder_signature():
+    builders = FakeBuilderTrust()
+    client, runner, _, loader = _client([_webhook()], builder_keys=builders)
+
+    with client:
+        response = _fire(client, json={"input": "hello"})
+
+    assert response.status_code == 200
+    assert builders.calls == 1
+    assert len(loader.loaded) == 1

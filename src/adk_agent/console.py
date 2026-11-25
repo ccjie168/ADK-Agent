@@ -2956,6 +2956,7 @@ def build_console_app(
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
+    builder_keys: TrustStore | None = None,
     max_loaded_agents: int = 20,
     session_service: Any | None = None,
     audit_sink: AuditSink | None = None,
@@ -4246,6 +4247,15 @@ def build_console_app(
                 return JSONResponse({"error": "artifact_untrusted"}, status_code=409)
             except PublishUnavailable:
                 return JSONResponse({"error": "artifact_trust_unavailable"}, status_code=503)
+            if record.manifest.execution_tier != "sandboxed":
+                if builder_keys is None:
+                    return JSONResponse({"error": "builder_trust_unavailable"}, status_code=503)
+                try:
+                    builder_keys.verify_builder(artifact)
+                except ArtifactTrustError:
+                    return JSONResponse({"error": "artifact_untrusted"}, status_code=409)
+                except PublishUnavailable:
+                    return JSONResponse({"error": "builder_trust_unavailable"}, status_code=503)
 
             loader = artifact_loader or InProcessArtifactLoader()
             try:
@@ -6174,6 +6184,7 @@ def run_console(
     artifact_store: ArtifactStore | None = None,
     artifact_loader: ArtifactLoader | None = None,
     artifact_trust: TrustStore | None = None,
+    builder_keys: TrustStore | None = None,
     max_loaded_agents: int = 20,
     audit_sink: AuditSink | None = None,
     audit_query: AuditQuery | None = None,
@@ -6224,6 +6235,7 @@ def run_console(
         artifact_store=artifact_store,
         artifact_loader=artifact_loader,
         artifact_trust=artifact_trust,
+        builder_keys=builder_keys,
         max_loaded_agents=max_loaded_agents,
         audit_sink=audit_sink,
         audit_query=audit_query,

@@ -18,7 +18,7 @@ from ..sandbox.agent import (
 )
 from ..sandbox.proxy import build_sandbox_agent
 from .packaging import PackagingError, read_artifact_manifest
-from .trust import TrustStore
+from .trust import ArtifactTrustError, TrustStore
 
 _ALLOWED = frozenset({"manifest.json", "README.md", "requirements.txt"})
 _MAX_ENTRIES = 64
@@ -147,6 +147,7 @@ async def load_agent(
     store: ArtifactStore,
     loader: InProcessArtifactLoader,
     trust: TrustStore,
+    builder_keys: TrustStore | None = None,
 ) -> Any:
     """Load a published version by reference, verifying trust first."""
     published = await registry.get(ref, tenant)
@@ -156,6 +157,16 @@ async def load_agent(
     if published.artifact is None:
         raise ArtifactLoadError("agent version has no artifact")
     trust.verify(published.artifact)
+    if published.manifest.execution_tier != "sandboxed":
+        if builder_keys is None:
+            raise ArtifactLoadError(
+                "in_process artifacts require builder trust: "
+                "provide --builder-keys or set ADK_BUILDER_KEYS"
+            )
+        try:
+            builder_keys.verify_builder(published.artifact)
+        except ArtifactTrustError:
+            raise ArtifactTrustError("artifact builder signature is not trusted") from None
     if published.manifest.execution_tier == "sandboxed":
         return await load_sandbox_agent(published, store=store)
     await verify_published_artifact(published, store=store)
