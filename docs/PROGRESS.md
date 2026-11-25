@@ -8,7 +8,7 @@
 ## 本次暂停交接
 
 - 代码在 `master`，`e4aedcb`。SLICE-113 到 295 已合并，ADR-0041 阶段 0 到 5 全部收口，ADR-0043（控制台 compose 签名与页面一键发布）已交付，密钥运维手册已补；没有打开的实现 PR（记录型 PR 除外）。第 16 条列出的旧缺口已全部修完，剩余的是第 16 条末尾记录的新观察项。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json`、`docs/review/*.docx`、`docs/specs/*.docx` 与两件未入库的 prove 输出（`docs/evidence/prove-2026-11-22-ui.txt`、`prove-2026-11-23.txt`）是本地工具与评审输入，不入库。
-- 最近门禁: `--full` 9 步全 PASS，2316 passed, 105 skipped（在 SLICE-295 分支复跑；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
+- 最近门禁: `--full` 9 步全 PASS，2323 passed, 105 skipped（在 SLICE-294 分支复跑；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
 - 端到端验收: `python scripts/prove_it_works.py` 14 项真实进程/真实 Postgres 检查，2026-11-25 在 `24a4f7d`（SLICE-295）跑出 14/14 PASS（`docs/evidence/prove-2026-11-25-s295.txt`，`NO_PROXY=127.0.0.1,localhost`，litellm 1.106.2）；更早的 14/14 见 `prove-2026-11-25.txt`（SLICE-280 修复轮）；更早的 12/12 记录见 `docs/evidence/prove-2026-11-21.txt`、`prove-2026-11-22.txt`，复盘见 `docs/reviews/retrospective-2026-11-21.md`。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
