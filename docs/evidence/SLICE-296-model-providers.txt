@@ -59,12 +59,14 @@ SLICE-296 模型提供方记录与接口（方案 A）
     $ python -m pytest -q
     2332 passed, 105 skipped, 3 warnings in 185.78s
 
+（warnings 数随 asyncio 收尾噪声在 3–4 之间浮动，不是门禁判据。）
+
 五、脱敏处理
 
 `secret://` 引用不是密钥值，但命中 detect-secrets 的 Secret Keyword 插件；
 测试里五处引用按仓库既有做法加 `# pragma: allowlist secret`，断言未改动。
 
-七、独立验证后的修补
+六、独立验证后的修补
 
 第一轮只读验证给出 PASS，另记两个应修项，已在合并前修掉：
 
@@ -74,9 +76,10 @@ SLICE-296 模型提供方记录与接口（方案 A）
   的 containment 检查；新增 64/65 字符边界用例。
 - S-2：审计原先只记 provider_id，ADR-0045 要求同时记类型与 secret_ref 键名。
   `AuditEvent` 增加可选 `provider_kind`、`secret_ref`（仅引用，`^secret://`），
-  `docs/contracts/audit_event.schema.json` 已用 `scripts/export_contracts.py` 同步。
+  `docs/contracts/audit_event.schema.json` 与 `audit_record.schema.json` 已用
+  `scripts/export_contracts.py` 同步。
 
-六、范围外（SLICE-297/298）
+七、范围外（SLICE-297/298）
 
 - `secret_ref` 的运行时解析（当前运行时仍读环境变量）
 - 方案 B 只写加密录入与仓库内路径拒绝启动
