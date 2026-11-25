@@ -10,8 +10,10 @@ SLICE-286 控制台审计事件的同刻顺序 — 证据
     python -m pytest tests/test_console_audit_tie_order.py -q
     2 failed, 1 passed
 
-失败项：同刻事件按插入顺序返回——内存后端写 c、a、b 读回 c、a、b；文件后端同刻按行号升序
-返回 a、b，所以第二条用例真正变红的是内存分支。不同时间戳的用例在旧代码上通过，作为回归保护。
+失败项：内存后端写 c、a、b 读回 c、a、b；文件后端同刻按**最新的行在前**（写入 a、b 读回 b、a），
+所以两条后端断言在旧代码上都失败。不同时间戳的用例在旧代码上通过，作为回归保护。
+（第二轮验证指出最初的 file 写序 b、a 恰好与 event_id 升序重合，file 断言在旧代码上会误绿；
+测试已改为 a、b 写序，让 file 分支也能区分修复。）
 
 ## 实现（后绿）
 
@@ -25,15 +27,20 @@ SLICE-286 控制台审计事件的同刻顺序 — 证据
 
 契约：`docs/contracts/console.md` 的 `GET /api/audit` 写明同刻按 `event_id` 升序。
 
-## 实机验证（内存后端，两份代码对照）
+## 实机验证（两份代码对照）
 
-8034 用同一份脚本启动内存 `ListAuditSink` 的控制台，先写 `zeta` 再写 `alpha`（同一时间戳）：
+同一份脚本分别用本切片代码与 master 代码（`PYTHONPATH` 指向从 `git archive master` 解出的 src）
+启动控制台，写入同一时间戳的事件，只有 `_query_events` 的排序键不同：
 
-    8034（本切片代码）  GET /api/audit -> ['alpha', 'zeta']
-    8035（master 代码，PYTHONPATH 指向 master 的 src）-> ['zeta', 'alpha']
+    内存后端，写入顺序 zeta、alpha
+      8034 本切片 -> ['alpha', 'zeta']
+      8035 master -> ['zeta', 'alpha']
 
-两行是同一个脚本、同一组事件，只有 `_query_events` 的排序键不同，证明实机行为随修复改变。
-文件后端同刻本就按行号升序，不能区分修复，故没有用它做对照。
+    文件后端（`--audit-file`），写入顺序 alpha、zeta（最新行在前，master 读回 zeta、alpha）
+      8036 本切片 -> ['alpha', 'zeta']
+      8037 master -> ['zeta', 'alpha']
+
+两种后端都随修复改变，说明排序键而非写入顺序决定结果。
 
 已知限制（记录）：`_query_events` 先向后端取最多 1000 条再排序，同刻事件超过 1000 条时
 进入窗口的子集仍由后端顺序决定；契约已写成「控制台读取窗口内」。

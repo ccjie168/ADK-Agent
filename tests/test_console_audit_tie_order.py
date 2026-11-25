@@ -59,7 +59,7 @@ def test_console_audit_ties_agree_between_backends(tmp_path):
     path = tmp_path / "audit.jsonl"
     file_sink = JsonlAuditSink(path)
     memory_sink = ListAuditSink()
-    for event_id in ("b", "a"):
+    for event_id in ("a", "b"):
         event = _event(event_id)
         asyncio.run(file_sink.emit(event))
         asyncio.run(memory_sink.emit(event))
