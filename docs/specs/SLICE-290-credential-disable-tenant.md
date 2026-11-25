@@ -21,7 +21,7 @@ admin 跨租户行为不变。
 ## 完成判据
 
 - [ ] 非 admin 跨租户停用返回 403 -> `test_disable_rejects_a_cross_tenant_caller`
-- [ ] admin 跨租户停用仍可定位（404 不存在） -> `test_disable_allows_admin_cross_tenant`
+- [ ] admin 跨租户停用成功 -> `test_disable_allows_admin_cross_tenant`
 - [ ] 非 admin 停用本租户凭据不受影响 -> `test_disable_keeps_the_own_tenant_path`
 - [ ] 列表的跨租户 403 不回归 -> `test_list_still_rejects_a_cross_tenant_caller`
 
