@@ -61,4 +61,4 @@
 ## 证据
 
 - `docs/evidence/SLICE-281-agent-wizard.txt`
-- `docs/evidence/ui/SLICE-281-agent-wizard.png`
+- `docs/evidence/ui/SLICE-281-wizard-form.png`、`-preview.png`、`-published.png`

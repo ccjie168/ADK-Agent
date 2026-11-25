@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
@@ -71,6 +71,11 @@ const message = ref("");
 const error = ref("");
 const previewResult = ref<PreviewResult | null>(null);
 const composeResult = ref<ComposeResult | null>(null);
+
+watch(step, () => {
+  error.value = "";
+  message.value = "";
+});
 
 const form = reactive({
   name: "",
@@ -229,8 +234,8 @@ async function publish() {
       return;
     }
     composeResult.value = (await response.json()) as ComposeResult;
-    message.value = `已发布 ${composeResult.value.id}@${composeResult.value.version}`;
     step.value = 4;
+    message.value = `已发布 ${composeResult.value.id}@${composeResult.value.version}`;
   } catch {
     error.value = "请求失败: 网络错误";
   } finally {
@@ -256,7 +261,11 @@ async function copyCommand() {
   </div>
 
   <template v-else>
-    <p v-if="!configured" class="notice">
+    <p v-if="canPublish && !canPreview" class="notice">
+      当前角色有 registry.compose 但没有 registry.publish，无法读取模板与预览，因此不能使用向导。
+      请使用 CLI 或让管理员补齐 registry.publish。
+    </p>
+    <p v-else-if="canPreview && !configured" class="notice">
       <strong>控制台未启用一键发布，请使用 CLI。</strong>
       预览仍可用；发布需要运维配置四个 compose 密钥参数。
     </p>

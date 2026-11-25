@@ -128,7 +128,7 @@ onMounted(async () => {
 <template>
   <div class="panel">
     <PageHeader title="Agent 中心" description="注册、版本与生命周期" />
-    <div v-if="canCreate" class="row toolbar">
+    <div v-if="canCreate && !denied" class="row toolbar">
       <router-link class="btn" to="/agents/new">新建 Agent</router-link>
     </div>
     <p v-if="denied" class="placeholder">无访问权限</p>

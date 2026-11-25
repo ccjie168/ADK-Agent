@@ -39,7 +39,7 @@ SLICE-281 新建 Agent 向导 — 证据
     22 passed
 
     cd web && npm run build
-    dist/assets/index-i97u-_ES.css 17.30 kB / assets/index-DK9gVjS0.js 195.95 kB
+    dist/assets/index-i97u-_ES.css 17.30 kB / assets/index-PlKtD3Ax.js 196.25 kB
 
 ## 实机验证（8027，`--ui vue`，`--role admin`，带 compose 密钥）
 
@@ -63,7 +63,22 @@ SLICE-281 新建 Agent 向导 — 证据
 
   三次运行均写 `agent.compose`，`template_id=single-llm`，无指令原文。
 
-## 门禁
+## 独立验证反馈修正
+
+首轮独立验证判 **PASS**（无 B，1 个 S + 5 个 N），已处理：
+
+1. **S1**：只有 `registry.compose`、没有 `registry.publish` 的自定义角色会看到
+   「未启用一键发布…预览仍可用」的矛盾提示。现在顶部提示分三种：两者都有但未配置密钥时显示
+   CLI 提示；只有 compose 没有 publish 时显示「无法读取模板与预览，因此不能使用向导」；
+   模板步骤也单独说明缺少 `registry.publish`。
+2. **N1**：CLI 回退命令保留 `<system instruction>` 占位符（避免把任意文本拼进 shell 命令），
+   命令参数已逐项核对存在。
+3. **N2**：切换步骤时清空 `error` 与 `message`，发布成功提示不再残留到下一步。
+4. **N3**：Agent 中心的「新建 Agent」按钮不再与「无访问权限」同时出现
+   （`canCreate && !denied`）。
+5. **N4**：测试仍按仓库 Vue 切片惯例做源码检查，行为由实机截图与门禁补足。
+6. **N5**：spec 的证据路径改为三张实际截图。
+
 
     python scripts/check.py --fast   -> 7 步 ALL PASS、2245 passed / 105 skipped
     python scripts/check.py --full   -> 9 步 ALL PASS、2245 passed / 105 skipped
