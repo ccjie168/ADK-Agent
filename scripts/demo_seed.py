@@ -116,11 +116,14 @@ async def _seed(root: Path, tenant: str, key) -> None:
         manifest = load_manifest(source / "manifest.json")
         data = pack_agent(source)
         digest = artifact_digest(data)
+        signature = sign_digest(digest, key)
         artifact = AgentArtifact(
             digest=digest,
             size=len(data),
-            signature=sign_digest(digest, key),
+            signature=signature,
             key_id=_KEY_ID,
+            builder_signature=signature,
+            builder_key_id=_KEY_ID,
         )
         await store.put(artifact, data)
         records[agent_id] = await registry.publish(published_from(manifest, artifact=artifact))
@@ -174,12 +177,14 @@ def _print_next_steps(root: Path, tenant: str) -> None:
     print("")
     print("export the trusted publisher keys before starting the console:")
     print(f'  export ADK_ARTIFACT_KEYS="$(cat {keys})"')
+    print(f'  export ADK_BUILDER_KEYS="$(cat {keys})"')
     print("")
     print("start the console with:")
     print(
         "  ./.venv/Scripts/python.exe -m adk_agent console"
         f" --registry {registry}"
         f" --artifact-dir {store}"
+        f" --builder-keys {keys}"
         f" --approval-dir {approvals}"
         f" --agent-ref {tenant}/bot_a@1.0.0"
         f" --agent-ref {tenant}/bot_b@1.0.0"
