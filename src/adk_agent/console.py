@@ -4944,10 +4944,10 @@ def build_console_app(
             return denied
         if credentials is None:
             return JSONResponse({"error": "credentials_not_configured"}, status_code=404)
-        target = tenant or caller.tenant
+        target = tenant if tenant is not None else caller.tenant
         if tenant and tenant != caller.tenant and "admin" not in caller.roles:
             return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
-        if tenant is not None and not _SAFE_TENANT.fullmatch(tenant):
+        if not _SAFE_TENANT.fullmatch(target):
             return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
         try:
             records = await credentials.list(target)
@@ -5029,7 +5029,9 @@ def build_console_app(
             return denied
         if credentials is None:
             return JSONResponse({"error": "credentials_not_configured"}, status_code=404)
-        target = tenant or caller.tenant
+        target = tenant if tenant is not None else caller.tenant
+        if not _SAFE_TENANT.fullmatch(target):
+            return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
         try:
             existing = await credentials.get(target, credential_id)
         except CredentialStoreError:

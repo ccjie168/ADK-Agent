@@ -647,8 +647,9 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 - 需要 `connectors.read` 能力，缺少返回 403 `forbidden`；能力检查先于租户参数检查。
 - 由 `console --credentials-dir DIR` 或 `--credential-db URL`（都未给时读 `CREDENTIAL_DATABASE_URL`）提供；未配置返回 404 `credentials_not_configured`。
 - `tenant` 缺失时用当前 principal 的租户；非 `admin` 跨租户 403 `tenant_forbidden`。
-- `tenant` 不符合安全字符集（`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`）返回 400 `unsafe_tenant`；
-  能力检查先于此校验。
+- 解析后的租户（显式 `tenant`，或调用方自己的租户）不符合安全字符集
+  （`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`）返回 400 `unsafe_tenant`；显式空串同样 400。
+  能力检查先于此校验，跨租户 403 先于 400。
 - 存储不可达返回 503 `credential_store_unavailable`。
 
 ## `POST /api/credentials` -> `CredentialBinding`
@@ -665,7 +666,8 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 ## `POST /api/credentials/{credential_id}/disable?tenant=<name>` -> `CredentialBinding`
 
 - 需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
-- `tenant` 缺失时用当前 principal 的租户；给了其他租户按该租户定位。
+- `tenant` 缺失时用当前 principal 的租户；给了其他租户按该租户定位。解析后的租户不符合安全字符集
+  （或显式空串）返回 400 `unsafe_tenant`，先于存储读取。
 - 不存在 404 `credential_not_found`。
 - 成功 200，重复停用幂等，写 `credential.disable` 审计。
 - 未配置存储 404 `credentials_not_configured`；存储不可达 503 `credential_store_unavailable`。
