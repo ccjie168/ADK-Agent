@@ -961,6 +961,10 @@ button.link {
   border-radius: var(--radius-lg);
 }
 
+.table-wrap table {
+  min-width: 720px;
+}
+
 .stat-value-text {
   color: var(--text-muted);
   font-size: var(--text-lg);
