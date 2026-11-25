@@ -364,6 +364,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 返回模型提供方记录数组（ADR-0045，方案 A：只存引用）。需要 `model.read` 能力。
 未配置 `--model-providers-dir` 返回 404 `{"error":"model_providers_not_configured"}`。
+顶层另有 `key_entry`（布尔），等于 `--model-key-entry` 的开关值。
 
 `ModelProviderRecord` 字段：`provider_id`（安全名，1–64 字符）、`kind`
 （`litellm|gemini|claude|vertex`）、`model`、`base_url`（可选）、`secret_ref`（可选，

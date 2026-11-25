@@ -26,13 +26,16 @@ class FileModelProviderStore:
             raise UnsafePath(f"unsafe provider id {provider_id!r}")
         return safe_join(self.root, f"{provider_id}.json")
 
-    async def get(self, provider_id: str) -> ModelProviderRecord | None:
+    def get_sync(self, provider_id: str) -> ModelProviderRecord | None:
         path = self._path(provider_id)
         if not path.is_file():
             return None
         return ModelProviderRecord.model_validate_json(path.read_text(encoding="utf-8"))
 
-    async def list(self) -> builtins.list[ModelProviderRecord]:
+    async def get(self, provider_id: str) -> ModelProviderRecord | None:
+        return self.get_sync(provider_id)
+
+    def list_sync(self) -> builtins.list[ModelProviderRecord]:
         if not self.root.is_dir():
             return []
         records = [
@@ -41,6 +44,9 @@ class FileModelProviderStore:
         ]
         records.sort(key=lambda record: record.provider_id)
         return records
+
+    async def list(self) -> builtins.list[ModelProviderRecord]:
+        return self.list_sync()
 
     async def put(self, provider: ModelProviderRecord) -> ModelProviderRecord:
         path = self._path(provider.provider_id)

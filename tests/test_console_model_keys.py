@@ -125,6 +125,18 @@ def test_key_entry_masks_short_keys_fully(tmp_path):
     assert exact.json()["key_hint"] == "abc…efgh"
 
 
+def test_key_entry_reports_flag(tmp_path):
+    _seed(tmp_path)
+    with TestClient(_app(tmp_path, entry=True, backend=_backend())) as client:
+        enabled = client.get("/api/model-providers", headers=AUTH).json()
+    with TestClient(_app(tmp_path, entry=False, backend=_backend())) as client:
+        disabled = client.get("/api/model-providers", headers=AUTH).json()
+
+    assert enabled["key_entry"] is True
+    assert disabled["key_entry"] is False
+    assert disabled["providers"][0]["key_configured"] is False
+
+
 def test_key_entry_requires_flag(tmp_path):
     _seed(tmp_path)
     with TestClient(_app(tmp_path, entry=False, backend=_backend())) as client:

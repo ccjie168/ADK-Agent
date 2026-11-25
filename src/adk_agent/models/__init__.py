@@ -28,6 +28,8 @@ Resolution order for ``build_model()`` with no argument:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..config import ModelConfig
@@ -42,6 +44,49 @@ if TYPE_CHECKING:  # pragma: no cover
 _PROVIDER_PREFIXES = ("gemini", "litellm", "claude", "vertex")
 
 
+@dataclass(frozen=True)
+class ProviderCredentials:
+    """What a model provider record contributes to a model configuration."""
+
+    api_key: str | None = None
+    api_base: str | None = None
+
+
+ProviderLookup = Callable[[str, str], ProviderCredentials | None]
+
+_provider_lookup: ProviderLookup | None = None
+
+
+def set_provider_lookup(lookup: ProviderLookup | None) -> None:
+    """Install the process-wide resolver for model provider records (ADR-0045)."""
+    global _provider_lookup
+    _provider_lookup = lookup
+
+
+def clear_provider_lookup() -> None:
+    set_provider_lookup(None)
+
+
+def resolve_model_config(spec: str | ModelConfig | None = None) -> ModelConfig:
+    """Normalize ``spec`` and fill credentials from a matching provider record.
+
+    Records only fill fields the caller left unset; they never rename the model.
+    """
+    cfg = _normalize(spec)
+    lookup = _provider_lookup
+    if lookup is None:
+        return cfg
+    found = lookup(cfg.provider, cfg.name)
+    if found is None:
+        return cfg
+    updates: dict[str, str] = {}
+    if cfg.api_key is None and found.api_key:
+        updates["api_key"] = found.api_key
+    if cfg.api_base is None and found.api_base:
+        updates["api_base"] = found.api_base
+    return cfg.model_copy(update=updates) if updates else cfg
+
+
 def build_model(spec: str | ModelConfig | None = None) -> BaseLlm:
     """Build an ADK model instance from a short string or a :class:`ModelConfig`.
 
@@ -53,7 +98,7 @@ def build_model(spec: str | ModelConfig | None = None) -> BaseLlm:
 
     A bare string without a recognised prefix is treated as a LiteLLM model id.
     """
-    cfg = _normalize(spec)
+    cfg = resolve_model_config(spec)
 
     if cfg.provider == "gemini":
         from google.adk.models import Gemini
@@ -178,11 +223,15 @@ __all__ = [
     "HttpModelGateway",
     "ModelGatewayError",
     "ModelUnavailable",
+    "ProviderCredentials",
     "build_model",
+    "clear_provider_lookup",
     "build_model_gateway_app",
     "build_providers",
     "disable_thinking",
     "effective_default_model",
     "is_valid_model_spec",
+    "resolve_model_config",
     "set_default_model",
+    "set_provider_lookup",
 ]

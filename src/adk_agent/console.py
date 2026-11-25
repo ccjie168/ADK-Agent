@@ -3933,7 +3933,7 @@ def build_console_app(
             item["key_configured"] = hint is not None
             item["key_hint"] = hint["hint"] if hint is not None else None
             providers.append(item)
-        return {"providers": providers}
+        return {"providers": providers, "key_entry": model_key_entry}
 
     @app.put("/api/model-providers/{provider_id}")
     async def put_model_provider(provider_id: str, request: Request) -> Any:

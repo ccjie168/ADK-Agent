@@ -6,6 +6,7 @@ model key is unwrapped, so every failure is audited with an error code only.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +17,7 @@ from ..core import AgentRef, AuditEvent, AuditSink, Principal
 from ..core.context import current_invocation
 
 logger = logging.getLogger(__name__)
+_background: set[asyncio.Task] = set()
 
 
 class ModelKeyUnavailable(Exception):
@@ -65,6 +67,46 @@ class ModelKeyResolver:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("model key audit failed: %s", type(exc).__name__)
+
+    def _schedule_audit_failure(self, provider_id: str, error_code: str) -> None:
+        if self._audit is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.warning(
+                "model key failure: provider=%s code=%s (no event loop to audit)",
+                provider_id,
+                error_code,
+            )
+            return
+        task = loop.create_task(self._audit_failure(provider_id, error_code))
+        _background.add(task)
+        task.add_done_callback(_background.discard)
+
+    def resolve_sync(self, provider_id: str) -> str:
+        """Synchronous variant for model construction; audits when a loop is running."""
+        try:
+            record = self._store.get_sync(provider_id)
+        except (OSError, ValueError) as exc:
+            self._schedule_audit_failure(provider_id, "key_unreadable")
+            raise ModelKeyUnavailable(f"model key for {provider_id!r} is unreadable") from exc
+        if record is None:
+            self._schedule_audit_failure(provider_id, "key_missing")
+            raise ModelKeyUnavailable(f"no model key for {provider_id!r}")
+        if self._backend is None:
+            self._schedule_audit_failure(provider_id, "key_backend_unavailable")
+            raise ModelKeyUnavailable(f"no key backend for {provider_id!r}")
+        try:
+            raw = self._backend.unwrap(record["wrapped_secret"], model_key_aad(provider_id))
+            value = raw.decode("utf-8")
+        except Exception as exc:  # noqa: BLE001
+            self._schedule_audit_failure(provider_id, "decrypt_failed")
+            raise ModelKeyUnavailable(f"model key for {provider_id!r} is unreadable") from exc
+        if not value or "\r" in value or "\n" in value:
+            self._schedule_audit_failure(provider_id, "invalid_secret")
+            raise ModelKeyUnavailable(f"model key for {provider_id!r} is invalid")
+        return value
 
     async def resolve(self, provider_id: str) -> str:
         try:
