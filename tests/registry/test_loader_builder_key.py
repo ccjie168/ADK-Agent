@@ -188,9 +188,10 @@ def test_load_does_not_require_builder_trust_for_sandboxed():
     builder_trust = _BuilderTrust()
     set_agent_sandbox_backend(_Backend())
     try:
-        loaded = _load(_record("sandboxed"), builder_keys=builder_trust)
+        for builder_keys in (None, builder_trust):
+            loaded = _load(_record("sandboxed"), builder_keys=builder_keys)
+            assert type(loaded).__name__ == "SandboxAgent"
     finally:
         set_agent_sandbox_backend(None)
 
-    assert type(loaded).__name__ == "SandboxAgent"
     assert builder_trust.calls == 0

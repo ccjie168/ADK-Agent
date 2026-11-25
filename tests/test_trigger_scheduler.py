@@ -103,6 +103,11 @@ class FakeTrust:
         self.verified.append(artifact)
 
 
+class FakeBuilderTrust:
+    def verify_builder(self, artifact: AgentArtifact) -> None:
+        pass
+
+
 class FakeLoader:
     def __init__(self, agent: LlmAgent) -> None:
         self.agent = agent
@@ -214,6 +219,7 @@ def _app(
         artifact_store=FakeArtifactStore(),
         trust=trust,
         loader=loader,
+        builder_keys=FakeBuilderTrust(),
         session_service=InMemorySessionService(),
         runner_factory=lambda agent: runner,
         fire_store=fire_store,

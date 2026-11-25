@@ -4,9 +4,13 @@ SLICE-291 载入侧校验构建签名
 依据: ADR-0044（Accepted，用户确认严格失败）
 基线: master ec783f7（docs 记录），代码等价 63e5baf
 
-一、反例：master 检出上新增用例的红灯
+范围: load_agent（console/serve/serve-many/serve-a2a 的 --agent-ref）、
+控制台 POST /api/registry/load、serve-triggers 每次 fire 的载入。
 
-把三个新测试文件复制到 master 的干净检出（git archive master 解包到临时目录）后运行：
+一、master 检出上的红灯
+
+1) 载入与控制台用例：把三个新测试文件复制到 master 的干净检出
+（git archive master 解包到临时目录）后运行：
 
     $ python -m pytest tests/registry/test_loader_builder_key.py \
         tests/test_cli_agent_ref_builder.py \
@@ -27,6 +31,26 @@ SLICE-291 载入侧校验构建签名
 argument 'builder_keys' / build_console_app 的 builder_keys），唯一通过的是
 test_serve_accepts_builder_keys：master 本来就不设防，所以「带信任集能载入」在旧代码上也成立。
 
+2) 触发服务用例（新增部分）：
+
+    $ python -m pytest \
+        tests/test_triggers_service.py::test_fire_refuses_in_process_without_builder_trust \
+        tests/test_triggers_service.py::test_fire_refuses_an_untrusted_builder_signature \
+        tests/test_triggers_service.py::test_fire_verifies_the_builder_signature \
+        tests/test_cli_triggers_service.py::test_serve_triggers_passes_the_builder_keys \
+        tests/test_cli_triggers_service.py::test_serve_triggers_without_builder_keys_passes_none -q
+
+    5 failed in 2.25s
+
+build_triggers_app 在 master 上没有 builder_keys 参数，serve-triggers 解析器没有
+--builder-keys，两个 CLI 用例分别以 SystemExit 2 与 KeyError 结束。
+
+3) 首轮独立验证（PR #330）指出 serve-triggers 仍能执行未验签的 in_process 记录，
+本切片已补上并在上面 2) 记录了红灯；同一轮还指出 sandboxed 用例只在「传入了信任集」时
+断言未被调用、以及 --builder-keys 文件标志与 serve-many/serve-a2a 接线没被覆盖，
+均已改：sandboxed 用例遍历 None 与桩信任集两种输入；serve 用例改用 --builder-keys 文件，
+新增 serve-many、serve-a2a 与五个命令的 --help 覆盖。
+
 二、行为证明：master 真的执行了没有构建签名的 in_process 工件
 
 探针脚本在临时目录手工构造一条文件注册表记录：发布签名合法（publisher-1），
@@ -40,29 +64,33 @@ master 源（PYTHONPATH 指向 git archive 出来的 master src）：
 
 分支源（当前工作区）：
 
-    $ python probe.py <temp>/branch-run
+    $ python probe.py <temp>/branch-run2
     Traceback (most recent call last):
-      File "src\adk_agent\registry\loader.py", line 162, in load_agent
+      ...
+      File "C:\AI_System\ADK-Agent\src\adk_agent\registry\loader.py", line 162, in load_agent
         raise ArtifactLoadError(
-          "in_process artifacts require builder trust: "
-          "provide --builder-keys or set ADK_BUILDER_KEYS"
+        ...<2 lines>...
+        )
     adk_agent.registry.loader.ArtifactLoadError: in_process artifacts require builder trust: provide --builder-keys or set ADK_BUILDER_KEYS
 
 即：旧代码把未经构建签名的 in_process 工件载入并执行；新代码在执行前拒绝。
+serve-triggers 的同一缺口由 tests/test_triggers_service.py 的三条 fire 用例锁定。
 
-三、新增与改动的用例
+三、新增用例
 
-新增:
-- tests/registry/test_loader_builder_key.py（4 条）
-- tests/test_cli_agent_ref_builder.py（3 条）
-- tests/test_console_registry_builder_trust.py（3 条）
+- tests/registry/test_loader_builder_key.py：4 条（缺信任集拒绝、未受信签名拒绝、
+  受信签名载入、sandboxed 不要求构建信任集，且遍历 None 与桩信任集两种输入）
+- tests/test_cli_agent_ref_builder.py：console 两条拒绝用例、serve/serve-many/serve-a2a
+  各一条 --builder-keys 文件用例、五个命令的 --builder-keys --help 覆盖
+- tests/test_console_registry_builder_trust.py：503 / 200 / 409 三条
+- tests/test_triggers_service.py：fire 缺信任集拒绝、未受信签名拒绝、fire 前验签三条
+- tests/test_cli_triggers_service.py：--builder-keys 传入服务、缺省为 None 两条
 
-按新契约调整数据、不改断言:
-- tests/test_registry_startup.py、tests/test_lifecycle_enforcement.py、
-  tests/test_console_startup_rag.py、tests/test_console_on_demand.py、
-  tests/test_console_unload.py、tests/registry/test_artifact_loader.py、
-  tests/registry/test_execution_tier_boundary.py、tests/compose/test_compose_publish.py、
-  tests/test_cli_compose.py 的 in_process 记录补构建签名与信任集。
+按新契约调整数据、不改断言：test_registry_startup、test_lifecycle_enforcement、
+test_console_startup_rag、test_console_on_demand、test_console_unload、
+registry/test_artifact_loader、registry/test_execution_tier_boundary、
+compose/test_compose_publish、test_cli_compose、test_triggers_service、
+test_trigger_scheduler 的 in_process 记录补构建签名与信任集。
 
 四、门禁
 
@@ -77,6 +105,7 @@ master 源（PYTHONPATH 指向 git archive 出来的 master src）：
     [PASS] deps
     [PASS] secrets
     ALL PASS
-    2291 passed, 105 skipped in 178.74s
+    2303 passed, 105 skipped in 188.27s
 
-首轮 --full 的 format 失败来自两个新测试文件的排版，ruff format 后复跑全绿。
+首轮 --full 的 format 失败来自新测试文件排版；第二轮 test 步骤的 2 条失败来自
+test_trigger_scheduler 的桩缺少 builder_keys，补齐后复跑全绿。

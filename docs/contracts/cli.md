@@ -214,7 +214,10 @@
 启动 webhook 触发执行服务。端点、幂等与错误码见 `trigger_service.md`。
 
 - 触发存储：`--triggers-dir DIR` 或 `--trigger-db URL`，未给时读 `TRIGGER_DATABASE_URL`。
-- 注册表与工件：`--registry DIR` 或 `--registry-url URL`；`--artifact-dir DIR` 或 `ARTIFACT_URL`；`--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`。
+- 注册表与工件：`--registry DIR` 或 `--registry-url URL`；`--artifact-dir DIR` 或 `ARTIFACT_URL`；`--artifact-keys FILE` 或 `ADK_ARTIFACT_KEYS`；`--builder-keys FILE` 或 `ADK_BUILDER_KEYS`。
+- 触发执行 `in_process`（含未声明 `execution_tier` 的历史）记录时要求构建信任集（ADR-0044）：
+  未配置或构建签名不可信时该次 fire 不载入、不执行，按 `trigger_service.md` 报 `agent_load_failed`（502）。
+  `sandboxed` 记录不要求构建签名。
 - 授权与审计：`--tool-grants-dir DIR` 或 `GRANT_URL`；`--audit-file`、`--audit-url` 或 `--audit-db`。
 - 会话、配额与限流：`--session-db URL`；`--quota-config FILE`；`--rate-limit N --rate-limit-window SECONDS`。
 - 调度：`--schedule-tick SECONDS`（默认 15，最小 5）；`--trigger-attempts N`（默认 3，最小 1）；`--no-scheduler` 只开 webhook。

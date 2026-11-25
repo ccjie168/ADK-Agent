@@ -50,7 +50,7 @@
 | 500 | `sandbox_timeout` | 沙箱运行超过墙钟 |
 | 500 | `sandbox_crashed` | 沙箱加载或运行崩溃 |
 | 500 | `sandbox_violation` | 沙箱守卫拒绝 |
-| 502 | `agent_load_failed` | 工件验签或加载失败 |
+| 502 | `agent_load_failed` | 工件验签或加载失败；含 `in_process` 记录缺构建信任集或构建签名不可信（ADR-0044） |
 | 500 | `run_failed` | 运行失败 |
 
 ## 运行语义

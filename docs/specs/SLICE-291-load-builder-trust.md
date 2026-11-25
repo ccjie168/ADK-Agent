@@ -8,7 +8,9 @@
 `in_process` 工件在平台进程内执行，构建签名是准入凭据。写入口（`serve-registry` 的
 `POST /v1/agents`、CLI `publish`/`compose`）已经校验，载入侧（`load_agent`）只验证发布签名。
 本切片让载入侧对 `in_process` 与历史无层级记录强制构建签名：缺少可信构建公钥或验签失败都拒绝
-执行。`sandboxed` 记录保持现状（沙箱内执行，与 `serve-registry` 的契约一致）。
+执行。覆盖 `load_agent`（`console`/`serve`/`serve-many`/`serve-a2a` 的 `--agent-ref`）、
+控制台 `POST /api/registry/load`，以及 `serve-triggers` 每次 fire 的载入路径。
+`sandboxed` 记录保持现状（沙箱内执行，与 `serve-registry` 的契约一致）。
 
 ## 契约（先改）
 
@@ -18,7 +20,9 @@
 - `docs/contracts/registry_service.md`：补一句读取侧按同一规则校验，写入口的检查不是唯一防线。
 - `docs/contracts/console.md` 的 `/api/registry/load` 一节：`in_process` 记录要求构建信任集，
   缺少返回 503 `builder_trust_unavailable`，验证失败返回 409 `artifact_untrusted`；
-  `--builder-keys` 加入控制台参数表。
+  控制台 `--builder-keys` 写入 `cli.md` 的用法行。
+- `docs/contracts/cli.md` 的 `serve-triggers` 与 `trigger_service.md`：fire 时缺信任集或
+  验签失败报 `agent_load_failed`（502）。
 - `docs/guides/install-and-use.md`、`docs/guides/compose-signing.md`：去掉「文件注册表不校验
   构建签名」的说明，写清迁移方式（给载入端加 `--builder-keys`）。
 - 本切片的 `docs/guides/operations.md` 收口放到 SLICE-292。
@@ -36,6 +40,13 @@
 - [ ] 控制台按需载入接口缺构建信任集时返回 503 且不载入 -> `test_registry_load_requires_builder_trust`
 - [ ] 控制台按需载入接口有受信构建公钥时载入 -> `test_registry_load_accepts_builder_trust`
 - [ ] 未受信构建公钥让控制台按需载入返回 409 -> `test_registry_load_rejects_an_untrusted_builder`
+- [ ] `serve-triggers` 的 fire 缺构建信任集时不载入、不执行 -> `test_fire_refuses_in_process_without_builder_trust`
+- [ ] 未受信构建签名让 fire 失败 -> `test_fire_refuses_an_untrusted_builder_signature`
+- [ ] fire 前验证构建签名 -> `test_fire_verifies_the_builder_signature`
+- [ ] `serve-triggers --builder-keys` 把信任集传到服务 -> `test_serve_triggers_passes_the_builder_keys`
+- [ ] `serve-many --agent-ref` 带 `--builder-keys` 可载入 -> `test_serve_many_accepts_builder_keys`
+- [ ] `serve-a2a --agent-ref` 带 `--builder-keys` 可载入 -> `test_serve_a2a_accepts_builder_keys`
+- [ ] 五个入口都暴露 `--builder-keys` -> `test_every_ref_command_exposes_builder_keys`
 - [ ] `--full` 门禁通过
 
 ## 反例
@@ -56,6 +67,8 @@
 ## 范围外
 
 - `sandboxed` 工件要求构建签名（与 `serve-registry` 契约不一致，另行评估）。
+- 触发服务之外的其它注册表消费路径（若有）另行盘点；本切片已覆盖 `console`/`serve*`/
+  `serve-triggers` 与 `POST /api/registry/load`。
 - 构建密钥轮换工具与信任集分发。
 - 控制台页面发布路径的改动（`POST /api/compose` 已用构建私钥签名）。
 

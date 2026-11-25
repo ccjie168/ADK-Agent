@@ -58,7 +58,7 @@ adk-agent console --agents agents.py --ui vue \
 | 位置 | 参数 | 环境变量 | 内容 |
 |---|---|---|---|
 | 控制台 / MCP / `serve*` 加载工件 | `--artifact-keys FILE` | `ADK_ARTIFACT_KEYS` | `{"compose-2026-11": "<32 字节 hex>"}` |
-| 控制台 / MCP / `serve*` 载入 `in_process` 工件 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | `{"builder-2026-11": "<32 字节 hex>"}` |
+| 控制台 / MCP / `serve*` / `serve-triggers` 载入 `in_process` 工件 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | `{"builder-2026-11": "<32 字节 hex>"}` |
 | `serve-registry` 校验构建签名 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | 同上 |
 | CLI `publish` 自查构建签名 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | 同上 |
 

@@ -1884,6 +1884,7 @@ def main(argv: list[str] | None = None) -> None:
         "serve-triggers", help="serve the webhook trigger execution service"
     )
     _add_rag_args(p_serve_triggers)
+    _add_builder_keys_arg(p_serve_triggers)
     p_serve_triggers.add_argument(
         "--triggers-dir", default=None, help="file store root for trigger definitions and fires"
     )
@@ -3116,6 +3117,7 @@ def main(argv: list[str] | None = None) -> None:
             artifact_store=artifact_store,
             trust=trust,
             loader=InProcessArtifactLoader(),
+            builder_keys=_builder_trust(args),
             lifecycle=_lifecycle_source(args, registry),
             tool_grants=_tool_grant_store(args),
             audit=_audit_sink(args),

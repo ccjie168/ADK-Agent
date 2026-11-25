@@ -31,8 +31,8 @@
 - 记录带 `artifact` 时要求服务配置了可信公钥，且签名可验证；没配置返回 503 `artifact_trust_unavailable`，验证失败返回 400 `artifact_untrusted`。
 - `in_process` 记录带工件时还要求 `builder_signature`/`builder_key_id` 能被 `--builder-keys`/`ADK_BUILDER_KEYS` 验证；
   没配置返回 503 `builder_key_unavailable`，验证失败返回 400 `artifact_untrusted`。不带工件的 `in_process` 记录是元数据，不要求构建签名。
-  读取侧（`console`/`serve`/`serve-many`/`serve-a2a` 的 `--agent-ref`）按同一规则校验（ADR-0044），
-  本端点的检查不是唯一防线。
+  读取侧（`console`/`serve`/`serve-many`/`serve-a2a` 的 `--agent-ref`，以及 `serve-triggers`
+  每次 fire）按同一规则校验（ADR-0044），本端点的检查不是唯一防线。
 - 工件字节已存在时（先上传后发布的顺序），服务端读取 zip 内的 `manifest.json` 并与记录 manifest 比较；
   无法解析或不一致返回 400 `artifact_manifest_mismatch`。字节尚未上传时跳过此检查，由上传端补查；
   字节读取失败返回 502 `artifact_store_failed`。

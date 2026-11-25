@@ -116,15 +116,60 @@ def test_console_refuses_an_untrusted_builder_key(tmp_path, monkeypatch, capsys)
     assert "builder" in capsys.readouterr().err
 
 
+def _builder_file(tmp_path, builder) -> str:
+    path = tmp_path / "builder-keys.json"
+    path.write_text(json.dumps({"b1": _raw_hex(builder)}), encoding="utf-8")
+    return str(path)
+
+
 @needs_crypto
 def test_serve_accepts_builder_keys(tmp_path, monkeypatch):
     publisher, builder = _key(), _key()
     _published(tmp_path, publisher, builder)
     captured: dict = {}
     monkeypatch.setenv("ADK_ARTIFACT_KEYS", json.dumps({"p1": _raw_hex(publisher)}))
-    monkeypatch.setenv("ADK_BUILDER_KEYS", json.dumps({"b1": _raw_hex(builder)}))
+    monkeypatch.delenv("ADK_BUILDER_KEYS", raising=False)
     monkeypatch.setattr("adk_agent.mcp.server.serve_agent", lambda **k: captured.update(k))
 
-    cli.main(["serve", *_args(tmp_path)])
+    cli.main(["serve", *_args(tmp_path), "--builder-keys", _builder_file(tmp_path, builder)])
 
     assert captured["agent"].name == "bot"
+
+
+@needs_crypto
+def test_serve_many_accepts_builder_keys(tmp_path, monkeypatch):
+    publisher, builder = _key(), _key()
+    _published(tmp_path, publisher, builder)
+    captured: dict = {}
+    monkeypatch.setenv("ADK_ARTIFACT_KEYS", json.dumps({"p1": _raw_hex(publisher)}))
+    monkeypatch.delenv("ADK_BUILDER_KEYS", raising=False)
+    monkeypatch.setattr("adk_agent.mcp.server.serve_many", lambda **k: captured.update(k))
+
+    cli.main(["serve-many", *_args(tmp_path), "--builder-keys", _builder_file(tmp_path, builder)])
+
+    assert captured["agents"]["bot"].name == "bot"
+
+
+@needs_crypto
+def test_serve_a2a_accepts_builder_keys(tmp_path, monkeypatch):
+    publisher, builder = _key(), _key()
+    _published(tmp_path, publisher, builder)
+    captured: dict = {}
+    monkeypatch.setenv("ADK_ARTIFACT_KEYS", json.dumps({"p1": _raw_hex(publisher)}))
+    monkeypatch.delenv("ADK_BUILDER_KEYS", raising=False)
+    monkeypatch.setattr("adk_agent.a2a.serve_a2a", lambda **k: captured.update(k))
+
+    cli.main(["serve-a2a", *_args(tmp_path), "--builder-keys", _builder_file(tmp_path, builder)])
+
+    assert captured["agent"].name == "bot"
+
+
+@pytest.mark.parametrize(
+    "command", ["serve", "serve-many", "serve-a2a", "console", "serve-triggers"]
+)
+def test_every_ref_command_exposes_builder_keys(command, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main([command, "--help"])
+
+    assert exc.value.code == 0
+    assert "--builder-keys" in capsys.readouterr().out

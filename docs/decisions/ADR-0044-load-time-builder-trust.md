@@ -35,11 +35,13 @@ SLICE-287 的运维手册与 PROGRESS 都记录了这条限制「文件注册表
 这层检查与注册表类型无关：文件注册表与 HTTP 注册表都经过同一段载入代码，因此对前者是补齐缺口，
 对后者是纵深防御（注册表被攻陷时仍需要构建私钥）。
 
-### 2. 四个载入入口新增 `--builder-keys`
+### 2. 五个载入入口新增 `--builder-keys`
 
-`serve`、`serve-many`、`serve-a2a`、`console` 的 `--agent-ref` 路径新增 `--builder-keys FILE`
-（回退环境变量 `ADK_BUILDER_KEYS`），沿用已有的 `TrustStore.from_json` 校验：JSON 对象、
-键名为非空字符串、值为 64 位十六进制。
+`serve`、`serve-many`、`serve-a2a`、`console` 的 `--agent-ref` 路径，以及 `serve-triggers`
+的每次 fire，都新增 `--builder-keys FILE`（回退环境变量 `ADK_BUILDER_KEYS`），沿用已有的
+`TrustStore.from_json` 校验：JSON 对象、键名为非空字符串、值为 64 位十六进制。
+`serve-triggers` 在 fire 时载入记录，缺信任集或验签失败让该次 fire 以 `agent_load_failed`
+失败（502），不影响服务启动。
 
 - 只在真正载入 `in_process` 工件时强制；只载入 `sandboxed` 记录的环境不需要该参数，
   行为不变。
@@ -50,15 +52,18 @@ SLICE-287 的运维手册与 PROGRESS 都记录了这条限制「文件注册表
 
 - 载入 `in_process` 工件却未配置构建信任集时，**从静默执行变为显式失败**。这是有意的收紧：
   默认放行等于把缺口留在原地。
-- 受影响部署：用 `--agent-ref` 载入 `in_process` 工件的 `serve*`/`console`。迁移方式是把现有
-  `--builder-keys` 信任集（或 `ADK_BUILDER_KEYS`）加到启动参数；手册与契约写明报错文案。
-- 只载入 `sandboxed` 记录、或不使用 `--agent-ref` 的部署不受影响。
+- 受影响部署：用 `--agent-ref` 载入 `in_process` 工件的 `serve*`/`console`，以及 fire
+  `in_process` 记录的 `serve-triggers`。迁移方式是把现有 `--builder-keys` 信任集
+  （或 `ADK_BUILDER_KEYS`）加到启动参数；手册与契约写明报错文案。
+- 只载入 `sandboxed` 记录、或不做注册表载入的部署不受影响。
 
 ### 4. 契约
 
 - `docs/contracts/cli.md`：四个命令的用法行与说明补 `--builder-keys`；写明
   「载入 `in_process` 工件时必须提供，缺失退出 1」与 `ADK_BUILDER_KEYS` 回退。
 - `docs/contracts/registry_service.md`：补一句读取侧同规则，声明写入口的校验不是唯一防线。
+- `docs/contracts/trigger_service.md` 与 `cli.md` 的 `serve-triggers`：fire 时缺构建信任集或
+  验签失败报 `agent_load_failed`（502）。
 - `docs/guides/install-and-use.md`、`docs/guides/compose-signing.md`、`docs/guides/operations.md`：
   删掉「文件注册表不校验构建签名」的说明，改为「载入侧统一校验」与迁移步骤。
 

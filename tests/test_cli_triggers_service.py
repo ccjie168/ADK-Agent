@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from adk_agent import cli
+from adk_agent.core import AgentArtifact
+from adk_agent.registry import ArtifactTrustError
 
 
 def _keys(tmp_path):
@@ -151,3 +153,51 @@ def test_no_scheduler_parses_then_checks_backends(monkeypatch, capsys):
 
     assert exc.value.code == 1
     assert "trigger store" in capsys.readouterr().err.lower()
+
+
+def test_serve_triggers_passes_the_builder_keys(monkeypatch, tmp_path):
+    captured: dict = {}
+
+    class _App:
+        routes: list = []
+
+    def fake_build(**kwargs):
+        captured.update(kwargs)
+        return _App()
+
+    monkeypatch.setattr("adk_agent.triggers_service.build_triggers_app", fake_build)
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
+    builder = tmp_path / "builder-keys.json"
+    builder.write_text('{"b1": "' + "bb" * 32 + '"}', encoding="utf-8")
+
+    cli.main(_argv(tmp_path, "--builder-keys", str(builder)))
+
+    trust = captured["builder_keys"]
+    assert trust is not None
+    artifact = AgentArtifact(
+        digest="sha256:" + "c" * 64,
+        size=1,
+        builder_signature="00" * 64,
+        builder_key_id="other",
+    )
+    with pytest.raises(ArtifactTrustError):
+        trust.verify_builder(artifact)
+
+
+def test_serve_triggers_without_builder_keys_passes_none(monkeypatch, tmp_path):
+    captured: dict = {}
+
+    class _App:
+        routes: list = []
+
+    def fake_build(**kwargs):
+        captured.update(kwargs)
+        return _App()
+
+    monkeypatch.setattr("adk_agent.triggers_service.build_triggers_app", fake_build)
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
+    monkeypatch.delenv("ADK_BUILDER_KEYS", raising=False)
+
+    cli.main(_argv(tmp_path))
+
+    assert captured["builder_keys"] is None

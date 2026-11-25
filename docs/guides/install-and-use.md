@@ -150,7 +150,8 @@ PY
 - `in_process` 只接受构建密钥签名的工件；本地与 HTTP 发布都要求构建公钥信任文件
   （`--builder-keys` 或 `ADK_BUILDER_KEYS`）。
 - 加载时 `--artifact-keys` 提供发布公钥；载入 `in_process` 工件还要求 `--builder-keys`（或
-  `ADK_BUILDER_KEYS`）提供构建公钥，否则启动退出 1（ADR-0044）；`serve-registry --builder-keys`
+  `ADK_BUILDER_KEYS`）提供构建公钥，否则 `serve*`/`console` 启动退出 1、`serve-triggers`
+  该次 fire 报 `agent_load_failed`（ADR-0044）；`serve-registry --builder-keys`
   在校验登记时使用同一份信任集。
 - 没有工件的 manifest-only 发布只登记元数据，manifest 同样要写 `"execution_tier": "in_process"`。
 
@@ -166,7 +167,7 @@ PY
 | `serve-tool-gateway` | 工具网关 | `--tools`/`--connectors-dir`、`--credentials-dir`/`--credential-db` |
 | `serve-model-gateway` | 模型网关 | provider 与 breaker 参数 |
 | `serve-audit` | 审计服务 | `--out` 或 `--audit-db` |
-| `serve-triggers` | 定时与 webhook 触发 | `--triggers-dir`/`--trigger-db`、`--agent-sandbox` |
+| `serve-triggers` | 定时与 webhook 触发 | `--triggers-dir`/`--trigger-db`、`--agent-sandbox`、`--builder-keys` |
 
 除 `serve-triggers` 外的服务共用 bearer token 与 OIDC 参数；`serve-triggers` 的 webhook
 用每个触发定义自己的 token 哈希，不接受 `--auth-token-env`，但仍接受限流参数。
