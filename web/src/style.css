@@ -567,6 +567,50 @@ body {
   letter-spacing: 0.04em;
 }
 
+.nav-sub-label {
+  padding: 8px var(--space-2) 4px;
+  color: var(--text-subtle);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-muted);
+}
+
+.empty-title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 650;
+}
+
+.empty-heading {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.empty-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.empty-action {
+  align-self: flex-start;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
 .sidebar .nav-item {
   display: flex;
   align-items: center;

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface ApprovalRequest {
   request_id: string;
@@ -45,7 +46,7 @@ async function reload() {
   try {
     approvals.value = await getJson<ApprovalRequest[]>("/api/approvals");
   } catch {
-    error.value = "approvals unavailable";
+    error.value = "审批存储未配置：用 --approval-dir 或 --approval-db 启用后刷新";
   }
 }
 
@@ -100,7 +101,7 @@ onMounted(async () => {
     <div v-if="canDecide" class="row">
       <input v-model="reason" class="grow" placeholder="决定理由（可选）" autocomplete="off" />
     </div>
-    <div class="table-wrap">
+    <div v-if="approvals.length > 0" class="table-wrap">
   <table class="data-table">
       <thead>
         <tr>
@@ -130,12 +131,10 @@ onMounted(async () => {
             <button class="link" @click="decide(request, false)">拒绝</button>
           </td>
         </tr>
-        <tr v-if="approvals.length === 0">
-          <td :colspan="canDecide ? 7 : 6" class="placeholder">没有待决审批。</td>
-        </tr>
-      </tbody>
+              </tbody>
       </table>
     </div>
+    <EmptyState v-else description="审批来自需要人工确认的工具调用与计划步骤；可在「策略」页调整风险分级与阈值。">没有待决审批</EmptyState>
     </template>
   </div>
 </template>

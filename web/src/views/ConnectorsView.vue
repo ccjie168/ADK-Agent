@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface ConnectorSpec {
   connector_id: string;
@@ -51,7 +52,7 @@ async function reload() {
   try {
     connectors.value = await getJson<ConnectorSpec[]>("/api/connectors");
   } catch {
-    error.value = "connectors unavailable";
+    error.value = "连接器存储不可用：配置 --connectors-dir 或注册表连接器接口后刷新";
   }
 }
 
@@ -132,7 +133,7 @@ onMounted(async () => {
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>
-      <div class="table-wrap">
+      <div v-if="connectors.length > 0" class="table-wrap">
   <table class="data-table">
         <thead>
           <tr>
@@ -163,12 +164,10 @@ onMounted(async () => {
               </button>
             </td>
           </tr>
-          <tr v-if="connectors.length === 0">
-            <td colspan="7" class="placeholder">暂无连接器</td>
-          </tr>
-        </tbody>
+                  </tbody>
         </table>
       </div>
+      <EmptyState v-else description="连接器登记外部 API 的访问方式；用下方表单登记，或运行 adk-agent connectors register。">暂无连接器</EmptyState>
 
       <template v-if="canManage">
         <h2>注册连接器</h2>

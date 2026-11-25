@@ -33,7 +33,7 @@ onMounted(async () => {
   try {
     tools.value = await getJson<ToolEntry[]>("/api/tools");
   } catch {
-    error.value = "tools unavailable";
+    error.value = "工具目录不可用：配置 --tool-catalog 后刷新";
   }
 });
 </script>
@@ -43,7 +43,10 @@ onMounted(async () => {
     <PageHeader title="工具目录" description="工具目录与授权关系" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
-    <EmptyState v-else-if="tools.length === 0">暂无工具</EmptyState>
+    <EmptyState
+      v-else-if="tools.length === 0"
+      description="工具来自 --tool-catalog 或注册表；配置后在「授权」页放行具体工具。"
+    >暂无工具</EmptyState>
     <div v-else class="table-wrap">
       <table class="data-table">
         <thead>

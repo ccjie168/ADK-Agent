@@ -109,12 +109,7 @@ onMounted(async () => {
           auth.hasCapability('connectors.read') ||
           auth.hasCapability('peers.read')" class="nav-group">
           <div class="nav-group-label">治理</div>
-          <router-link v-if="auth.hasCapability('audit.read')" to="/audit" class="nav-item" @click="closeNav">
-            <NavIcon name="audit" /><span>审计</span>
-          </router-link>
-          <router-link v-if="auth.hasCapability('ops.read')" to="/security" class="nav-item" @click="closeNav">
-            <NavIcon name="shield" /><span>安全</span>
-          </router-link>
+          <div class="nav-sub-label">访问控制</div>
           <router-link v-if="auth.hasCapability('policy.read')" to="/policy" class="nav-item" @click="closeNav">
             <NavIcon name="policy" /><span>策略</span>
           </router-link>
@@ -124,11 +119,19 @@ onMounted(async () => {
           <router-link v-if="auth.hasCapability('roles.read')" to="/users" class="nav-item" @click="closeNav">
             <NavIcon name="users" /><span>用户</span>
           </router-link>
-          <router-link v-if="auth.hasCapability('tools.read')" to="/tools" class="nav-item" @click="closeNav">
-            <NavIcon name="tools" /><span>工具</span>
-          </router-link>
           <router-link v-if="auth.hasCapability('grants.read')" to="/grants" class="nav-item" @click="closeNav">
             <NavIcon name="grants" /><span>授权</span>
+          </router-link>
+          <div class="nav-sub-label">审计与合规</div>
+          <router-link v-if="auth.hasCapability('audit.read')" to="/audit" class="nav-item" @click="closeNav">
+            <NavIcon name="audit" /><span>审计</span>
+          </router-link>
+          <router-link v-if="auth.hasCapability('ops.read')" to="/security" class="nav-item" @click="closeNav">
+            <NavIcon name="shield" /><span>安全</span>
+          </router-link>
+          <div class="nav-sub-label">集成与配额</div>
+          <router-link v-if="auth.hasCapability('tools.read')" to="/tools" class="nav-item" @click="closeNav">
+            <NavIcon name="tools" /><span>工具</span>
           </router-link>
           <router-link v-if="auth.hasCapability('connectors.read')" to="/connectors" class="nav-item" @click="closeNav">
             <NavIcon name="connectors" /><span>连接器</span>

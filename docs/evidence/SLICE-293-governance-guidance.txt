@@ -1,0 +1,62 @@
+SLICE-293 治理导航分组与空状态引导
+
+日期: 2026-11-25
+依据: 用户反馈治理菜单分散、页面缺引导
+范围: 控制台 Vue 前端（治理分组、EmptyState、治理列表页与错误文案）
+
+一、反例：实现前
+
+- `App.vue` 的治理分组是 13 个平铺入口，没有子标题；
+- `EmptyState` 只有一个默认插槽，渲染为一行 `<p>`；
+- 治理页面在无数据时显示「暂无连接器」「暂无凭据」「暂无角色」等单句，
+  未配置时显示英文内部串：`approvals unavailable`、`credentials unavailable`、
+  `role store unavailable`。
+
+新增用例在同一状态下的红灯：
+
+    $ python -m pytest tests/test_console_governance_guidance.py -q
+    FAILED tests/test_console_governance_guidance.py::test_governance_nav_is_grouped
+    FAILED tests/test_console_governance_guidance.py::test_empty_state_accepts_guidance
+    FAILED tests/test_console_governance_guidance.py::test_governance_views_use_guided_empty_states
+    FAILED tests/test_console_governance_guidance.py::test_governance_errors_are_actionable
+    4 failed, 1 passed
+
+（通过的是 `test_empty_state_keeps_legacy_slot`：旧组件的默认插槽本来就存在，作为回归保护。）
+
+二、改动
+
+- `App.vue`：治理分组内加 `nav-sub-label` 子标题「访问控制 / 审计与合规 / 集成与配额」，
+  13 个入口按职责归位；能力门控与路由未改。
+- `EmptyState.vue`：新增 `title`、`description`、`actionLabel`、`actionTo` 四个可选参数与
+  `actions` 命名插槽；默认插槽保持旧用法。
+- 11 个治理视图换用带说明的空状态；表格类页面的空状态移到表格外，窄屏下完整可读
+  （表格本身 `v-if` 列表非空）。
+- 错误文案改为中文并给出配置方式，例如「连接器存储不可用：配置 --connectors-dir 或
+  注册表连接器接口后刷新」「角色存储未配置：用 --role-store-dir 或 --role-store-db 启用」。
+- `style.css`：新增 `.nav-sub-label` 与 `.empty-state` 系列样式。
+
+三、界面
+
+截图（同一轮抓取）：
+
+- `docs/evidence/ui/SLICE-293/desktop-connectors.png`：侧栏三个子标题；连接器空状态
+  「暂无连接器 + 注册方式」在表格外、表单上方。
+- `docs/evidence/ui/SLICE-293/desktop-approvals.png`：审批空状态带「审批来自需要人工确认的
+  工具调用与计划步骤」说明。
+- `docs/evidence/ui/SLICE-293/phone-connectors.png`：390×844 下空状态整行可读，
+  提示文字自动换行。
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+    2314 passed, 105 skipped in 185.72s

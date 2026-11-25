@@ -5,6 +5,7 @@ import { apiFetch } from "../api/client";
 import { CAPABILITIES } from "../api/capabilities";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface RoleEntry {
   name: string;
@@ -27,7 +28,7 @@ async function load() {
   try {
     roles.value = (await getJson<{ roles: RoleEntry[] }>("/api/roles")).roles;
   } catch {
-    message.value = "role store unavailable";
+    message.value = "角色存储未配置：用 --role-store-dir 或 --role-store-db 启用";
   }
 }
 
@@ -90,7 +91,7 @@ onMounted(async () => {
       <div class="row">
         <button v-if="canWrite" class="primary" @click="edit(null)">新增角色</button>
       </div>
-      <div class="table-wrap">
+      <div v-if="roles.length > 0" class="table-wrap">
   <table>
         <thead>
           <tr>
@@ -117,12 +118,10 @@ onMounted(async () => {
               </button>
             </td>
           </tr>
-          <tr v-if="roles.length === 0">
-            <td colspan="5" class="placeholder">暂无角色</td>
-          </tr>
-        </tbody>
+                  </tbody>
         </table>
       </div>
+      <EmptyState v-else description="角色定义决定能力集合；下方表单可以新增角色，内置角色启动时自动补齐。">暂无角色</EmptyState>
 
       <template v-if="canWrite">
         <h2>{{ selected ? `编辑 ${selected.name}` : "新增角色" }}</h2>

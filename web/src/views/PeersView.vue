@@ -50,7 +50,7 @@ async function reload() {
   try {
     peers.value = await getJson<PeerEntry[]>("/api/peers");
   } catch {
-    error.value = "peers unavailable";
+    error.value = "对端存储不可用：配置 --peer-dir 或 --peer-db 后刷新";
   }
 }
 
@@ -159,7 +159,10 @@ onMounted(async () => {
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>
-      <EmptyState v-if="peers.length === 0">暂无对端</EmptyState>
+      <EmptyState
+        v-if="peers.length === 0"
+        description="对端用于 A2A 互通；用 adk-agent peers register 登记对端身份后再授权。"
+      >暂无对端</EmptyState>
       <div v-else class="table-wrap">
         <table class="data-table">
           <thead>

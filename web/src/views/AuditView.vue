@@ -32,7 +32,7 @@ onMounted(async () => {
     const rows = await getJson<AuditEvent[]>("/api/audit?limit=100");
     events.value = rows.slice().reverse();
   } catch {
-    error.value = "audit unavailable";
+    error.value = "审计来源不可用：检查 --audit-file 或审计服务";
   }
 });
 </script>
@@ -42,7 +42,10 @@ onMounted(async () => {
     <PageHeader title="审计" description="共享审计事件" />
     <p v-if="denied" class="placeholder">无访问权限</p>
     <p v-else-if="error" class="login-msg">{{ error }}</p>
-    <EmptyState v-else-if="events.length === 0">暂无审计事件</EmptyState>
+    <EmptyState
+      v-else-if="events.length === 0"
+      description="审计事件在运行、工具调用与配置变更时写入；用 --audit-file 或审计服务收集后在此查看。"
+    >暂无审计事件</EmptyState>
     <div v-else class="audit-log">
       <div v-for="(event, index) in events" :key="index" class="audit-line">
         {{ lineOf(event) }}

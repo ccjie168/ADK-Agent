@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface GrantRecord {
   request_id: string;
@@ -35,7 +36,7 @@ async function reload() {
   try {
     grants.value = await getJson<GrantRecord[]>("/api/tool-grants");
   } catch {
-    error.value = "tool grants unavailable";
+    error.value = "授权存储不可用：配置 --tool-grants-dir 或 GRANT_URL 后刷新";
   }
 }
 
@@ -90,7 +91,7 @@ onMounted(async () => {
     <div v-if="canDecide" class="row">
       <input v-model="reason" class="grow" placeholder="决定理由（可选）" autocomplete="off" />
     </div>
-    <div class="table-wrap">
+    <div v-if="grants.length > 0" class="table-wrap">
   <table class="data-table">
       <thead>
         <tr>
@@ -129,12 +130,10 @@ onMounted(async () => {
             </button>
           </td>
         </tr>
-        <tr v-if="grants.length === 0">
-          <td :colspan="canDecide ? 6 : 5" class="placeholder">暂无授权请求</td>
-        </tr>
-      </tbody>
+              </tbody>
       </table>
     </div>
+    <EmptyState v-else description="工具授权请求来自运行时需要临时放行的工具调用；由 admin 在下方批准或拒绝。">暂无授权请求</EmptyState>
     </template>
   </div>
 </template>

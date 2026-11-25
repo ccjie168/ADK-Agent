@@ -14,6 +14,8 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - `vue`：当 `web/dist/assets` 存在时，`GET /` 与 `GET /auth/callback` 返回 `web/dist/index.html`，`/assets` 挂载 `web/dist/assets`。`/api/*` 路由两种模式相同。
 - `vue` 壳在 960px 以下把侧栏收成抽屉，在 600px 以下改用手机布局（页头纵向、行内控件换行、
   表单单列、表格触屏横向滚动、聊天输入行贴底并避开手势条）；视口声明 `viewport-fit=cover`。
+- 治理分组内按「访问控制 / 审计与合规 / 集成与配额」三个子标题排列；治理列表页在无数据或
+  未配置时用带说明的空状态给出前置配置与下一步动作，不显示内部错误串。
 
 ## `GET /api/me` -> 能力清单
 

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface QuotaUsage {
   window_runs: number;
@@ -26,7 +27,7 @@ onMounted(async () => {
   try {
     quota.value = await getJson<QuotaUsage>("/api/quota");
   } catch {
-    error.value = "quota unavailable";
+    error.value = "配额数据不可用：配置 --quota-config 后刷新";
   }
 });
 </script>
@@ -58,6 +59,6 @@ onMounted(async () => {
         <div class="stat-value">{{ quota.window_seconds }}</div>
       </div>
     </div>
-    <p v-else class="placeholder">暂无配额数据</p>
+    <EmptyState v-else description="配额从 --quota-config 读取；未配置时所有租户不受限。">暂无配额数据</EmptyState>
   </div>
 </template>
