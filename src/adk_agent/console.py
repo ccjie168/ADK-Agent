@@ -5032,6 +5032,8 @@ def build_console_app(
         target = tenant if tenant is not None else caller.tenant
         if not _SAFE_TENANT.fullmatch(target):
             return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
+        if not _SAFE_TENANT.fullmatch(credential_id):
+            return JSONResponse({"error": "invalid_credential"}, status_code=400)
         try:
             existing = await credentials.get(target, credential_id)
         except CredentialStoreError:

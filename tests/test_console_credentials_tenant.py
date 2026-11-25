@@ -91,3 +91,21 @@ def test_credentials_list_allows_admin_cross_tenant(tmp_path):
         response = client.get("/api/credentials", params={"tenant": "local"}, headers=AUTH_SAFE)
     assert response.status_code == 200
     assert [item["tenant"] for item in response.json()] == ["local"]
+
+
+def test_credentials_disable_rejects_an_unsafe_credential_id(tmp_path):
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        response = client.post("/api/credentials/bad%20name/disable", headers=AUTH_SAFE)
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_credential"}
+
+
+def test_credentials_disable_rejects_an_empty_tenant(tmp_path):
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/credentials/crm/disable", params={"tenant": ""}, headers=AUTH_SAFE
+        )
+    assert response.status_code == 400
+    assert response.json() == {"error": "unsafe_tenant"}

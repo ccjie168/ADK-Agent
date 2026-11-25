@@ -668,6 +668,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 - 需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
 - `tenant` 缺失时用当前 principal 的租户；给了其他租户按该租户定位。解析后的租户不符合安全字符集
   （或显式空串）返回 400 `unsafe_tenant`，先于存储读取。
+- `credential_id` 不符合安全字符集（与凭据 id 的模型约束相同）返回 400 `invalid_credential`，同样先于存储读取。
 - 不存在 404 `credential_not_found`。
 - 成功 200，重复停用幂等，写 `credential.disable` 审计。
 - 未配置存储 404 `credentials_not_configured`；存储不可达 503 `credential_store_unavailable`。
