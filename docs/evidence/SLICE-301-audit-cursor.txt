@@ -1,0 +1,73 @@
+SLICE-301 审计读取的稳定排序与游标分页
+
+日期: 2026-11-26
+依据: PROGRESS 记录的「同刻事件超过 1000 条读取窗口」
+范围: `audit/pipeline.query_events`、`audit/service`、文件/HTTP/Postgres 查询、
+      控制台 `_query_events`、两份契约
+
+一、反例：master `6e56b2e` 上运行切片用例
+
+    $ PYTHONPATH=<master>/src python -m pytest tests/test_audit_cursor.py -q
+    FAILED test_file_query_orders_same_timestamp_by_event_id
+    FAILED test_file_query_cursor_pages_same_timestamp
+    FAILED test_audit_service_cursor_params
+    FAILED test_http_query_sends_cursor
+    FAILED test_console_audit_reads_past_same_timestamp_window
+    5 failed in 3.23s
+
+master 的文件查询按插入顺序截断，审计服务不认游标，控制台只能读到任意子集。
+
+二、实现后：切片用例
+
+    $ python -m pytest tests/test_audit_cursor.py -q
+    .....                                                                    [100%]
+    5 passed in 2.44s
+
+用例映射：
+
+- `test_file_query_orders_same_timestamp_by_event_id`：同刻事件按 `event_id` 截断
+- `test_file_query_cursor_pages_same_timestamp`：游标开区间分三页读全，无重复无遗漏
+- `test_audit_service_cursor_params`：成对游标生效，半对与 `order=asc` 返回 400 `invalid_cursor`
+- `test_http_query_sends_cursor`：HTTP 客户端把游标作为 `before_timestamp`/`before_event_id` 发出
+- `test_console_audit_reads_past_same_timestamp_window`：1200 条同刻、乱序写入时，
+  `/api/audit?limit=200` 返回按 `(timestamp, event_id)` 最大的 200 条并按升序输出
+
+三、实现要点
+
+- `query_events` 先按 `(timestamp, event_id)` 全序排序，再应用游标、方向与 limit；
+  不再依赖写入顺序。`before` 是开区间。
+- 审计服务 `GET /v1/events` 增加 `before_timestamp` + `before_event_id`，
+  成对必填、仅 `order=desc`；`invalid_cursor` 固定错误码。
+- `AuditQuery` 协议、`FileAuditQuery`、`HttpAuditQuery`、`PostgresAuditQuery` 都接受
+  `before`；Postgres 的 `ORDER BY` 改为 `occurred_at, event->>'event_id', tenant, sequence`，
+  并用行值比较 `(occurred_at, event->>'event_id') < (...)` 过滤。
+- 控制台 `_query_events` 最多每页 1000 条向前翻页，直到取满或没有更早事件；
+  `/api/audit` 对外仍只要最近 N 条，不新增参数。
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2368 passed, 105 skipped, 5 warnings in 195.46s
+
+五、限制
+
+Postgres 的游标 SQL 只由静态片段与 `$n` 占位符拼成，但本机没有 `TEST_POSTGRES_URL`，
+该路径未在真实库上执行（相关用例照旧跳过）；文件与 HTTP 路径已实测。
+
+六、范围外
+
+- `/api/audit` 对外的游标参数（控制台内部使用即可）。
+- 为 `event_id` 建 Postgres 表达式索引（当前按 `occurred_at` 索引扫描后排序）。
+- 沙箱 worker 的模型提供方 lookup（下一片）。

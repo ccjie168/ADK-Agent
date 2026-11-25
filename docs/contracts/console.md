@@ -303,8 +303,9 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/audit?limit=50` -> `[AuditEvent]`
 
-`limit` 上限 200。事件按时间正序，同一时间戳按 `event_id` 升序，最多返回最近 200 条；排序针对控制台读取的最近 1000 条窗口，
-超出该窗口的极端同刻事件不在契约内。需要 `audit.read` 能力，缺少返回 403 `forbidden`。非 `admin` 身份只返回自己租户的事件。聊天面板的 Recent audit 区块同样按 `audit.read` 隐藏。配置了 `--audit-url` 时从审计服务读取，服务不可用返回 502 `audit_unavailable`。`--audit-file` 写入的裸事件与链记录都可读取（见 `audit_chain.md`）。
+`limit` 上限 200。事件按时间正序，同一时间戳按 `event_id` 升序，最多返回最近 200 条。
+控制台读取窗口与截断顺序统一为 `(timestamp, event_id)`，并通过内部游标分页向前读取，
+同一时间戳超过 1000 条时仍能取到契约意义上的最近事件。需要 `audit.read` 能力，缺少返回 403 `forbidden`。非 `admin` 身份只返回自己租户的事件。聊天面板的 Recent audit 区块同样按 `audit.read` 隐藏。配置了 `--audit-url` 时从审计服务读取，服务不可用返回 502 `audit_unavailable`。`--audit-file` 写入的裸事件与链记录都可读取（见 `audit_chain.md`）。
 
 事件结构见 `audit_event.schema.json`。
 

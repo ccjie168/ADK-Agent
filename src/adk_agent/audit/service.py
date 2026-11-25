@@ -84,6 +84,8 @@ def build_audit_pipeline_app(
         until: str | None = None,
         limit: str | None = None,
         order: str = "desc",
+        before_timestamp: str | None = None,
+        before_event_id: str | None = None,
     ) -> JSONResponse:
         try:
             parsed_limit = 100 if limit is None else int(limit)
@@ -100,6 +102,16 @@ def build_audit_pipeline_app(
             until_time = _parse_time(until) if until is not None else None
         except ValueError:
             return JSONResponse({"error": "invalid_time"}, status_code=400)
+        if (before_timestamp is None) != (before_event_id is None):
+            return JSONResponse({"error": "invalid_cursor"}, status_code=400)
+        before: tuple[datetime, str] | None = None
+        if before_timestamp is not None and before_event_id is not None:
+            if order != "desc" or not before_event_id:
+                return JSONResponse({"error": "invalid_cursor"}, status_code=400)
+            try:
+                before = (_parse_time(before_timestamp), before_event_id)
+            except ValueError:
+                return JSONResponse({"error": "invalid_cursor"}, status_code=400)
 
         principal = getattr(request.state, "principal", None)
         if principal is not None:
@@ -120,6 +132,7 @@ def build_audit_pipeline_app(
                     until=until_time,
                     limit=parsed_limit,
                     order=order,
+                    before=before,
                 )
             else:
                 events = query_events(
@@ -133,6 +146,7 @@ def build_audit_pipeline_app(
                     until=until_time,
                     limit=parsed_limit,
                     order=order,
+                    before=before,
                 )
         except Exception:  # noqa: BLE001
             logger.exception("audit query read failure")

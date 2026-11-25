@@ -125,6 +125,7 @@ def query_events(
     until: datetime | None = None,
     limit: int = 100,
     order: str = "desc",
+    before: tuple[datetime, str] | None = None,
 ) -> list[AuditEvent]:
     """Read every segment and return the matching events."""
     if not 1 <= limit <= 1000:
@@ -164,10 +165,9 @@ def query_events(
             if until is not None and event.timestamp > until:
                 continue
             matched.append(event)
-    ordered = [
-        event
-        for _, event in sorted(enumerate(matched), key=lambda item: (item[1].timestamp, item[0]))
-    ]
+    ordered = sorted(matched, key=lambda event: (event.timestamp, event.event_id))
+    if before is not None:
+        ordered = [event for event in ordered if (event.timestamp, event.event_id) < before]
     if order == "desc":
         ordered.reverse()
     return ordered[:limit]
