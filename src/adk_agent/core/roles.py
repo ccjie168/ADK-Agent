@@ -66,6 +66,7 @@ CAPABILITIES_PUBLISHER = CAPABILITIES_BASE | {
     "registry.publish",
     "registry.compose",
     "registry.load",
+    "ops.read",
     "eval.read",
     "tools.read",
     "lifecycle.read",
