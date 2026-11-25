@@ -506,6 +506,23 @@ M1 的 `signature` 是 `sha256:<digest>` 完整性标记。它不是密钥签名
 - 幂等：重复运行先 `DROP POLICY IF EXISTS` 再重建。
 - 成功输出 `session rls enabled`，退出 0。
 
+## 模型提供方解析（ADR-0045）
+
+`console`、`serve`、`serve-many`、`serve-a2a`、`serve-triggers` 接受
+`--model-providers-dir DIR`（方案 A 记录，方案 B 密钥同目录）。解析顺序：
+
+1. 启用记录中同 `kind`、同模型名的第一条（按 `provider_id` 排序）提供 `api_base` 与密钥；
+   记录的 `model` 可带 `kind:` 前缀，匹配时去掉。
+2. 没有匹配记录时用现有环境变量（`ADK_AGENT_MODEL`、各 provider key）。
+3. 最后是内置默认（`litellm:deepseek/deepseek-v4-pro`）。
+
+记录只补充调用方没有显式给出的 `api_key` / `api_base`，不改变模型名。密钥来源：
+先看 `<DIR>/keys/<provider_id>.json`（方案 B，需要 KEK；无 KEK 或解密失败时跳过密钥并写日志，
+解密失败写 `model.key_failed`，不含值），否则用记录的 `secret_ref` 映射到
+`ADK_SECRET_<TENANT>_<NAME>`。记录文件损坏或停用时跳过该记录，行为回落到环境变量。
+
+`console --model-key-entry` 仍只控制控制台写入密钥；其他命令只读。
+
 ## `console` 与 `serve-triggers` 的 RAG 参数（ADR-0036）
 
 两个命令都接受 `--rag-db URL`、`--rag-dimensions N`、`--rag-model MODEL`、`--rag-provider NAME`（默认

@@ -185,6 +185,17 @@ def _inside_repository(path: str) -> bool:
     return any((parent / ".git").exists() for parent in (resolved, *resolved.parents))
 
 
+def _configure_model_providers(args: argparse.Namespace) -> None:
+    """Install provider-record credential lookup for model construction (ADR-0045)."""
+    directory = getattr(args, "model_providers_dir", None)
+    if not directory:
+        return
+    from .model_provider_runtime import FileProviderLookup
+    from .models import set_provider_lookup
+
+    set_provider_lookup(FileProviderLookup(directory).lookup)
+
+
 def _model_provider_keys(args: argparse.Namespace) -> Any:
     """Build the encrypted model key store when ``--model-key-entry`` is on."""
     if not getattr(args, "model_key_entry", False):
@@ -826,6 +837,14 @@ def _add_builder_keys_arg(parser: argparse.ArgumentParser) -> None:
         "--builder-keys",
         default=None,
         help="JSON file mapping builder key id to a 64 hex Ed25519 public key",
+    )
+
+
+def _add_model_providers_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--model-providers-dir",
+        default=None,
+        help="directory for model provider records (ADR-0045)",
     )
 
 
@@ -1587,6 +1606,7 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_serve = sub.add_parser("serve", help="serve an ADK agent over MCP")
+    _add_model_providers_arg(p_serve)
     p_serve.add_argument("--agent", default=None, help="path to a Python file defining `agent`")
     p_serve.add_argument("--config", default=None, help="path to a JSON FrameworkConfig file")
     p_serve.add_argument(
@@ -1650,6 +1670,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     p_many = sub.add_parser("serve-many", help="serve several agents as separate MCP tools")
+    _add_model_providers_arg(p_many)
     p_many.add_argument(
         "--agents",
         default=None,
@@ -1716,6 +1737,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     p_a2a = sub.add_parser("serve-a2a", help="serve an ADK agent over A2A (needs a2a-sdk)")
+    _add_model_providers_arg(p_a2a)
     p_a2a.add_argument("--agent", default=None, help="path to a Python file defining `agent`")
     p_a2a.add_argument(
         "--agent-ref",
@@ -1917,6 +1939,7 @@ def main(argv: list[str] | None = None) -> None:
     p_serve_triggers = sub.add_parser(
         "serve-triggers", help="serve the webhook trigger execution service"
     )
+    _add_model_providers_arg(p_serve_triggers)
     _add_rag_args(p_serve_triggers)
     _add_builder_keys_arg(p_serve_triggers)
     p_serve_triggers.add_argument(
@@ -2093,11 +2116,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="Postgres URL for the global default model store",
     )
-    p_console.add_argument(
-        "--model-providers-dir",
-        default=None,
-        help="directory for model provider records (ADR-0045)",
-    )
+    _add_model_providers_arg(p_console)
     p_console.add_argument(
         "--model-key-entry",
         action="store_true",
@@ -2657,6 +2676,7 @@ def main(argv: list[str] | None = None) -> None:
     configure_otel()
 
     if args.cmd == "serve":
+        _configure_model_providers(args)
         _install_agent_sandbox(args)
         rate_limit = _rate_limit(args)
         session_rls = _session_rls(args)
@@ -2735,6 +2755,7 @@ def main(argv: list[str] | None = None) -> None:
             rag=_agent_rag(_rag_factory(args), agent),
         )
     elif args.cmd == "serve-many":
+        _configure_model_providers(args)
         _install_agent_sandbox(args)
         rate_limit = _rate_limit(args)
         session_rls = _session_rls(args)
@@ -2801,6 +2822,7 @@ def main(argv: list[str] | None = None) -> None:
             ),
         )
     elif args.cmd == "serve-a2a":
+        _configure_model_providers(args)
         _install_agent_sandbox(args)
         rate_limit = _rate_limit(args)
         from .a2a import A2aUnavailable, serve_a2a
@@ -3070,6 +3092,7 @@ def main(argv: list[str] | None = None) -> None:
 
         uvicorn.run(app, host=args.host, port=resolve_port(args.port), log_level="info")
     elif args.cmd == "serve-triggers":
+        _configure_model_providers(args)
         if args.agent_sandbox:
             from .sandbox.agent_process import agent_sandbox_supported
 
@@ -3309,6 +3332,7 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(1) from None
         print(f"ok {count} records")
     elif args.cmd == "console":
+        _configure_model_providers(args)
         compose_flags = (
             args.compose_key,
             args.compose_key_id,

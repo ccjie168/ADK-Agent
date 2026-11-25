@@ -1,0 +1,79 @@
+SLICE-298 模型提供方运行时解析
+
+日期: 2026-11-26
+依据: ADR-0045（解析顺序：记录 > 环境变量 > 内置默认）
+范围: `models.resolve_model_config`/`set_provider_lookup`、`model_provider_runtime.FileProviderLookup`、
+      五个命令的 `--model-providers-dir`、`GET /api/model-providers` 的 `key_entry`
+
+一、反例：master `d76f956` 上运行切片用例
+
+    $ PYTHONPATH=<master>/src python -m pytest tests/test_model_provider_runtime.py -q
+    tests\test_model_provider_runtime.py:13: in <module>
+        from adk_agent.model_provider_runtime import FileProviderLookup
+    E   ModuleNotFoundError: No module named 'adk_agent.model_provider_runtime'
+    1 error in 3.48s
+
+运行时接线模块、同步解析入口与 `serve*` 的 `--model-providers-dir` 在 master 上都不存在。
+
+二、实现后：切片用例
+
+    $ python -m pytest tests/test_model_provider_runtime.py -q
+    ........                                                                 [100%]
+    8 passed in 2.18s
+
+    $ python -m pytest tests/test_console_model_keys.py::test_key_entry_reports_flag -q
+    1 passed
+
+用例映射：
+
+- `test_resolve_model_config_uses_record`：安装 lookup 后 `resolve_model_config` 带上 key 与 base_url
+- `test_provider_lookup_normalizes_prefix`：记录 `litellm:...` 与裸模型名匹配
+- `test_provider_lookup_ignores_disabled_and_other_kind`：停用与不同 kind 的记录不参与
+- `test_provider_lookup_uses_stored_key`：方案 B 密文在运行时解开使用，磁盘无明文
+- `test_provider_lookup_falls_back_to_env_ref`：无 KEK 时用 `secret_ref` 映射的环境变量
+- `test_provider_lookup_audits_decrypt_failure`：错误 KEK 跳过密钥，写 `model.key_failed`，事件不含密钥
+- `test_resolve_model_config_without_records`：没有 lookup 时行为与原来一致
+- `test_key_entry_reports_flag`：列表顶层 `key_entry` 跟随开关
+- `test_model_provider_flags_on_commands`：console/serve/serve-many/serve-a2a/serve-triggers 都认识该参数
+
+三、CLI
+
+    $ python -m adk_agent serve --help | grep -A1 model-providers-dir
+      --model-providers-dir MODEL_PROVIDERS_DIR
+                            directory for model provider records (ADR-0045)
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2353 passed, 105 skipped, 4 warnings in 186.92s
+
+五、实现要点
+
+- `build_model` 现在调用 `resolve_model_config`；记录只补 `api_key`/`api_base`，
+  不改变调用方给的模型名。
+- `FileProviderLookup` 按 `(kind, 模型名)` 顺序扫描启用记录，`provider_id` 排序决定首条；
+  `model` 的 `kind:` 前缀匹配时去掉。
+- 密钥优先级：方案 B 密文（有 KEK 时）> `secret_ref` 环境变量；任一失败都回落到
+  环境变量与内置默认，不阻断进程启动。
+- 解密失败审计在同步构建路径上用 `loop.create_task` 投递；没有运行中的事件循环时
+  （例如 CLI 启动阶段的同步构建）退化为 `logger.warning`，只含 provider_id 与错误码。
+- 记录文件损坏时整次 lookup 回落到环境变量并记日志，不抛到模型构建。
+- `GET /api/model-providers` 顶层 `key_entry` 供页面判断是否显示密钥录入。
+
+六、范围外（SLICE-299）
+
+- Vue「模型」页提供方与密钥表单。
+- `docs/guides/console-ui.html` 手册章节。
+- 多租户记录、Postgres 后端、`serve-model-gateway` 的 `--provider` 配置。

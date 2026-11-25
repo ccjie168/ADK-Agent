@@ -72,12 +72,15 @@ class PrefixedEnvSecretProvider:
         name = "".join(character.upper() if character.isalnum() else "_" for character in suffix)
         return _env_name(self._prefix + name)
 
-    async def resolve(self, reference: str) -> str:
+    def resolve_sync(self, reference: str) -> str:
         name = self._env_name(reference)
         value = os.environ.get(name)
         if value is None:
             raise SecretNotFound(f"secret {reference!r} is not set")
         return _checked(reference, value)
+
+    async def resolve(self, reference: str) -> str:
+        return self.resolve_sync(reference)
 
 
 class TenantSecretProvider:

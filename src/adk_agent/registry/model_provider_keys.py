@@ -32,7 +32,7 @@ class FileModelProviderKeyStore:
             raise UnsafePath(f"unsafe provider id {provider_id!r}")
         return safe_join(self.root, f"{provider_id}.json")
 
-    async def get(self, provider_id: str) -> dict[str, Any] | None:
+    def get_sync(self, provider_id: str) -> dict[str, Any] | None:
         path = self._path(provider_id)
         if not path.is_file():
             return None
@@ -40,6 +40,9 @@ class FileModelProviderKeyStore:
         if not isinstance(payload, dict) or not isinstance(payload.get("wrapped_secret"), dict):
             raise ValueError("malformed model key record")
         return payload
+
+    async def get(self, provider_id: str) -> dict[str, Any] | None:
+        return self.get_sync(provider_id)
 
     async def hints(self) -> builtins.dict[str, dict[str, Any]]:
         if not self.root.is_dir():
