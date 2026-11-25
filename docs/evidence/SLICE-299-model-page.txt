@@ -1,0 +1,74 @@
+SLICE-299 模型页提供方与密钥表单、手册章节
+
+日期: 2026-11-26
+依据: ADR-0045（界面与手册收尾）
+范围: `web/src/views/ModelView.vue`、重建的 `web/dist/`、`docs/guides/console-ui.html`
+
+一、反例：master `443a931` 上运行切片用例
+
+    $ PYTHONPATH=<master>/src python -m pytest tests/test_console_vue_model_providers.py -q
+    FAILED test_model_view_reads_providers
+    FAILED test_model_view_saves_provider
+    FAILED test_model_view_manages_keys
+    FAILED test_model_view_respects_key_entry
+    FAILED test_model_provider_ui_is_built
+    FAILED test_guide_documents_model_providers
+    6 failed, 1 passed in 0.16s
+
+唯一通过的是 `test_model_view_gates_on_capabilities`：旧的默认模型表单已有 `model.write` 门控。
+
+二、实现后：切片用例
+
+    $ python -m pytest tests/test_console_vue_model_providers.py -q
+    .......                                                                  [100%]
+    7 passed in 0.07s
+
+用例映射：
+
+- `test_model_view_reads_providers`：页面请求 `/api/model-providers`、读取 `key_entry` 与 `key_hint`
+- `test_model_view_saves_provider`：`PUT` 记录并映射 `invalid_provider` / `provider_not_found`
+- `test_model_view_manages_keys`：`/key` 的保存与 `DELETE` 吊销、密码框、三种密钥错误
+- `test_model_view_gates_on_capabilities`：`model.write` 才显示写操作
+- `test_model_view_respects_key_entry`：`keyEntry` 为假时不渲染密钥控件
+- `test_model_provider_ui_is_built`：`web/dist/assets/*.js` 含 `/api/model-providers` 与错误码
+- `test_guide_documents_model_providers`：手册「模型」一节含提供方、密钥与掩码说明
+
+三、实机与截图
+
+在 `127.0.0.1:8033` 以 `--ui vue --model-providers-dir <临时目录> --model-key-entry` 启动，
+目录里预置一条 `deepseek-prod`（`litellm:deepseek/deepseek-v4-pro`，`base_url=https://api.deepseek.com`）
+与一个已加密的密钥。浏览器注入 token 后打开 `/#/model`：
+
+    GET /api/model-providers
+    {"providers":[{"provider_id":"deepseek-prod", ..., "key_configured":true, "key_hint":"sk-…abcd"}],
+     "key_entry":true}
+
+页面显示提供方表格、掩码 `sk-…abcd`、每行「写入新密钥 / 保存密钥 / 吊销」，以及创建表单。
+截图 `docs/evidence/ui/SLICE-299-model.png`（1280×900）。
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2360 passed, 105 skipped, 5 warnings in 189.82s
+
+五、手册
+
+`docs/guides/console-ui.html` 的「模型」一节补了提供方列表、创建字段、密钥录入与掩码、
+运行时解析顺序与所需能力；仍是单文件、无外部依赖。
+
+六、范围外
+
+- 运行时解析已在 SLICE-298 交付。
+- 多租户记录、Postgres 后端、密钥轮换向导。

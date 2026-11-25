@@ -265,8 +265,17 @@
 </section>
 <section class="page" data-route="/model">
   <h3>模型 <span class="route">/model</span></h3>
-  <p>调用、别名与默认模型。可以切换全局默认模型，之后的新会话生效。</p>
-  <p class="meta">前提：<code>model.read</code>；切换需要 <code>model.write</code>。</p>
+  <p>调用、别名、默认模型与模型提供方。切换默认模型后，新会话生效。</p>
+  <p>「模型提供方」列出 <code>--model-providers-dir</code> 下的记录：类型、模型、端点与密钥状态。
+    admin 可以在下方表单按 <code>provider_id</code> 创建或更新；<code>kind</code> 取
+    <code>litellm</code>、<code>gemini</code>、<code>claude</code>、<code>vertex</code>，
+    密钥引用用 <code>secret://tenant/name</code>，也可以留空。</p>
+  <p>开启 <code>--model-key-entry</code> 时，每行可以只写保存 API Key：平台用 KEK 加密保存，
+    页面只显示掩码（如 <code>sk-…abcd</code>），可随时吊销；没有配置 KEK 时保存会提示
+    「密钥后端不可用」。保存的密钥优先于 <code>secret://</code> 引用，两者都会覆盖环境变量。</p>
+  <p>运行时解析顺序：启用记录 &gt; 环境变量 &gt; 内置默认；记录只补密钥与端点，不改变模型名。
+    服务命令同样接受 <code>--model-providers-dir</code>。</p>
+  <p class="meta">前提：<code>model.read</code>；写入记录与密钥需要 <code>model.write</code>。</p>
 </section>
 <section class="page" data-route="/ecosystem">
   <h3>生态 <span class="route">/ecosystem</span></h3>
