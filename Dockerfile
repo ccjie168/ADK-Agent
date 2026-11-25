@@ -9,12 +9,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# The base image snapshot predates the zlib security update. APT_MIRROR lets
-# restricted networks pick a Debian mirror; it is not persisted in the image.
+# The base image snapshot predates the zlib and zstd security updates.
+# APT_MIRROR lets restricted networks pick a Debian mirror; it is not
+# persisted in the image.
 ARG APT_MIRROR=deb.debian.org
 RUN sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
-    && apt-get install -y --no-install-recommends zlib1g \
+    && apt-get install -y --no-install-recommends zlib1g libzstd1 \
     && rm -rf /var/lib/apt/lists/*
 
 # /data holds the SQLite session store; it must be writable by the app user.
