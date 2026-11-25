@@ -188,7 +188,8 @@ onMounted(async () => {
           <strong>{{ agent.id }}</strong>
           <span class="placeholder">{{ agent.description }}</span>
         </header>
-        <table>
+        <div class="table-wrap">
+  <table>
           <thead>
             <tr>
               <th>版本</th>
@@ -219,7 +220,8 @@ onMounted(async () => {
               </td>
             </tr>
           </tbody>
-        </table>
+          </table>
+        </div>
       </section>
 
       <template v-if="evalReport">

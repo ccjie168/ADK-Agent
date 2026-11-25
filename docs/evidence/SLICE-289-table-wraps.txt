@@ -1,0 +1,44 @@
+SLICE-289 其余视图的表格并入共享滚动容器 — 证据
+==============================================
+
+日期: 2026-11-25
+分支: slice-289-table-wraps
+依据: SLICE-288 证据记录的新观察（9 个视图的表格未包在 `.table-wrap`）
+
+## 反例（先红）
+
+新增/扩展 `tests/test_console_vue_tables.py` 后，把 9 个视图临时换回 master 版本：
+
+    python -m pytest tests/test_console_vue_tables.py -q
+    2 failed, 1 passed
+
+失败项：`test_list_views_wrap_tables`（9 个视图没有 `.table-wrap`）与
+`test_every_view_table_is_wrapped`；最小宽度用例通过，作为回归保护。
+
+## 实现（后绿）
+
+- 9 个视图的 `<table>` 全部包进 `<div class="table-wrap">`；表格上的 `v-if`/`v-else-if`
+  移到包裹元素上，保持与 `EmptyState v-else` 的相邻关系（构建期 vite 校验通过）。
+- 文字、列与数据未改；`.table-wrap table { min-width: 720px }` 复用 SLICE-285 的规则。
+
+    python -m pytest tests/test_console_vue_tables.py tests/test_console_vue_pages.py -q
+    3 + 3 passed (6 passed)
+
+    cd web && npm run build
+    dist/assets/index-BP_s8ziQ.css 17.33 kB / assets/index-BLCRaZ3E.js 199.17 kB
+
+## 实机验证（8039，`--ui vue`，`--role-store-dir`）
+
+480×900 无头 Edge，页面 `#/roles`（内置角色表）：
+
+    probe {"width":480,"tableWidth":720,"wrapperWidth":448}
+
+表格 720px、容器 448px，横向滚动生效；截图
+`docs/evidence/ui/SLICE-289-roles-narrow.png`。Agent 中心在本机注册表为空时显示空态，
+没有可测的表格，故用角色表作为代表。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2277 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2277 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）

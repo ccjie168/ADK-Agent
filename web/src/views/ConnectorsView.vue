@@ -132,7 +132,8 @@ onMounted(async () => {
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>
-      <table class="data-table">
+      <div class="table-wrap">
+  <table class="data-table">
         <thead>
           <tr>
             <th>连接器 ID</th>
@@ -166,7 +167,8 @@ onMounted(async () => {
             <td colspan="7" class="placeholder">暂无连接器</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
 
       <template v-if="canManage">
         <h2>注册连接器</h2>

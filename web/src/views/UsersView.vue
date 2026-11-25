@@ -84,7 +84,8 @@ onMounted(async () => {
     <p v-if="denied" class="placeholder">无访问权限</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>
-      <table>
+      <div class="table-wrap">
+  <table>
         <thead>
           <tr>
             <th>租户</th>
@@ -106,7 +107,8 @@ onMounted(async () => {
             <td colspan="4" class="placeholder">暂无绑定</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
 
       <template v-if="canWrite">
         <h2>绑定或改绑</h2>
