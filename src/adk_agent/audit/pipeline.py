@@ -142,13 +142,13 @@ def query_events(
                 continue
             try:
                 event = AuditRecord.model_validate_json(line).event
-            except ValueError:
+            except ValueError as record_error:
                 try:
                     event = AuditEvent.model_validate_json(line)
                 except ValueError:
                     if is_current and line_index == len(lines) - 1:
                         continue
-                    raise
+                    raise record_error from None
             if tenant is not None and event.tenant != tenant:
                 continue
             if trace_id is not None and event.trace_id != trace_id:

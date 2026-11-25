@@ -7,7 +7,9 @@
 - `--audit-file PATH` 追加 JSONL；`--audit-url URL` 发给审计服务；`--audit-db URL` 直接写 `adk_audit_records`。
   `--audit-file` 写的是**裸审计事件**（没有 `prev_hash`/`hash`/签名），因此它不是审计链；
   `verify-audit` 只接受链记录（`serve-audit --out` 或 `--audit-db` 的产物）。读取端
-  （`/api/audit`、runs、trace、审计服务的 `GET /v1/events`）同时接受裸事件与链记录。
+  （`/api/audit`、runs、trace、审计服务的 `GET /v1/events`）同时接受裸事件与链记录；
+  但 `serve-audit --out` 启动时会按链重建，不能直接托管纯裸事件文件（会以校验错误退出），
+  托管 `--audit-file` 产物应改用控制台的读接口或重新采集。
 - 三者都未显式给出时读 `AUDIT_DATABASE_URL`；给了 file 或 url 时忽略该环境变量。显式参数与环境变量冲突也退出 2。
 - DB 模式使用 `PostgresAuditSink`/`PostgresAuditQuery`，链语义与文件模式相同，每个租户一条链。
 - 签名沿用 `ADK_AUDIT_KEYRING`/`ADK_AUDIT_SIGNING_KEY`。使用签名时，所有写者必须共享同一个密钥环，否则后续 `verify-audit --audit-db` 会按断链或签名失败拒绝。

@@ -47,6 +47,19 @@ SLICE-282 `--audit-file` 读取兼容裸事件 — 证据
 
 即：读取端兼容裸事件，校验端仍拒绝非链文件（契约写明的取舍）。
 
+## 独立验证反馈修正
+
+首轮独立验证判 **PASS**（无 B，2 个 S + 2 个 N），已处理：
+
+1. **S1**：契约把「审计服务 `GET /v1/events`」说成可直接托管裸文件，但 `serve-audit --out`
+   启动时会用 `AuditPipeline` 按链重建，指向纯裸文件会以校验错误退出。`cli.md` 与
+   `audit_chain.md` 已收窄为「查询函数容忍裸行；该服务只容忍启动后混入的裸行」。
+2. **N1**：两种解析都失败时改为重新抛出 `AuditRecord` 的错误，保留链文件的原始诊断
+   （`raise record_error from None`）。
+3. **S2（记录）**：完整但 schema 非法的末行仍按既有「半写末行」规则跳过，与 master 行为一致；
+   区分「截断 JSON」与「完整但非法」属后续改进。
+4. **N2（记录）**：中间坏行在控制台仍是未捕获 500，属既有路径，本切片未新增。
+
 ## 门禁
 
     python scripts/check.py --fast   -> 7 步 ALL PASS、2251 passed / 105 skipped
