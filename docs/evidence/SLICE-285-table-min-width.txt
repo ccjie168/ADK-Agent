@@ -1,0 +1,43 @@
+SLICE-285 表格容器的窄屏最小宽度 — 证据
+========================================
+
+日期: 2026-11-25
+分支: slice-285-table-min-width
+依据: PROGRESS 控制台视觉残余（`.table-wrap` 无可滚动的最小宽度）
+
+## 反例（先红）
+
+    python -m pytest tests/test_console_vue_tables.py -q
+    1 failed, 1 passed
+
+失败项：`style.css` 没有 `.table-wrap table` 规则。另一条视图仍使用 `.table-wrap` 的用例
+在旧代码上通过，作为回归保护。
+
+## 实现（后绿）
+
+    .table-wrap table {
+      min-width: 720px;
+    }
+
+只改 `web/src/style.css`；`web/dist/` 重建。
+
+    python -m pytest tests/test_console_vue_tables.py -q
+    2 passed
+
+    cd web && npm run build
+    dist/assets/index-BP_s8ziQ.css 17.33 kB / assets/index-CVZLIc1V.js 196.30 kB
+
+## 实机验证（8031，`--ui vue`，带四条工具目录）
+
+480×900 无头 Edge，页面 `#/tools`：
+
+    probe {"width":480,"tableWidth":720,"wrapperWidth":448}
+
+表格实际宽度 720px，容器 448px，横向滚动生效；截图
+`docs/evidence/ui/SLICE-285-tools-narrow.png` 显示移动端顶栏（菜单按钮）、页头与可横向滚动的工具表。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2260 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2260 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
