@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>控制台使用手册 · ADK Agent</title>
+<style>
+  :root {
+    --ink: #1f2328;
+    --muted: #59636e;
+    --line: #d8dee4;
+    --card: #f6f8fa;
+    --accent: #bf4a1e;
+    --code: #eef1f4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: #fff;
+    font: 15px/1.65 "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  header.hero {
+    padding: 40px 24px 28px;
+    background: linear-gradient(180deg, #fbf4ef, #fff);
+    border-bottom: 1px solid var(--line);
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 0 20px; }
+  .hero h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.01em; }
+  .hero p { margin: 0; color: var(--muted); }
+  nav.toc {
+    margin: 24px auto;
+    padding: 18px 22px;
+    max-width: 900px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  nav.toc h2 { margin: 0 0 8px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  nav.toc ol { margin: 0; padding-left: 22px; columns: 2; column-gap: 32px; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+  main { max-width: 900px; margin: 0 auto; padding: 8px 20px 64px; }
+  h2 { margin: 40px 0 10px; font-size: 22px; }
+  h3 { margin: 26px 0 8px; font-size: 17px; }
+  p { margin: 8px 0; }
+  ul { margin: 8px 0; padding-left: 22px; }
+  code, pre {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 13px;
+    background: var(--code);
+    border-radius: 6px;
+  }
+  code { padding: 1px 5px; }
+  pre { padding: 12px 14px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  table.map th:first-child,
+  table.map td:first-child { width: 6em; white-space: nowrap; }
+  section.page {
+    margin: 14px 0;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+  section.page h3 { margin-top: 0; }
+  .route {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--muted);
+    font: 12px/1.8 Consolas, monospace;
+    vertical-align: middle;
+  }
+  .meta { color: var(--muted); font-size: 13px; }
+  .tag { color: var(--accent); font-weight: 600; }
+  .note {
+    padding: 12px 14px;
+    border-left: 3px solid var(--accent);
+    background: var(--card);
+    border-radius: 6px;
+    margin: 14px 0;
+  }
+  footer { padding: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; text-align: center; }
+  @media (max-width: 640px) {
+    header.hero { padding: 28px 0 20px; }
+    nav.toc ol { columns: 1; }
+    h2 { margin-top: 32px; }
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <h1>控制台使用手册</h1>
+    <p>按任务组织：先看导航地图，再看每个页面能做什么、需要什么前提；最后是两条完整流程和错误对照。</p>
+  </div>
+</header>
+
+<nav class="toc wrap">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#start">快速开始与登录</a></li>
+    <li><a href="#map">导航地图</a></li>
+    <li><a href="#overview">概览</a></li>
+    <li><a href="#run">运行：运行、计划、会话、审批、聊天、Ask AI</a></li>
+    <li><a href="#govern">治理：访问控制、审计与合规、集成与配额</a></li>
+    <li><a href="#dev">开发：Agent 中心、新建 Agent、模型、生态、导入</a></li>
+    <li><a href="#settings">设置</a></li>
+    <li><a href="#flows">两条完整流程</a></li>
+    <li><a href="#errors">常见错误与处理</a></li>
+    <li><a href="#mobile">手机与窄屏</a></li>
+  </ol>
+</nav>
+
+<main>
+<h2 id="start">1. 快速开始与登录</h2>
+<p>控制台是一个网页，默认只监听本机回环地址。打开地址后先登录，再看到左侧导航。</p>
+<ul>
+  <li><span class="tag">token 模式</span>：登录页输入运维发给你的 Bearer token。token 只存在当前浏览器，退出即清除。</li>
+  <li><span class="tag">单点登录</span>：配置了 OIDC 时显示「使用单点登录」，跳转企业身份提供方后回到控制台。</li>
+</ul>
+<p>登录后右上角显示租户与主体名。左侧导航只显示你有能力访问的入口；看不到某个页面通常意味着当前角色缺少对应能力，而不是页面坏了。</p>
+
+<h2 id="map">2. 导航地图</h2>
+<table class="map">
+  <tr><th>分组</th><th>管什么</th><th>入口</th></tr>
+  <tr><td>概览</td><td>平台状态与常用入口</td><td>总览、Agent、注册表</td></tr>
+  <tr><td>运行</td><td>一次请求从计划到聊天结果</td><td>运行、计划、会话、审批、聊天、Ask AI</td></tr>
+  <tr><td>治理</td><td>谁能做什么、发生了什么、接入了什么</td><td>策略、角色、用户、授权、审计、安全、工具、连接器、凭据、对端、语义层、检索、配额</td></tr>
+  <tr><td>开发</td><td>创建与发布 Agent</td><td>新建 Agent、模型、生态、导入</td></tr>
+  <tr><td>设置</td><td>控制台自身</td><td>设置、使用说明</td></tr>
+</table>
+
+<h2 id="overview">3. 概览</h2>
+<section class="page" data-route="/">
+  <h3>总览 <span class="route">/</span></h3>
+  <p>平台运行概况与常用入口：待审批、已注册 Agent、工具与授权数量，以及最近活动。</p>
+  <p class="meta">前提：需要 <code>ops.read</code> 或 <code>registry.read</code>。操作：点统计卡进入对应页面。</p>
+</section>
+
+<h2 id="run">4. 运行</h2>
+<section class="page" data-route="/runs">
+  <h3>运行 <span class="route">/runs</span></h3>
+  <p>每一轮对话或触发的执行记录，含状态、耗时、租户与 trace。</p>
+  <p class="meta">前提：<code>runs.read</code>。操作：按租户与状态筛选，点进详情看事件与审计。</p>
+</section>
+<section class="page" data-route="/plans">
+  <h3>计划 <span class="route">/plans</span></h3>
+  <p>多步计划的执行情况，需要人工确认的步骤会停在这里等待审批。</p>
+  <p class="meta">前提：<code>runs.read</code>（审批操作需 <code>approvals.decide</code>）。</p>
+</section>
+<section class="page" data-route="/sessions">
+  <h3>会话 <span class="route">/sessions</span></h3>
+  <p>共享会话列表，用于恢复上下文或排查异常对话。</p>
+  <p class="meta">前提：<code>sessions.read</code>。</p>
+</section>
+<section class="page" data-route="/approvals">
+  <h3>审批 <span class="route">/approvals</span></h3>
+  <p>需要人工确认的工具调用与计划步骤。批准或拒绝时要填写理由，决定会写入审计。</p>
+  <p class="meta">前提：<code>approvals.read</code>；决定需要 <code>approvals.decide</code>。未配置审批存储时页面会提示用 <code>--approval-dir</code> 或 <code>--approval-db</code> 启用。</p>
+</section>
+<section class="page" data-route="/chat">
+  <h3>聊天 <span class="route">/chat</span></h3>
+  <p>与已加载的 Agent 对话。选择下拉里的 Agent，输入消息后发送；回复与审计同步产生。</p>
+  <p class="meta">前提：<code>chat.run</code>，且至少有一个已加载的 Agent。</p>
+</section>
+<section class="page" data-route="/ask-ai">
+  <h3>Ask AI <span class="route">/ask-ai</span></h3>
+  <p>用术语表做确定性路由回放：输入问题，看命中的概念与建议入口。</p>
+  <p class="meta">前提：<code>runs.read</code>；术语表为空时先到「语义层」导入。</p>
+</section>
+
+<h2 id="govern">5. 治理</h2>
+<h3>访问控制</h3>
+<section class="page" data-route="/policy">
+  <h3>策略 <span class="route">/policy</span></h3>
+  <p>访问策略与绑定：工具调用的风险分级、审批阈值与租户规则。</p>
+  <p class="meta">前提：<code>policy.read</code>；编辑需要 <code>policy.write</code>。未配置时提示用 <code>--policy</code> 指定文件。</p>
+</section>
+<section class="page" data-route="/roles">
+  <h3>角色 <span class="route">/roles</span></h3>
+  <p>角色定义决定能力集合。内置角色在启动时自动补齐；自定义角色在下方表单新增。</p>
+  <p class="meta">前提：<code>roles.read</code>；写需要 <code>roles.manage</code>。未配置角色存储时提示用 <code>--role-store-dir</code> 或 <code>--role-store-db</code>。</p>
+</section>
+<section class="page" data-route="/users">
+  <h3>用户 <span class="route">/users</span></h3>
+  <p>把登录主体绑定到角色。绑定只做加法，不会削减 token 自带角色。</p>
+  <p class="meta">前提：<code>roles.read</code>；写需要 <code>roles.manage</code>。</p>
+</section>
+<section class="page" data-route="/grants">
+  <h3>授权 <span class="route">/grants</span></h3>
+  <p>工具临时授权请求与到期时间。运行时申请放行的工具调用会出现在这里。</p>
+  <p class="meta">前提：<code>grants.read</code>；决定需要 <code>grants.decide</code>。</p>
+</section>
+
+<h3>审计与合规</h3>
+<section class="page" data-route="/audit">
+  <h3>审计 <span class="route">/audit</span></h3>
+  <p>共享审计事件：运行、工具调用、配置变更与登录。每条事件带 tenant、principal 与哈希链。</p>
+  <p class="meta">前提：<code>audit.read</code>，以及审计后端（<code>--audit-file</code>、<code>--audit-db</code> 或审计服务）。</p>
+</section>
+<section class="page" data-route="/security">
+  <h3>安全 <span class="route">/security</span></h3>
+  <p>审计、密钥、策略与扫描的聚合视图。未接入扫描或安全摘要时显示配置提示。</p>
+  <p class="meta">前提：<code>ops.read</code>。</p>
+</section>
+
+<h3>集成与配额</h3>
+<section class="page" data-route="/tools">
+  <h3>工具 <span class="route">/tools</span></h3>
+  <p>工具目录与授权关系：每个工具的风险级别、数据类别与可调用角色。</p>
+  <p class="meta">前提：<code>tools.read</code>；目录来自 <code>--tool-catalog</code> 或注册表。</p>
+</section>
+<section class="page" data-route="/connectors">
+  <h3>连接器 <span class="route">/connectors</span></h3>
+  <p>外部 API 的访问方式：ID、租户、类型、Base URL、方法与启用状态。下方表单可直接登记。</p>
+  <p class="meta">前提：<code>connectors.read</code>；登记与停用需要 <code>connectors.manage</code>。未配置时提示 <code>--connectors-dir</code>。</p>
+</section>
+<section class="page" data-route="/credentials">
+  <h3>凭据 <span class="route">/credentials</span></h3>
+  <p>租户凭据只保存引用（<code>secret://...</code>），密钥值由服务端环境提供，不进入浏览器。</p>
+  <p class="meta">前提：<code>connectors.read</code>；写需要 <code>connectors.manage</code>。未配置时提示 <code>--credentials-dir</code> 或 <code>--credential-db</code>。</p>
+</section>
+<section class="page" data-route="/peers">
+  <h3>对端 <span class="route">/peers</span></h3>
+  <p>A2A 对端身份与动作授权：允许哪个对端调用哪个 Agent。</p>
+  <p class="meta">前提：<code>peers.read</code>；写需要 <code>peers.manage</code>。登记用 <code>adk-agent peers register</code>。</p>
+</section>
+<section class="page" data-route="/semantics">
+  <h3>语义层 <span class="route">/semantics</span></h3>
+  <p>术语表与概念：Ask AI 与检索复用这里的定义。</p>
+  <p class="meta">前提：<code>ops.read</code>；导入用「导入」页或 CLI。</p>
+</section>
+<section class="page" data-route="/rag">
+  <h3>检索 <span class="route">/rag</span></h3>
+  <p>检索调用与返回统计：最近 top_k、命中数与延迟。</p>
+  <p class="meta">前提：<code>ops.read</code>，并配置 <code>--rag-db</code> 与模型。</p>
+</section>
+<section class="page" data-route="/quota">
+  <h3>配额 <span class="route">/quota</span></h3>
+  <p>租户配额用量与限制：运行次数、令牌与时间窗口。</p>
+  <p class="meta">前提：<code>ops.read</code>；配额来自 <code>--quota-config</code>，未配置时不受限。</p>
+</section>
+
+<h2 id="dev">6. 开发</h2>
+<section class="page" data-route="/agents">
+  <h3>Agent 中心 <span class="route">/agents</span></h3>
+  <p>注册、版本与生命周期。卡片展示每个 Agent 的版本与状态，可进入注册表或新建。</p>
+  <p class="meta">前提：<code>registry.read</code>；「新建」需要 <code>registry.publish</code> 或 <code>registry.compose</code>。</p>
+</section>
+<section class="page" data-route="/agents/new">
+  <h3>新建 Agent <span class="route">/agents/new</span></h3>
+  <p>四步向导：选模板、填参数、预览生成的 manifest 与 <code>agent.py</code>、发布。</p>
+  <p class="meta">前提：预览需要 <code>registry.publish</code>；发布需要 <code>registry.compose</code> 且控制台配置了四个 compose 密钥。未配置时页面给出等价的 CLI 命令。</p>
+</section>
+<section class="page" data-route="/registry">
+  <h3>注册表 <span class="route">/registry</span></h3>
+  <p>已发布版本与远端目录：查看版本、生命周期状态，把版本加载成聊天目标。</p>
+  <p class="meta">前提：<code>registry.read</code>；加载需要 <code>registry.load</code>。</p>
+</section>
+<section class="page" data-route="/model">
+  <h3>模型 <span class="route">/model</span></h3>
+  <p>调用、别名与默认模型。可以切换全局默认模型，之后的新会话生效。</p>
+  <p class="meta">前提：<code>model.read</code>；切换需要 <code>model.write</code>。</p>
+</section>
+<section class="page" data-route="/ecosystem">
+  <h3>生态 <span class="route">/ecosystem</span></h3>
+  <p>MCP、A2A、连接器与可复用工具的总览，按来源分组查看。</p>
+  <p class="meta">前提：<code>tools.read</code>、<code>connectors.read</code>、<code>peers.read</code> 任一。</p>
+</section>
+<section class="page" data-route="/import">
+  <h3>导入 <span class="route">/import</span></h3>
+  <p>导入术语表或 Agent 清单。清单导入只登记 manifest，不带工件字节。</p>
+  <p class="meta">前提：<code>runs.read</code>；写入需要 <code>registry.publish</code> 或 <code>semantics.write</code>。</p>
+</section>
+
+<h2 id="settings">7. 设置</h2>
+<section class="page" data-route="/settings">
+  <h3>设置 <span class="route">/settings</span></h3>
+  <p>控制台自身的偏好页（当前是占位页）。侧栏「设置」组里的「使用说明」另开页面展示这份手册。</p>
+  <p class="meta">对所有登录主体可见。</p>
+</section>
+
+<h2 id="flows">8. 两条完整流程</h2>
+<h3>把已有 Agent 跑起来</h3>
+<ol>
+  <li>在「注册表」找到目标版本，确认生命周期不是 retired。</li>
+  <li>点「加载」，控制台在进程内或沙箱里载入工件；载入失败会显示原因。</li>
+  <li>到「聊天」选择该 Agent，发一条消息。</li>
+  <li>到「运行」看这一轮的记录，再到「审计」确认 <code>agent.run</code> 事件。</li>
+</ol>
+<h3>从模板发布一个新 Agent</h3>
+<ol>
+  <li>「新建 Agent」→ 选 <code>single-llm</code> 模板。</li>
+  <li>填名称、版本、租户、指令与工具，点「预览」检查 manifest 与代码。</li>
+  <li>确认无误后点「发布」；需要评测门禁时先在 CLI 跑 <code>eval</code>。</li>
+  <li>发布成功跳到注册表；在「授权」放行工具，在「配额」确认额度。</li>
+  <li>「审计」能看到 <code>agent.compose</code> 事件（不含指令原文）。</li>
+</ol>
+
+<h2 id="errors">9. 常见错误与处理</h2>
+<table>
+  <tr><th>界面提示</th><th>含义</th><th>处理</th></tr>
+  <tr><td>连接器存储不可用</td><td>控制台没配置连接器存储</td><td>启动加 <code>--connectors-dir</code>，或用注册表的连接器接口</td></tr>
+  <tr><td>审批存储未配置</td><td>审批后端缺失</td><td>加 <code>--approval-dir</code> 或 <code>--approval-db</code></td></tr>
+  <tr><td>凭据存储不可用</td><td>凭据后端缺失</td><td>加 <code>--credentials-dir</code> 或 <code>--credential-db</code></td></tr>
+  <tr><td>角色存储未配置</td><td>角色定义存储缺失</td><td>加 <code>--role-store-dir</code> 或 <code>--role-store-db</code></td></tr>
+  <tr><td>用户绑定存储未配置</td><td>用户绑定存储缺失</td><td>加 <code>--user-binding-store-dir</code> 或 <code>--user-binding-store-db</code></td></tr>
+  <tr><td>工具目录不可用</td><td>没有工具目录</td><td>加 <code>--tool-catalog</code></td></tr>
+  <tr><td>授权存储不可用</td><td>工具授权后端缺失</td><td>加 <code>--tool-grants-dir</code> 或 <code>GRANT_URL</code></td></tr>
+  <tr><td>检索统计不可用</td><td>RAG 未配置</td><td>加 <code>--rag-db</code>、<code>--rag-dimensions</code> 与 <code>--rag-model</code></td></tr>
+  <tr><td>配额数据不可用</td><td>没有配额配置</td><td>加 <code>--quota-config</code></td></tr>
+  <tr><td>无访问权限 / forbidden</td><td>当前角色缺少能力：该页面或动作所需的能力不在你的角色里</td><td>让管理员在「角色」或「用户」页授权；不要靠改前端绕开</td></tr>
+  <tr><td>artifact_untrusted / load_failed</td><td>工件载入失败，常见于构建签名或发布签名不可信</td><td>确认发布端与载入端使用同一套 <code>--artifact-keys</code> 与 <code>--builder-keys</code></td></tr>
+  <tr><td>401 unauthorized</td><td>没有令牌或令牌失效</td><td>重新登录；token 模式重新输入 Bearer token</td></tr>
+</table>
+
+<h2 id="mobile">10. 手机与窄屏</h2>
+<ul>
+  <li>960px 以下左侧导航收成抽屉，点左上角菜单展开。</li>
+  <li>600px 以下页面改为单列：表格可以左右滑动，聊天输入框固定在底部。</li>
+  <li>手机经隧道访问时，先过 Cloudflare Access，再在登录页输入 token 或走单点登录。</li>
+</ul>
+
+<div class="note">
+  这份手册随控制台一起发布，页面地址是 <code>/guide</code>。界面里的错误提示与本文「常见错误」一节保持一致；
+  如果发现提示没有对应处理方式，按提示里的参数名查 <code>docs/contracts/cli.md</code>。
+</div>
+</main>
+
+<footer>ADK Agent · 控制台使用手册 · 2026-11-25</footer>
+</body>
+</html>

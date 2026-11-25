@@ -170,7 +170,9 @@ if TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 _USER_ID = "console_user"
-_OPEN_PATHS = frozenset({"/", "/healthz", "/auth/config", "/auth/token", "/auth/callback"})
+_OPEN_PATHS = frozenset(
+    {"/", "/healthz", "/guide", "/auth/config", "/auth/token", "/auth/callback"}
+)
 _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 _SAFE_TENANT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}")
@@ -192,6 +194,7 @@ def _capabilities_for(roles: Iterable[str]) -> list[str]:
 
 
 _WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
+_GUIDE_HTML = Path(__file__).resolve().parents[2] / "docs" / "guides" / "console-ui.html"
 
 
 _INDEX_HTML = r"""<!doctype html>
@@ -3238,6 +3241,12 @@ def build_console_app(
     @app.get("/auth/callback", response_class=HTMLResponse)
     async def auth_callback() -> str:
         return shell
+
+    @app.get("/guide", response_class=HTMLResponse)
+    async def guide() -> Any:
+        if not _GUIDE_HTML.is_file():
+            return JSONResponse({"error": "guide_not_found"}, status_code=404)
+        return HTMLResponse(_GUIDE_HTML.read_text(encoding="utf-8"))
 
     @app.get("/auth/config")
     async def auth_config() -> Any:

@@ -195,6 +195,9 @@ onMounted(async () => {
           <router-link to="/settings" class="nav-item" @click="closeNav">
             <NavIcon name="settings" /><span>设置</span>
           </router-link>
+          <a href="/guide" target="_blank" rel="noopener" class="nav-item" @click="closeNav">
+            <NavIcon name="policy" /><span>使用说明</span>
+          </a>
         </div>
       </nav>
       <main class="main">

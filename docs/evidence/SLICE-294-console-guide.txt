@@ -1,0 +1,75 @@
+SLICE-294 控制台使用手册（HTML）
+
+日期: 2026-11-25
+依据: 用户要求「应用复杂、不知道如何使用」，并要求 HTML 形式
+范围: 新增 `docs/guides/console-ui.html`、控制台 `GET /guide`、侧栏入口
+
+一、反例：实现前
+
+`/guide` 路由不存在、手册文件不存在、侧栏没有入口。七个用例全部失败：
+
+    $ python -m pytest tests/test_console_guide.py -q
+    FAILED tests/test_console_guide.py::test_guide_route_serves_the_html
+    FAILED tests/test_console_guide.py::test_guide_route_is_open_without_a_token
+    FAILED tests/test_console_guide.py::test_guide_route_404_when_missing
+    FAILED tests/test_console_guide.py::test_guide_documents_every_route
+    FAILED tests/test_console_guide.py::test_guide_is_self_contained
+    FAILED tests/test_console_guide.py::test_guide_covers_common_errors
+    FAILED tests/test_console_guide.py::test_sidebar_links_the_guide
+    7 failed
+
+二、改动
+
+- `docs/guides/console-ui.html`：单文件手册，内嵌样式，无外部脚本、样式与字体。
+  内容：登录方式、导航地图、27 个页面逐页说明（用途/前提/操作/能力）、
+  两条完整流程、常见错误对照、手机端说明。
+- `src/adk_agent/console.py`：`GET /guide` 返回该文件；`/guide` 加入免鉴权路径；
+  文件缺失返回 404 `guide_not_found`。
+- `web/src/App.vue`：侧栏「设置」组新增「使用说明」，新标签页打开 `/guide`。
+- `docs/contracts/console.md`：新增 `GET /guide` 契约。
+- `web/dist/` 重建（侧栏入口变更）。
+
+三、验证
+
+    $ python -m pytest tests/test_console_guide.py -q
+    7 passed
+
+实机（控制台 `127.0.0.1:8000`，`--ui vue`）：
+
+    $ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/guide
+    200
+
+不带令牌也可访问；返回的 HTML 含「控制台使用手册」。
+
+截图：
+
+- `docs/evidence/ui/SLICE-294/guide-desktop.png`：1280×900，标题与目录，
+  导航地图表格列宽正常。
+- `docs/evidence/ui/SLICE-294/guide-phone.png`：390×844，目录单列、正文自动换行。
+
+手机经隧道访问 `https://<host>/guide` 即可阅读，无需先登录控制台。
+
+四、首轮验证后的措辞修正
+
+独立验证 PASS，指出三处与实现不符的措辞，已改：
+
+- 错误表里的 `agent_load_failed` 是触发服务的错误码，控制台不会显示；改为
+  `artifact_untrusted / load_failed`，与控制台注册表页的提示一致。
+- 「无访问权限 / 缺少能力」第二半不是界面原文，改为 `无访问权限 / forbidden`，
+  并在说明里保留「缺少能力」的准确表述。
+- 设置页当前是占位页，手册注明「使用说明」入口在侧栏设置组，打开的是 `/guide`。
+
+五、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+    2323 passed, 105 skipped in 186.43s
