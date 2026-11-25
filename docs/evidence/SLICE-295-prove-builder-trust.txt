@@ -30,12 +30,13 @@ SLICE-295 端到端验收脚本补齐构建信任
 `console`、`serve`、`serve-a2a`、`serve-triggers` 时只传了 `--artifact-keys`。
 SLICE-291 之后，载入 `in_process` 工件必须有构建信任集，服务在载入阶段直接拒绝启动。
 
-单跑 P3 并保留日志时，服务进程的报错是：
+在未修改的 master 上，服务进程是载入阶段拒绝（`in_process artifacts require builder trust`），
+而不是 argparse 报错。第一次补参数时 `--builder-keys` 被插到 `--artifact-keys` 的值前面，
+服务进程才报：
 
     adk-agent console: error: argument --artifact-keys: expected one argument
 
-第一次补参数时 `--builder-keys` 被插到 `--artifact-keys` 的值前面，argparse 拒绝；
-修正插入顺序后 P3 单独通过：
+修正插入顺序、确认 `--builder-keys` 在值之后，P3 单独通过：
 
     [PASS] P3 publish/load/chat  signed artifacts published over HTTP; startup and on-demand load both chat and audit (19.6s)
 
