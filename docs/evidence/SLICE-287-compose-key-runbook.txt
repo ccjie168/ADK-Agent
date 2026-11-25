@@ -1,0 +1,47 @@
+SLICE-287 compose 签名密钥运维手册 — 证据
+=========================================
+
+日期: 2026-11-25
+分支: slice-287-compose-key-runbook
+依据: ADR-0043 的后续项（密钥托管、轮换与最小权限）
+
+## 反例（先红）
+
+新增 `tests/test_compose_signing_guide.py` 后分两步验证红灯：
+
+1. 只把指南移出工作树（`operations.md` 链接还在）：
+
+       python -m pytest tests/test_compose_signing_guide.py -q
+       2 failed, 1 passed
+
+2. 实现前形态（指南与运维链接都不存在，见 master）：
+
+       python -m pytest tests/test_compose_signing_guide.py -q
+       3 failed
+
+恢复指南并补上运维链接后 3 passed；新增负向断言后 4 passed。
+
+## 实现（后绿）
+
+新增 `docs/guides/compose-signing.md`：生成两把 Ed25519 私钥、四个 `--compose-*` 参数、
+读取端 `--artifact-keys`/`ADK_ARTIFACT_KEYS` 与注册表 `--builder-keys`/`ADK_BUILDER_KEYS`
+信任集、加法轮换、泄露处置（先停用端点再吊销公钥，用 `agent.compose` 审计排查）、最小权限与
+文件注册表不校验构建签名的已知限制。
+
+`docs/guides/operations.md` 的「密钥轮换」增加一条链接。
+
+    python -m pytest tests/test_compose_signing_guide.py -q
+    4 passed
+
+## 命令核对
+
+指南中的所有 flag 在 `adk-agent console --help` 与 `docs/contracts/cli.md` 中存在：
+`--compose-key`、`--compose-key-id`、`--compose-builder-key`、`--compose-builder-key-id`；
+`--artifact-keys` / `ADK_ARTIFACT_KEYS` 与 `--builder-keys` / `ADK_BUILDER_KEYS`
+见 `docs/contracts/cli.md` 的 publish 与 console 小节。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2267 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2267 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）

@@ -267,6 +267,8 @@
 - **审计签名**：`ADK_AUDIT_KEYRING` 支持 `active`、`keys`、`legacy`。轮换是加法：新 key 加入 `keys` 并设为 `active`，旧 key 留在 `keys`（无 kid 的旧记录用 `legacy`）。删掉历史用过的 key 会让整链验证在该记录处失败。更新 Secret 后滚动所有写审计的进程。
 - **Bearer token**：共享 token 轮换需要客户端同步换值，做不到零停机。需要零停机就用 OIDC。
 - **工件验签**：新增 key id 并发布新版本，旧公钥保留到所有旧版本退役。
+- **页面一键发布（compose）**：生成、配置、信任集、轮换与撤销步骤见
+  `docs/guides/compose-signing.md`；私钥只从文件读，与审计 keyring、凭据 KEK 分离。
 - **数据库口令**：在 Postgres 改角色口令，更新 Secret，滚动重启。连接池会重连。
 - **凭据数据密钥（Vault Transit，ADR-0027）**：应用令牌只需要 `transit/encrypt|decrypt|rewrap/<key>`
   的 `update` 权限；轮换执行 `vault write -f transit/keys/<key>/rotate`，再对各租户跑
