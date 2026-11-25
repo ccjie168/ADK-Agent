@@ -42,10 +42,12 @@ export ADK_MCP_AUTH_TOKEN=demo-token
 
 ```bash
 export ADK_ARTIFACT_KEYS="$(cat demo/keys.json)"
+export ADK_BUILDER_KEYS="$(cat demo/keys.json)"
 export ADK_MCP_AUTH_TOKEN=demo-token
 ./.venv/Scripts/python.exe -m adk_agent console \
   --registry demo/registry \
   --artifact-dir demo/store \
+  --builder-keys demo/keys.json \
   --approval-dir demo/approvals \
   --audit-url http://127.0.0.1:8010 \
   --audit-token-env ADK_MCP_AUTH_TOKEN \
@@ -73,6 +75,8 @@ export ADK_MCP_AUTH_TOKEN=demo-token
 | `-` | 该版本没有工件。 |
 
 演示对比：先按上面的命令启动，全部显示 `verified`。去掉 `ADK_ARTIFACT_KEYS` 重启控制台，同一批工件变成 `unknown`；把 `keys.json` 换成另一把公钥，则变成 `untrusted`。
+
+`ADK_BUILDER_KEYS`（或 `--builder-keys`）是另一条信任链：演示工件是 `in_process`，缺少它时载入会被拒绝。脚本用同一把演示密钥同时签发布与构建，生产上两者应由不同密钥承担。
 
 ## 2:30 从市场打开聊天
 

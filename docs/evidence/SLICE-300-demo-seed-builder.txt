@@ -1,0 +1,64 @@
+SLICE-300 演示种子补平台构建签名
+
+日期: 2026-11-26
+依据: SLICE-291（ADR-0044）在载入侧强制 in_process 构建信任
+范围: `scripts/demo_seed.py`、`docs/demo/pilot-demo.md`
+
+一、反例：master `913f62c` 上运行切片用例
+
+    $ PYTHONPATH=<master>/src python -m pytest tests/test_demo_seed_builder.py -q
+    FAILED test_demo_seed_signs_builder
+    FAILED test_demo_seed_artifact_loads_with_builder_trust
+    FAILED test_demo_seed_prints_builder_flags
+    3 failed in 3.57s
+
+master 产出的演示工件 `builder_signature` 为空，控制台按脚本步骤启动后载入会被拒绝；
+脚本输出与手册也没有构建信任的导出与参数。
+
+二、实现后：切片用例
+
+    $ python -m pytest tests/test_demo_seed_builder.py -q
+    ...                                                                      [100%]
+    3 passed in 2.09s
+
+用例映射：
+
+- `test_demo_seed_signs_builder`：两个演示工件都有 `builder_signature`/`builder_key_id`，
+  发布验签与构建验签都通过
+- `test_demo_seed_artifact_loads_with_builder_trust`：用 `load_agent` + 同一份 keys.json
+  作为 `--artifact-keys` 与 `--builder-keys` 真实载入 `in_process` 工件
+- `test_demo_seed_prints_builder_flags`：脚本输出与 `docs/demo/pilot-demo.md` 都含
+  `ADK_BUILDER_KEYS` 与 `--builder-keys`
+
+三、改动
+
+    signature = sign_digest(digest, key)
+    artifact = AgentArtifact(..., signature=signature, key_id=_KEY_ID,
+                             builder_signature=signature, builder_key_id=_KEY_ID)
+
+- 脚本输出增加 `export ADK_BUILDER_KEYS="$(cat demo/keys.json)"` 与
+  启动命令里的 `--builder-keys demo/keys.json`。
+- 手册「启动控制台」步骤同步；2:00 徽标一节说明构建信任是另一条链，演示共用一把
+  密钥、生产应分开。
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2363 passed, 105 skipped, 5 warnings in 192.83s
+
+五、范围外
+
+- 生成独立的生产构建密钥；演示共用一把即可。
+- 同刻事件超过 1000 条的审计读取窗口（另一切片）。
