@@ -41,6 +41,7 @@ from .loader import (
     verify_published_artifact,
 )
 from .manifest import load_manifest, published_from
+from .model_provider_keys import FileModelProviderKeyStore
 from .model_providers import FileModelProviderStore
 from .packaging import (
     PackagingError,
@@ -88,6 +89,7 @@ __all__ = [
     "FileConnectorRequestStore",
     "FileConnectorStore",
     "FileCredentialStore",
+    "FileModelProviderKeyStore",
     "FileModelProviderStore",
     "FileConceptSchemeStore",
     "FileArtifactStore",
