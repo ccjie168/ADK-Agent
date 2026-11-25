@@ -137,7 +137,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 ```
 
 - 返回四张卡片，`key` 顺序固定为 `approvals`、`agents`、`tools`、`grants`。
-- 需要 `ops.read` 能力（admin + operator），缺少返回 403 `forbidden`，先于任何数据读取。
+- 需要 `ops.read` 能力（admin + operator + publisher），缺少返回 403 `forbidden`，先于任何数据读取。
 - 每张卡片有 `key` / `label` / `value` / `panel`，`panel` 是深链目标面板 id。
 - 仅当调用方具备对应能力（`approvals.read` / `registry.read` / `tools.read` / `grants.read`）且对应 store 已配置时，`value` 才是计数，否则为 `null`。
 - store 不可用也返回 `null`，不报错、不泄露细节。
@@ -302,7 +302,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 ```
 
 - 返回调用方租户的配额用量与策略上限：`window_runs`（窗口内运行数）、`active_leases`（活跃并发租约）、`max_runs` / `max_concurrent` / `window_seconds`（来自该租户的 `QuotaPolicy`）。
-- 需要 `ops.read` 能力（admin + operator），缺少返回 403 `forbidden`，先于配置检查。
+- 需要 `ops.read` 能力（admin + operator + publisher），缺少返回 403 `forbidden`，先于配置检查。
 - 未配置 `--quota-config` 或租户不在配置里时返回 404 `{"error":"quota_not_configured"}`。
 - 配额后端不可用返回 503 `{"error":"quota_unavailable"}`。
 
@@ -313,7 +313,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 ```
 
 - 返回最近审计窗口内 `rag.retrieve` 事件的条数，以及最近一次检索的 `rag_top_k` / `rag_returned`（无事件时 `last_top_k` / `last_returned` 为 `null`）。
-- 需要 `ops.read` 能力（admin + operator），缺少返回 403 `forbidden`，先于审计读取。
+- 需要 `ops.read` 能力（admin + operator + publisher），缺少返回 403 `forbidden`，先于审计读取。
 - 统计基于最近 200 条审计事件，是窗口摘要，不是全局计数器。审计不可用返回 502 `audit_unavailable`。
 
 ## `GET /api/model` -> 模型调用摘要
@@ -349,7 +349,7 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 
 ## `GET /api/semantics` -> `[ConceptScheme]`
 
-返回当前租户的术语表列表，结构见 ADR-0038 的 `ConceptScheme`。需要 `ops.read` 能力（admin + operator），缺少返回 403 `forbidden`，先于配置检查。未配置 `--terminology-dir` / `--terminology-db` 返回 404 `{"error":"terminology_not_configured"}`；存储不可用返回 503 `{"error":"terminology_unavailable"}`。
+返回当前租户的术语表列表，结构见 ADR-0038 的 `ConceptScheme`。需要 `ops.read` 能力（admin + operator + publisher），缺少返回 403 `forbidden`，先于配置检查。未配置 `--terminology-dir` / `--terminology-db` 返回 404 `{"error":"terminology_not_configured"}`；存储不可用返回 503 `{"error":"terminology_unavailable"}`。
 
 ## `POST /api/semantics/route` -> `[RoutedCapability]`
 
