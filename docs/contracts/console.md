@@ -667,6 +667,7 @@ SSE 流，每 5 秒推一个 `tick` 事件（`event: tick`，`data: {"ts": <iso 
 ## `POST /api/credentials/{credential_id}/disable?tenant=<name>` -> `CredentialBinding`
 
 - 需要 `connectors.manage` 能力（仅 admin），缺少返回 403 `forbidden`，先于配置检查。
+- 非 `admin` 身份停用其他租户的凭据返回 403 `tenant_forbidden`，先于存储读取。
 - `tenant` 缺失时用当前 principal 的租户；给了其他租户按该租户定位。解析后的租户不符合安全字符集
   （或显式空串）返回 400 `unsafe_tenant`，先于存储读取。
 - `credential_id` 不符合安全字符集（与凭据 id 的模型约束相同）返回 400 `invalid_credential`，同样先于存储读取。
