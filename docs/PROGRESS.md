@@ -578,7 +578,8 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         排序，内存/文件/HTTP 后端一致；契约写明 1000 条读取窗口。两轮验证（第二轮指出测试的文件写序让文件后端在旧代码上误绿，
         改为 a、b 写序后两种后端都能区分修复）。
       - SLICE-287 compose 签名密钥运维手册 ~~已合并 `634b22b`~~（#324）：`docs/guides/compose-signing.md`
-        （生成、四个参数、信任集、加法轮换、泄露撤销、最小权限、文件注册表不校验构建签名），
+        （生成、四个参数、信任集、加法轮换、泄露撤销、最小权限、~~文件注册表不校验构建签名~~
+        ——已由 SLICE-291 / ADR-0044 在载入侧统一校验），
         `operations.md` 链接；负向断言锁定「compose 只签名不验签」。两轮验证。
       - ~~仍记录未做~~（前三项已由 288–290 修复，见下节）：~~侧栏入口不按能力隐藏~~；~~9 个视图的表格
         未包在 `.table-wrap`~~；~~自定义角色授予 `connectors.manage` 后可跨租户停用凭据~~。
@@ -593,7 +594,10 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         截图 `docs/evidence/ui/SLICE-289-roles-narrow.png`。
       - SLICE-290 凭据停用跨租户校验 ~~已合并 `63e5baf`~~（#328）：非 admin 跨租户 disable 返回 403；
         旧行为是 200 并真的停用（实测确认）。两轮验证。
-      - 仍记录未做：同刻事件超过 1000 条读取窗口的极端情形（契约已写明窗口）。
+      - 仍记录未做：同刻事件超过 1000 条读取窗口的极端情形（契约已写明窗口）；
+        `scripts/demo_seed.py` 生成的 `in_process` 演示记录仍不带平台构建签名，
+        启动说明也只提示 `ADK_ARTIFACT_KEYS`，用它演示 `--agent-ref` 载入时需自行补
+        `--builder-keys`（演示脚本的小缺口，另行切片）。
 
     - **构建签名载入收口（291，2026-11-25）**：
       - SLICE-291 载入侧校验构建签名 ~~已合并 `e045b7d`~~（#330，ADR-0044）：`load_agent`、
@@ -601,7 +605,8 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         记录上强制 `--builder-keys`/`ADK_BUILDER_KEYS`；五个命令接线；`sandboxed` 保持豁免。
         第一轮验证 REJECT（`serve-triggers` 仍可执行未验签记录），修复后第二轮 PASS，
         第三轮确认文档修正。证据 `docs/evidence/SLICE-291-load-builder-trust.txt`。
-      - 原「文件注册表不校验构建签名」的限制随之关闭；剩余设计级事项只有 1000 条读取窗口。
+      - 原「文件注册表不校验构建签名」的限制随之关闭；剩余设计级事项只有 1000 条读取窗口，
+        另记一条演示脚本的小缺口（见上）。
       - 原计划的 SLICE-292（手册与 PROGRESS 收口）内容已随 291 与本次记录交付，不再单列。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
