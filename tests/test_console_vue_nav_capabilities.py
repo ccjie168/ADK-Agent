@@ -62,46 +62,21 @@ def test_nav_has_no_ungated_entries():
         assert "auth.hasCapability" in link, link
 
 
-GROUPS = {
-    "概览": ("ops.read", "registry.read"),
-    "运行": ("runs.read", "sessions.read", "approvals.read", "chat.run"),
-    "治理": (
-        "ops.read",
-        "audit.read",
-        "policy.read",
-        "roles.read",
-        "tools.read",
-        "grants.read",
-        "connectors.read",
-        "peers.read",
-    ),
-    "开发": (
-        "registry.publish",
-        "model.read",
-        "tools.read",
-        "connectors.read",
-        "peers.read",
-        "runs.read",
-    ),
-}
-
-
 def test_nav_groups_cover_every_child_capability():
     source = _app()
-    for group, capabilities in GROUPS.items():
-        label = f'<div class="nav-group-label">{group}</div>'
-        index = source.index(label)
-        window = source[index - 700 : index]
-        assert "v-if=" in window, group
-        for capability in capabilities:
-            assert f"auth.hasCapability('{capability}')" in window, (group, capability)
-
-
-def test_ecosystem_needs_any_of_its_three_sources():
-    source = _app()
-    window = source[source.index('to="/ecosystem"') - 260 : source.index('to="/ecosystem"')]
-    for capability in ("tools.read", "connectors.read", "peers.read"):
-        assert capability in window, capability
+    labels = [match.start() for match in re.finditer(r'<div class="nav-group-label">', source)]
+    starts = []
+    for label in labels:
+        gated = source.rfind("<div v-if=", 0, label)
+        plain = source.rfind('<div class="nav-group">', 0, label)
+        starts.append(max(gated, plain))
+    ends = starts[1:] + [source.index("</nav>")]
+    for label, start, end in zip(labels, starts, ends, strict=True):
+        segment = source[start:end]
+        child_caps = set(re.findall(r"auth\.hasCapability\('([a-z.]+)'\)", segment))
+        group_expr = source[start:label]
+        for capability in child_caps:
+            assert f"auth.hasCapability('{capability}')" in group_expr, (label, capability)
 
 
 def test_wizard_entry_accepts_publish_or_compose():
@@ -110,3 +85,11 @@ def test_wizard_entry_accepts_publish_or_compose():
     window = source[index - 220 : index]
     assert "auth.hasCapability('registry.publish')" in window
     assert "auth.hasCapability('registry.compose')" in window
+
+
+def test_ecosystem_needs_any_of_its_three_sources():
+    source = _app()
+    index = source.index('to="/ecosystem"')
+    window = source[index - 260 : index]
+    for capability in ("tools.read", "connectors.read", "peers.read"):
+        assert capability in window, capability

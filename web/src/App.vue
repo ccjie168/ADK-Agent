@@ -150,6 +150,7 @@ onMounted(async () => {
           </router-link>
         </div>
         <div v-if="auth.hasCapability('registry.publish') ||
+          auth.hasCapability('registry.compose') ||
           auth.hasCapability('model.read') ||
           auth.hasCapability('tools.read') ||
           auth.hasCapability('connectors.read') ||
