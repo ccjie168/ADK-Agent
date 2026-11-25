@@ -360,6 +360,27 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 - 写持久化 store（若配置）+ 更新内存 override（动态生效），并写一条 `model.configure` 审计。
 - store 不可用返回 503 `model_config_unavailable`；未配置 store 时仅更新内存 override。
 
+## `GET /api/model-providers` -> `{providers}`
+
+返回模型提供方记录数组（ADR-0045，方案 A：只存引用）。需要 `model.read` 能力。
+未配置 `--model-providers-dir` 返回 404 `{"error":"model_providers_not_configured"}`。
+
+`ModelProviderRecord` 字段：`provider_id`（安全名，1–64 字符）、`kind`
+（`litellm|gemini|claude|vertex`）、`model`、`base_url`（可选）、`secret_ref`（可选，
+`secret://tenant/name`）、`enabled`、`updated_at`、`updated_by`。记录不含密钥值。
+
+## `PUT /api/model-providers/{provider_id}` -> `ModelProviderRecord`
+
+新建或覆盖一条提供方记录。需要 `model.write` 能力（仅 admin），缺少返回 403 `forbidden`。
+
+- 请求体：`kind`、`model`、可选 `base_url`、`secret_ref`、`enabled`（默认 true）。
+- `provider_id` 不匹配安全名、`kind` 不在枚举、`model` 未通过 `is_valid_model_spec`、
+  `secret_ref` 不是 `secret://tenant/name`，都返回 400 `{"error":"invalid_provider"}`。
+- 未配置存储返回 404 `model_providers_not_configured`。
+- 成功返回 200 与记录，并写一条 `model.configure` 审计：`target` 是 provider_id，
+  `provider_kind` 记录类型，`secret_ref` 记录引用键名（均不含密钥值与密文）。
+- 存储为文件后端（`--model-providers-dir`）；Postgres 后端不在本切片范围。
+
 ## `GET /api/semantics` -> `[ConceptScheme]`
 
 返回当前租户的术语表列表，结构见 ADR-0038 的 `ConceptScheme`。需要 `ops.read` 能力（admin + operator + publisher），缺少返回 403 `forbidden`，先于配置检查。未配置 `--terminology-dir` / `--terminology-db` 返回 404 `{"error":"terminology_not_configured"}`；存储不可用返回 503 `{"error":"terminology_unavailable"}`。

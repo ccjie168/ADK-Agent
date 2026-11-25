@@ -232,6 +232,19 @@
     "principal": {
       "$ref": "#/$defs/Principal"
     },
+    "provider_kind": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Kind"
+    },
     "rag_filtered": {
       "anyOf": [
         {
@@ -305,6 +318,20 @@
       "minLength": 1,
       "title": "Run Id",
       "type": "string"
+    },
+    "secret_ref": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "pattern": "^secret://",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Secret Ref"
     },
     "status": {
       "enum": [

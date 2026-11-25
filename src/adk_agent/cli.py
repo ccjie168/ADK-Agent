@@ -171,6 +171,14 @@ def _terminology_store(args: argparse.Namespace) -> Any:
     return None
 
 
+def _model_provider_store(args: argparse.Namespace) -> Any:
+    """Build the model provider store from ``--model-providers-dir`` (ADR-0045)."""
+    from .registry import FileModelProviderStore
+
+    directory = getattr(args, "model_providers_dir", None)
+    return FileModelProviderStore(directory) if directory else None
+
+
 def _model_config_store(args: argparse.Namespace) -> Any:
     """Build the global default model store from ``--model-config-dir`` or ``--model-config-db``."""
     from .registry.model_config import FileModelConfigStore
@@ -2060,6 +2068,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Postgres URL for the global default model store",
     )
     p_console.add_argument(
+        "--model-providers-dir",
+        default=None,
+        help="directory for model provider records (ADR-0045)",
+    )
+    p_console.add_argument(
         "--ui",
         choices=("legacy", "vue"),
         default="legacy",
@@ -3431,6 +3444,7 @@ def main(argv: list[str] | None = None) -> None:
             rag=rag_factory,
             terminology=_terminology_store(args),
             model_config_store=_model_config_store(args),
+            model_providers=_model_provider_store(args),
             role_store=role_store,
             user_binding_store=user_binding_store,
             security_report=args.security_report,
