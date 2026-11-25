@@ -60,6 +60,8 @@ GUIDED_VIEWS = (
     "RolesView.vue",
     "SemanticsView.vue",
     "ToolsView.vue",
+    "UsersView.vue",
+    "RagView.vue",
 )
 
 
@@ -82,6 +84,9 @@ ACTIONABLE_ERRORS = {
     "PolicyView.vue": "策略存储不可用",
     "SemanticsView.vue": "术语表存储不可用",
     "QuotaView.vue": "配额数据不可用",
+    "AuditView.vue": "审计来源不可用",
+    "UsersView.vue": "用户绑定存储未配置",
+    "RagView.vue": "检索统计不可用",
 }
 
 

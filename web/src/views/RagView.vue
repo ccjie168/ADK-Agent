@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface RagSummary {
   recent_retrievals: number;
@@ -24,7 +25,7 @@ onMounted(async () => {
   try {
     rag.value = await getJson<RagSummary>("/api/rag");
   } catch {
-    error.value = "rag unavailable";
+    error.value = "检索统计不可用：配置检索服务后刷新";
   }
 });
 </script>
@@ -48,6 +49,6 @@ onMounted(async () => {
         <div class="stat-value">{{ nullableLabel(rag.last_returned) }}</div>
       </div>
     </div>
-    <p v-else class="placeholder">暂无检索数据</p>
+    <EmptyState v-else description="检索统计来自 RAG 服务的调用记录；配置 --rag-db 与模型后开始记录。">暂无检索数据</EmptyState>
   </div>
 </template>

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface UserEntry {
   tenant: string;
@@ -27,7 +28,7 @@ async function load() {
   try {
     users.value = (await getJson<{ users: UserEntry[] }>("/api/users")).users;
   } catch {
-    message.value = "user binding store unavailable";
+    message.value = "用户绑定存储未配置：用 --user-binding-store-dir 或 --user-binding-store-db 启用";
   }
   try {
     roleNames.value = (await getJson<{ roles: RoleEntry[] }>("/api/roles")).roles.map(
@@ -84,7 +85,7 @@ onMounted(async () => {
     <p v-if="denied" class="placeholder">无访问权限</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>
-      <div class="table-wrap">
+      <div v-if="users.length > 0" class="table-wrap">
   <table>
         <thead>
           <tr>
@@ -103,12 +104,10 @@ onMounted(async () => {
               <button v-if="canWrite" class="link" @click.stop="remove(user)">解绑</button>
             </td>
           </tr>
-          <tr v-if="users.length === 0">
-            <td colspan="4" class="placeholder">暂无绑定</td>
-          </tr>
         </tbody>
         </table>
       </div>
+      <EmptyState v-else description="用户绑定把登录主体映射到角色；用下方表单绑定，或配置绑定存储后刷新。">暂无绑定</EmptyState>
 
       <template v-if="canWrite">
         <h2>绑定或改绑</h2>
