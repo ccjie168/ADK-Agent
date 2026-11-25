@@ -105,6 +105,7 @@ async def _select_events(
     until: datetime | None,
     limit: int,
     order: str,
+    before: tuple[datetime, str] | None = None,
 ) -> list[AuditEvent]:
     conditions: list[str] = []
     params: list[Any] = []
@@ -124,14 +125,23 @@ async def _select_events(
     if until is not None:
         params.append(until)
         conditions.append(f"occurred_at <= ${len(params)}")
-    where = " WHERE " + " AND ".join(conditions) if conditions else ""
     direction = "DESC" if order == "desc" else "ASC"
+    if before is not None:
+        params.append(before[0])
+        timestamp_index = len(params)
+        params.append(before[1])
+        comparison = "<" if order == "desc" else ">"
+        conditions.append(
+            f"(occurred_at, event->>'event_id') {comparison} (${timestamp_index}, ${len(params)})"
+        )
+    where = " WHERE " + " AND ".join(conditions) if conditions else ""
     params.append(limit)
     # Only fixed column fragments and $n placeholders are interpolated; values stay bound.
     query = (
         "SELECT event FROM adk_audit_records"  # nosec B608
         f"{where}"
-        f" ORDER BY occurred_at {direction}, tenant {direction}, sequence {direction}"
+        f" ORDER BY occurred_at {direction}, event->>'event_id' {direction},"
+        f" tenant {direction}, sequence {direction}"
         f" LIMIT ${len(params)}"
     )
     async with pool.acquire() as conn:
@@ -305,7 +315,13 @@ class PostgresAuditQuery:
     def __init__(self, url: str) -> None:
         self._pool = _lazy_pool(url)
 
-    async def events(self, *, tenant: str | None, limit: int) -> list[AuditEvent]:
+    async def events(
+        self,
+        *,
+        tenant: str | None,
+        limit: int,
+        before: tuple[datetime, str] | None = None,
+    ) -> list[AuditEvent]:
         if not 1 <= limit <= 1000:
             raise ValueError("limit must be between 1 and 1000")
         try:
@@ -320,6 +336,7 @@ class PostgresAuditQuery:
                 until=None,
                 limit=limit,
                 order="desc",
+                before=before,
             )
         except AuditStoreUnavailable:
             raise

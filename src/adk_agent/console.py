@@ -3171,7 +3171,22 @@ def build_console_app(
         else:
             caller = _principal_for(request)
             tenant = None if "admin" in caller.roles else caller.tenant
-            events = await audit_query.events(tenant=tenant, limit=limit)
+            collected: list[AuditEvent] = []
+            before: tuple[datetime, str] | None = None
+            while len(collected) < limit:
+                batch = min(1000, limit - len(collected))
+                kwargs: dict[str, Any] = {"tenant": tenant, "limit": batch}
+                if before is not None:
+                    kwargs["before"] = before
+                page = await audit_query.events(**kwargs)
+                if not page:
+                    break
+                collected.extend(page)
+                oldest = min(page, key=lambda event: (event.timestamp, event.event_id))
+                before = (oldest.timestamp, oldest.event_id)
+                if len(page) < batch:
+                    break
+            events = collected
         # Backends disagree on direction; callers slice "the last N" as the
         # newest, so normalise to ascending time before returning.
         return sorted(events, key=lambda event: (event.timestamp, event.event_id))

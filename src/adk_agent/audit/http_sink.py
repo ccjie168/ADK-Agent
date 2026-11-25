@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from ..core import AuditEvent
@@ -79,13 +80,22 @@ class HttpAuditQuery:
             self._client = httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
         return self._client
 
-    async def events(self, *, tenant: str | None, limit: int) -> list[AuditEvent]:
+    async def events(
+        self,
+        *,
+        tenant: str | None,
+        limit: int,
+        before: tuple[datetime, str] | None = None,
+    ) -> list[AuditEvent]:
         import httpx
 
         headers = {"Authorization": f"Bearer {self.auth_token}"} if self.auth_token else None
         params: dict[str, Any] = {"limit": limit, "order": "desc"}
         if tenant is not None:
             params["tenant"] = tenant
+        if before is not None:
+            params["before_timestamp"] = before[0].isoformat()
+            params["before_event_id"] = before[1]
         try:
             response = await self._http().get(
                 f"{self.base_url}/v1/events",

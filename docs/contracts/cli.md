@@ -126,8 +126,13 @@
 - `since`、`until`：ISO-8601 时间，必须带时区，闭区间，非法值返回 400 `invalid_time`。
 - `limit`：1 到 1000，默认 100，越界返回 400 `invalid_limit`。
 - `order`：`desc`（默认，最新在前）或 `asc`，其他值返回 400 `invalid_order`。
+- `before_timestamp` 与 `before_event_id`：游标，必须成对出现，只在 `order=desc` 时有效；
+  开区间，只返回 `(timestamp, event_id)` 严格小于游标的事件。缺一半、时间不带时区、
+  event_id 为空或与 `order=asc` 同用返回 400 `invalid_cursor`。
 
-成功返回 200 `{"events": [AuditEvent], "count": <本次返回条数>}`。事件按时间排序，同一时间按写入顺序。读取正在写入的当前段时，末尾未写完的半行被忽略；其他解析失败返回 502 `audit_read_failed`。
+成功返回 200 `{"events": [AuditEvent], "count": <本次返回条数>}`。事件按
+`(timestamp, event_id)` 排序并截断，`desc` 时先取该序最大的 `limit` 条。读取正在写入的
+当前段时，末尾未写完的半行被忽略；其他解析失败返回 502 `audit_read_failed`。
 
 鉴权规则与写入相同，见上一节。
 
