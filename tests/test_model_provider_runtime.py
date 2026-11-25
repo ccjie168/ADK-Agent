@@ -119,7 +119,7 @@ def test_provider_lookup_uses_stored_key(tmp_path):
 
 def test_provider_lookup_falls_back_to_env_ref(tmp_path, monkeypatch):
     monkeypatch.setenv("ADK_SECRET_LOCAL_DEEPSEEK", KEY)
-    _seed(tmp_path, _record(secret_ref="secret://local/deepseek"))
+    _seed(tmp_path, _record(secret_ref="secret://local/deepseek"))  # pragma: allowlist secret
     lookup = FileProviderLookup(str(tmp_path), backend=None)
 
     found = lookup.lookup("litellm", "deepseek/deepseek-v4-pro")
