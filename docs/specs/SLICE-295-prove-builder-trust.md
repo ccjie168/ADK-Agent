@@ -1,6 +1,6 @@
 # SLICE-295 端到端验收脚本补齐构建信任
 
-状态: active
+状态: gated
 依据: 2026-11-25 在 master `1461d08` 上重跑 `prove_it_works.py` 出现 6 项失败（8 项通过）；
 根因是 SLICE-291 收紧后，服务端载入 `in_process` 工件需要 `--builder-keys`，
 而验收脚本只在 `serve-registry` 与 CLI `publish` 上给了构建信任集。
