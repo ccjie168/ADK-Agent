@@ -568,14 +568,14 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
       - SLICE-283 凭据接口租户校验 ~~已合并 `b02cb77`~~（#320）：`GET /api/credentials` 与 disable
         统一校验解析后的租户（非法 400 `unsafe_tenant`），disable 另校验 `credential_id`
         （400 `invalid_credential`）。两轮验证。
-      - SLICE-284 publisher 获得 `ops.read` ~~已合并 `075cbd6`~~（#321）：总览/配额/RAG/语义/安全面板可见，
-        能力词汇表不变；`test_console_me.py` 的 PUBLISHER 字面量经用户同意更新。四轮验证均为文档措辞。
+      - SLICE-284 publisher 获得 `ops.read` ~~已合并 `075cbd6`~~（#321）：总览/配额/RAG/语义/安全面板可见
+        （安全面板为租户作用域的审计/凭据计数与进程级扫描计数，无密钥值），能力词汇表不变；`test_console_me.py` 的 PUBLISHER 字面量经用户同意更新。四轮验证均为文档措辞。
         截图 `docs/evidence/ui/SLICE-284-publisher-home.png`。
       - SLICE-285 表格窄屏最小宽度 ~~已合并 `0acbc23`~~（#322）：`.table-wrap table { min-width: 720px }`，
         480px 下横向滚动。截图 `docs/evidence/ui/SLICE-285-tools-narrow.png`。
       - SLICE-286 审计同刻顺序 ~~已合并 `1b97f8e`~~（#323）：`_query_events` 按 `(timestamp, event_id)`
-        排序，内存/文件/HTTP 后端一致；契约写明 1000 条读取窗口。两轮验证（第二轮指出文件后端方向写反，
-        改测试写序后两种后端都能区分修复）。
+        排序，内存/文件/HTTP 后端一致；契约写明 1000 条读取窗口。两轮验证（第二轮指出测试的文件写序让文件后端在旧代码上误绿，
+        改为 a、b 写序后两种后端都能区分修复）。
       - SLICE-287 compose 签名密钥运维手册 ~~已合并 `634b22b`~~（#324）：`docs/guides/compose-signing.md`
         （生成、四个参数、信任集、加法轮换、泄露撤销、最小权限、文件注册表不校验构建签名），
         `operations.md` 链接；负向断言锁定「compose 只签名不验签」。两轮验证。
@@ -586,20 +586,18 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
 16. 2026-11-24 新增要求与 SLICE-272 的验证残余：
-    - **安全聚合接口残余**：~~三项已由 SLICE-273（`2796404`）修复~~（scans 严格按 schema 校验、审计失败给 `audit_unavailable`、租户路径非法给 `credential_store_unavailable`）。`/api/credentials` 对调用方自身非法租户的同类问题仍未修，记为后续小项。
-    - **控制台视觉改造**：~~SLICE-275 到 278 已全部合并~~。残余取舍：`.table-wrap` 无可滚动的最小宽度，
-      短内容表格在窄屏只会换行；深色主题与命令面板未做。
+    - **安全聚合接口残余**：~~三项已由 SLICE-273（`2796404`）修复~~（scans 严格按 schema 校验、审计失败给 `audit_unavailable`、租户路径非法给 `credential_store_unavailable`）。`/api/credentials` 对调用方自身非法租户的同类问题~~已由 SLICE-283（`b02cb77`）修复~~（另有 disable 的 `credential_id` 校验）。
+    - **控制台视觉改造**：~~SLICE-275 到 278 已全部合并~~。残余取舍：~~`.table-wrap` 无可滚动的最小宽度~~（已由 SLICE-285 `0acbc23` 加 720px 最小宽度）；
+      深色主题与命令面板仍未做。
     - **同期发现的既有缺口（已修，282–287）**：`--audit-file` 裸事件读取由 SLICE-282 修复；
       `publisher` 缺 `ops.read` 由 SLICE-284 修复；同刻事件顺序由 SLICE-286 定为 `event_id` 升序；
       `/api/credentials` 调用方非法租户 500 由 SLICE-283 修复；`.table-wrap` 最小宽度由 SLICE-285 修复；
-      compose 密钥运维手册由 SLICE-287 交付。详见下方「缺口清理（282–287）」。
-    - **仍记录未做的新观察**：侧栏入口不按能力隐藏（视图/接口仍 403）；9 个视图的表格未包在
-      `.table-wrap`，窄屏仍会压缩；自定义角色授予 `connectors.manage` 后 disable 可跨租户；
-      同刻事件超过 1000 条读取窗口的极端情形不在契约内；文件注册表不校验构建签名。
+      compose 密钥运维手册由 SLICE-287 交付。详见上方「缺口清理（282–287）」。
+    - **仍记录未做的新观察**：见上方「缺口清理（282–287）」末尾的同名清单。
     - **阶段 5 页面一键发布已交付**：ADR-0043 已入库（`docs/decisions/ADR-0043-console-compose-signing.md`），
       SLICE-280（后端）与 SLICE-281（向导）已合并。用户按硬规则单独同意的新增 `registry.compose` 与
-      `tests/test_console_me.py` 两处字面量断言已落地。剩余可选项：SLICE-282（compose 密钥托管、轮换与
-      最小权限的运维手册），以及上面列出的既有缺口。
+      `tests/test_console_me.py` 两处字面量断言已落地。密钥托管、轮换与最小权限的运维手册由
+      SLICE-287（`634b22b`）交付，见上方「缺口清理（282–287）」。
 
 MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
 
