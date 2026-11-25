@@ -1,0 +1,54 @@
+SLICE-288 侧栏入口按能力过滤 — 证据
+====================================
+
+日期: 2026-11-25
+分支: slice-288-nav-capabilities
+依据: SLICE-284 证据记录的新观察（侧栏入口不按能力隐藏）
+
+## 反例（先红）
+
+新增 `tests/test_console_vue_nav_capabilities.py` 后，把 `web/src/App.vue` 临时替换成 master 版本：
+
+    python -m pytest tests/test_console_vue_nav_capabilities.py tests/test_console_vue_shell.py \
+        tests/test_console_vue_wizard.py tests/test_console_vue_ecosystem.py tests/test_console_vue_roles.py -q
+    4 failed
+
+失败项：master 的侧栏入口没有任何 `v-if` 能力门控。
+恢复实现后连同相关的既有导航/外壳测试：
+
+    python -m pytest tests/test_console_vue_nav_capabilities.py tests/test_console_vue_shell.py \
+        tests/test_console_vue_wizard.py tests/test_console_vue_ecosystem.py tests/test_console_vue_roles.py -q
+    37 passed
+
+## 实现（后绿）
+
+`web/src/App.vue`：
+
+- 每个 `router-link` 入口加 `v-if="auth.hasCapability('<cap>')"`（映射见 spec）；
+  生态入口是三个读取能力的或；设置入口不设门控。
+- 四个分组按组内任一能力加 `v-if`，全组不可见时整组隐藏。
+- 保留原有 `to="/..."` 标记，既有导航断言无需修改。
+
+`docs/contracts/console.md` 的前端壳一节补一句「侧栏入口按能力过滤，不参与授权」。
+
+    cd web && npm run build
+    dist/assets/index-BP_s8ziQ.css 17.33 kB / assets/index-Bmz8pL-N.js 198.60 kB
+
+## 实机验证（8038，`--role publisher`，`--ui vue`）
+
+页面正文（无头 Edge 读取 `innerText`）：
+
+    概览 总览 Agent 注册表
+    运行 运行 计划 会话 聊天 Ask AI
+    治理 安全 工具 授权 语义层 检索 配额
+    开发 新建 Agent 生态 导入
+    设置
+
+publisher 看不到「审批」「审计」「角色」「用户」「连接器」「凭据」「对端」「模型」；
+`GET /api/roles` 仍 403（前端过滤不参与授权）。截图
+`docs/evidence/ui/SLICE-288-publisher-nav.png`。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、见下方数字
+    python scripts/check.py --full   -> 见下方数字

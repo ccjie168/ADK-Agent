@@ -46,7 +46,7 @@ OIDC 模式下，会话按 principal 的 `subject` 隔离。非 `admin` 身份�
 - 其余管理能力只由 `admin` 得到，包括 `grants.decide`、`connectors.manage`、`peers.manage`、`policy.write`、`ops.status`。`admin` 隐含全部能力。
 - 工具授权的申请与决定分离：有 `grants.request` 的角色可以提交，只有 `admin` 能批准或拒绝；
   面板上的 Approve/Deny 按钮按 `grants.decide` 显示。
-- 控制台的前端只按 `capabilities` 显示导航与按钮。每个接口仍各自授权，403 语义不变。能力清单不能替代接口检查。
+- 控制台的前端只按 `capabilities` 显示导航与按钮：侧栏每个入口声明所需能力，缺能力时整项隐藏，分组为空时整组隐藏；入口过滤不参与授权，深链接仍由接口拒绝。每个接口仍各自授权，403 语义不变。能力清单不能替代接口检查。
 - 能力清单获取失败时控制台保持现有布局，不阻断使用。
 - `roles.read`、`roles.manage` 属于管理能力，默认只发给 `admin`。
 
