@@ -39,7 +39,7 @@ SLICE-281 新建 Agent 向导 — 证据
     22 passed
 
     cd web && npm run build
-    dist/assets/index-i97u-_ES.css 17.30 kB / assets/index-yLVDCeCi.js 195.83 kB
+    dist/assets/index-i97u-_ES.css 17.30 kB / assets/index-DK9gVjS0.js 195.95 kB
 
 ## 实机验证（8027，`--ui vue`，`--role admin`，带 compose 密钥）
 
