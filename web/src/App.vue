@@ -101,6 +101,7 @@ onMounted(async () => {
           </router-link>
         </div>
         <div v-if="auth.hasCapability('ops.read') ||
+          auth.hasCapability('audit.read') ||
           auth.hasCapability('policy.read') ||
           auth.hasCapability('roles.read') ||
           auth.hasCapability('tools.read') ||
@@ -155,7 +156,15 @@ onMounted(async () => {
           auth.hasCapability('peers.read') ||
           auth.hasCapability('runs.read')" class="nav-group">
           <div class="nav-group-label">开发</div>
-          <router-link v-if="auth.hasCapability('registry.publish')" to="/agents/new" class="nav-item" @click="closeNav">
+          <router-link
+            v-if="
+              auth.hasCapability('registry.publish') ||
+              auth.hasCapability('registry.compose')
+            "
+            to="/agents/new"
+            class="nav-item"
+            @click="closeNav"
+          >
             <NavIcon name="agent" /><span>新建 Agent</span>
           </router-link>
           <router-link v-if="auth.hasCapability('model.read')" to="/model" class="nav-item" @click="closeNav">

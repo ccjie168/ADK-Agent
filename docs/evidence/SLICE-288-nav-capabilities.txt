@@ -32,7 +32,7 @@ SLICE-288 侧栏入口按能力过滤 — 证据
 `docs/contracts/console.md` 的前端壳一节补一句「侧栏入口按能力过滤，不参与授权」。
 
     cd web && npm run build
-    dist/assets/index-BP_s8ziQ.css 17.33 kB / assets/index-Bmz8pL-N.js 198.60 kB
+    dist/assets/index-BP_s8ziQ.css 17.33 kB / assets/index-DKUCiav8.js 198.68 kB
 
 ## 实机验证（8038，`--role publisher`，`--ui vue`）
 
@@ -48,7 +48,21 @@ publisher 看不到「审批」「审计」「角色」「用户」「连接器�
 `GET /api/roles` 仍 403（前端过滤不参与授权）。截图
 `docs/evidence/ui/SLICE-288-publisher-nav.png`。
 
+## 独立验证反馈修正
+
+首轮独立验证判 **REJECT**（B1 + 1 S + 3 N），已处理：
+
+1. **B1**：「治理」组级 `v-if` 漏了 `audit.read`，只有 `audit.read` 的自定义角色会看到 /audit 入口被整组隐藏。
+   组条件补上 `auth.hasCapability('audit.read')`；组级测试改为逐个断言组条件覆盖组内全部子能力
+   （`test_nav_groups_cover_every_child_capability`），这类漏项会被抓到。
+2. **S1**：证据的门禁段补齐 `--fast`/`--full` 的真实数字。
+3. **N1**：向导入口按视图一致接受 `registry.publish` 或 `registry.compose`
+   （compose-only 进入后由视图说明不能发布）；新增 `test_wizard_entry_accepts_publish_or_compose`。
+4. **N2**：`console.md` 的「能力清单获取失败保持现有布局」改为「按空能力渲染，只保留无能力约束入口」。
+5. **N3**：组级测试改为覆盖组内全部子能力，不再只看 label 前是否有 `v-if`。
+
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、见下方数字
-    python scripts/check.py --full   -> 见下方数字
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2275 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2275 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）

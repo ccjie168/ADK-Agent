@@ -27,7 +27,7 @@
 | 授权 | `grants.read` |
 | 连接器、凭据 | `connectors.read` |
 | 对端 | `peers.read` |
-| 新建 Agent | `registry.publish` |
+| 新建 Agent | `registry.publish` 或 `registry.compose`（进入后由视图说明 compose-only 不可发布） |
 | 模型 | `model.read` |
 | 生态 | `tools.read`、`connectors.read`、`peers.read` 任一 |
 | 设置 | 无（对所有登录主体可见） |
@@ -42,8 +42,9 @@
 
 - [ ] 每个入口都带能力门控 -> `test_nav_gates_every_entry`
 - [ ] 除设置外没有无门控入口 -> `test_nav_has_no_ungated_entries`
-- [ ] 分组在无可用入口时整组隐藏 -> `test_nav_hides_empty_groups`
+- [ ] 组条件覆盖组内全部子能力（无入口时整组隐藏） -> `test_nav_groups_cover_every_child_capability`
 - [ ] 生态入口接受三个读取能力之一 -> `test_ecosystem_needs_any_of_its_three_sources`
+- [ ] 向导入口接受 publish 或 compose -> `test_wizard_entry_accepts_publish_or_compose`
 - [ ] `web/dist/` 重建，实机截图确认 publisher 看不到审计/审批 -> 证据
 - [ ] `--full` 门禁通过
 

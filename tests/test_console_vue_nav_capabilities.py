@@ -15,7 +15,6 @@ def _app() -> str:
 ENTRIES = (
     ("/", "ops.read"),
     ("/agents", "registry.read"),
-    ("/agents/new", "registry.publish"),
     ("/registry", "registry.read"),
     ("/runs", "runs.read"),
     ("/plans", "runs.read"),
@@ -63,13 +62,39 @@ def test_nav_has_no_ungated_entries():
         assert "auth.hasCapability" in link, link
 
 
-def test_nav_hides_empty_groups():
+GROUPS = {
+    "概览": ("ops.read", "registry.read"),
+    "运行": ("runs.read", "sessions.read", "approvals.read", "chat.run"),
+    "治理": (
+        "ops.read",
+        "audit.read",
+        "policy.read",
+        "roles.read",
+        "tools.read",
+        "grants.read",
+        "connectors.read",
+        "peers.read",
+    ),
+    "开发": (
+        "registry.publish",
+        "model.read",
+        "tools.read",
+        "connectors.read",
+        "peers.read",
+        "runs.read",
+    ),
+}
+
+
+def test_nav_groups_cover_every_child_capability():
     source = _app()
-    for group in ("概览", "运行", "治理", "开发"):
+    for group, capabilities in GROUPS.items():
         label = f'<div class="nav-group-label">{group}</div>'
         index = source.index(label)
-        window = source[index - 400 : index]
+        window = source[index - 700 : index]
         assert "v-if=" in window, group
+        for capability in capabilities:
+            assert f"auth.hasCapability('{capability}')" in window, (group, capability)
 
 
 def test_ecosystem_needs_any_of_its_three_sources():
@@ -77,3 +102,11 @@ def test_ecosystem_needs_any_of_its_three_sources():
     window = source[source.index('to="/ecosystem"') - 260 : source.index('to="/ecosystem"')]
     for capability in ("tools.read", "connectors.read", "peers.read"):
         assert capability in window, capability
+
+
+def test_wizard_entry_accepts_publish_or_compose():
+    source = _app()
+    index = source.index('to="/agents/new"')
+    window = source[index - 220 : index]
+    assert "auth.hasCapability('registry.publish')" in window
+    assert "auth.hasCapability('registry.compose')" in window
