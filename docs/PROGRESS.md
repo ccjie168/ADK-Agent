@@ -2,19 +2,19 @@
 
 更新日期: 2026-11-25
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `a49a5e3` feat: add the MCP and A2A ecosystem page (ADR-0041, SLICE-279) (#314)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）进行中（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）
+最新提交: `7a49408` feat: add the guided new-agent wizard (ADR-0043, SLICE-281) (#317)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）已收口（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）；阶段 2（Agent 中心总览）已收口；阶段 3（安全合规聚合视图）已收口；阶段 4（MCP/API 生态展示）已收口；阶段 5（Agent 开发向导 + 页面一键发布，ADR-0043）已收口（SLICE-280 compose 后端、SLICE-281 向导）。
 
 ## 本次暂停交接
 
-- 代码在 `master`，`a49a5e3`。SLICE-113 到 274、275 到 279 已合并，ADR-0041 阶段 3 与阶段 4 收口；没有打开的 PR。下一步是阶段 5（先写 ADR-0043 的 SLICE-280）。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
-- 最近门禁: `--full` 9 步全 PASS，2220 passed, 105 skipped（PR #314 独立验证复跑，`docs/evidence/SLICE-279-ecosystem.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
-- 端到端验收: `python scripts/prove_it_works.py` 12 项真实进程/真实 Postgres 检查，2026-11-21 跑出 12/12 PASS（`docs/evidence/prove-2026-11-21.txt`），复盘见 `docs/reviews/retrospective-2026-11-21.md`；SLICE-204 到 216 之后于 2026-11-22 在 `3f7d325` 重跑仍是 12/12 PASS（`docs/evidence/prove-2026-11-22.txt`，含 `--smoke` 4/4）。
+- 代码在 `master`，`7a49408`。SLICE-113 到 281 已合并，ADR-0041 阶段 0 到 5 全部收口，ADR-0043（控制台 compose 签名与页面一键发布）已交付；没有打开的实现 PR（记录型 PR 除外）。缺口清单剩已知小项（见第 16 条）与可选的 SLICE-282（compose 密钥托管/轮换运维手册）。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
+- 最近门禁: `--full` 9 步全 PASS，2245 passed, 105 skipped（PR #317 独立验证复跑，`docs/evidence/SLICE-281-agent-wizard.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
+- 端到端验收: `python scripts/prove_it_works.py` 14 项真实进程/真实 Postgres 检查，2026-11-25 在 SLICE-280 修复轮上跑出 14/14 PASS（`docs/evidence/prove-2026-11-25.txt`，`NO_PROXY=127.0.0.1,localhost`，litellm 1.106.2）；更早的 12/12 记录见 `docs/evidence/prove-2026-11-21.txt`、`prove-2026-11-22.txt`，复盘见 `docs/reviews/retrospective-2026-11-21.md`。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
 - M6 已收口：Gate 1（ADR-0030 角色职责分离）、Gate 2/3（ADR-0028 网关策略服务端化）、Gate 4（ADR-0029 风险分级 L1–L4 + ADR-0034 写工具幂等）。Gate 5 是端到端 trace 验证，随前四项一起闭环（审计 trace_id 与 OTel trace_id 已对齐）。
 - ADR-0035（向量后端）已于 2026-11-20 会话确认 Accepted：Postgres + pgvector、embedding 复用 LiteLLM 通道、模型与维度由部署配置决定。slice 1-5 全部交付（pgvector 表与 RLS 检索、embedding 端口与带预算的网关、摄取管线、`PgVectorRagService` 检索、运维手册）；四个 live 用例需 `TEST_POSTGRES_URL`，pgvector SQL 与真实 LiteLLM embedding 调用尚未联网验证（运维验收项）。
-- 后续（M6 之外）: ADR-0031、ADR-0033、ADR-0035、ADR-0036、ADR-0037 全部交付；RAG 摄取与检索已由 SLICE-194/195 接到 CLI，运行时预取与审计由 SLICE-197/198 交付，控制台与触发接线由 SLICE-199 交付。ADR-0037（审计链按存储内容哈希）由 SLICE-201 到 203 交付。已接受 ADR 的缺口清单为空。
+- 后续（M6 之外）: ADR-0031、ADR-0033、ADR-0035、ADR-0036、ADR-0037 全部交付；RAG 摄取与检索已由 SLICE-194/195 接到 CLI，运行时预取与审计由 SLICE-197/198 交付，控制台与触发接线由 SLICE-199 交付。ADR-0037（审计链按存储内容哈希）由 SLICE-201 到 203 交付。已接受 ADR 的缺口清单只剩第 16 条列出的既有小项。
 - 恢复顺序: 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件，跑 `./.venv/Scripts/python.exe scripts/check.py --fast`，再从缺口清单挑一项。
 
 ## 一句话
@@ -303,7 +303,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 2. 密钥扫描不做历史扫描（gitleaks/trufflehog 延后）。GitHub 自定义 pattern 与 validity checks 需要付费套餐，当前关闭。
 3. legacy 无前缀 `user_id` 与 plain `app_name` 在 `--session-rls` 开启后不可见，不自动迁移；需要迁移时单独评审。
 4. UI 侧的登录、应用外壳、运行详情瀑布、审批工作台、市场卡片、角色视图、审批历史与运行详情下钻已完成，日志注入过滤、租户凭据引用绑定、连接器自助申请、声明式组合器、触发定义、webhook 执行、路径加固、调度循环、执行层级、agent 沙箱 worker、模型出口中介、触发路径的沙箱接入、审批接口、控制台读接口的能力校验与控制台/MCP 的沙箱执行适配、A2A 的注册表启动、沙箱工具调用中介协议、工具执行器接入、构建密钥、凭据信封加密与运行时接入、`remote-agents` 的凭据接入、控制面凭据写入端点、数据密钥重包裹、安装与使用手册、spec 用例名校验、AD/Entra/ADFS OIDC 指南、本地 KEK 加固与解密失败审计也已收口（SLICE-113 到 152）。v0.1.0 已于 2026-11-18 发布。SLICE-110 到 SLICE-152 已完成。
-5. 租户凭据只存引用，不存值。密钥后端已由 SLICE-139 交付（本地 KEK 信封加密），运行时解析已由 SLICE-140/141 接入工具网关、控制台与 `remote-agents`，控制面写入端点由 SLICE-142 交付，数据密钥重包裹（`credentials rewrap`）由 SLICE-143 交付；本地 KEK 只读 keyring 与权限检查由 SLICE-149 交付，解密失败审计由 SLICE-150 到 152 交付；凭据密钥后端已由 ADR-0027 选定 Vault/OpenBao Transit，`VaultKeyBackend` 与 `v: 2` payload 由 SLICE-160 交付，安装与运维手册由 SLICE-161 交付，迁移命令由 SLICE-162 交付；PKCS#11/HSM、KMIP 与云 KMS 未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板，没有控制台发布表单，模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。执行层级已进 manifest：新发布必须显式声明，无沙箱后端时 `sandboxed` 在发布与加载两处被拒；历史记录缺字段按 `in_process` 读取且 digest 不变。组合器与脚手架当前明确写 `in_process`，手写 manifest 暂无法与平台产物区分；SLICE-129 已交付子进程 worker 与协议，但尚未注册后端，publish 仍默认不可用；接入切片把 publish 默认翻成 `sandboxed`，`in_process` 只接受平台构建密钥签名的工件。沙箱 worker 的残余风险：POSIX 上 RLIMIT_NPROC 按 uid 计数且默认关闭，工件仍可读宿主文件系统，Windows 只有脚本级守卫；网络守卫是 Python 层，内省拿原始 C 类型或用 ctypes 可绕过。模型调用与工具调用都已经父进程中转，工具调用经工具网关（SLICE-137）；沙箱发布还必须同时落地平台门槛（POSIX、降 uid、网络命名空间）、`sandboxed` 的执行路由与平台构建密钥校验，再允许注册后端。这些按 ADR-0022 与 ADR-0024 的顺序另行切片。
+5. 租户凭据只存引用，不存值。密钥后端已由 SLICE-139 交付（本地 KEK 信封加密），运行时解析已由 SLICE-140/141 接入工具网关、控制台与 `remote-agents`，控制面写入端点由 SLICE-142 交付，数据密钥重包裹（`credentials rewrap`）由 SLICE-143 交付；本地 KEK 只读 keyring 与权限检查由 SLICE-149 交付，解密失败审计由 SLICE-150 到 152 交付；凭据密钥后端已由 ADR-0027 选定 Vault/OpenBao Transit，`VaultKeyBackend` 与 `v: 2` payload 由 SLICE-160 交付，安装与运维手册由 SLICE-161 交付，迁移命令由 SLICE-162 交付；PKCS#11/HSM、KMIP 与云 KMS 未实现；工具网关只做租户作用域，绑定存在性在连接器登记处检查。连接器申请没有过期、通知与控制面接口。组合器只有 `single-llm` 一个模板；控制台发布表单由 SLICE-280/281 交付（仅该模板），模型通道固定为 LiteLLM allowlist。触发执行已覆盖 webhook 与 schedule，调度按 slot 单赢家且只跑当前 slot，agent 失败不自动重试。文件存储路径已统一走 `safe_join`，Postgres 后端不受影响。执行层级已进 manifest：新发布必须显式声明，无沙箱后端时 `sandboxed` 在发布与加载两处被拒；历史记录缺字段按 `in_process` 读取且 digest 不变。组合器与脚手架当前明确写 `in_process`，手写 manifest 暂无法与平台产物区分；SLICE-129 已交付子进程 worker 与协议，但尚未注册后端，publish 仍默认不可用；接入切片把 publish 默认翻成 `sandboxed`，`in_process` 只接受平台构建密钥签名的工件。沙箱 worker 的残余风险：POSIX 上 RLIMIT_NPROC 按 uid 计数且默认关闭，工件仍可读宿主文件系统，Windows 只有脚本级守卫；网络守卫是 Python 层，内省拿原始 C 类型或用 ctypes 可绕过。模型调用与工具调用都已经父进程中转，工具调用经工具网关（SLICE-137）；沙箱发布还必须同时落地平台门槛（POSIX、降 uid、网络命名空间）、`sandboxed` 的执行路由与平台构建密钥校验，再允许注册后端。这些按 ADR-0022 与 ADR-0024 的顺序另行切片。
 
 6. 控制台的读路径已在 SLICE-133 对齐到面板能力（审计、策略、注册表与评测、工具、工具授权、连接器与申请、凭据、对端与远程目录）。SLICE-153 补上写路径与基础接口：注册表 load/unload 检查 `registry.load`，tool-grants 提交检查 `grants.request`，`/api/runs`、`/api/plans`、`/api/traces/{id}`、`/api/sessions`、`/api/chat` 检查基础能力（基础能力对现有每个角色都为真，租户隔离仍由既有过滤保证）。其余写接口维持 admin 判断，与只有 admin 才有的 `connectors.manage`/`peers.manage` 等价。`grants.decide` 的界面服务端不一致已由 SLICE-159 收口：operator/ops/approver 不再映射该能力，界面按钮隐藏，服务端保持 admin-only（会话确认，收紧而非放宽）。审批历史查询参数 `limit` 由 FastAPI 在进入处理函数前转换，越权调用方带非整数 `limit` 会先得 422 而非 403；不泄露数据，记为已知小缺口。SLICE-233（`93af8d8`）把读/写路由的能力检查统一移到 principal 解析后第一条语句（先于 config 404、非法参数 400 与租户检查），关闭「未授权调用方探测配置存在性」侧信道；写路径的 admin 判定改为 `connectors.manage`/`peers.manage`/`grants.decide` 能力（行为不变，与前端 `data-capability` 一致）。SLICE-234（`e652a7a`）把导入路由也收口：`POST /api/import/agent` 挂 `registry.publish`（publisher+admin），`POST /api/import/terminology` 挂新的 `semantics.write`（admin+operator），都是 principal 解析后第一条语句。SLICE-235（`8dfec14`）把只读面板收为 operator+：新增 `ops.read`（admin+operator）门控 overview/quota/rag/semantics，model 面板复用 `model.read`；服务端五个端点加检查，前端 tab/section 改 `data-capability` 并在 connect/SSE tick 按能力跳过加载。剩余待拍板：ask-ai 与 import 面板仍 `runs.read` 基础可见；「业务用户逐条写术语表」的轻量入口需新端点；租户切换监听里 `loadOverview()` 未按 `ops.read` 守卫（非安全，多余一次 403，可后续顺手收）。
 7. SLICE-138 的构建签名只绑定工件 digest，不绑定发布记录 manifest。SLICE-154 在控制面补上比较：上传时要求工件内 manifest 与所有租户中引用该 digest 的记录 manifest 一致，发布时在字节已存在的情况下再查一次；CLI 端原本就比较。残余：签名本身仍不覆盖 manifest（需要新签名格式，另行评审）；任一租户发布不匹配记录会让该 digest 的上传 fail-closed，且没有删除记录接口，只能换新工件。`scripts/demo_seed.py` 属本地演示信任域，仍生成只带演示发布签名、没有平台构建签名的 `in_process` 工件。
@@ -496,7 +496,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
           错误码按服务端实际返回映射（含 card_unreachable/card_unauthorized/card_too_large/card_invalid/card_name_mismatch）。
           实机：注册与禁用对端成功；不可达卡片返回 card_unreachable。证据 `docs/evidence/SLICE-270-peers-forms.txt`。
         **「页面可配置能力补齐」收口**：模型默认值、访问策略、注册表加载/卸载与清单注册、连接器与凭据、
-        审批与工具授权决定、对端与远端目录均可在页面操作；带签名工件的发布仍保留 CLI（私钥不进浏览器）。
+        审批与工具授权决定、对端与远端目录均可在页面操作；带签名工件的发布当时仍保留 CLI（私钥不进浏览器；阶段 5 已改为 SLICE-280/281 的页面一键发布）。
       - SLICE-271（Agent 中心跨租户与评测下钻）~~已合并 `65f36c1`~~：admin 显示租户切换
         （`GET /api/registry?tenant=`，非 admin 直连他租户仍由服务端 403）；有评测报告的版本行可内联查看
         `/{tenant}/{id}/{version}/eval`。实机：`?tenant=local` 三条、bot_a@1.0.0 评测 200（2/2）。
@@ -546,6 +546,20 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         最终门禁 2220 passed / 105 skipped。截图 `docs/evidence/ui/SLICE-279-ecosystem.png`。
         **ADR-0041 阶段 4 收口**。下一步阶段 5（先写 ADR-0043）。
     - **阶段 5**：Agent 开发向导（诉求 3）。把 `compose` 模板做成多步 UI 向导。
+      - SLICE-280（compose 后端与一键发布）~~已合并 `cd03d16`~~：新增 `registry.compose`（admin + publisher），
+        `GET /api/compose/templates`、`POST /api/compose/preview`、`POST /api/compose`；
+        `console` 四个 `--compose-*` 密钥参数 all-or-none（部分退出 2、坏密钥退出 1）；
+        `AuditEvent.template_id` 与 `agent.compose` 审计（不含指令原文）。
+        两轮验证（首轮 REJECT：深层嵌套 JSON 触发 `RecursionError`，预览与发布都 500；超长字段触发
+        `PackagingError`，预览 500、发布 503；补 400 `compose_invalid` 与字段上限后 PASS），最终门禁 2237 passed / 105 skipped；
+        用户要求的 `prove_it_works` 全量 14/14 PASS。证据 `docs/evidence/SLICE-280-compose-backend.txt`。
+      - SLICE-281（新建 Agent 向导）~~已合并 `7a49408`~~：`/agents/new` 四步向导（模板 → 参数 → 预览 → 发布），
+        模板与预览要求 `registry.publish`、发布要求 `registry.compose`，未配置密钥时给可复制的 CLI 命令；
+        错误码固定文案、前端上限与契约一致、无 `v-html`。实机（`--ui vue`，admin）走完整流程，
+        注册表出现 `shot_bot@2.0.0`，审计三条 `agent.compose`。两轮反馈修正后终验 PASS（首轮 PASS + 1 S；第二轮发现
+        `watch(step)` 异步清空让成功横幅不渲染，删掉冗余提示后复验 PASS），门禁 2245 passed / 105 skipped。
+        截图 `docs/evidence/ui/SLICE-281-wizard-{form,preview,published}.png`。
+        **ADR-0041 阶段 5 收口，ADR-0041 全部阶段完成**。下一步按缺口清单选。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
@@ -557,7 +571,10 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
       而 `FileAuditQuery` 按 `AuditRecord` 解析，写入事件后读 `/api/audit` 会 500；
       `publisher` 角色没有 `ops.read`，整个首页对其不可见；同一时间戳事件在 `limit` 边界上的
       子集与后端方向有关（契约未定义同刻顺序）。
-    - **阶段 5 发布方式已拍板**：用户选择「页面一键发布」，控制台持专用 compose 签名密钥。开工前先写 ADR-0043 并确认；只允许 `single-llm` 模板，新增 `registry.compose` 能力与 `agent.compose` 审计（只记模板/版本/digest，不记指令原文）。用户已按硬规则单独同意新增 `registry.compose` 并同步改 `tests/test_console_me.py` 的能力集合断言；这两项随阶段 5 首片（SLICE-280）落地，ADR-0043 与 `registry.compose` 目前尚未入库。
+    - **阶段 5 页面一键发布已交付**：ADR-0043 已入库（`docs/decisions/ADR-0043-console-compose-signing.md`），
+      SLICE-280（后端）与 SLICE-281（向导）已合并。用户按硬规则单独同意的新增 `registry.compose` 与
+      `tests/test_console_me.py` 两处字面量断言已落地。剩余可选项：SLICE-282（compose 密钥托管、轮换与
+      最小权限的运维手册），以及上面列出的既有缺口。
 
 MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
 
