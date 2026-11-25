@@ -3,7 +3,7 @@
 更新日期: 2026-11-26
 分支: master（工作区干净，只留本地工具目录未跟踪）
 最新提交: `5141db5` feat: resolve model credentials from provider records at runtime (SLICE-298) (#344)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）已收口（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）；阶段 2（Agent 中心总览）已收口；阶段 3（安全合规聚合视图）已收口；阶段 4（MCP/API 生态展示）已收口；阶段 5（Agent 开发向导 + 页面一键发布，ADR-0043）已收口（SLICE-280 compose 后端、SLICE-281 向导）；ADR-0044（载入侧构建签名）已交付（SLICE-291）；ADR-0045 方案 A（模型提供方记录，SLICE-296）已交付。
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）已收口（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）；阶段 2（Agent 中心总览）已收口；阶段 3（安全合规聚合视图）已收口；阶段 4（MCP/API 生态展示）已收口；阶段 5（Agent 开发向导 + 页面一键发布，ADR-0043）已收口（SLICE-280 compose 后端、SLICE-281 向导）；ADR-0044（载入侧构建签名）已交付（SLICE-291）；ADR-0045 方案 A（SLICE-296）、方案 B（SLICE-297）与运行时解析（SLICE-298）已交付；模型页与手册为 SLICE-299。
 
 ## 本次暂停交接
 
@@ -657,10 +657,11 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         `api_key`/`api_base`（不改模型名）；`FileProviderLookup` 先取方案 B 密文、再取
         `secret_ref` 环境变量，失败回落到现有默认；解密失败写 `model.key_failed`（有事件
         循环时）或脱敏日志。`console`、`serve`、`serve-many`、`serve-a2a`、`serve-triggers`
-        都接受 `--model-providers-dir`；列表接口顶层加 `key_entry`。两轮独立验证
-        （首轮 PASS 带 5 个 N；CI 的 secrets 步命中夹具 `secret://` 引用后加 allowlist，
-        复验 PASS）。证据 `docs/evidence/SLICE-298-model-runtime.txt`。
-        下一步 SLICE-299：「模型」页提供方与密钥表单、HTML 手册章节。
+        都接受 `--model-providers-dir`；列表接口顶层加 `key_entry`。两轮验证：本地首轮
+        PASS（5 个 N 提示，均不阻断）；随后 CI 的 secrets 步命中夹具 `secret://` 引用，
+        加 allowlist 后复验 PASS。证据 `docs/evidence/SLICE-298-model-runtime.txt`。
+        下一步 SLICE-299：「模型」页提供方与密钥表单、HTML 手册章节（ADR-0045 切片表把这两项
+        列在 298；因运行时解析单独成片，编号顺延为 299，内容不变）。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
