@@ -1,0 +1,49 @@
+SLICE-284 publisher 角色获得 `ops.read` — 证据
+============================================
+
+日期: 2026-11-25
+分支: slice-284-publisher-ops-read
+依据: PROGRESS 第 16 条既有缺口；用户 2026-11-25 会话同意新增并改 `tests/test_console_me.py`
+
+## 反例（先红）
+
+    python -m pytest tests/test_console_publisher_overview.py tests/test_console_me.py -q
+    2 failed, 9 passed
+
+失败项：publisher 的 `/api/me` 不含 `ops.read`，`/api/overview` 返回 403。
+base 角色 403 用例在旧代码上通过，作为不扩大基础能力的回归保护。
+
+## 实现（后绿）
+
+- `src/adk_agent/core/roles.py`：`CAPABILITIES_PUBLISHER` 增加 `ops.read`（`developer` 复用同一集合）。
+  `CAPABILITIES_ALL` 与能力词汇表不变，`web/src/api/capabilities.ts` 无需改。
+- `tests/test_console_me.py`：PUBLISHER 期望集合增加 `ops.read`（已获用户同意）。
+- `docs/contracts/console.md`：内置角色一节同步。
+- `_seed_role_store` 的加性回填会自动把 `ops.read` 补进已播种的内置 publisher/developer 角色，
+  无需迁移。
+
+    python -m pytest tests/test_console_publisher_overview.py tests/test_console_me.py \
+        tests/test_console_vue_roles.py tests/test_core_roles.py -q
+    23 passed, 1 skipped
+
+## 实机验证（8030，`--role publisher`，`--ui vue`）
+
+    GET /api/me          -> capabilities 含 ops.read
+    GET /api/overview    -> 200，四张卡（待审批/已注册 Agent/工具/待处理授权）
+    GET /api/roles       -> 403（未获得成员管理）
+    PUT /api/policy      -> 404（未配置策略；写能力未获得）
+
+首页截图 `docs/evidence/ui/SLICE-284-publisher-home.png`：publisher 现在能看到「总览」与四张卡、
+快捷入口与最近活动区；未获能力的读面板仍按各自能力拒绝。
+
+已知观察（记录，不在本切片范围）：侧栏入口目前不按能力隐藏，publisher 仍能看到「审批」「审计」等
+入口，点进去由视图/接口 403；这是既有 UI 行为。另外 `ops.read` 也打开安全面板 `/api/security`
+（配置审计后端时审计计数按调用方租户，admin 为全租户，无后端的内存回退是进程级；
+凭据计数按调用方租户；扫描计数与签名密钥 id 是进程级、对所有调用方相同；
+都不含租户数据或密钥值）——这是 `ops.read` 的直接语义。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2261 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2261 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
