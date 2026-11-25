@@ -1,0 +1,92 @@
+SLICE-292 全部视图的手机屏适配
+
+日期: 2026-11-25
+依据: 用户要求「所有的屏幕都做手机版适配」
+范围: 控制台 Vue 前端（27 个路由），只改共用样式、视口与 ChatView 的输入行类名。
+
+一、反例：实现前的状态
+
+实现前 `web/src/style.css` 只有 960px 一个断点：
+
+- 页头 `.page-head` 是横向布局，标题与操作按钮同排；
+- 行内控件 `.row` 不换行，聊天输入框与发送按钮挤在同一行；
+- 侧栏项只有 7px 上下内边距（约 32px 高），低于触屏可点下限；
+- `.token-form` 横向排列，登录输入框与按钮挤在一起；
+- `.table-wrap` 没有触屏惯性滚动；
+- 没有 `env(safe-area-inset-*)`，iPhone 手势条会压住底部内容。
+
+同一状态下新增的六个用例全部失败：
+
+    $ python -m pytest tests/test_console_vue_phone_layout.py -q
+    FAILED tests/test_console_vue_phone_layout.py::test_phone_breakpoint_covers_the_shell
+    FAILED tests/test_console_vue_phone_layout.py::test_tables_scroll_on_touch
+    FAILED tests/test_console_vue_phone_layout.py::test_viewport_allows_safe_areas
+    FAILED tests/test_console_vue_phone_layout.py::test_chat_composer_clears_the_home_bar
+    FAILED tests/test_console_vue_phone_layout.py::test_phone_tap_targets
+    FAILED tests/test_console_vue_phone_layout.py::test_login_form_stacks_on_phone
+    6 failed in 0.11s
+
+二、实测：390×844 遍历 27 个路由
+
+用 Edge headless（CDP，`mobile: true`, 390×844）登录管理员实例后逐个路由测量，
+判据是页面级 `documentElement.scrollWidth` 等于 390（无横向溢出），同时读页头方向、
+侧栏项高度与聊天输入行的定位：
+
+    overview     {"scroll":390,"headColumn":"column","navHeight":40}
+    agents       {"scroll":390,"headColumn":"column","navHeight":40}
+    agent-new    {"scroll":390,"headColumn":"column","navHeight":40}
+    approvals    {"scroll":390,"headColumn":"column","navHeight":40}
+    ask-ai       {"scroll":390,"headColumn":"column","navHeight":40}
+    chat         {"scroll":390,"headColumn":"column","navHeight":40,"composerSticky":"sticky","composerPad":"12px"}
+    connectors   {"scroll":390,"headColumn":"column","navHeight":40}
+    ecosystem    {"scroll":390,"headColumn":"column","navHeight":40}
+    credentials  {"scroll":390,"headColumn":"column","navHeight":40}
+    grants       {"scroll":390,"headColumn":"column","navHeight":40}
+    import       {"scroll":390,"headColumn":"column","navHeight":40}
+    peers        {"scroll":390,"headColumn":"column","navHeight":40}
+    plans        {"scroll":390,"headColumn":"column","navHeight":40}
+    policy       {"scroll":390,"headColumn":"column","navHeight":40}
+    registry     {"scroll":390,"headColumn":"column","navHeight":40}
+    audit        {"scroll":390,"headColumn":"column","navHeight":40}
+    model        {"scroll":390,"headColumn":"column","navHeight":40}
+    roles        {"scroll":390,"headColumn":"column","navHeight":40}
+    quota        {"scroll":390,"headColumn":"column","navHeight":40}
+    rag          {"scroll":390,"headColumn":"column","navHeight":40}
+    runs         {"scroll":390,"headColumn":"column","navHeight":40}
+    security     {"scroll":390,"headColumn":"column","navHeight":40}
+    semantics    {"scroll":390,"headColumn":"column","navHeight":40}
+    sessions     {"scroll":390,"headColumn":"column","navHeight":40}
+    tools        {"scroll":390,"headColumn":"column","navHeight":40}
+    settings     {"scroll":390,"headColumn":"column","navHeight":40}
+    users        {"scroll":390,"headColumn":"column","navHeight":40}
+
+27 个路由全部 `scroll == 390`；页头全部纵向；侧栏项 40px；
+聊天输入行在 600px 以下为 `position: sticky`，底部内边距带 `env(safe-area-inset-bottom)`
+（headless 下环境值为 0，所以显示 12px）。
+
+截图（同一轮抓取，390×844）：`docs/evidence/ui/SLICE-292/` 共 27 张，例如
+`overview.png`、`chat.png`、`roles.png`、`agent-new.png`。
+
+三、改动
+
+- `web/src/style.css`：新增 `@media (max-width: 600px)`，覆盖 `main`、`topbar`、
+  `page-head`、`row`、`form-grid`、`metric-grid`、`table-wrap`、`nav-item`/`primary`/`secondary`、
+  `login`、`token-form`、`chat-log`、`chat-composer`、`code-block`。
+- `web/index.html`：viewport 增加 `viewport-fit=cover`。
+- `web/src/views/ChatView.vue`：输入行加 `chat-composer` 类名。
+- `web/dist/` 重建。
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+    2309 passed, 105 skipped in 177.82s
