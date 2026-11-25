@@ -69,9 +69,10 @@ publisher 看不到「审批」「审计」「角色」「用户」「连接器�
    实测把 `registry.compose` 从组条件删掉会让该用例变红。
 8. **N5（记录并修）**：Agent 中心的「新建 Agent」按钮原先只按 `registry.publish`，与侧栏入口
    （publish 或 compose）不一致；现在同样接受两者，compose-only 进入向导后由视图说明不能发布。
+   新增 `test_hub_create_button_accepts_publish_or_compose` 锁定这一分支。
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2275 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2275 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2276 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2276 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）

@@ -45,6 +45,7 @@
 - [ ] 组条件覆盖组内全部子能力（无入口时整组隐藏） -> `test_nav_groups_cover_every_child_capability`
 - [ ] 生态入口接受三个读取能力之一 -> `test_ecosystem_needs_any_of_its_three_sources`
 - [ ] 向导入口接受 publish 或 compose -> `test_wizard_entry_accepts_publish_or_compose`
+- [ ] Agent 中心「新建」按钮与向导入口一致 -> `test_hub_create_button_accepts_publish_or_compose`
 - [ ] `web/dist/` 重建，实机截图确认 publisher 看不到审计/审批 -> 证据
 - [ ] `--full` 门禁通过
 

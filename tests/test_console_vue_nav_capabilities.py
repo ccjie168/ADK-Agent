@@ -93,3 +93,9 @@ def test_ecosystem_needs_any_of_its_three_sources():
     window = source[index - 260 : index]
     for capability in ("tools.read", "connectors.read", "peers.read"):
         assert capability in window, capability
+
+
+def test_hub_create_button_accepts_publish_or_compose():
+    hub = _WEB.joinpath("src", "views", "AgentHubView.vue").read_text(encoding="utf-8")
+    assert 'auth.hasCapability("registry.publish")' in hub
+    assert 'auth.hasCapability("registry.compose")' in hub
