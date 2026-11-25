@@ -5029,6 +5029,8 @@ def build_console_app(
             return denied
         if credentials is None:
             return JSONResponse({"error": "credentials_not_configured"}, status_code=404)
+        if tenant and tenant != caller.tenant and "admin" not in caller.roles:
+            return JSONResponse({"error": "tenant_forbidden"}, status_code=403)
         target = tenant if tenant is not None else caller.tenant
         if not _SAFE_TENANT.fullmatch(target):
             return JSONResponse({"error": "unsafe_tenant"}, status_code=400)
