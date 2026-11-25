@@ -3155,7 +3155,7 @@ def build_console_app(
             events = await audit_query.events(tenant=tenant, limit=limit)
         # Backends disagree on direction; callers slice "the last N" as the
         # newest, so normalise to ascending time before returning.
-        return sorted(events, key=lambda event: event.timestamp)
+        return sorted(events, key=lambda event: (event.timestamp, event.event_id))
 
     sandbox_policy = sandbox or SandboxPolicy()
     runners: dict[str, Runner] = {}

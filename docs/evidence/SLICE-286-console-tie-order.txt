@@ -1,0 +1,42 @@
+SLICE-286 控制台审计事件的同刻顺序 — 证据
+==========================================
+
+日期: 2026-11-25
+分支: slice-286-event-tie-order
+依据: PROGRESS 第 16 条既有缺口（同刻事件在 limit 边界上的子集与后端方向有关）
+
+## 反例（先红）
+
+    python -m pytest tests/test_console_audit_tie_order.py -q
+    2 failed, 1 passed
+
+失败项：同刻事件按后端顺序返回——内存后端是插入顺序（c、a、b），文件后端是最新在前（b、a）。
+不同时间戳的用例在旧代码上通过，作为回归保护。
+
+## 实现（后绿）
+
+`src/adk_agent/console.py` 的 `_query_events` 排序键改为 `(timestamp, event_id)`；
+`/api/audit`、`/api/runs`、trace 共用这一处。审计服务 `GET /v1/events` 的「同一时间按写入顺序」
+契约不变，本切片不动。
+
+    python -m pytest tests/test_console_audit_tie_order.py tests/test_console_audit_order.py \
+        tests/audit -q
+    83 passed, 14 skipped
+
+契约：`docs/contracts/console.md` 的 `GET /api/audit` 写明同刻按 `event_id` 升序。
+
+## 实机验证（8032，`--audit-file`，admin）
+
+独立进程按 `zeta`、`alpha` 的顺序写入两条同一时间戳的裸事件：
+
+    GET /api/audit?limit=10
+    audit=200
+    ['alpha', 'zeta']
+
+即顺序由 `event_id` 决定，与写入/后端方向无关。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2261 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2261 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
