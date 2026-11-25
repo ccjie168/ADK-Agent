@@ -59,7 +59,13 @@ SLICE-298 模型提供方运行时解析
     $ python -m pytest -q
     2353 passed, 105 skipped, 4 warnings in 186.92s
 
-五、实现要点
+五、CI 上的 secrets 补充
+
+首轮 CI 在 secrets 步命中 `tests/test_model_provider_runtime.py` 的 `secret://` 夹具引用
+（本机 venv 的 detect-secrets 插件集不同，未复现）。按仓库既有做法在那一行加
+`# pragma: allowlist secret`，断言未改；引用不是密钥值。
+
+六、实现要点
 
 - `build_model` 现在调用 `resolve_model_config`；记录只补 `api_key`/`api_base`，
   不改变调用方给的模型名。
@@ -72,7 +78,7 @@ SLICE-298 模型提供方运行时解析
 - 记录文件损坏时整次 lookup 回落到环境变量并记日志，不抛到模型构建。
 - `GET /api/model-providers` 顶层 `key_entry` 供页面判断是否显示密钥录入。
 
-六、范围外（SLICE-299）
+七、范围外（SLICE-299）
 
 - Vue「模型」页提供方与密钥表单。
 - `docs/guides/console-ui.html` 手册章节。
