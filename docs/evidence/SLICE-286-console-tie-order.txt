@@ -10,8 +10,8 @@ SLICE-286 控制台审计事件的同刻顺序 — 证据
     python -m pytest tests/test_console_audit_tie_order.py -q
     2 failed, 1 passed
 
-失败项：同刻事件按后端顺序返回——内存后端是插入顺序（c、a、b），文件后端是最新在前（b、a）。
-不同时间戳的用例在旧代码上通过，作为回归保护。
+失败项：同刻事件按插入顺序返回——内存后端写 c、a、b 读回 c、a、b；文件后端同刻按行号升序
+返回 a、b，所以第二条用例真正变红的是内存分支。不同时间戳的用例在旧代码上通过，作为回归保护。
 
 ## 实现（后绿）
 
@@ -25,15 +25,18 @@ SLICE-286 控制台审计事件的同刻顺序 — 证据
 
 契约：`docs/contracts/console.md` 的 `GET /api/audit` 写明同刻按 `event_id` 升序。
 
-## 实机验证（8032，`--audit-file`，admin）
+## 实机验证（内存后端，两份代码对照）
 
-独立进程按 `zeta`、`alpha` 的顺序写入两条同一时间戳的裸事件：
+8034 用同一份脚本启动内存 `ListAuditSink` 的控制台，先写 `zeta` 再写 `alpha`（同一时间戳）：
 
-    GET /api/audit?limit=10
-    audit=200
-    ['alpha', 'zeta']
+    8034（本切片代码）  GET /api/audit -> ['alpha', 'zeta']
+    8035（master 代码，PYTHONPATH 指向 master 的 src）-> ['zeta', 'alpha']
 
-即顺序由 `event_id` 决定，与写入/后端方向无关。
+两行是同一个脚本、同一组事件，只有 `_query_events` 的排序键不同，证明实机行为随修复改变。
+文件后端同刻本就按行号升序，不能区分修复，故没有用它做对照。
+
+已知限制（记录）：`_query_events` 先向后端取最多 1000 条再排序，同刻事件超过 1000 条时
+进入窗口的子集仍由后端顺序决定；契约已写成「控制台读取窗口内」。
 
 ## 门禁
 
