@@ -25,6 +25,7 @@
 | 安装手册里的命令与 flag 真实可执行 | `tests/test_install_guide.py` |
 | 发布说明与 `pyproject.toml` 版本一致、无占位 | `tests/test_release_notes.py` |
 | 部署清单与运维手册章节 | `tests/test_deploy_manifests.py` |
+| 验收脚本的每个服务调用同时带 `--artifact-keys` 与 `--builder-keys` | `tests/test_prove_harness_builder_trust.py` |
 
 ## 提交前人工检查
 
@@ -35,6 +36,11 @@
 - 接触 CLI flag 的测试清掉宿主环境变量（`CREDENTIAL_DATABASE_URL`、`ADK_SECRET_KEKS`）。
 - 并发结论要有强制交错的用例，不是“先 disable 再 rewrap”的顺序用例。
 - 没有 `git add -A` / `git add .`；没有改已有测试的断言（只改输入数据要在证据里写明）。
+- 收紧载入或执行契约（新增必需参数、加校验、改默认拒绝方向）时，grep 所有消费端：
+  `src/` 调用点、`scripts/prove_it_works.py`、`scripts/demo_seed.py`、测试与手册。
+  验收与演示脚本要同步补参数，并加静态锁定测试，不能只靠人记得。
+  SLICE-291 加严构建签名后，验收脚本六处服务调用漏了 `--builder-keys`，
+  端到端验收因此 6 项失败（SLICE-295 修复）。
 
 ## 工具约定
 
