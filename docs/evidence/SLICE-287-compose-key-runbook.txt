@@ -7,13 +7,19 @@ SLICE-287 compose 签名密钥运维手册 — 证据
 
 ## 反例（先红）
 
-新增 `tests/test_compose_signing_guide.py` 后，把指南文件暂时移出工作树复跑（模拟实现前）：
+新增 `tests/test_compose_signing_guide.py` 后分两步验证红灯：
 
-    python -m pytest tests/test_compose_signing_guide.py -q
-    3 failed
+1. 只把指南移出工作树（`operations.md` 链接还在）：
 
-失败项：指南与运维链接都不存在。恢复指南并补上运维链接后 3 passed。
-（首次运行是在写完指南正文、尚未补 `operations.md` 链接时，1 failed / 2 passed；上面是完整的先红形态。）
+       python -m pytest tests/test_compose_signing_guide.py -q
+       2 failed, 1 passed
+
+2. 实现前形态（指南与运维链接都不存在，见 master）：
+
+       python -m pytest tests/test_compose_signing_guide.py -q
+       3 failed
+
+恢复指南并补上运维链接后 3 passed；新增负向断言后 4 passed。
 
 ## 实现（后绿）
 
@@ -25,7 +31,7 @@ SLICE-287 compose 签名密钥运维手册 — 证据
 `docs/guides/operations.md` 的「密钥轮换」增加一条链接。
 
     python -m pytest tests/test_compose_signing_guide.py -q
-    3 passed
+    4 passed
 
 ## 命令核对
 
@@ -36,6 +42,6 @@ SLICE-287 compose 签名密钥运维手册 — 证据
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2266 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2266 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2267 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2267 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）

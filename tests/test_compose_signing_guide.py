@@ -43,3 +43,11 @@ def test_guide_covers_trust_rotation_and_revocation():
 def test_operations_links_the_guide():
     text = _read("operations.md")
     assert "compose-signing.md" in text
+
+
+def test_guide_does_not_claim_compose_verifies_the_builder_signature():
+    text = _read("compose-signing.md")
+    assert "CLI `compose` 只负责签名" in text
+    for line in text.splitlines():
+        if "自查构建签名 |" in line:
+            assert "compose" not in line, line

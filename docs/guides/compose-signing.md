@@ -44,7 +44,7 @@ adk-agent console --agents agents.py --ui vue \
   --compose-builder-key /etc/adk/compose-builder.pem --compose-builder-key-id builder-2026-11
 ```
 
-- 只给一部分参数：启动退出 2；私钥不可读或不是 Ed25519：退出 1。
+- 只给一部分参数、或 key id 为空串：启动退出 2；私钥不可读或不是 Ed25519：退出 1。
 - 四个都不给：`POST /api/compose` 返回 404 `compose_not_configured`，模板与预览仍可用。
 - 密钥文件只允许控制台运行用户读取（0600 / 0400），不要给组或其他用户。
 - 与审计签名密钥环（`ADK_AUDIT_KEYRING`）、凭据 KEK（`ADK_SECRET_KEKS`/Vault）完全分离，
@@ -59,12 +59,14 @@ adk-agent console --agents agents.py --ui vue \
 |---|---|---|---|
 | 控制台 / MCP / `serve*` 加载工件 | `--artifact-keys FILE` | `ADK_ARTIFACT_KEYS` | `{"compose-2026-11": "<32 字节 hex>"}` |
 | `serve-registry` 校验构建签名 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | `{"builder-2026-11": "<32 字节 hex>"}` |
-| CLI `publish`/`compose` 自查构建签名 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | 同上 |
+| CLI `publish` 自查构建签名 | `--builder-keys FILE` | `ADK_BUILDER_KEYS` | 同上 |
 
 密钥 id 要与 `--compose-key-id` / `--compose-builder-key-id` 完全一致。
 
 已知限制：文件注册表（`--registry DIR`）只存记录与字节，不校验构建签名；控制台用文件注册表
 发布时构建签名只被记录、不被验证。需要构建信任强制时用 `serve-registry`（HTTP 模式）。
+CLI `compose` 只负责签名，不校验构建签名；需要在发布前自查构建签名时用 `publish` 的
+`--builder-keys`（或 `ADK_BUILDER_KEYS`）。
 
 ## 轮换
 
@@ -91,6 +93,6 @@ adk-agent console --agents agents.py --ui vue \
 - 私钥只放在控制台主机，由专用系统用户持有；不要出现在进程参数快照之外的地方（参数只含路径）。
 - 不要把私钥拷进容器镜像或 ConfigMap；Secret 挂载用只读卷并限制 RBAC。
 - 备份策略里单独备份信任集（公钥）与私钥文件；恢复后先跑一次 `POST /api/compose/preview`
-  确认模板与注册表可用，再做真实发布。
+  确认模板与渲染可用，再用 `GET /api/registry` 确认注册表连通，最后做真实发布。
 - 控制台本身就是签名路径：能触发 `POST /api/compose` 的主体等同发布权，按高价值目标加固
   （强认证、最小角色、审计告警）。
