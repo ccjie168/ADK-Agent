@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface RoleBinding {
   role: string;
@@ -65,7 +66,7 @@ onMounted(async () => {
   try {
     applyPolicy(await getJson<AccessPolicy>("/api/policy"));
   } catch {
-    error.value = "policy unavailable";
+    error.value = "策略存储不可用：检查 --policy 文件或策略服务";
   }
 });
 </script>
@@ -84,7 +85,7 @@ onMounted(async () => {
         </div>
       </template>
       <pre v-else-if="policy" class="policy-view">{{ pretty(policy) }}</pre>
-      <p v-else class="placeholder">暂无策略</p>
+      <EmptyState v-else description="策略决定工具调用的风险分级与审批阈值；需要 policy.write 能力才能编辑。">暂无策略</EmptyState>
     </template>
   </div>
 </template>

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { apiFetch, getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface CredentialBinding {
   credential_id: string;
@@ -29,7 +30,7 @@ async function reload() {
   try {
     credentials.value = await getJson<CredentialBinding[]>("/api/credentials");
   } catch {
-    error.value = "credentials unavailable";
+    error.value = "凭据存储不可用：配置 --credentials-dir 或 --credential-db 后刷新";
   }
 }
 
@@ -100,7 +101,7 @@ onMounted(async () => {
     <p v-else-if="error" class="login-msg">{{ error }}</p>
     <template v-else>
       <p v-if="message" class="login-msg">{{ message }}</p>
-      <div class="table-wrap">
+      <div v-if="credentials.length > 0" class="table-wrap">
   <table class="data-table">
         <thead>
           <tr>
@@ -125,12 +126,10 @@ onMounted(async () => {
               </button>
             </td>
           </tr>
-          <tr v-if="credentials.length === 0">
-            <td colspan="6" class="placeholder">暂无凭据</td>
-          </tr>
-        </tbody>
+                  </tbody>
         </table>
       </div>
+      <EmptyState v-else description="凭据只保存引用，密钥值由服务端环境变量提供；用下方表单登记引用。">暂无凭据</EmptyState>
 
       <template v-if="canManage">
         <h2>注册凭据引用</h2>

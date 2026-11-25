@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { getJson } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import PageHeader from "../components/PageHeader.vue";
+import EmptyState from "../components/EmptyState.vue";
 
 interface ConceptScheme {
   scheme_id: string;
@@ -23,7 +24,7 @@ onMounted(async () => {
   try {
     schemes.value = await getJson<ConceptScheme[]>("/api/semantics");
   } catch {
-    error.value = "semantics unavailable";
+    error.value = "术语表存储不可用：配置语义层存储后刷新";
   }
 });
 </script>
@@ -38,7 +39,10 @@ onMounted(async () => {
         <div class="stat-label">术语表</div>
         <div class="stat-value">{{ schemeLabel(scheme) }}</div>
       </div>
-      <p v-if="schemes.length === 0" class="placeholder">暂无术语表</p>
+      <EmptyState
+        v-if="schemes.length === 0"
+        description="术语表用于检索与语义层；导入术语表后在此查看。"
+      >暂无术语表</EmptyState>
     </div>
   </div>
 </template>
