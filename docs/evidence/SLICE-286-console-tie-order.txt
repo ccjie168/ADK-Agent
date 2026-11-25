@@ -1,0 +1,52 @@
+SLICE-286 控制台审计事件的同刻顺序 — 证据
+==========================================
+
+日期: 2026-11-25
+分支: slice-286-event-tie-order
+依据: PROGRESS 第 16 条既有缺口（同刻事件在 limit 边界上的子集与后端方向有关）
+
+## 反例（先红）
+
+    python -m pytest tests/test_console_audit_tie_order.py -q
+    2 failed, 1 passed
+
+失败项：内存后端写 c、a、b 读回 c、a、b；文件后端同刻按**最新的行在前**（写入 a、b 读回 b、a），
+所以两条后端断言在旧代码上都失败。不同时间戳的用例在旧代码上通过，作为回归保护。
+（第二轮验证指出最初的 file 写序 b、a 恰好与 event_id 升序重合，file 断言在旧代码上会误绿；
+测试已改为 a、b 写序，让 file 分支也能区分修复。）
+
+## 实现（后绿）
+
+`src/adk_agent/console.py` 的 `_query_events` 排序键改为 `(timestamp, event_id)`；
+`/api/audit`、`/api/runs`、trace 共用这一处。审计服务 `GET /v1/events` 的「同一时间按写入顺序」
+契约不变，本切片不动。
+
+    python -m pytest tests/test_console_audit_tie_order.py tests/test_console_audit_order.py \
+        tests/audit -q
+    83 passed, 14 skipped
+
+契约：`docs/contracts/console.md` 的 `GET /api/audit` 写明同刻按 `event_id` 升序。
+
+## 实机验证（两份代码对照）
+
+同一份脚本分别用本切片代码与 master 代码（`PYTHONPATH` 指向从 `git archive master` 解出的 src）
+启动控制台，写入同一时间戳的事件，只有 `_query_events` 的排序键不同：
+
+    内存后端，写入顺序 zeta、alpha
+      8034 本切片 -> ['alpha', 'zeta']
+      8035 master -> ['zeta', 'alpha']
+
+    文件后端（`--audit-file`），写入顺序 alpha、zeta（最新行在前，master 读回 zeta、alpha）
+      8036 本切片 -> ['alpha', 'zeta']
+      8037 master -> ['zeta', 'alpha']
+
+两种后端都随修复改变，说明排序键而非写入顺序决定结果。
+
+已知限制（记录）：`_query_events` 先向后端取最多 1000 条再排序，同刻事件超过 1000 条时
+进入窗口的子集仍由后端顺序决定；契约已写成「控制台读取窗口内」。
+
+## 门禁
+
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2261 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2261 passed / 105 skipped
+                                        （format/lint/types/layering/specs/test/sast/deps/secrets）
