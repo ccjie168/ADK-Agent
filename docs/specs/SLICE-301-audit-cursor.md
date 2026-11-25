@@ -30,7 +30,7 @@
 - [ ] 游标分页无重复无遗漏 -> `test_file_query_cursor_pages_same_timestamp`
 - [ ] 审计服务接受游标并拒绝半对 -> `test_audit_service_cursor_params`
 - [ ] HTTP 查询客户端发送游标 -> `test_http_query_sends_cursor`
-- [ ] 控制台读全 1200 条同刻事件 -> `test_console_audit_reads_past_same_timestamp_window`
+- [ ] 控制台在同刻 1200 条乱序写入时取到最近 200 条 -> `test_console_audit_reads_past_same_timestamp_window`
 - [ ] `--full` 门禁通过
 
 ## 反例
