@@ -625,8 +625,9 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
     - **验收脚本构建信任（295，2026-11-25）**：
       - SLICE-295 验收脚本补齐 `--builder-keys` ~~已合并 `24a4f7d`~~（#336）：SLICE-291 收紧后，
         `prove_it_works.py` 的六处服务调用漏了构建信任集，端到端 6 项失败；补齐后 14/14 PASS。
-        新增静态锁定测试，切片检查表与 `adk-slice` skill 增加「收紧载入/执行契约时同步全部消费端」
-        的检查点。两轮验证。
+        新增静态锁定测试，切片检查表增加「收紧载入/执行契约时同步全部消费端」的检查点，
+        `adk-slice` skill 同步补了两条（本地 skill，不入库）。两轮修复轮（首次插入顺序错误与
+        下一片红测试污染门禁，均已修正并复跑）。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
