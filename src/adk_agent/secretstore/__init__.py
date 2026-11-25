@@ -10,6 +10,7 @@ from .keys import (
     load_key_backend,
     load_local_backend,
 )
+from .model_keys import ModelKeyResolver, ModelKeyUnavailable, model_key_aad
 from .providers import (
     EnvSecretProvider,
     MappingSecretProvider,
@@ -28,6 +29,8 @@ __all__ = [
     "KeyBackendError",
     "LocalKeyBackend",
     "MappingSecretProvider",
+    "ModelKeyResolver",
+    "ModelKeyUnavailable",
     "PrefixedEnvSecretProvider",
     "RoutingSecretProvider",
     "SecretNotFound",
@@ -37,5 +40,6 @@ __all__ = [
     "TenantSecretProvider",
     "load_key_backend",
     "load_local_backend",
+    "model_key_aad",
     "secret_header_provider",
 ]

@@ -369,6 +369,28 @@ Prometheus 文本格式 0.0.4。和其他 `/api/*` 一样需要 bearer token。
 （`litellm|gemini|claude|vertex`）、`model`、`base_url`（可选）、`secret_ref`（可选，
 `secret://tenant/name`）、`enabled`、`updated_at`、`updated_by`。记录不含密钥值。
 
+每个记录另带响应字段 `key_configured`（布尔）与 `key_hint`（掩码字符串或 null）；
+密钥录入未开启时固定 `false` / `null`。掩码形如 `sk-…abcd`，不是明文也不是密文。
+
+## `PUT /api/model-providers/{provider_id}/key` -> `{provider_id, key_configured, key_hint}`
+
+只写录入模型密钥（ADR-0045 方案 B）。需要 `model.write`，缺少返回 403 `forbidden`。
+密钥明文只在请求体与加密瞬间存在；持久层只存信封密文与掩码。
+
+- 未开启 `console --model-key-entry` 返回 503 `{"error":"model_key_entry_disabled"}`。
+- 提供方记录不存在返回 404 `provider_not_found`（先于 key 校验）。
+- 密钥后端未配置（无 `ADK_SECRET_KEKS` / `ADK_SECRET_KEKS_FILE`，或
+  `ADK_SECRET_BACKEND=vault` 的配置不完整）返回 503 `model_key_entry_unavailable`。
+- 请求体 `api_key` 不是字符串、为空或超过 512 字符返回 400 `invalid_key`。
+- 成功返回 200 与掩码，并写一条 `model.key.set` 审计：只有 provider_id 与类型。
+- 密文写入 `<providers>/keys/<provider_id>.json`，AAD 为 `adk-model-provider:<provider_id>`；
+  目录必须在仓库之外，`--model-key-entry` 的启动检查会拒绝仓库内路径。
+
+## `DELETE /api/model-providers/{provider_id}/key` -> `{provider_id, key_configured: false}`
+
+吊销已录入的密钥，幂等；需要 `model.write` 与开启的密钥录入。写 `model.key.revoke` 审计；
+后端未配置时仍可删除（不需要解密）。
+
 ## `PUT /api/model-providers/{provider_id}` -> `ModelProviderRecord`
 
 新建或覆盖一条提供方记录。需要 `model.write` 能力（仅 admin），缺少返回 403 `forbidden`。

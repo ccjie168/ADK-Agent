@@ -179,6 +179,32 @@ def _model_provider_store(args: argparse.Namespace) -> Any:
     return FileModelProviderStore(directory) if directory else None
 
 
+def _inside_repository(path: str) -> bool:
+    """True when any parent of ``path`` (including itself) holds a ``.git`` entry."""
+    resolved = Path(path).resolve(strict=False)
+    return any((parent / ".git").exists() for parent in (resolved, *resolved.parents))
+
+
+def _model_provider_keys(args: argparse.Namespace) -> Any:
+    """Build the encrypted model key store when ``--model-key-entry`` is on."""
+    if not getattr(args, "model_key_entry", False):
+        return None
+    from .registry import FileModelProviderKeyStore
+
+    directory = getattr(args, "model_providers_dir", None)
+    if not directory:
+        print("--model-key-entry needs --model-providers-dir", file=sys.stderr)
+        raise SystemExit(1)
+    if _inside_repository(directory):
+        print(
+            "model provider storage must live outside the repository "
+            "(ADR-0045 option B); choose a directory outside any .git root",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return FileModelProviderKeyStore(directory)
+
+
 def _model_config_store(args: argparse.Namespace) -> Any:
     """Build the global default model store from ``--model-config-dir`` or ``--model-config-db``."""
     from .registry.model_config import FileModelConfigStore
@@ -2073,6 +2099,14 @@ def main(argv: list[str] | None = None) -> None:
         help="directory for model provider records (ADR-0045)",
     )
     p_console.add_argument(
+        "--model-key-entry",
+        action="store_true",
+        help=(
+            "allow admins to store model API keys encrypted through the console "
+            "(ADR-0045 option B; needs --model-providers-dir outside the repository)"
+        ),
+    )
+    p_console.add_argument(
         "--ui",
         choices=("legacy", "vue"),
         default="legacy",
@@ -3445,6 +3479,8 @@ def main(argv: list[str] | None = None) -> None:
             terminology=_terminology_store(args),
             model_config_store=_model_config_store(args),
             model_providers=_model_provider_store(args),
+            model_keys=_model_provider_keys(args),
+            model_key_entry=args.model_key_entry,
             role_store=role_store,
             user_binding_store=user_binding_store,
             security_report=args.security_report,

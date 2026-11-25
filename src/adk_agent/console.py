@@ -177,6 +177,16 @@ _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 _SAFE_TENANT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}")
 _SAFE_PROVIDER_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")
+_MODEL_KEY_MAX = 512
+
+
+def _model_key_hint(value: str) -> str:
+    """Mask a model key, keeping at most the first three and last four chars."""
+    tail = value[-4:] if len(value) >= 4 else ""
+    prefix = value[:3] if len(value) >= 8 else ""
+    return f"{prefix}…{tail}" if prefix else f"…{tail}"
+
+
 _GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})
 _CONNECTOR_REQUEST_STATUSES = frozenset({"pending", "approved", "denied"})
 
@@ -2979,6 +2989,9 @@ def build_console_app(
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
     model_providers: Any | None = None,
+    model_keys: Any | None = None,
+    model_key_entry: bool = False,
+    model_key_backend: Any | None = None,
     role_store: RoleStore | None = None,
     user_binding_store: UserBindingStore | None = None,
     security_report: str | None = None,
@@ -3912,8 +3925,15 @@ def build_console_app(
             return denied
         if model_providers is None:
             return JSONResponse({"error": "model_providers_not_configured"}, status_code=404)
-        records = await model_providers.list()
-        return {"providers": [record.model_dump(mode="json") for record in records]}
+        hints = await model_keys.hints() if model_key_entry and model_keys is not None else {}
+        providers = []
+        for record in await model_providers.list():
+            item = record.model_dump(mode="json")
+            hint = hints.get(record.provider_id)
+            item["key_configured"] = hint is not None
+            item["key_hint"] = hint["hint"] if hint is not None else None
+            providers.append(item)
+        return {"providers": providers}
 
     @app.put("/api/model-providers/{provider_id}")
     async def put_model_provider(provider_id: str, request: Request) -> Any:
@@ -3978,6 +3998,116 @@ def build_console_app(
             )
         )
         return record.model_dump(mode="json")
+
+    def _key_error(code: str, status: int) -> JSONResponse:
+        return JSONResponse({"error": code}, status_code=status)
+
+    @app.put("/api/model-providers/{provider_id}/key")
+    async def put_model_provider_key(provider_id: str, request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "model.write")
+        if denied is not None:
+            return denied
+        if not model_key_entry:
+            return _key_error("model_key_entry_disabled", 503)
+        if model_providers is None or model_keys is None:
+            return _key_error("model_providers_not_configured", 404)
+        if _SAFE_PROVIDER_ID.fullmatch(provider_id) is None:
+            return _key_error("invalid_provider", 400)
+        provider = await model_providers.get(provider_id)
+        if provider is None:
+            return _key_error("provider_not_found", 404)
+        backend = model_key_backend
+        if backend is None:
+            from .secretstore import load_key_backend
+
+            try:
+                backend = load_key_backend()
+            except Exception:  # noqa: BLE001 - malformed keyring is a config error
+                backend = None
+        if backend is None:
+            return _key_error("model_key_entry_unavailable", 503)
+        try:
+            body = await request.json()
+        except ValueError:
+            return _key_error("invalid_key", 400)
+        api_key = body.get("api_key") if isinstance(body, dict) else None
+        if (
+            not isinstance(api_key, str)
+            or not api_key
+            or len(api_key) > _MODEL_KEY_MAX
+            or "\r" in api_key
+            or "\n" in api_key
+        ):
+            return _key_error("invalid_key", 400)
+        from .secretstore import KeyBackendError
+        from .secretstore.model_keys import model_key_aad
+
+        try:
+            wrapped = backend.wrap(api_key.encode("utf-8"), model_key_aad(provider_id))
+        except KeyBackendError:
+            return _key_error("model_key_entry_unavailable", 503)
+        hint = _model_key_hint(api_key)
+        stored = await model_keys.put(
+            provider_id,
+            wrapped,
+            key_id=backend.current_key_id(),
+            hint=hint,
+            updated_by=caller.subject,
+        )
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=dev_agent_ref("model"),
+                action="model.key.set",
+                target=provider_id,
+                provider_kind=provider.kind,
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return {
+            "provider_id": provider_id,
+            "key_configured": True,
+            "key_hint": hint,
+            "updated_at": stored["updated_at"],
+            "updated_by": caller.subject,
+        }
+
+    @app.delete("/api/model-providers/{provider_id}/key")
+    async def delete_model_provider_key(provider_id: str, request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "model.write")
+        if denied is not None:
+            return denied
+        if not model_key_entry:
+            return _key_error("model_key_entry_disabled", 503)
+        if model_providers is None or model_keys is None:
+            return _key_error("model_providers_not_configured", 404)
+        if _SAFE_PROVIDER_ID.fullmatch(provider_id) is None:
+            return _key_error("invalid_provider", 400)
+        provider = await model_providers.get(provider_id)
+        await model_keys.delete(provider_id)
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=dev_agent_ref("model"),
+                action="model.key.revoke",
+                target=provider_id,
+                provider_kind=provider.kind if provider is not None else None,
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return {"provider_id": provider_id, "key_configured": False}
 
     @app.get("/api/semantics")
     async def list_semantics(request: Request) -> Any:
@@ -6288,6 +6418,9 @@ def run_console(
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
     model_providers: Any | None = None,
+    model_keys: Any | None = None,
+    model_key_entry: bool = False,
+    model_key_backend: Any | None = None,
     role_store: RoleStore | None = None,
     user_binding_store: UserBindingStore | None = None,
     security_report: str | None = None,
@@ -6340,6 +6473,9 @@ def run_console(
         terminology=terminology,
         model_config_store=model_config_store,
         model_providers=model_providers,
+        model_keys=model_keys,
+        model_key_entry=model_key_entry,
+        model_key_backend=model_key_backend,
         role_store=role_store,
         user_binding_store=user_binding_store,
         security_report=security_report,
