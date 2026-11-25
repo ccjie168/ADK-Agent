@@ -67,6 +67,7 @@ from .model import (
     ModelRequest,
     ModelResponse,
 )
+from .model_providers import ModelProviderRecord
 from .orchestration import (
     OrchestrationPlan,
     PlanResult,
@@ -220,6 +221,7 @@ __all__ = [
     "AuditSink",
     "CanaryPolicy",
     "CredentialBinding",
+    "ModelProviderRecord",
     "CredentialConflict",
     "CredentialNotFound",
     "CredentialStore",

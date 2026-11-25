@@ -176,6 +176,7 @@ _OPEN_PATHS = frozenset(
 _TRACE_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*")
 _SAFE_TENANT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,127}")
+_SAFE_PROVIDER_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")
 _GRANT_STATUSES = frozenset({"pending", "approved", "denied", "expired", "cancelled"})
 _CONNECTOR_REQUEST_STATUSES = frozenset({"pending", "approved", "denied"})
 
@@ -2977,6 +2978,7 @@ def build_console_app(
     rag: Any | None = None,
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
+    model_providers: Any | None = None,
     role_store: RoleStore | None = None,
     user_binding_store: UserBindingStore | None = None,
     security_report: str | None = None,
@@ -3901,6 +3903,79 @@ def build_console_app(
             )
         )
         return JSONResponse({"model": model})
+
+    @app.get("/api/model-providers")
+    async def list_model_providers(request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "model.read")
+        if denied is not None:
+            return denied
+        if model_providers is None:
+            return JSONResponse({"error": "model_providers_not_configured"}, status_code=404)
+        records = await model_providers.list()
+        return {"providers": [record.model_dump(mode="json") for record in records]}
+
+    @app.put("/api/model-providers/{provider_id}")
+    async def put_model_provider(provider_id: str, request: Request) -> Any:
+        caller = _principal_for(request)
+        denied = await _forbidden_if_missing(caller, "model.write")
+        if denied is not None:
+            return denied
+        if model_providers is None:
+            return JSONResponse({"error": "model_providers_not_configured"}, status_code=404)
+        if _SAFE_PROVIDER_ID.fullmatch(provider_id) is None:
+            return JSONResponse({"error": "invalid_provider"}, status_code=400)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"error": "invalid_provider"}, status_code=400)
+        if not isinstance(body, dict):
+            return JSONResponse({"error": "invalid_provider"}, status_code=400)
+        kind = body.get("kind")
+        model = body.get("model")
+        base_url = body.get("base_url")
+        secret_ref = body.get("secret_ref")
+        enabled = body.get("enabled", True)
+        if (
+            not isinstance(kind, str)
+            or not isinstance(model, str)
+            or not is_valid_model_spec(model)
+            or (base_url is not None and not isinstance(base_url, str))
+            or (secret_ref is not None and not isinstance(secret_ref, str))
+            or not isinstance(enabled, bool)
+        ):
+            return JSONResponse({"error": "invalid_provider"}, status_code=400)
+        from .core import ModelProviderRecord
+
+        try:
+            record = ModelProviderRecord(
+                provider_id=provider_id,
+                kind=kind,
+                model=model,
+                base_url=base_url,
+                secret_ref=secret_ref,
+                enabled=enabled,
+                updated_at=datetime.now(timezone.utc),
+                updated_by=caller.subject,
+            )
+        except ValueError:
+            return JSONResponse({"error": "invalid_provider"}, status_code=400)
+        await model_providers.put(record)
+        await audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=uuid.uuid4().hex,
+                trace_id=_trace_id(request),
+                tenant=caller.tenant,
+                principal=caller,
+                agent_ref=dev_agent_ref("model"),
+                action="model.configure",
+                target=provider_id,
+                status="ok",
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
+        return record.model_dump(mode="json")
 
     @app.get("/api/semantics")
     async def list_semantics(request: Request) -> Any:
@@ -6210,6 +6285,7 @@ def run_console(
     rag: Any | None = None,
     terminology: ConceptSchemeStore | None = None,
     model_config_store: ModelConfigStore | None = None,
+    model_providers: Any | None = None,
     role_store: RoleStore | None = None,
     user_binding_store: UserBindingStore | None = None,
     security_report: str | None = None,
@@ -6261,6 +6337,7 @@ def run_console(
         rag=rag,
         terminology=terminology,
         model_config_store=model_config_store,
+        model_providers=model_providers,
         role_store=role_store,
         user_binding_store=user_binding_store,
         security_report=security_report,
