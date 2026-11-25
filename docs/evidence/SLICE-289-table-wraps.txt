@@ -22,10 +22,10 @@ SLICE-289 其余视图的表格并入共享滚动容器 — 证据
 - 文字、列与数据未改；`.table-wrap table { min-width: 720px }` 复用 SLICE-285 的规则。
 
     python -m pytest tests/test_console_vue_tables.py tests/test_console_vue_pages.py -q
-    3 + 2 passed
+    3 + 3 passed (6 passed)
 
     cd web && npm run build
-    dist/assets/index-BP_s8ziQ.css 17.33 kB / assets/index-zQamkXi9.js 196.72 kB
+    dist/assets/index-BP_s8ziQ.css 17.33 kB / assets/index-BLCRaZ3E.js 199.17 kB
 
 ## 实机验证（8039，`--ui vue`，`--role-store-dir`）
 
@@ -39,6 +39,6 @@ SLICE-289 其余视图的表格并入共享滚动容器 — 证据
 
 ## 门禁
 
-    python scripts/check.py --fast   -> 7 步 ALL PASS、2271 passed / 105 skipped
-    python scripts/check.py --full   -> 9 步 ALL PASS、2271 passed / 105 skipped
+    python scripts/check.py --fast   -> 7 步 ALL PASS、2277 passed / 105 skipped
+    python scripts/check.py --full   -> 9 步 ALL PASS、2277 passed / 105 skipped
                                         （format/lint/types/layering/specs/test/sast/deps/secrets）
