@@ -2,14 +2,14 @@
 
 更新日期: 2026-11-25
 分支: master（工作区干净，只留本地工具目录未跟踪）
-最新提交: `a49a5e3` feat: add the MCP and A2A ecosystem page (ADR-0041, SLICE-279) (#314)
-状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）进行中（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）
+最新提交: `7a49408` feat: add the guided new-agent wizard (ADR-0043, SLICE-281) (#317)
+状态: 进行中；M6 Enterprise Trust Chain 已收口；ADR-0031、0033、0035、0036、0037、0038 交付；ADR-0038（语义层）MVP 五个切片（SLICE-217 到 221）已全部交付闭环；ADR-0039（控制台全平台能力总览与 Ask AI 入口）MVP 七个切片（SLICE-222 到 228）已全部交付闭环；ADR-0040（全局默认模型）MVP 已关闭；ADR-0041（控制台 Vue 产品化）阶段 0 已收口（SLICE-236 脚手架 + SLICE-237 路由/Pinia/鉴权流 + SLICE-238 总览 + SLICE-239 注册表 + SLICE-240 工具目录 + SLICE-241 工具授权 + SLICE-242 审批 + SLICE-243 审计 + SLICE-244 模型 + SLICE-245 配额 + SLICE-246 检索 + SLICE-247 语义层 + SLICE-248 连接器 + SLICE-249 凭据 + SLICE-250 对端 + SLICE-251 运行 + SLICE-252 会话 + SLICE-253 计划 + SLICE-254 策略 + SLICE-255 导入 + SLICE-256 Ask AI + SLICE-257 Chat 全部交付）；阶段 1（用户/角色/授权 + 统一登录）已收口（SLICE-258 角色定义 store、SLICE-259 用户绑定 store、SLICE-260 能力解析运行时化、SLICE-261 角色/用户管理接口、SLICE-262 用户绑定并入能力解析、SLICE-263 用户/角色管理面板已交付；**阶段 1 收口**）；阶段 2（Agent 中心总览）已收口；阶段 3（安全合规聚合视图）已收口；阶段 4（MCP/API 生态展示）已收口；阶段 5（Agent 开发向导 + 页面一键发布，ADR-0043）已收口（SLICE-280 compose 后端、SLICE-281 向导）。
 
 ## 本次暂停交接
 
-- 代码在 `master`，`a49a5e3`。SLICE-113 到 274、275 到 279 已合并，ADR-0041 阶段 3 与阶段 4 收口；没有打开的 PR。下一步是阶段 5（先写 ADR-0043 的 SLICE-280）。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
-- 最近门禁: `--full` 9 步全 PASS，2220 passed, 105 skipped（PR #314 独立验证复跑，`docs/evidence/SLICE-279-ecosystem.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
-- 端到端验收: `python scripts/prove_it_works.py` 12 项真实进程/真实 Postgres 检查，2026-11-21 跑出 12/12 PASS（`docs/evidence/prove-2026-11-21.txt`），复盘见 `docs/reviews/retrospective-2026-11-21.md`；SLICE-204 到 216 之后于 2026-11-22 在 `3f7d325` 重跑仍是 12/12 PASS（`docs/evidence/prove-2026-11-22.txt`，含 `--smoke` 4/4）。
+- 代码在 `master`，`7a49408`。SLICE-113 到 281 已合并，ADR-0041 阶段 0 到 5 全部收口，ADR-0043（控制台 compose 签名与页面一键发布）已交付；没有打开的 PR。缺口清单剩已知小项（见第 16 条）与可选的 SLICE-282（compose 密钥托管/轮换运维手册）。工作区干净，未跟踪的 `.agents/`、`.claude/agents/`、`.claude/skills/`、`.claude/worktrees/`、`package.json`、`package-lock.json` 与 `docs/review/*.docx`、`docs/specs/*.docx` 是本地工具与评审输入，不入库。
+- 最近门禁: `--full` 9 步全 PASS，2245 passed, 105 skipped（PR #317 独立验证复跑，`docs/evidence/SLICE-281-agent-wizard.txt`；skip 来自本机 Windows 无法建符号链接与无 `TEST_POSTGRES_URL`）。
+- 端到端验收: `python scripts/prove_it_works.py` 14 项真实进程/真实 Postgres 检查，2026-11-25 在 SLICE-280 修复轮上跑出 14/14 PASS（`docs/evidence/prove-2026-11-25.txt`，`NO_PROXY=127.0.0.1,localhost`，litellm 1.106.2）；更早的 12/12 记录见 `docs/evidence/prove-2026-11-21.txt`、`prove-2026-11-22.txt`，复盘见 `docs/reviews/retrospective-2026-11-21.md`。
 - v0.1.0 已于 2026-11-18 发布: tag `v0.1.0` 指向 `2406b9a`，GitHub Release 由用户从仓库根目录创建；本地镜像 smoke 通过（`/healthz` 200，`POST /mcp` 无 token 401、带 token 200），镜像未推送 registry。
 - 治理规则已改为切片级自动：spec 到合并不再逐次确认，合并前必须有独立只读验证代理。
 - M6 已收口：Gate 1（ADR-0030 角色职责分离）、Gate 2/3（ADR-0028 网关策略服务端化）、Gate 4（ADR-0029 风险分级 L1–L4 + ADR-0034 写工具幂等）。Gate 5 是端到端 trace 验证，随前四项一起闭环（审计 trace_id 与 OTel trace_id 已对齐）。
@@ -546,6 +546,20 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         最终门禁 2220 passed / 105 skipped。截图 `docs/evidence/ui/SLICE-279-ecosystem.png`。
         **ADR-0041 阶段 4 收口**。下一步阶段 5（先写 ADR-0043）。
     - **阶段 5**：Agent 开发向导（诉求 3）。把 `compose` 模板做成多步 UI 向导。
+      - SLICE-280（compose 后端与一键发布）~~已合并 `cd03d16`~~：新增 `registry.compose`（admin + publisher），
+        `GET /api/compose/templates`、`POST /api/compose/preview`、`POST /api/compose`；
+        `console` 四个 `--compose-*` 密钥参数 all-or-none（部分退出 2、坏密钥退出 1）；
+        `AuditEvent.template_id` 与 `agent.compose` 审计（不含指令原文）。
+        两轮验证（首轮 REJECT：深层嵌套 JSON 与超长字段分别触发 `RecursionError`/`PackagingError`
+        变成 500/503；补 400 `compose_invalid` 与字段上限后 PASS），最终门禁 2237 passed / 105 skipped；
+        用户要求的 `prove_it_works` 全量 14/14 PASS。证据 `docs/evidence/SLICE-280-compose-backend.txt`。
+      - SLICE-281（新建 Agent 向导）~~已合并 `7a49408`~~：`/agents/new` 四步向导（模板 → 参数 → 预览 → 发布），
+        模板与预览要求 `registry.publish`、发布要求 `registry.compose`，未配置密钥时给可复制的 CLI 命令；
+        错误码固定文案、前端上限与契约一致、无 `v-html`。实机（`--ui vue`，admin）走完整流程，
+        注册表出现 `shot_bot@2.0.0`，审计三条 `agent.compose`。三轮验证（首轮 PASS + 1 S；第二轮发现
+        `watch(step)` 异步清空让成功横幅不渲染，删掉冗余提示后 PASS），门禁 2245 passed / 105 skipped。
+        截图 `docs/evidence/ui/SLICE-281-wizard-{form,preview,published}.png`。
+        **ADR-0041 阶段 5 收口，ADR-0041 全部阶段完成**。下一步按缺口清单选。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
@@ -557,7 +571,10 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
       而 `FileAuditQuery` 按 `AuditRecord` 解析，写入事件后读 `/api/audit` 会 500；
       `publisher` 角色没有 `ops.read`，整个首页对其不可见；同一时间戳事件在 `limit` 边界上的
       子集与后端方向有关（契约未定义同刻顺序）。
-    - **阶段 5 发布方式已拍板**：用户选择「页面一键发布」，控制台持专用 compose 签名密钥。开工前先写 ADR-0043 并确认；只允许 `single-llm` 模板，新增 `registry.compose` 能力与 `agent.compose` 审计（只记模板/版本/digest，不记指令原文）。用户已按硬规则单独同意新增 `registry.compose` 并同步改 `tests/test_console_me.py` 的能力集合断言；这两项随阶段 5 首片（SLICE-280）落地，ADR-0043 与 `registry.compose` 目前尚未入库。
+    - **阶段 5 页面一键发布已交付**：ADR-0043 已入库（`docs/decisions/ADR-0043-console-compose-signing.md`），
+      SLICE-280（后端）与 SLICE-281（向导）已合并。用户按硬规则单独同意的新增 `registry.compose` 与
+      `tests/test_console_me.py` 两处字面量断言已落地。剩余可选项：SLICE-282（compose 密钥托管、轮换与
+      最小权限的运维手册），以及上面列出的既有缺口。
 
 MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
 
