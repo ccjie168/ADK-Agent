@@ -700,6 +700,16 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         `PASS deny path left no ticket or message` 并退出 2。3 条用例。两轮验证
         （首轮 PASS 带 1 个 S：拒绝路径缺正向断言，修复后复验 PASS）。
         证据 `docs/evidence/SLICE-304-support-plan.txt`。
+      - SLICE-305 售后演示接入控制台 ~~已合并 `0b028ab`~~（#357）：
+        `prove_support_demo.py` 新增 `--approvals-dir`、`--audit-file`、`--interactive`、
+        `--wait-seconds`，交互模式停在「审批」页等人点击，超时打印 `TIMEOUT` 退出 3；
+        `scripts/support_demo_register.py` 把 mock ITSM 与夸克登记为控制台可见连接器
+        （`mock-token-ref` 启用绑定，`secret://local/mock_token`），可重复运行。
+        实机用控制台 `POST /api/approvals/<id>` 批准后演示跑到 `ALL PASS`，
+        `GET /api/connectors` 列出两个连接器。5 条用例。两轮验证（首轮 PASS 带
+        2 个 N：登记脚本重复运行抛 `CredentialConflict`、超时残留请求 `expires_at`
+        为空，修复后复验 PASS）。
+        证据 `docs/evidence/SLICE-305-support-console.txt`。
         下一步：把该链路接到 A2A（mock WorkBuddy 客户端），再换真实 WorkBuddy
         Enterprise OpenAPI、夸克官方 Skill 与企微自建应用。
 
