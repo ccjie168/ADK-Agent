@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import socket
 import sys
@@ -12,6 +13,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import Any
@@ -131,7 +133,7 @@ class _PipelineSink:
         await self._pipeline.append(event)
 
 
-def _plan() -> OrchestrationPlan:
+def _plan(approval_timeout: float | None = None) -> OrchestrationPlan:
     return OrchestrationPlan(
         plan_id="support-flow",
         version="1.0.0",
@@ -144,53 +146,96 @@ def _plan() -> OrchestrationPlan:
                 input="客户反馈验证码收不到，请创建工单。",
                 risk_level="L3",
                 approval_reason="创建工单会通知客户",
+                timeout_seconds=approval_timeout,
             ),
         ],
     )
 
 
-def _parent() -> Invocation:
+def _parent(deadline: datetime | None = None) -> Invocation:
     return Invocation(
         run_id="support-run-1",
         trace_id="support-trace-1",
         principal=Principal(tenant="local", subject="demo", kind="human"),
         agent_ref=_ref("support-flow"),
         input="客户无法登录",
+        deadline=deadline,
     )
 
 
 async def _drive(
-    executor: PlanExecutor, inbox: FileApprovalInbox, *, deny: bool
-) -> tuple[Any, bool]:
+    executor: PlanExecutor,
+    inbox: FileApprovalInbox,
+    *,
+    deny: bool,
+    interactive: bool,
+    wait_seconds: float,
+    seen: list[str],
+) -> tuple[Any, bool, str]:
+    approval_timeout = wait_seconds + 60 if interactive else None
+    deadline = (
+        datetime.now(timezone.utc) + timedelta(seconds=wait_seconds + 60) if interactive else None
+    )
     task = asyncio.create_task(
-        executor.run(_plan(), _parent(), approvals=inbox)  # type: ignore[arg-type]
+        executor.run(
+            _plan(approval_timeout),
+            _parent(deadline),
+            approvals=inbox,  # type: ignore[arg-type]
+        )
     )
     asked = False
     while not task.done():
         pending = inbox.pending()
-        if pending and not asked:
+        if not asked and (pending or (interactive and seen)):
             print("PASS approval requested")
-            inbox.decide(
-                pending[0].request_id,
-                approved=not deny,
-                approver="demo",
-                reason="approved" if not deny else "denied",
-            )
+            request_id = seen[0] if seen else pending[0].request_id
             asked = True
+            if interactive:
+                print(f"WAITING approval {request_id} in {inbox.root}")
+                deadline = time.monotonic() + wait_seconds
+                while not task.done() and time.monotonic() < deadline:
+                    record = inbox.get(request_id)
+                    if record is not None and record.decision is not None:
+                        break
+                    await asyncio.sleep(0.1)
+                if not task.done() and time.monotonic() >= deadline:
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+                    return None, asked, "timeout"
+            else:
+                inbox.decide(
+                    request_id,
+                    approved=not deny,
+                    approver="demo",
+                    reason="approved" if not deny else "denied",
+                )
         await asyncio.sleep(0.05)
-    if deny:
-        try:
-            await task
-        except ApprovalDenied:
-            return None, asked
-        raise SystemExit("FAIL denied step still executed")
-    return await task, asked
+    try:
+        result = await task
+    except ApprovalDenied:
+        return None, asked, "denied"
+    return result, asked, "ok"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the support demo.")
     parser.add_argument("--deny", action="store_true", help="deny the ticket step")
     parser.add_argument("--workdir", default=None, help="keep state (default: a temp dir)")
+    parser.add_argument(
+        "--approvals-dir", default=None, help="approval inbox to write (e.g. the console one)"
+    )
+    parser.add_argument(
+        "--audit-file", default=None, help="audit chain file to write (console-readable)"
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="leave the approval pending until a human decides",
+    )
+    parser.add_argument(
+        "--wait-seconds", type=float, default=300.0, help="interactive approval timeout"
+    )
     args = parser.parse_args()
 
     workdir = Path(args.workdir) if args.workdir else Path(mkdtemp(prefix="adk-support-"))
@@ -200,16 +245,39 @@ def main() -> int:
     base = f"http://127.0.0.1:{port}"
     try:
         print("PASS mock services started")
-        audit_path = workdir / "audit.jsonl"
-        inbox = FileApprovalInbox(workdir / "approvals", poll_seconds=0.05)
+        audit_path = Path(args.audit_file) if args.audit_file else workdir / "audit.jsonl"
+        approvals = Path(args.approvals_dir) if args.approvals_dir else workdir / "approvals"
+        seen: list[str] = []
+        on_submit = None
+        if args.interactive:
+
+            def on_submit(request: Any) -> None:
+                seen.append(request.request_id)
+
+        ttl = args.wait_seconds + 60 if args.interactive else None
+        inbox = FileApprovalInbox(
+            approvals, poll_seconds=0.05, ttl_seconds=ttl, on_submit=on_submit
+        )
         pipeline = AuditPipeline(audit_path)
         executor = PlanExecutor(
             _agents(base),
             policy=AgentGrantPolicyEngine(["support", "ticket_writer"]),
             audit=_PipelineSink(pipeline),
         )
-        result, asked = asyncio.run(_drive(executor, inbox, deny=args.deny))
-        if args.deny:
+        result, asked, status = asyncio.run(
+            _drive(
+                executor,
+                inbox,
+                deny=args.deny,
+                interactive=args.interactive,
+                wait_seconds=args.wait_seconds,
+                seen=seen,
+            )
+        )
+        if status == "timeout":
+            print("TIMEOUT approval was not decided")
+            return 3
+        if args.deny or status == "denied":
             _require(asked, "no approval request was issued")
             _require(not _http("GET", f"{base}/wecom/messages"), "deny path notified wecom")
             try:
