@@ -52,7 +52,9 @@ async def _write(connectors_dir: Path, credentials_dir: Path, base_url: str, ten
         created_by="support-demo",
         created_at=datetime.now(timezone.utc),
     )
-    await FileCredentialStore(credentials_dir).add(binding)
+    credentials = FileCredentialStore(credentials_dir)
+    if await credentials.get(tenant, binding.credential_id) is None:
+        await credentials.add(binding)
     store = FileConnectorStore(connectors_dir)
     for spec in _specs(base_url, tenant):
         await store.add(spec)

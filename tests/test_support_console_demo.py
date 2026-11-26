@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 import sys
 import time
@@ -80,6 +81,10 @@ def test_support_demo_interactive_timeout(tmp_path):
 
     assert proc.returncode == 3, proc.stdout + proc.stderr
     assert "TIMEOUT" in proc.stdout
+    requests = list((tmp_path / "approvals").glob("*.request.json"))
+    assert requests
+    payload = json.loads(requests[0].read_text(encoding="utf-8"))
+    assert payload["expires_at"] is not None
 
 
 def test_register_mock_connectors(tmp_path):
@@ -101,6 +106,21 @@ def test_register_mock_connectors(tmp_path):
     )
 
     assert proc.returncode == 0, proc.stderr
+    again = subprocess.run(
+        [
+            sys.executable,
+            str(_REGISTER),
+            "--connectors-dir",
+            str(connectors),
+            "--credentials-dir",
+            str(credentials),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert again.returncode == 0, again.stderr
     specs = asyncio.run(FileConnectorStore(connectors).list("local"))
     bindings = asyncio.run(FileCredentialStore(credentials).list("local"))
 

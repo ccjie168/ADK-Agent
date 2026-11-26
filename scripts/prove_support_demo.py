@@ -13,6 +13,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import Any
@@ -132,7 +133,7 @@ class _PipelineSink:
         await self._pipeline.append(event)
 
 
-def _plan() -> OrchestrationPlan:
+def _plan(approval_timeout: float | None = None) -> OrchestrationPlan:
     return OrchestrationPlan(
         plan_id="support-flow",
         version="1.0.0",
@@ -145,18 +146,20 @@ def _plan() -> OrchestrationPlan:
                 input="客户反馈验证码收不到，请创建工单。",
                 risk_level="L3",
                 approval_reason="创建工单会通知客户",
+                timeout_seconds=approval_timeout,
             ),
         ],
     )
 
 
-def _parent() -> Invocation:
+def _parent(deadline: datetime | None = None) -> Invocation:
     return Invocation(
         run_id="support-run-1",
         trace_id="support-trace-1",
         principal=Principal(tenant="local", subject="demo", kind="human"),
         agent_ref=_ref("support-flow"),
         input="客户无法登录",
+        deadline=deadline,
     )
 
 
@@ -169,8 +172,16 @@ async def _drive(
     wait_seconds: float,
     seen: list[str],
 ) -> tuple[Any, bool, str]:
+    approval_timeout = wait_seconds + 60 if interactive else None
+    deadline = (
+        datetime.now(timezone.utc) + timedelta(seconds=wait_seconds + 60) if interactive else None
+    )
     task = asyncio.create_task(
-        executor.run(_plan(), _parent(), approvals=inbox)  # type: ignore[arg-type]
+        executor.run(
+            _plan(approval_timeout),
+            _parent(deadline),
+            approvals=inbox,  # type: ignore[arg-type]
+        )
     )
     asked = False
     while not task.done():
@@ -243,7 +254,10 @@ def main() -> int:
             def on_submit(request: Any) -> None:
                 seen.append(request.request_id)
 
-        inbox = FileApprovalInbox(approvals, poll_seconds=0.05, on_submit=on_submit)
+        ttl = args.wait_seconds + 60 if args.interactive else None
+        inbox = FileApprovalInbox(
+            approvals, poll_seconds=0.05, ttl_seconds=ttl, on_submit=on_submit
+        )
         pipeline = AuditPipeline(audit_path)
         executor = PlanExecutor(
             _agents(base),
