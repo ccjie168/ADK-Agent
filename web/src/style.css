@@ -55,7 +55,7 @@ body {
 
 .sidebar a.router-link-active {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-inverse);
 }
 
 .placeholder {
@@ -312,7 +312,7 @@ body {
   border: none;
   border-radius: 6px;
   background: var(--accent);
-  color: #fff;
+  color: var(--text-inverse);
   cursor: pointer;
 }
 
