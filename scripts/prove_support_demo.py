@@ -10,6 +10,7 @@ import socket
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from tempfile import mkdtemp
@@ -181,8 +182,8 @@ async def _drive(
         try:
             await task
         except ApprovalDenied:
-            return None, False
-        return None, False
+            return None, asked
+        raise SystemExit("FAIL denied step still executed")
     return await task, asked
 
 
@@ -209,6 +210,15 @@ def main() -> int:
         )
         result, asked = asyncio.run(_drive(executor, inbox, deny=args.deny))
         if args.deny:
+            _require(asked, "no approval request was issued")
+            _require(not _http("GET", f"{base}/wecom/messages"), "deny path notified wecom")
+            try:
+                _http("GET", f"{base}/itsm/tickets/t-1")
+            except urllib.error.HTTPError as exc:
+                _require(exc.code == 404, "deny path created a ticket")
+            else:
+                raise SystemExit("FAIL deny path created a ticket")
+            print("PASS deny path left no ticket or message")
             print("DENIED plan stopped before the ticket step")
             return 2
         _require(result is not None, "plan produced no result")

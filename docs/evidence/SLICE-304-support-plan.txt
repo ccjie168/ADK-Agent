@@ -29,6 +29,7 @@ master 没有验收脚本。
     $ python scripts/prove_support_demo.py --deny --workdir <tmp>
     PASS mock services started
     PASS approval requested
+    PASS deny path left no ticket or message
     DENIED plan stopped before the ticket step
     exit=2
 
@@ -73,7 +74,13 @@ master 没有验收脚本。
 （首轮 sast 因脚本里的 `assert` 与 `urlopen` 报 B101/B310，已改为显式失败退出并对固定回环
 URL 加 nosec。）
 
-五、范围外
+五、独立验证后的修补
+
+第一轮验证 PASS，记了一个 S：拒绝路径只断言退出码与 DENIED，没有正向确认“未建单/未发微信”。
+现在拒绝分支会先查微信消息列表必须为空、`t-1` 必须 404，并断言审批请求确实发出；
+若计划在拒绝后仍执行则脚本直接失败（不再静默返回 2）。
+
+六、范围外
 
 - 真实 LLM、A2A/WorkBuddy 入口、工具网关连接器（后续切片）。
 - 真实 WorkBuddy/夸克/企业微信。
