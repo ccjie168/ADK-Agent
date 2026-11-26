@@ -1,0 +1,75 @@
+SLICE-302 控制台深色主题
+
+日期: 2026-11-26
+依据: PROGRESS 第 16 条「深色主题与命令面板仍未做」
+范围: `web/index.html`、`web/src/styles/tokens.css`、`web/src/style.css`、`web/src/App.vue`、
+      `web/dist/`、`docs/guides/console-ui.html`
+
+一、反例：master `6146120` 上运行切片用例
+
+    $ PYTHONPATH=<master>/src python -m pytest tests/test_console_vue_dark_theme.py -q
+    FAILED test_dark_tokens_override_colors
+    FAILED test_app_toggles_and_persists_theme
+    FAILED test_index_applies_theme_before_mount
+    FAILED test_styles_use_tokens_only
+    FAILED test_dark_theme_is_built
+    FAILED test_guide_documents_dark_theme
+    6 failed in 0.20s
+
+master 只有 `:root` 浅色 token，没有主题脚本、切换按钮；`style.css` 还有写死的 `#fecdca`。
+
+二、实现后：切片用例
+
+    $ python -m pytest tests/test_console_vue_dark_theme.py -q
+    ......                                                                   [100%]
+    6 passed in 0.07s
+
+用例映射：
+
+- `test_dark_tokens_override_colors`：`[data-theme="dark"]` 块设置 `color-scheme: dark`
+  与画布/卡片/文字/边框/强调色
+- `test_app_toggles_and_persists_theme`：顶栏按钮写 `localStorage["adk_theme"]` 与
+  `data-theme`，`aria-pressed` 反映状态
+- `test_index_applies_theme_before_mount`：`index.html` 在挂载前按已存选择或
+  `prefers-color-scheme` 设置主题，避免闪烁
+- `test_styles_use_tokens_only`：`style.css` 中没有任何 6 位十六进制颜色
+- `test_dark_theme_is_built`：构建产物包含 `adk_theme` 与 `data-theme`
+- `test_guide_documents_dark_theme`：手册提到深色与主题切换
+
+三、实机与截图
+
+`127.0.0.1:8034` 以最新 `web/dist` 启动，浏览器注入 token 与 `adk_theme=dark`：
+
+- 桌面 1280×900：`docs/evidence/ui/SLICE-302-dark.png`
+- 手机 390×844：`docs/evidence/ui/SLICE-302-dark-phone.png`
+
+两页均为深色画布/卡片/侧栏，顶栏「浅色」按钮可切回，页面无写死浅色块。
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2374 passed, 105 skipped, 5 warnings in 196.78s
+
+五、实现要点
+
+- 主题只切 `data-theme`，所有颜色仍来自 token；`style.css` 的提示边框改用
+  `--danger-border`，新增的 `.theme-toggle` 也只用 token。
+- 首次访问跟随系统偏好；手动切换后以 `localStorage` 为准，非法值回落到系统偏好。
+- 旧版（legacy）内联界面不参与主题切换，避免影响未迁移部署。
+
+六、范围外
+
+- 高对比度/色弱模式。
+- 命令面板（同一遗留清单的另一项）。

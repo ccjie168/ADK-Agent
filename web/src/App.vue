@@ -9,6 +9,21 @@ const auth = useAuthStore();
 const tokenInput = ref("");
 const navOpen = ref(false);
 const booting = computed(() => auth.isAuthenticated && !auth.resolved);
+const theme = ref(
+  typeof document !== "undefined" && document.documentElement.dataset.theme === "dark"
+    ? "dark"
+    : "light",
+);
+
+function toggleTheme() {
+  theme.value = theme.value === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", theme.value);
+  try {
+    localStorage.setItem("adk_theme", theme.value);
+  } catch {
+    // storage may be unavailable; the in-memory choice still applies
+  }
+}
 
 function closeNav() {
   navOpen.value = false;
@@ -53,6 +68,14 @@ onMounted(async () => {
         <span class="brand"><span class="brand-mark">A</span>ADK Console</span>
       </div>
       <div class="topbar-right">
+        <button
+          class="theme-toggle"
+          :aria-label="theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'"
+          :aria-pressed="theme === 'dark'"
+          @click="toggleTheme"
+        >
+          {{ theme === "dark" ? "浅色" : "深色" }}
+        </button>
         <template v-if="auth.isAuthenticated">
           <span class="tenant-chip">{{ auth.principal?.tenant ?? "本地" }}</span>
           <span class="subject">{{ auth.principal?.subject }}</span>
