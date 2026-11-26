@@ -69,6 +69,25 @@ export MOCK_TOKEN=demo-token
 
 `--print-token` 可只打印当前 token 后退出，便于脚本取值。
 
+## 计划审批链路（mock）
+
+`scripts/prove_support_demo.py` 自起 mock 服务并跑一个顺序计划：
+
+| 步骤 | Agent | 说明 |
+|---|---|---|
+| `answer` | `support` | 无审批，返回处理建议 |
+| `ticket` | `ticket_writer` | `risk_level=L3`，需人工审批，创建工单并通知微信 |
+
+```bash
+./.venv/Scripts/python.exe scripts/prove_support_demo.py
+# 或拒绝审批、验证计划不会建单：
+./.venv/Scripts/python.exe scripts/prove_support_demo.py --deny
+```
+
+成功时依次打印 `PASS` 并 `ALL PASS`，退出 0；拒绝审批时打印 `DENIED`，退出 2，
+工单与微信消息都不会产生。审计写到 `audit.jsonl`（`--workdir` 可保留），链可校验，
+包含 `orchestration.approval`、`orchestration.step` 与 `orchestration.run`。
+
 ## 后续切片
 
 1. 售后专家 Agent：`ScriptedLlm`（演示）或真实模型，工具经工具网关调用 mock 服务；
