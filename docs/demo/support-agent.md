@@ -88,6 +88,30 @@ export MOCK_TOKEN=demo-token
 工单与微信消息都不会产生。审计写到 `audit.jsonl`（`--workdir` 可保留），链可校验，
 包含 `orchestration.approval`、`orchestration.step` 与 `orchestration.run`。
 
+## 在控制台里操作
+
+交互审批（请求出现在控制台「审批」页，等你点批准）：
+
+```bash
+./.venv/Scripts/python.exe scripts/prove_support_demo.py   --interactive --wait-seconds 300   --approvals-dir C:/Users/Jie/.adk/state/approvals   --audit-file C:/Users/Jie/.adk/state/audit.jsonl
+```
+
+脚本打印 `WAITING approval <id>` 后停住；在控制台批准即继续，拒绝则退出 2，
+`--wait-seconds` 内没人处理则打印 `TIMEOUT` 并退出 3。控制台若用
+`--audit-file C:/Users/Jie/.adk/state/audit.jsonl` 启动，「审计」页能看到
+`orchestration.*` 事件。
+
+把 mock 服务登记成连接器，让「生态」「连接器」页可见：
+
+```bash
+./.venv/Scripts/python.exe scripts/support_demo_register.py   --connectors-dir C:/Users/Jie/.adk/state/connectors   --credentials-dir C:/Users/Jie/.adk/state/credentials
+```
+
+会写入 `mock-itsm`（`/itsm/`，L3）与 `mock-quark`（`/quark/`，L2），
+凭据绑定 `mock-token-ref` 指向 `secret://local/mock_token`；启动控制台前把
+`ADK_SECRET_LOCAL_MOCK_TOKEN` 设为 mock 的 token。登记只让连接器可见，
+真正执行工具仍由工具网关与授权决定。
+
 ## 后续切片
 
 1. 售后专家 Agent：`ScriptedLlm`（演示）或真实模型，工具经工具网关调用 mock 服务；

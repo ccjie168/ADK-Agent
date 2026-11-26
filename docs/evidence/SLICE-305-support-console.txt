@@ -1,0 +1,100 @@
+SLICE-305 售后演示接入控制台（交互审批与 mock 连接器）
+
+日期: 2026-11-27
+依据: 用户确认「mock 在 UI 上可见、审批可在页面点」
+范围: `scripts/prove_support_demo.py` 四个新参数、`scripts/support_demo_register.py`、
+      `docs/demo/support-agent.md`、新增 5 条用例
+
+一、反例：master `4219a04` 上运行切片用例
+
+    $ PYTHONPATH=<master>/src python -m pytest tests/test_support_console_demo.py -q
+    FAILED test_support_demo_interactive_waits_for_decision
+    FAILED test_support_demo_interactive_timeout
+    FAILED test_register_mock_connectors
+    FAILED test_console_lists_mock_connectors
+    FAILED test_support_console_doc_matches_cli
+    5 failed in 16.65s
+
+二、实现后：切片用例
+
+    $ python -m pytest tests/test_prove_support_demo.py tests/test_support_console_demo.py -q
+    ........                                                                 [100%]
+    8 passed in 26.76s
+
+用例映射：
+
+- `test_support_demo_interactive_waits_for_decision`：脚本打印 `WAITING approval <id>`，
+  测试在文件里批准后脚本继续建单并 ALL PASS
+- `test_support_demo_interactive_timeout`：`--wait-seconds 1` 无人批准时打印 `TIMEOUT`、退出 3
+- `test_register_mock_connectors`：写出 `mock-itsm`/`mock-quark` 与启用绑定 `mock-token-ref`
+- `test_console_lists_mock_connectors`：控制台 `/api/connectors` 返回两个连接器
+- `test_support_console_doc_matches_cli`：文档与两个脚本的参数一致
+
+三、实机：控制台里点批准
+
+1. 用控制台的审批目录与独立审计文件启动演示：
+
+       $ python scripts/prove_support_demo.py --interactive --wait-seconds 90 \
+           --approvals-dir C:/Users/Jie/.adk/state/approvals \
+           --audit-file C:/Users/Jie/.adk/state/support-demo-audit.jsonl
+       PASS approval requested
+       WAITING approval b19aff15170f4255b3bd9a81446c7f5d in C:\Users\Jie\.adk\state\approvals
+
+2. 控制台 `GET /api/approvals` 同一条请求可见（step `ticket`、理由「创建工单会通知客户」）。
+3. 用控制台 `POST /api/approvals/<id>`（即页面上的批准按钮）决定：
+
+       {"request_id":"b19aff15...","approved":true,"approver":"console_user", ...}
+
+4. 演示继续并输出：
+
+       PASS plan answered
+       PASS ticket created t-1
+       PASS ticket is open
+       PASS wecom notified
+       PASS audit verified (4 records)
+       ALL PASS
+
+四、实机：连接器在控制台可见
+
+    $ python scripts/support_demo_register.py \
+        --connectors-dir C:/Users/Jie/.adk/state/connectors \
+        --credentials-dir C:/Users/Jie/.adk/state/credentials
+    registered mock-itsm and mock-quark
+
+控制台 `GET /api/connectors` 返回：
+
+    [('mock-itsm', 'L3', 'secret://local/mock_token'),
+     ('mock-quark', 'L2', 'secret://local/mock_token')]
+
+五、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2387 passed, 105 skipped, 5 warnings in 222.45s
+
+（首轮 sast/secrets 命中 `_SECRET_REF` 的 `secret://` 引用与测试里未用的 import，已加
+allowlist 并清理；lint 通过。）
+
+六、限制
+
+- 审批页可见是因为两边用同一个 `--approval-dir`；审计页要可见，控制台需以
+  `--audit-file` 指向同一文件启动（当前 8000 的控制台没有该参数，所以演示审计写在
+  `support-demo-audit.jsonl`，页面看不到）。
+- 连接器“可见”不等于“可执行”：工具网关仍按连接器与授权执行，本切片只做登记。
+
+七、范围外
+
+- 真实 WorkBuddy/夸克/企业微信。
+- 浏览器自动化点击审批（用控制台 API 或人工点击）。
+- 工具网关真正调用 mock 连接器。
