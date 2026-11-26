@@ -1,0 +1,73 @@
+SLICE-303 售后演示的 mock 生态服务
+
+日期: 2026-11-26
+依据: 用户确认「售后值班 Agent + WorkBuddy/企业微信/夸克」与「先 mock 全链路」
+范围: `scripts/mock_services.py`、`docs/demo/support-agent.md`、新增 5 条用例
+
+一、反例：master `e1806f0` 上运行切片用例
+
+    $ PYTHONPATH=<master>/src python -m pytest tests/test_mock_support_services.py -q
+    FAILED test_mock_health_is_open_and_writes_need_token
+    FAILED test_mock_ticket_roundtrip
+    FAILED test_mock_quark_limit_and_metadata
+    FAILED test_mock_wecom_records_messages
+    FAILED test_support_demo_doc_matches_script
+    5 failed in 0.45s
+
+master 没有 `scripts/mock_services.py` 与场景文档。
+
+二、实现后：切片用例
+
+    $ python -m pytest tests/test_mock_support_services.py -q
+    .....                                                                    [100%]
+    5 passed in 0.46s
+
+用例映射：
+
+- `test_mock_health_is_open_and_writes_need_token`：`/healthz` 免鉴权，写端点缺 token 401
+- `test_mock_ticket_roundtrip`：创建 201、查询、未知 id 404、空标题 400
+- `test_mock_quark_limit_and_metadata`：5 字节附件元数据；1 MiB+1 返回 413；非法请求 400
+- `test_mock_wecom_records_messages`：webhook 记录并可列出
+- `test_support_demo_doc_matches_script`：脚本参数与场景文档一致
+
+三、CLI
+
+    $ python scripts/mock_services.py --print-token
+    mock-token
+
+运行：
+
+    $ MOCK_TOKEN=demo-token python scripts/mock_services.py --port 8055
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2379 passed, 105 skipped, 5 warnings in 184.98s
+
+五、实现要点
+
+- 工单、附件、微信消息都只在进程内存；附件只存字节，查询只回元数据。
+- 固定 Bearer token 来自 `MOCK_TOKEN`（缺省 `mock-token`），常量时间比较不是本切片目标，
+  它只用于回环演示。
+- 附件名 1–128、内容解码后 ≤1 MiB；工单标题 1–200、描述 ≤2000、priority 固定三值；
+  错误都是固定错误码。
+- `docs/demo/support-agent.md` 定义角色、端点、运行方式和后续切片（Agent、网关审批、
+  真实 WorkBuddy/夸克/微信）。
+
+六、范围外
+
+- 售后专家 Agent 与工具网关审批链路（下一片）。
+- 真实 WorkBuddy OpenAPI、夸克官方 Skill、企业微信自建应用。
+- 持久化与多租户。
