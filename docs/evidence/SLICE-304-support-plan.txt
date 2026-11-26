@@ -1,0 +1,79 @@
+SLICE-304 售后演示的计划审批链路
+
+日期: 2026-11-26
+依据: SLICE-303 mock 服务；用户确认写工单用计划步骤审批
+范围: `scripts/prove_support_demo.py`、`docs/demo/support-agent.md`、新增 3 条用例
+
+一、反例：master `57a560c` 上运行切片用例
+
+    $ PYTHONPATH=<master>/src python -m pytest tests/test_prove_support_demo.py -q
+    FAILED test_prove_support_demo_runs
+    FAILED test_prove_support_demo_denied_path
+    FAILED test_prove_support_demo_audits_approval
+    3 failed in 0.88s
+
+master 没有验收脚本。
+
+二、实现后：脚本输出与用例
+
+    $ python scripts/prove_support_demo.py --workdir <tmp>
+    PASS mock services started
+    PASS approval requested
+    PASS plan answered
+    PASS ticket created t-1
+    PASS ticket is open
+    PASS wecom notified
+    PASS audit verified (4 records)
+    ALL PASS
+
+    $ python scripts/prove_support_demo.py --deny --workdir <tmp>
+    PASS mock services started
+    PASS approval requested
+    DENIED plan stopped before the ticket step
+    exit=2
+
+    $ python -m pytest tests/test_prove_support_demo.py -q
+    ...                                                                      [100%]
+    3 passed in 11.10s
+
+用例映射：
+
+- `test_prove_support_demo_runs`：全链路退出 0，至少 6 条 PASS，含 ticket 步骤
+- `test_prove_support_demo_denied_path`：拒绝审批退出 2，输出 DENIED
+- `test_prove_support_demo_audits_approval`：审计链可校验，含
+  `orchestration.approval`/`step`/`run`
+
+三、链路
+
+1. 脚本自起 mock 服务（回环随机端口，token 固定为演示值）。
+2. `PlanExecutor` 跑 `support-flow`：`answer`（`support`）无审批，`ticket`
+   （`ticket_writer`）`risk_level=L3`、理由「创建工单会通知客户」。
+3. `FileApprovalInbox` 收到请求，脚本模拟客服批准；拒绝时计划抛 `ApprovalDenied`，
+   不执行建单。
+4. `ticket_writer` 建单后调 mock 企业微信 webhook。
+5. `AuditPipeline` 写链，`verify_audit_file` 重算通过。
+
+四、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2382 passed, 105 skipped, 4 warnings in 195.77s
+
+（首轮 sast 因脚本里的 `assert` 与 `urlopen` 报 B101/B310，已改为显式失败退出并对固定回环
+URL 加 nosec。）
+
+五、范围外
+
+- 真实 LLM、A2A/WorkBuddy 入口、工具网关连接器（后续切片）。
+- 真实 WorkBuddy/夸克/企业微信。
