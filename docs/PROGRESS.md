@@ -731,6 +731,15 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         报未知用例名；补交并补 a11y 后二轮 PASS）。截图
         `docs/evidence/ui/SLICE-307-palette.png`；证据
         `docs/evidence/SLICE-307-command-palette.txt`。ADR-0041 视觉改造至此全部完成。
+      - SLICE-308 售后演示的写操作走工具网关 ~~已合并 `c997774`~~（#363）：
+        `prove_support_demo.py --tool-gateway` 在回环起只加载 `mock-itsm`/`mock-wecom`
+        的网关，建单与微信通知都经 `ToolGatewayClient.invoke`；默认直连路径不变。
+        同切片修复三个平台缺陷：连接器 POST 从不发送 `json_body`、`HttpxAdapter`
+        跟随本机代理（新增 `trust_env`）、`ToolGatewayClient.invoke` 没有幂等键参数。
+        取舍：工单连接器在网关里登记为 L2，因为审批已在计划步骤完成、平台没有工具级
+        审批令牌（L3 连接器会被拒绝，审计记 `approval_required`）。4 条用例 + 1 条
+        连接器用例。两轮验证（首轮 PASS 带 4 个 N 全是措辞，修完后二轮 PASS）。
+        证据 `docs/evidence/SLICE-308-support-gateway.txt`。
         下一步：换真实 WorkBuddy Enterprise OpenAPI（需要操作员账号的 `ck_`/`pt_` 密钥）、
         夸克官方 Skill 与企微自建应用回调。
 
