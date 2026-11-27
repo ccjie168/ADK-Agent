@@ -134,6 +134,8 @@ class PlanExecutor:
         quota_policy: QuotaPolicy | None = None,
     ) -> PlanResult | PlanPending:
         started = time.perf_counter()
+        if self.defer_approvals and plan.strategy not in ("single", "sequential"):
+            raise ValueError("deferred approvals support single and sequential plans only")
         resume: RunCheckpoint | None = None
         if self.checkpoints is not None and plan.strategy in ("single", "sequential"):
             resume = await self.checkpoints.load(invocation.principal.tenant, invocation.run_id)

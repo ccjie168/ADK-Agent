@@ -94,8 +94,12 @@ class PostgresCheckpointStore:
                 "tenant text NOT NULL, run_id text NOT NULL, plan_id text NOT NULL, "
                 "plan_version text NOT NULL, plan_digest text NOT NULL, status text NOT NULL, "
                 "outputs text NOT NULL, spent_usd double precision NOT NULL, "
-                "completed_steps text NOT NULL, waiting_step text, final_text text NOT NULL, "
+                "completed_steps text NOT NULL, waiting_step text, approval_request_id text, "
+                "final_text text NOT NULL, "
                 "updated_at timestamptz NOT NULL, PRIMARY KEY (tenant, run_id))"
+            )
+            await conn.execute(
+                "ALTER TABLE adk_run_checkpoints ADD COLUMN IF NOT EXISTS approval_request_id text"
             )
             await conn.execute("ALTER TABLE adk_run_checkpoints ENABLE ROW LEVEL SECURITY")
             await conn.execute("ALTER TABLE adk_run_checkpoints FORCE ROW LEVEL SECURITY")
@@ -114,7 +118,8 @@ class PostgresCheckpointStore:
             await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant)
             row = await conn.fetchrow(
                 "SELECT tenant, run_id, plan_id, plan_version, plan_digest, status, "
-                "outputs, spent_usd, completed_steps, waiting_step, final_text, updated_at "
+                "outputs, spent_usd, completed_steps, waiting_step, approval_request_id, "
+                "final_text, updated_at "
                 "FROM adk_run_checkpoints WHERE tenant = $1 AND run_id = $2",
                 tenant,
                 run_id,
@@ -133,6 +138,7 @@ class PostgresCheckpointStore:
                 spent_usd=float(row["spent_usd"]),
                 completed_steps=json.loads(row["completed_steps"]),
                 waiting_step=row["waiting_step"],
+                approval_request_id=row["approval_request_id"],
                 final_text=row["final_text"],
                 updated_at=row["updated_at"],
             )
@@ -146,14 +152,17 @@ class PostgresCheckpointStore:
             await conn.execute(
                 "INSERT INTO adk_run_checkpoints "
                 "(tenant, run_id, plan_id, plan_version, plan_digest, status, outputs, "
-                "spent_usd, completed_steps, waiting_step, final_text, updated_at) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) "
+                "spent_usd, completed_steps, waiting_step, approval_request_id, final_text, "
+                "updated_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) "
                 "ON CONFLICT (tenant, run_id) DO UPDATE SET "
                 "plan_id = EXCLUDED.plan_id, plan_version = EXCLUDED.plan_version, "
                 "plan_digest = EXCLUDED.plan_digest, status = EXCLUDED.status, "
                 "outputs = EXCLUDED.outputs, spent_usd = EXCLUDED.spent_usd, "
                 "completed_steps = EXCLUDED.completed_steps, "
-                "waiting_step = EXCLUDED.waiting_step, final_text = EXCLUDED.final_text, "
+                "waiting_step = EXCLUDED.waiting_step, "
+                "approval_request_id = EXCLUDED.approval_request_id, "
+                "final_text = EXCLUDED.final_text, "
                 "updated_at = EXCLUDED.updated_at",
                 checkpoint.tenant,
                 checkpoint.run_id,
@@ -165,6 +174,7 @@ class PostgresCheckpointStore:
                 checkpoint.spent_usd,
                 json.dumps(checkpoint.completed_steps),
                 checkpoint.waiting_step,
+                checkpoint.approval_request_id,
                 checkpoint.final_text,
                 checkpoint.updated_at,
             )

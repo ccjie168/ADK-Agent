@@ -23,6 +23,9 @@ SLICE-310 延迟审批（ADR-0049 切片 1）
     .......s...................                                      [100%]
     69 passed, 1 skipped
 
+    $ python -m pytest tests/test_deferred_approvals.py -q   # 含首轮修正新增的 1 条
+    8 passed in 2.22s
+
 - `test_deferred_run_returns_pending_and_creates_request`：返回 `PlanPending`，
   request id 等于 `uuid5("adk-approval:local:run-1:ticket")`，审批目录里有同一请求，
   写操作未执行，审计有 `orchestration.deferral`
@@ -33,6 +36,8 @@ SLICE-310 延迟审批（ADR-0049 切片 1）
 - `test_sync_mode_still_waits`：`defer_approvals=False` 时仍走阻塞路径
 - `test_defer_requires_a_submit_capable_gate`：审批端口不能提交时报 `approval_protocol`
 - `test_pending_expires_from_the_defer_ttl`：没给超时时默认 TTL 保证 `expires_at` 非空
+- `test_defer_rejects_other_strategies`：`routing` 等策略在入口报错，不泄漏内部异常
+- `test_approval_request_id_roundtrip`：Postgres 检查点读写保留 request id（live，无库时跳过）
 
 三、实现中改掉的两个假设
 
@@ -65,7 +70,7 @@ SLICE-310 延迟审批（ADR-0049 切片 1）
     ALL PASS
 
     $ python -m pytest -q
-    2415 passed, 105 skipped
+    2416 passed, 106 skipped
 
 （首轮 format 失败：新文件未格式化；`ruff format` 后复跑全绿。）
 
@@ -75,7 +80,20 @@ SLICE-310 延迟审批（ADR-0049 切片 1）
 - 审计 `status` 词表未加 `waiting`；延迟记 `orchestration.deferral`（status=ok）。
 - 延迟模式下若审批存储不可用，提交失败按 `PlanExecutionError` 处理，不静默降级为阻塞。
 
-六、范围外
+六、首轮验证修正（S 级）
+
+- **S1 内部异常泄漏**：`routing`/`fan_out`/`supervisor` 策略没有捕获
+  `ApprovalDeferred`，调用方会看到内部异常。`run()` 入口加守卫：延迟模式只接受
+  `single` 与 `sequential`，其余直接 `ValueError`。用例
+  `test_defer_rejects_other_strategies`。
+- **S2 Postgres 丢弃字段**：`PostgresCheckpointStore` 建表、SELECT、INSERT 都没有
+  `approval_request_id`，加载回来永远是 `None`。已补列（含 `ADD COLUMN IF NOT EXISTS`）
+  与读写，新增 live 用例 `test_approval_request_id_roundtrip`（无 `TEST_POSTGRES_URL`
+  时跳过）。
+- `ApprovalGate` 旁边新增 `DeferredApprovalGate` 协议，把 `submit`/`get` 写成文档契约；
+  执行器仍按可等待性调用。
+
+七、范围外
 
 - A2A `input-required` 与 MCP 状态工具（0049-3）。
 - 工具级审批令牌。

@@ -90,6 +90,26 @@ def _executor(calls: list[str], *, defer: bool = True, audit=None) -> PlanExecut
     )
 
 
+def test_defer_rejects_other_strategies():
+    from adk_agent.core import RouteWhen
+
+    calls: list[str] = []
+    executor = _executor(calls)
+    plan = OrchestrationPlan(
+        plan_id="routing-flow",
+        version="1.0.0",
+        strategy="routing",
+        steps=[
+            PlanStep(id="answer", agent_ref=_ref("support"), route_when=RouteWhen(contains="登录")),
+            PlanStep(id="ticket", agent_ref=_ref("ticket_writer"), risk_level="L3"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="single and sequential"):
+        asyncio.run(executor.run(plan, _invocation()))
+    assert calls == []
+
+
 def test_deferred_run_returns_pending_and_creates_request(tmp_path):
     calls: list[str] = []
     audit = ListAuditSink()

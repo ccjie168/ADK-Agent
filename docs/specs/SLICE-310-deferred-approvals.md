@@ -18,7 +18,10 @@
 
 `PlanExecutor(defer_approvals=True)`：延迟模式下 request id 由
 `(tenant, run_id, step_id)` 的 uuid5 决定，未给超时则用 `defer_ttl_seconds`
-（默认 3600）保证 `expires_at` 非空。
+（默认 3600）保证 `expires_at` 非空。本期只支持 `single` 与 `sequential` 策略，
+其他策略在 `run()` 入口直接报错，不泄漏内部异常。
+
+检查点新增 `approval_request_id`，文件/内存与 Postgres 两个后端都要持久化。
 
 ## 完成判据
 
@@ -29,6 +32,8 @@
 - [ ] 同步模式行为不变 -> `test_sync_mode_still_waits`
 - [ ] 不能提交的审批端口报协议错误 -> `test_defer_requires_a_submit_capable_gate`
 - [ ] 默认 TTL 保证有到期时间 -> `test_pending_expires_from_the_defer_ttl`
+- [ ] 非顺序策略在入口报错，不泄漏内部异常 -> `test_defer_rejects_other_strategies`
+- [ ] Postgres 检查点保留 request id -> `test_approval_request_id_roundtrip`
 - [ ] `--full` 门禁通过
 
 ## 反例
