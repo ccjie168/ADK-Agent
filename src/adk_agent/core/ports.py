@@ -241,6 +241,20 @@ class ApprovalGate(Protocol):
     async def request(self, request: ApprovalRequest) -> ApprovalDecision: ...
 
 
+class DeferredApprovalGate(Protocol):
+    """Gate that can record a request and be queried later (ADR-0049).
+
+    ``submit`` and ``get`` may be sync or async; the executor awaits only when
+    the returned value is awaitable.
+    """
+
+    async def request(self, request: ApprovalRequest) -> ApprovalDecision: ...
+
+    def submit(self, request: ApprovalRequest) -> Any: ...
+
+    def get(self, request_id: str) -> Any: ...
+
+
 class SecretProvider(Protocol):
     async def resolve(self, reference: str) -> str: ...
 

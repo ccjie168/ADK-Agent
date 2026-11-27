@@ -50,3 +50,32 @@ def test_roundtrip_and_tenant_scope() -> None:
         await store.close()
 
     asyncio.run(scenario())
+
+
+@_live
+def test_approval_request_id_roundtrip() -> None:
+    """SLICE-310: the deferred request id survives a Postgres roundtrip."""
+    assert _LIVE_URL is not None
+    store = PostgresCheckpointStore(_LIVE_URL)
+    tenant = f"slice310-{uuid.uuid4().hex}"
+    checkpoint = RunCheckpoint(
+        tenant=tenant,
+        run_id="run-deferred",
+        plan_id="flow",
+        plan_version="1.0.0",
+        plan_digest="e" * 64,
+        status="waiting_approval",
+        completed_steps=["a"],
+        waiting_step="b",
+        approval_request_id="request-1",
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    async def scenario() -> None:
+        await store.save(checkpoint)
+        loaded = await store.load(tenant, checkpoint.run_id)
+        assert loaded is not None
+        assert loaded.approval_request_id == "request-1"
+        await store.close()
+
+    asyncio.run(scenario())

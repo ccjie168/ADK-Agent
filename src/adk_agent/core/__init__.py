@@ -70,6 +70,7 @@ from .model import (
 from .model_providers import ModelProviderRecord
 from .orchestration import (
     OrchestrationPlan,
+    PlanPending,
     PlanResult,
     PlanStep,
     RouteWhen,
@@ -96,6 +97,7 @@ from .ports import (
     ConnectorRequestStore,
     ConnectorStore,
     CredentialStore,
+    DeferredApprovalGate,
     EmbeddingProvider,
     EvalReportStore,
     IdentityProvider,
@@ -215,6 +217,7 @@ __all__ = [
     "ArtifactStore",
     "ApprovalDecision",
     "ApprovalGate",
+    "DeferredApprovalGate",
     "ApprovalRequest",
     "AuditEvent",
     "AuditRecord",
@@ -272,6 +275,7 @@ __all__ = [
     "PeerStore",
     "PeerStoreError",
     "PeerStoreUnavailable",
+    "PlanPending",
     "PlanResult",
     "PlanStep",
     "PolicyDecision",
