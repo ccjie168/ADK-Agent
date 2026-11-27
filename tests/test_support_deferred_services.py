@@ -198,7 +198,7 @@ def test_missing_notify_secret_still_resumes(tmp_path, mock):
             mock,
             {
                 "SUPPORT_NOTIFY_WEBHOOK_URL": "http://127.0.0.1:9/hook",
-                "SUPPORT_NOTIFY_SECRET_ENV": "ADK_TEST_UNSET_NOTIFY_SECRET",
+                "SUPPORT_NOTIFY_SECRET_ENV": "ADK_TEST_UNSET_NOTIFY_SECRET",  # pragma: allowlist secret
             },
         )
         async with (

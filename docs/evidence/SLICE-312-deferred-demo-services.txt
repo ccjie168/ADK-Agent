@@ -3,7 +3,7 @@ SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）
 日期: 2026-11-28
 依据: ADR-0049 决定 9 已按用户选择改为「立即回执」，A2A 任务状态推迟
 范围: `scripts/support_a2a_agent.py`（延迟模式、进程内恢复器、可选通知）、
-      `docs/demo/support-mcp.md`（延迟审批一节）、新增 4 条用例
+      `docs/demo/support-mcp.md`（延迟审批一节）、新增 6 条用例
 
 一、红绿说明（如实记录）
 
@@ -23,6 +23,9 @@ SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）
   工单 `t-1` 出现且为 `open`
 - `test_deferred_mcp_denial_leaves_no_ticket`：拒绝后 3 秒仍无工单
 - `test_deferred_doc_matches_env`：文档与脚本的三个环境变量一致
+- `test_deferred_resume_skips_completed_steps`：恢复后审计里 `answer` 只出现一次
+- `test_missing_notify_secret_still_resumes`：配了 webhook 但没有密钥时，回执照常返回、
+  批准后工单照样建出来
 
 三、实现要点
 
@@ -61,7 +64,7 @@ SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）
 
 （首轮 lint 失败：import 顺序；`ruff check --fix` 后复跑全绿。）
 
-六、首轮验证修正（2 个 S）
+五、首轮验证修正（2 个 S）
 
 - **S1 恢复没接检查点**：agent 构造 `PlanExecutor` 时没传 `checkpoints`，恢复等于从头
   重跑，`answer` 步骤每次都再执行，`plan_digest` 也没校验。改为模块级
@@ -72,13 +75,13 @@ SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）
   用例 `test_missing_notify_secret_still_resumes`。
 - 顺带删掉死代码 `_build_notifier`；文档里旧的「审批阻塞调用」表述与新章节对齐。
 
-七、限制
+六、限制
 
 - 恢复器只在 MCP/A2A 服务进程存活期间工作；服务停止后，决策要等服务重启再恢复。
 - 结果不单独推送（只有提交与决定两类通知）；结果体现在工单与审计。
 - A2A `input-required` 与 MCP `support_status` 推迟，见 ADR-0049 决定 9。
 
-六、范围外
+七、范围外
 
 - 独立的 HTTP 状态接口。
 - 跨进程的恢复调度（0049-4 的单赢家与运维）。
