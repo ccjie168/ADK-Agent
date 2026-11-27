@@ -42,6 +42,7 @@ class RunCheckpoint(BaseModel):
     spent_usd: float = Field(default=0.0, ge=0)
     completed_steps: list[str] = Field(default_factory=list)
     waiting_step: str | None = None
+    approval_request_id: str | None = None
     final_text: str = ""
     updated_at: datetime
 

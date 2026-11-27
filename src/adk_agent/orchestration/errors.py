@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 
 class PlanError(Exception):
     """Base class for orchestration failures."""
@@ -21,6 +23,18 @@ class NoRoute(PlanError):
 
 class ApprovalRequired(PlanError):
     error_code = "approval_required"
+
+
+class ApprovalDeferred(PlanError):
+    """The run stopped so a human can decide later (ADR-0049)."""
+
+    error_code = "approval_deferred"
+
+    def __init__(self, step_id: str, request_id: str, expires_at: datetime | None = None) -> None:
+        super().__init__(f"step {step_id!r} is waiting for approval {request_id!r}")
+        self.step_id = step_id
+        self.request_id = request_id
+        self.expires_at = expires_at
 
 
 class ApprovalDenied(PlanError):

@@ -16,6 +16,7 @@ from .checkpoints import (
     build_checkpoint_store,
 )
 from .errors import (
+    ApprovalDeferred,
     ApprovalDenied,
     ApprovalProtocolError,
     ApprovalRequired,
@@ -40,6 +41,7 @@ __all__ = [
     "AgentCall",
     "AgentGrantPolicyEngine",
     "ApprovalCallback",
+    "ApprovalDeferred",
     "ApprovalDenied",
     "ApprovalProtocolError",
     "ApprovalRequired",

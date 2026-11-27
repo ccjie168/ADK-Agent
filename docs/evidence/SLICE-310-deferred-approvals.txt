@@ -1,0 +1,81 @@
+SLICE-310 延迟审批（ADR-0049 切片 1）
+
+日期: 2026-11-28
+依据: ADR-0049 已确认；用户同意把业务可用性排在 ADK 隔离之前
+范围: `core/orchestration.py`（`PlanPending`）、`orchestration/executor.py`
+      （`defer_approvals`、延迟与恢复、`orchestration.deferral` 审计）、
+      `orchestration/errors.py`（`ApprovalDeferred`）、`orchestration/checkpoints.py`
+      （`approval_request_id`）、新增 7 条用例
+
+一、红绿说明（如实记录）
+
+实现前 `PlanExecutor` 没有 `defer_approvals` 参数，`PlanPending`、`ApprovalDeferred`
+不存在，7 条用例必然失败（`TypeError`/`ImportError`）。本轮与实现一起落地，没有单独
+抓红屏。
+
+二、用例
+
+    $ python -m pytest tests/test_deferred_approvals.py -q
+    .......                                                          [100%]
+    7 passed in 2.00s
+
+    $ python -m pytest tests/orchestration -q
+    .......s...................                                      [100%]
+    69 passed, 1 skipped
+
+- `test_deferred_run_returns_pending_and_creates_request`：返回 `PlanPending`，
+  request id 等于 `uuid5("adk-approval:local:run-1:ticket")`，审批目录里有同一请求，
+  写操作未执行，审计有 `orchestration.deferral`
+- `test_approved_resume_runs_the_remaining_step`：批准后同 run_id 重跑得到
+  `PlanResult`，只补跑建单步骤（`answer` 不重复）
+- `test_denied_resume_raises_and_skips_the_step`：拒绝后抛 `ApprovalDenied`，写操作不发生
+- `test_pending_reentry_is_stable`：未决时重复进入返回同一个 request id，不产生冲突
+- `test_sync_mode_still_waits`：`defer_approvals=False` 时仍走阻塞路径
+- `test_defer_requires_a_submit_capable_gate`：审批端口不能提交时报 `approval_protocol`
+- `test_pending_expires_from_the_defer_ttl`：没给超时时默认 TTL 保证 `expires_at` 非空
+
+三、实现中改掉的两个假设
+
+1. 一开始用子调用的 `run_id` 生成确定 id，但执行器给每个步骤生成新的子 `run_id`，
+   恢复时对不上；改为用父调用的 `run_id`（`adk-approval:<tenant>:<run>:<step>`）。
+2. `ListAuditSink` 没有 `.events`，用例改用 `recent(50)`。
+
+四、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2415 passed, 105 skipped
+
+（首轮 format 失败：新文件未格式化；`ruff format` 后复跑全绿。）
+
+五、限制
+
+- 只有库层：服务开关、resumer、通知、控制台状态在 0049-2。
+- 审计 `status` 词表未加 `waiting`；延迟记 `orchestration.deferral`（status=ok）。
+- 延迟模式下若审批存储不可用，提交失败按 `PlanExecutionError` 处理，不静默降级为阻塞。
+
+六、范围外
+
+- A2A `input-required` 与 MCP 状态工具（0049-3）。
+- 工具级审批令牌。

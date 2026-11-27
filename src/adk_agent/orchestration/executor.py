@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timedelta, timezone
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from ..audit.hashing import hash_text
 from ..core import (
@@ -20,6 +21,7 @@ from ..core import (
     Invocation,
     InvocationResult,
     OrchestrationPlan,
+    PlanPending,
     PlanResult,
     PlanStep,
     PolicyEngine,
@@ -40,6 +42,7 @@ from .checkpoints import (
     RunCheckpoint,
 )
 from .errors import (
+    ApprovalDeferred,
     ApprovalDenied,
     ApprovalProtocolError,
     ApprovalRequired,
@@ -58,6 +61,13 @@ from .errors import (
 
 AgentCall = Callable[[Invocation], Awaitable[InvocationResult]]
 Status = Literal["ok", "error", "denied"]
+
+
+async def _maybe_await(value: Any) -> Any:
+    """Approval stores expose sync or async accessors; callers accept either."""
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 def _error_code(error: BaseException) -> str:
@@ -102,12 +112,16 @@ class PlanExecutor:
         audit: AuditSink | None = None,
         metrics: MetricsRegistry | None = None,
         checkpoints: CheckpointStore | None = None,
+        defer_approvals: bool = False,
+        defer_ttl_seconds: float = 3600.0,
     ) -> None:
         self.agents = dict(agents)
         self.policy = policy
         self.audit = audit
         self.metrics = metrics
         self.checkpoints = checkpoints
+        self.defer_approvals = defer_approvals
+        self.defer_ttl_seconds = defer_ttl_seconds
 
     async def run(
         self,
@@ -118,7 +132,7 @@ class PlanExecutor:
         *,
         quota: QuotaManager | None = None,
         quota_policy: QuotaPolicy | None = None,
-    ) -> PlanResult:
+    ) -> PlanResult | PlanPending:
         started = time.perf_counter()
         resume: RunCheckpoint | None = None
         if self.checkpoints is not None and plan.strategy in ("single", "sequential"):
@@ -205,7 +219,7 @@ class PlanExecutor:
         approvals: ApprovalGate | None,
         *,
         resume: RunCheckpoint | None = None,
-    ) -> PlanResult:
+    ) -> PlanResult | PlanPending:
         if plan.strategy == "routing":
             return await self._run_routing(plan, invocation, cancel, approvals)
         if plan.strategy == "fan_out":
@@ -224,6 +238,7 @@ class PlanExecutor:
         completed: set[str],
         *,
         waiting_step: str | None = None,
+        approval_request_id: str | None = None,
         final_text: str = "",
     ) -> None:
         if self.checkpoints is None:
@@ -240,6 +255,7 @@ class PlanExecutor:
                 spent_usd=spent_usd,
                 completed_steps=sorted(completed),
                 waiting_step=waiting_step,
+                approval_request_id=approval_request_id,
                 final_text=final_text,
                 updated_at=datetime.now(timezone.utc),
             )
@@ -253,7 +269,7 @@ class PlanExecutor:
         approvals: ApprovalGate | None,
         *,
         resume: RunCheckpoint | None = None,
-    ) -> PlanResult:
+    ) -> PlanResult | PlanPending:
         started = time.perf_counter()
         reference = plan_ref(plan)
         outputs: dict[str, str] = dict(resume.outputs) if resume else {}
@@ -289,6 +305,36 @@ class PlanExecutor:
                 )
                 if invocation.budget_usd is not None and spent_usd > invocation.budget_usd:
                     raise BudgetExceeded("plan budget exceeded")
+        except ApprovalDeferred as deferred:
+            await self._save_checkpoint(
+                invocation,
+                plan,
+                "waiting_approval",
+                outputs,
+                spent_usd,
+                completed,
+                waiting_step=deferred.step_id,
+                approval_request_id=deferred.request_id,
+            )
+            await self._audit_run(
+                invocation,
+                reference,
+                plan,
+                status="ok",
+                error_code="approval_deferred",
+                result_text=None,
+                started=started,
+                cost_usd=spent_usd,
+            )
+            return PlanPending(
+                plan_id=plan.plan_id,
+                version=plan.version,
+                run_id=invocation.run_id,
+                trace_id=invocation.trace_id,
+                request_id=deferred.request_id,
+                step_id=deferred.step_id,
+                expires_at=deferred.expires_at,
+            )
         except Exception as exc:
             if isinstance(exc, PlanCancelled):
                 checkpoint_status: str = "cancelled"
@@ -846,7 +892,7 @@ class PlanExecutor:
 
         if step.needs_approval:
             await self._require_approval(
-                step, child, input_text, approvals, remaining, cancel, step_started
+                step, child, input_text, approvals, remaining, cancel, step_started, parent
             )
 
         for attempt in range(1, step.max_attempts + 1):
@@ -913,10 +959,21 @@ class PlanExecutor:
         timeout: float | None,
         cancel: CancellationToken | None,
         step_started: float,
+        parent: Invocation,
     ) -> None:
         requested_at = datetime.now(timezone.utc)
+        request_id = (
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"adk-approval:{child.principal.tenant}:{parent.run_id}:{step.id}",
+            ).hex
+            if self.defer_approvals
+            else uuid.uuid4().hex
+        )
+        if self.defer_approvals and timeout is None:
+            timeout = self.defer_ttl_seconds
         request = ApprovalRequest(
-            request_id=uuid.uuid4().hex,
+            request_id=request_id,
             run_id=child.run_id,
             trace_id=child.trace_id,
             step_id=step.id,
@@ -932,6 +989,10 @@ class PlanExecutor:
                 child, step, input_text, None, "denied", "approval_required", step_started
             )
             raise ApprovalRequired(f"step {step.id!r} needs approval")
+
+        if self.defer_approvals:
+            await self._defer_or_resume(step, child, request, approvals, input_text, step_started)
+            return
 
         started = time.perf_counter()
         try:
@@ -1178,6 +1239,98 @@ class PlanExecutor:
             input=input_text,
             deadline=deadline,
             budget_usd=budget,
+        )
+
+    async def _defer_or_resume(
+        self,
+        step: PlanStep,
+        child: Invocation,
+        request: ApprovalRequest,
+        approvals: ApprovalGate,
+        input_text: str,
+        step_started: float,
+    ) -> None:
+        getter = getattr(approvals, "get", None)
+        record = await _maybe_await(getter(request.request_id)) if getter is not None else None
+        if record is not None:
+            decision = getattr(record, "decision", None)
+            if isinstance(decision, ApprovalDecision):
+                if decision.approved:
+                    await self._audit_approval(
+                        child,
+                        step,
+                        input_text,
+                        decision,
+                        request.request_id,
+                        "ok",
+                        None,
+                        step_started,
+                    )
+                    return
+                await self._audit_approval(
+                    child,
+                    step,
+                    input_text,
+                    decision,
+                    request.request_id,
+                    "denied",
+                    "approval_denied",
+                    step_started,
+                )
+                await self._audit_step(
+                    child, step, input_text, None, "denied", "approval_denied", step_started
+                )
+                raise ApprovalDenied(f"step {step.id!r} was not approved")
+            saved = getattr(getattr(record, "request", None), "expires_at", None)
+            raise ApprovalDeferred(step.id, request.request_id, saved or request.expires_at)
+
+        submit = getattr(approvals, "submit", None)
+        if submit is None:
+            await self._audit_step(
+                child, step, input_text, None, "error", "approval_protocol", step_started
+            )
+            raise ApprovalProtocolError("approval gate cannot defer requests")
+        try:
+            await _maybe_await(submit(request))
+        except Exception as exc:  # noqa: BLE001 - storage conflicts become protocol errors
+            await self._audit_step(
+                child, step, input_text, None, "error", _error_code(exc), step_started
+            )
+            raise PlanExecutionError("approval", exc) from exc
+        await self._audit_deferral(child, step, input_text, request.request_id, step_started)
+        raise ApprovalDeferred(step.id, request.request_id, request.expires_at)
+
+    async def _audit_deferral(
+        self,
+        child: Invocation,
+        step: PlanStep,
+        input_text: str,
+        request_id: str,
+        started: float,
+    ) -> None:
+        if self.audit is None:
+            return
+        await self.audit.emit(
+            AuditEvent(
+                event_id=uuid.uuid4().hex,
+                run_id=child.run_id,
+                trace_id=child.trace_id,
+                tenant=child.principal.tenant,
+                principal=child.principal,
+                approver=None,
+                agent_ref=step.agent_ref,
+                action="orchestration.deferral",
+                target=step.id,
+                args_hash=hash_text(input_text),
+                result_hash=None,
+                policy_decision_id=request_id,
+                data_classes=[],
+                latency_ms=int((time.perf_counter() - started) * 1000),
+                egress="none",
+                status="ok",
+                error_code=None,
+                timestamp=datetime.now(timezone.utc),
+            )
         )
 
     async def _audit_approval(

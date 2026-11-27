@@ -70,6 +70,7 @@ from .model import (
 from .model_providers import ModelProviderRecord
 from .orchestration import (
     OrchestrationPlan,
+    PlanPending,
     PlanResult,
     PlanStep,
     RouteWhen,
@@ -272,6 +273,7 @@ __all__ = [
     "PeerStore",
     "PeerStoreError",
     "PeerStoreUnavailable",
+    "PlanPending",
     "PlanResult",
     "PlanStep",
     "PolicyDecision",

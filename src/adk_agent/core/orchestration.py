@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -206,6 +207,27 @@ class PlanResult(BaseModel):
     outputs: dict[str, str] = Field(default_factory=dict)
     final_text: str = ""
     cost_usd: float = Field(default=0.0, ge=0)
+
+
+class PlanPending(BaseModel):
+    """A deferred approval: the run stopped at ``step_id`` waiting for a decision."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plan_id: str
+    version: str
+    run_id: str
+    trace_id: str
+    request_id: str
+    step_id: str
+    expires_at: datetime | None = None
+
+    @field_validator("expires_at")
+    @classmethod
+    def _timezone_aware(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("expires_at must be timezone aware")
+        return value
 
 
 class TraceNode(BaseModel):
