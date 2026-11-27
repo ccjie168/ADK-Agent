@@ -31,6 +31,9 @@ class ConnectorResponse:
 class HttpxAdapter:
     """Stream the response and stop once ``max_bytes`` is exceeded."""
 
+    def __init__(self, *, trust_env: bool = True) -> None:
+        self.trust_env = trust_env
+
     async def request(
         self,
         *,
@@ -39,12 +42,13 @@ class HttpxAdapter:
         headers: dict[str, str],
         timeout: float,
         max_bytes: int,
+        body: bytes | None = None,
     ) -> ConnectorResponse:
         import httpx
 
         async with (
-            httpx.AsyncClient(follow_redirects=False) as client,
-            client.stream(method, url, headers=headers, timeout=timeout) as response,
+            httpx.AsyncClient(follow_redirects=False, trust_env=self.trust_env) as client,
+            client.stream(method, url, headers=headers, content=body, timeout=timeout) as response,
         ):
             total = 0
             chunks: list[bytes] = []
@@ -96,16 +100,18 @@ def _handler(spec: ConnectorSpec, secrets: SecretProvider, adapter: Any):
             except SecretNotFound:
                 raise ConnectorDenied("secret_unavailable") from None
             headers["Authorization"] = f"Bearer {token}"
+        call: dict[str, Any] = {
+            "method": verb,
+            "url": url,
+            "headers": headers,
+            "timeout": spec.timeout_seconds,
+            "max_bytes": spec.max_response_bytes,
+        }
         if json_body is not None:
             headers["Content-Type"] = "application/json"
+            call["body"] = json.dumps(json_body).encode("utf-8")
         try:
-            response = await adapter.request(
-                method=verb,
-                url=url,
-                headers=headers,
-                timeout=spec.timeout_seconds,
-                max_bytes=spec.max_response_bytes,
-            )
+            response = await adapter.request(**call)
         except ConnectorDenied:
             raise
         except Exception:  # noqa: BLE001

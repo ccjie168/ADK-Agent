@@ -112,6 +112,30 @@ export MOCK_TOKEN=demo-token
 `ADK_SECRET_LOCAL_MOCK_TOKEN` 设为 mock 的 token。登记只让连接器可见，
 真正执行工具仍由工具网关与授权决定。
 
+## 工具网关（试跑）
+
+默认演示里 `ticket_writer` 直接 HTTP 调 mock。加 `--tool-gateway` 后，建单与微信通知都经
+工具网关的 `/v1/invoke`：
+
+```bash
+./.venv/Scripts/python.exe scripts/prove_support_demo.py --tool-gateway
+```
+
+脚本会在回环空闲端口起一个只加载两个连接器的网关：
+
+| 连接器 | 前缀 | 风险 |
+|---|---|---|
+| `mock-itsm` | `/itsm/` | L2 |
+| `mock-wecom` | `/wecom/` | L2 |
+
+工单连接器在网关里是 L2，因为 L3 审批已经发生在计划步骤上；平台目前没有「工具级审批令牌」，
+L3 连接器会被网关以 `approval_required` 拒绝。凭据引用 `secret://mock/token` 由脚本用
+`ADK_SECRET_MOCK_TOKEN` 提供（值就是演示 token），网关只监听回环并开启
+`trust_caller_policy`。
+
+网关审计写到 `<workdir>/gateway-audit.jsonl`，成功时多打印一行
+`PASS tools went through the gateway`。不加开关时行为与之前完全一致。
+
 ## A2A 入口（mock WorkBuddy）
 
 `scripts/support_a2a_agent.py` 把同一个计划包成 ADK `BaseAgent`，模块级变量 `agent`

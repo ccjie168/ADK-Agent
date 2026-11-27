@@ -1,0 +1,95 @@
+SLICE-308 售后演示的写操作走工具网关
+
+日期: 2026-11-27
+依据: `docs/demo/support-agent.md`「后续切片」第 1 条（工具经工具网关调用 mock 服务）
+范围: `scripts/support_demo_flow.py`（连接器、网关启动、网关版 `ticket_writer`）、
+      `scripts/prove_support_demo.py --tool-gateway`、`src/adk_agent/tools/connectors.py`
+      （请求体与 `trust_env`）、`src/adk_agent/tools/client.py`（幂等键）、
+      `docs/demo/support-agent.md`、新增 4 条用例 + 1 条连接器用例
+
+一、反例：实现前
+
+    $ python -m pytest tests/test_support_tool_gateway.py -q
+    FAILED test_support_demo_tool_gateway_path
+    FAILED test_tool_gateway_denies_ungranted_tool
+    FAILED test_support_doc_mentions_tool_gateway
+    3 failed, 1 passed
+
+（`--tool-gateway` 不存在；`support_demo_flow` 没有 `connector_specs`。通过的那条是
+「默认路径不变」守卫。）
+
+二、实现后
+
+    $ python -m pytest tests/test_support_tool_gateway.py tests/tools/test_connector_tools.py -q
+    .................                                                [100%]
+    17 passed
+
+用例映射：
+
+- `test_support_demo_tool_gateway_path`：`--tool-gateway` 跑通，网关审计里同时有
+  `tool.call` → `mock-itsm` 与 `mock-wecom`
+- `test_tool_gateway_denies_ungranted_tool`：网关只注册 `mock-itsm` 时调用 `mock-wecom`
+  返回 403 `tool_denied`
+- `test_support_demo_default_path_unchanged`：不传开关时仍是直接 HTTP，且不产生网关审计
+- `test_support_doc_mentions_tool_gateway`：文档与脚本参数一致
+- `test_json_body_is_sent`：连接器 POST 真正带 JSON 请求体
+
+三、过程中发现并修复的平台缺陷
+
+1. **连接器 POST 从不发送请求体**：`_handler` 只设置了 `Content-Type`，`adapter.request`
+   没有 body 参数，mock 收到的永远是空体（返回 400 `invalid_ticket`）。现在按 UTF-8
+   JSON 发送；无 `json_body` 的调用参数不变（原有 12 条连接器用例全过）。
+2. **`HttpxAdapter` 跟随本机代理**：本机 `HTTP_PROXY` 把回环请求送给 Privoxy（返回
+   500 HTML）。新增 `trust_env` 开关（默认 `True`，行为不变），演示用 `False`。
+3. **`ToolGatewayClient.invoke` 没有幂等键参数**：连接器工具要求幂等键，网关返回 400
+   `idempotency_missing`。新增可选 `idempotency_key`。
+
+四、设计取舍：工单连接器在网关里是 L2
+
+网关对 `needs_approval` 的工具直接拒绝（`approval_required`），平台没有工具级审批令牌。
+L3 审批已经在计划步骤完成，所以演示把连接器登记为 L2；这一点写进了文档。
+
+实机（`--tool-gateway`）输出：
+
+    PASS mock services started
+    PASS approval requested
+    PASS plan answered
+    PASS ticket created t-1
+    PASS ticket is open
+    PASS wecom notified
+    PASS audit verified (4 records)
+    PASS tools went through the gateway
+    ALL PASS
+
+网关审计 `gateway-audit.jsonl` 里两条 `tool.call`（`mock-itsm`、`mock-wecom`），
+状态都 `ok`。
+
+五、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2404 passed, 105 skipped
+
+（首轮 secrets 步命中测试里的 `os.environ[...] = "demo-token"`，加 allowlist 后复跑全绿。）
+
+六、限制
+
+- `--trust-caller-policy` 只用于回环演示；生产网关要接授权库。
+- 演示的凭据走 `ADK_SECRET_MOCK_TOKEN` 环境变量，演示脚本自己设置。
+- 审批仍在计划步骤层；工具级审批令牌未实现（记录在文档）。
+
+七、范围外
+
+- 真实工具网关部署与控制台连接器列表新增 `mock-wecom`。
+- 真实 WorkBuddy/夸克/企业微信接入。

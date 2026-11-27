@@ -20,14 +20,17 @@ if str(ROOT / "src") not in sys.path:
 from adk_agent.audit import AuditPipeline  # noqa: E402
 from adk_agent.core import (  # noqa: E402
     AgentRef,
+    ConnectorSpec,
     Invocation,
     InvocationResult,
     OrchestrationPlan,
     PlanStep,
     Principal,
+    ToolGrant,
 )
 
 DEFAULT_TOKEN = "demo-token"  # nosec B105  # loopback-only demo token
+SECRET_REF = "secret://mock/token"  # nosec B105  # reference, not a secret  # pragma: allowlist secret
 _DIGEST = "d" * 64
 
 
@@ -95,11 +98,124 @@ def result(invocation: Invocation, text: str) -> InvocationResult:
     )
 
 
-def build_agents(base: str, token: str = DEFAULT_TOKEN) -> dict[str, Any]:
+def connector_specs(base_url: str, tenant: str = "local") -> list[ConnectorSpec]:
+    """The two write connectors the tool gateway serves in the demo.
+
+    The ticket connector is L2 here because the L3 approval already happened at
+    the plan step; the gateway has no per-tool approval token to present.
+    """
+    return [
+        ConnectorSpec(
+            connector_id="mock-itsm",
+            tenant=tenant,
+            kind="http",
+            base_url=base_url,
+            auth_ref=SECRET_REF,
+            methods=["GET", "POST"],
+            path_prefixes=["/itsm/"],
+            risk_level="L2",
+        ),
+        ConnectorSpec(
+            connector_id="mock-wecom",
+            tenant=tenant,
+            kind="http",
+            base_url=base_url,
+            auth_ref=SECRET_REF,
+            methods=["POST"],
+            path_prefixes=["/wecom/"],
+            risk_level="L2",
+        ),
+    ]
+
+
+def _grants() -> list[ToolGrant]:
+    return [
+        ToolGrant(tool_id="mock-itsm", risk_level="L2"),
+        ToolGrant(tool_id="mock-wecom", risk_level="L2"),
+    ]
+
+
+def start_gateway(port: int, base_url: str, token: str, audit_path: Path) -> Any:
+    """Serve the two connectors through the tool gateway on loopback."""
+    import os
+
+    import uvicorn
+
+    from adk_agent.audit import JsonlAuditSink
+    from adk_agent.secretstore import PrefixedEnvSecretProvider
+    from adk_agent.tools import FunctionRegistry, FunctionToolGateway
+    from adk_agent.tools.connectors import HttpxAdapter, build_connector_tools
+    from adk_agent.tools.service import build_tool_gateway_app
+
+    os.environ["ADK_SECRET_MOCK_TOKEN"] = token
+    tools = build_connector_tools(
+        connector_specs(base_url),
+        secrets=PrefixedEnvSecretProvider(),
+        adapter=HttpxAdapter(trust_env=False),
+    )
+    gateway = FunctionToolGateway(FunctionRegistry(tools), audit=JsonlAuditSink(audit_path))
+    app = build_tool_gateway_app(gateway, auth_token=token, trust_caller_policy=True)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(  # nosec B310  # fixed loopback http URL
+                f"http://127.0.0.1:{port}/healthz", timeout=1
+            ):
+                return server
+        except OSError:
+            time.sleep(0.1)
+    raise SystemExit("tool gateway did not start")
+
+
+async def _ticket_via_gateway(invocation: Invocation, url: str, token: str) -> str:
+    from adk_agent.tools.client import ToolGatewayClient
+
+    client = ToolGatewayClient(url, token=token)
+    ticket = await client.invoke(
+        invocation,
+        "mock-itsm",
+        {
+            "path": "/itsm/tickets",
+            "method": "POST",
+            "json_body": {
+                "title": "客户无法登录",
+                "description": invocation.input,
+                "priority": "high",
+            },
+        },
+        grants=_grants(),
+        idempotency_key=f"{invocation.run_id}-itsm",
+    )
+    ticket_id = ticket["body"]["id"]
+    await client.invoke(
+        invocation,
+        "mock-wecom",
+        {
+            "path": "/wecom/webhook",
+            "method": "POST",
+            "json_body": {"text": f"工单 {ticket_id} 已创建，请跟进。"},
+        },
+        grants=_grants(),
+        idempotency_key=f"{invocation.run_id}-wecom",
+    )
+    return ticket_id
+
+
+def build_agents(
+    base: str,
+    token: str = DEFAULT_TOKEN,
+    gateway: tuple[str, str] | None = None,
+) -> dict[str, Any]:
     async def support(invocation: Invocation) -> InvocationResult:
         return result(invocation, "建议先重置密码；如仍失败请创建工单。")
 
     async def ticket_writer(invocation: Invocation) -> InvocationResult:
+        if gateway is not None:
+            ticket_id = await _ticket_via_gateway(invocation, gateway[0], gateway[1])
+            return result(invocation, f"已创建工单 {ticket_id}")
         ticket = await asyncio.to_thread(
             http,
             "POST",
