@@ -112,13 +112,52 @@ export MOCK_TOKEN=demo-token
 `ADK_SECRET_LOCAL_MOCK_TOKEN` 设为 mock 的 token。登记只让连接器可见，
 真正执行工具仍由工具网关与授权决定。
 
+## A2A 入口（mock WorkBuddy）
+
+`scripts/support_a2a_agent.py` 把同一个计划包成 ADK `BaseAgent`，模块级变量 `agent`
+名称为 `support_flow`，可直接交给 `serve-a2a`。它读环境变量：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `SUPPORT_MOCK_URL` | `http://127.0.0.1:8055` | mock 服务基址，只接受回环地址 |
+| `SUPPORT_MOCK_TOKEN` | `demo-token` | mock 服务的 Bearer token |
+| `SUPPORT_APPROVALS_DIR` | `support-approvals` | 审批请求目录，可与控制台共用 |
+| `SUPPORT_AUDIT_FILE` | `support-audit.jsonl` | 计划审计链文件 |
+| `SUPPORT_WAIT_SECONDS` | `120` | 等待审批的秒数，超时请求带 `expires_at` |
+
+先按上文「运行」在另一个终端起 mock 服务，再单条命令起 A2A：
+
+```bash
+export SUPPORT_MOCK_URL=http://127.0.0.1:8055 SUPPORT_A2A_TOKEN=demo-token
+./.venv/Scripts/python.exe -m adk_agent serve-a2a \
+  --agent scripts/support_a2a_agent.py \
+  --auth-token-env SUPPORT_A2A_TOKEN \
+  --host 127.0.0.1 --port 8060
+```
+
+或让假 WorkBuddy 客户端把整条链路跑一遍（自起 mock 与 `serve-a2a`）：
+
+```bash
+./.venv/Scripts/python.exe scripts/prove_workbuddy_a2a.py
+# 交互：停住等你从控制台批准，超时退出 3
+./.venv/Scripts/python.exe scripts/prove_workbuddy_a2a.py --interactive --wait-seconds 300
+# 拒绝审批：不建单、不发微信，退出 2
+./.venv/Scripts/python.exe scripts/prove_workbuddy_a2a.py --deny
+```
+
+参数还有 `--workdir DIR`（保留状态）与 `--port N`（固定 A2A 端口）。
+成功时打印 `PASS anonymous call rejected`、`PASS agent card returned`、
+`PASS reply contains ticket`、`PASS ticket is open`、`PASS wecom notified`、
+`PASS audit verified` 与 `ALL PASS`，退出 0。
+
+调用是同步语义：`message/send` 会一直等到审批完成或超时。拒绝与超时都由 agent
+转成固定的中文文本、以 HTTP 200 返回；真实 WorkBuddy 客户端仍应设置足够长的超时。
+
 ## 后续切片
 
-1. 售后专家 Agent：`ScriptedLlm`（演示）或真实模型，工具经工具网关调用 mock 服务；
-   建工单走 L3 审批。
-2. 验收脚本：起 mock、工具网关、审计、`serve-a2a`，用 mock WorkBuddy 客户端发问，
-   批准工单，校验审计链与微信消息。
-3. 真实接入：WorkBuddy Enterprise OpenAPI（`pt_`/`ck_` 密钥）作为前端，夸克用官方
+1. 售后专家 Agent 换成真实模型，工具经工具网关调用 mock 服务（当前计划里的
+   `ticket_writer` 直接走 HTTP，不经过工具网关）。
+2. 真实接入：WorkBuddy Enterprise OpenAPI（`pt_`/`ck_` 密钥）作为前端，夸克用官方
    `quarkclouddrive` Skill，企业微信用自建应用回调或群机器人。
 
 注意：个人微信自动化（hook、网页协议）违反腾讯条款，不纳入任何阶段。

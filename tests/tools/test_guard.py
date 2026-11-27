@@ -199,6 +199,24 @@ def test_install_guard_prepends_and_covers_subagents():
     assert sub.on_tool_error_callback == [guard.on_error]
 
 
+def test_install_guard_skips_agents_without_tool_callbacks():
+    from google.adk.agents import BaseAgent
+
+    class CustomAgent(BaseAgent):
+        async def _run_async_impl(self, ctx: Any) -> AsyncGenerator[Any, None]:
+            yield None
+
+    guard = _guard()
+    sub = LlmAgent(name="sub", model="gemini-2.5-flash", instruction="x")
+    parent = CustomAgent(name="custom", sub_agents=[sub])
+
+    install_tool_guard(parent, guard)
+
+    assert not hasattr(parent, "before_tool_callback")
+    assert sub.before_tool_callback == [guard.before]
+    assert sub.after_tool_callback == [guard.after]
+
+
 def test_agent_tool_call_is_guarded():
     async def scenario() -> tuple[list[tuple[int, int]], FakeAudit]:
         called: list[tuple[int, int]] = []

@@ -177,9 +177,17 @@ def _prepend(existing: Any, callback: Any) -> list[Any]:
 
 
 def install_tool_guard(agent: Any, guard: ToolGuard) -> None:
-    """Put the guard first on every agent in the tree, keeping existing callbacks."""
-    agent.before_tool_callback = _prepend(agent.before_tool_callback, guard.before)
-    agent.after_tool_callback = _prepend(agent.after_tool_callback, guard.after)
-    agent.on_tool_error_callback = _prepend(agent.on_tool_error_callback, guard.on_error)
+    """Put the guard first on every agent in the tree, keeping existing callbacks.
+
+    Custom ``BaseAgent`` subclasses may not declare ADK's tool callbacks; they
+    are skipped, and their sub-agents are still guarded.
+    """
+    for name, callback in (
+        ("before_tool_callback", guard.before),
+        ("after_tool_callback", guard.after),
+        ("on_tool_error_callback", guard.on_error),
+    ):
+        if hasattr(agent, name):
+            setattr(agent, name, _prepend(getattr(agent, name), callback))
     for sub in getattr(agent, "sub_agents", None) or ():
         install_tool_guard(sub, guard)

@@ -1,0 +1,121 @@
+SLICE-306 售后演示的 A2A 入口（mock WorkBuddy 客户端）
+
+日期: 2026-11-27
+依据: `docs/demo/support-agent.md` 的接入顺序（先 mock 全链路，再接真实 WorkBuddy）
+范围: `scripts/support_demo_flow.py`（从 `prove_support_demo.py` 抽出的共用部分）、
+      `scripts/support_a2a_agent.py`、`scripts/prove_workbuddy_a2a.py`、
+      `src/adk_agent/tools/guard.py`（自定义 BaseAgent 守卫安装）、
+      `docs/demo/support-agent.md`、新增 5 条用例 + 1 条守卫用例
+
+一、反例：写出用例后、实现前
+
+    $ python -m pytest tests/test_support_a2a_demo.py -q
+    FAILED test_support_a2a_agent_approves_and_creates_ticket
+    FAILED test_support_a2a_agent_denies_without_ticket
+    FAILED test_support_a2a_requires_bearer_token
+    FAILED test_workbuddy_a2a_end_to_end
+    FAILED test_support_a2a_doc_matches_cli
+    5 failed in 4.19s
+
+（`scripts/support_a2a_agent.py` 与 `scripts/prove_workbuddy_a2a.py` 都不存在。）
+
+二、实现后：切片用例
+
+    $ python -m pytest tests/test_support_a2a_demo.py tests/test_prove_support_demo.py \
+        tests/test_support_console_demo.py -q
+    .............                                                          [100%]
+    13 passed in 38.62s
+
+用例映射：
+
+- `test_support_a2a_agent_approves_and_creates_ticket`：`build_a2a_app` 直接服务
+  `SupportFlowAgent`，测试线程批准后 A2A 回复含 `t-1`，mock 工单为 open，微信有通知
+- `test_support_a2a_agent_denies_without_ticket`：拒绝后回复「工单创建被拒绝」，
+  工单 404、微信 0 条
+- `test_support_a2a_requires_bearer_token`：无 `Authorization` 返回 401
+- `test_workbuddy_a2a_end_to_end`：子进程跑客户端脚本，含匿名拒绝与 `ALL PASS`
+- `test_support_a2a_doc_matches_cli`：五个环境变量与五个参数在脚本和文档里一致
+- `test_install_guard_skips_agents_without_tool_callbacks`：自定义 `BaseAgent`
+  不声明工具回调时守卫安装不报错，子代理照常接入
+
+三、实机：批准路径
+
+    $ python scripts/prove_workbuddy_a2a.py --workdir <tmp> --wait-seconds 30
+    PASS agent card returned
+    PASS anonymous call rejected
+    PASS reply contains ticket
+    PASS ticket is open
+    PASS wecom notified
+    PASS audit verified (4 records)
+    ALL PASS
+
+四、实机：拒绝路径
+
+    $ python scripts/prove_workbuddy_a2a.py --workdir <tmp2> --deny --wait-seconds 30
+    PASS agent card returned
+    PASS anonymous call rejected
+    PASS reply reports the rejection
+    PASS deny path left no ticket or message
+    DENIED plan stopped before the ticket step
+    exit=2
+
+五、过程中发现并修复的平台缺陷
+
+`serve-a2a --agent <自定义 BaseAgent>` 在 `install_declared_guards` 处退出：
+
+    AttributeError: 'SupportFlowAgent' object has no attribute 'before_tool_callback'
+
+`install_tool_guard` 原先直接读三个回调属性。现在用 `hasattr` 判断，未声明的自定义
+agent 跳过，`sub_agents` 递归不变；`LlmAgent` 行为不变（原有 8 条守卫用例全过）。
+
+六、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2393 passed, 105 skipped
+
+（首轮 lint 失败：测试里的 import 顺序；`ruff check --fix` 后复跑全绿。`--fast`
+是 7 步，`sast`/`deps` 只在 `--full` 里。`--full` 的 test 步与 `--fast` 跑同一套
+用例，计数同上。）
+
+首轮独立验证结论 PASS-with-notes，两处事实性错误已修：本节 `--fast` 曾误列 `sast`；
+spec 与文档曾写「超时返回 JSON-RPC 错误」，实际是 agent 转成 200 + 中文文本。同时补
+`SUPPORT_MOCK_TOKEN` 到文档表格，并把 `PlanExecutionError`（建单失败）与审批超时拆成
+两条文案。
+
+七、限制
+
+- A2A 调用是同步的：`message/send` 阻塞到审批完成或超时（服务端 `wait + 60` 秒），
+  真实 WorkBuddy 需要设置客户端超时。
+- 拒绝与超时都返回 200 + 一段文本（HTTP 错误码区分不了「机器错误」与「人拒绝」），
+  客户端脚本按文本判断。
+- `ticket_writer` 直接走 HTTP 调 mock，不经过工具网关；连接器只登记未执行。
+- 工单步骤的输入是固定的演示文案，A2A 用户的实际提问只进父调用与 `answer` 步骤，
+  不进工单描述；真实接入时再按用户问题生成。
+
+八、范围外
+
+- 真实 WorkBuddy Enterprise OpenAPI 与 IM 通道。
+- 跨进程异步审批。
+- 工具网关调用 mock 连接器。
