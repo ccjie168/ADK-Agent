@@ -33,7 +33,9 @@ def mock():
         server.should_exit = True
 
 
-def _params(workdir: Path, mock_url: str) -> StdioServerParameters:
+def _params(
+    workdir: Path, mock_url: str, extra: dict[str, str] | None = None
+) -> StdioServerParameters:
     env = dict(os.environ)
     env.update(
         {
@@ -44,6 +46,7 @@ def _params(workdir: Path, mock_url: str) -> StdioServerParameters:
             "SUPPORT_DEFER": "1",
         }
     )
+    env.update(extra or {})
     return StdioServerParameters(
         command=sys.executable,
         args=["-m", "adk_agent", "serve", "--agent", str(_AGENT)],
@@ -160,3 +163,54 @@ def test_deferred_doc_matches_env():
         assert variable in agent
         assert variable in doc
     assert "request_id" in doc
+
+
+def test_deferred_resume_skips_completed_steps(tmp_path, mock):
+    import json
+
+    async def scenario() -> list[str]:
+        async with (
+            stdio_client(_params(tmp_path, mock)) as (read, write),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            await session.call_tool("support_flow", {"request": "客户无法登录"})
+            await asyncio.to_thread(_decide, tmp_path / "approvals", approved=True)
+            assert await asyncio.to_thread(_wait_ticket, mock, "t-1") is not None
+        audit = tmp_path / "support-audit.jsonl"
+        events = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+        return [
+            item["event"]["target"]
+            for item in events
+            if item["event"]["action"] == "orchestration.step"
+        ]
+
+    targets = asyncio.run(scenario())
+
+    assert targets.count("answer") == 1, targets
+    assert "ticket" in targets
+
+
+def test_missing_notify_secret_still_resumes(tmp_path, mock):
+    async def scenario() -> str:
+        params = _params(
+            tmp_path,
+            mock,
+            {
+                "SUPPORT_NOTIFY_WEBHOOK_URL": "http://127.0.0.1:9/hook",
+                "SUPPORT_NOTIFY_SECRET_ENV": "ADK_TEST_UNSET_NOTIFY_SECRET",
+            },
+        )
+        async with (
+            stdio_client(params) as (read, write),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            result = await session.call_tool("support_flow", {"request": "客户无法登录"})
+            text = "".join(getattr(item, "text", "") or "" for item in result.content)
+            assert "request_id=" in text, text
+            await asyncio.to_thread(_decide, tmp_path / "approvals", approved=True)
+            ticket = await asyncio.to_thread(_wait_ticket, mock, "t-1")
+            return "" if ticket is None else ticket["status"]
+
+    assert asyncio.run(scenario()) == "open"

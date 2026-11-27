@@ -27,6 +27,8 @@
 - [ ] 延迟模式下 MCP 调用 2 秒内返回回执且含 request id -> `test_mcp_deferred_call_returns_ack`
 - [ ] 批准后后台恢复并建单（工单出现） -> `test_deferred_mcp_resumes_after_approval`
 - [ ] 拒绝时不建单、不通知微信 -> `test_deferred_mcp_denial_leaves_no_ticket`
+- [ ] 恢复跳过已完成步骤（进程内检查点） -> `test_deferred_resume_skips_completed_steps`
+- [ ] 通知缺密钥时仍能恢复 -> `test_missing_notify_secret_still_resumes`
 - [ ] 文档与脚本参数一致 -> `test_deferred_doc_matches_env`
 - [ ] `--full` 门禁通过
 

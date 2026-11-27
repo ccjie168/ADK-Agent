@@ -109,9 +109,11 @@ claude mcp add --scope user adk-support --env SUPPORT_MOCK_URL=http://127.0.0.1:
 
 1. 工具参数是 `request`（字符串），就是你问的那句话。
 2. 平台先答问；需要建单时，审批请求写进 `SUPPORT_APPROVALS_DIR`，控制台「审批」页可见。
-3. 调用是**同步阻塞**的：Claude 侧会一直等，直到批准、拒绝或超时
+3. 默认调用是**同步阻塞**的：Claude 侧会一直等，直到批准、拒绝或超时
    （`SUPPORT_WAIT_SECONDS`，最长约 `wait + 60` 秒）。批准后返回「已创建工单 t-1」，
-   拒绝返回「工单创建被拒绝，未执行。」。
+   拒绝返回「工单创建被拒绝，未执行。」。设 `SUPPORT_DEFER=1` 时改为立即回执
+   「已提交，等待审批，request_id=…」，批准后由服务进程内的恢复器继续建单，
+   `answer` 步骤不会重跑（进程内检查点）。
 4. 审计写两份：平台 MCP 运行审计在 `serve --audit-file`（未在上面配置里开启），
    计划审计在 `SUPPORT_AUDIT_FILE`。
 
@@ -125,5 +127,6 @@ claude mcp add --scope user adk-support --env SUPPORT_MOCK_URL=http://127.0.0.1:
 ## 限制
 
 - 只在本机 stdio，没有远程多用户鉴权。
-- 审批阻塞调用；真实 IM 前端需要中间的「已收到，等待审批」回复。
+- 默认审批阻塞调用；要立即回执用 `SUPPORT_DEFER=1`。延迟模式的检查点在进程内，
+  服务重启后未恢复的请求需要人工重跑。
 - 控制台审批页要看到请求，两边必须用同一个 `--approval-dir`。

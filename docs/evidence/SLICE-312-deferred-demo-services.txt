@@ -15,7 +15,7 @@ SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）
 
     $ python -m pytest tests/test_support_deferred_services.py -q
     ....                                                             [100%]
-    4 passed in 17.49s
+    6 passed in 25.69s
 
 - `test_mcp_deferred_call_returns_ack`：MCP 工具调用 2 秒内返回，文本含
   `已提交` 与 `request_id=`，此时工单还没创建
@@ -29,8 +29,8 @@ SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）
 - 延迟时把父调用按 request id 记在进程内，恢复器用同一 run_id、刷新后的截止时间
   重跑计划；恢复失败只记日志，不向客户端报错。
 - 恢复器进程内单例，首次延迟时启动；MCP/A2A 服务退出即结束。
-- 通知可选：`SUPPORT_NOTIFY_WEBHOOK_URL` 与 `SUPPORT_NOTIFY_SECRET_ENV`，
-  缺密钥时启动即报错，不静默降级。
+- 通知可选：`SUPPORT_NOTIFY_WEBHOOK_URL` 与 `SUPPORT_NOTIFY_SECRET_ENV`；
+  配了 URL 却没有密钥时只记日志并禁用通知，不影响回执与恢复。
 
 四、门禁
 
@@ -57,11 +57,22 @@ SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）
     ALL PASS
 
     $ python -m pytest -q
-    2431 passed, 106 skipped
+    2433 passed, 106 skipped
 
 （首轮 lint 失败：import 顺序；`ruff check --fix` 后复跑全绿。）
 
-五、限制
+六、首轮验证修正（2 个 S）
+
+- **S1 恢复没接检查点**：agent 构造 `PlanExecutor` 时没传 `checkpoints`，恢复等于从头
+  重跑，`answer` 步骤每次都再执行，`plan_digest` 也没校验。改为模块级
+  `InMemoryCheckpointStore` 共享给首次执行与恢复，恢复跳过已完成步骤。
+  用例 `test_deferred_resume_skips_completed_steps` 用审计里 `answer` 只出现一次证明。
+- **S2 缺通知密钥会丢单**：通知器在 `try` 外构建，缺密钥抛 `ValueError`，恢复时被
+  恢复器吞掉且不重试，已批准的工单静默丢失。改为缺密钥记日志并禁用通知；
+  用例 `test_missing_notify_secret_still_resumes`。
+- 顺带删掉死代码 `_build_notifier`；文档里旧的「审批阻塞调用」表述与新章节对齐。
+
+七、限制
 
 - 恢复器只在 MCP/A2A 服务进程存活期间工作；服务停止后，决策要等服务重启再恢复。
 - 结果不单独推送（只有提交与决定两类通知）；结果体现在工单与审计。

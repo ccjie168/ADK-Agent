@@ -44,6 +44,7 @@ from adk_agent.orchestration import (  # noqa: E402
     AgentGrantPolicyEngine,
     ApprovalDenied,
     ApprovalTimeout,
+    InMemoryCheckpointStore,
     PlanExecutionError,
     PlanExecutor,
 )
@@ -58,6 +59,7 @@ from support_demo_flow import (  # noqa: E402
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 logger = logging.getLogger(__name__)
 _PENDING: dict[str, Invocation] = {}
+_CHECKPOINTS = InMemoryCheckpointStore()
 _RESUMER_TASK: Any = None
 
 
@@ -75,17 +77,6 @@ def _user_text(ctx: InvocationContext) -> str:
         if isinstance(text, str) and text:
             return text
     return ""
-
-
-def _build_notifier() -> WebhookNotifier | None:
-    url = os.environ.get("SUPPORT_NOTIFY_WEBHOOK_URL")
-    if not url:
-        return None
-    env_name = os.environ.get("SUPPORT_NOTIFY_SECRET_ENV", "")
-    secret = os.environ.get(env_name, "") if env_name else ""
-    if not secret:
-        raise ValueError("SUPPORT_NOTIFY_WEBHOOK_URL needs SUPPORT_NOTIFY_SECRET_ENV")
-    return WebhookNotifier(url, secret=secret)
 
 
 class SupportFlowAgent(BaseAgent):
@@ -112,6 +103,7 @@ class SupportFlowAgent(BaseAgent):
             build_agents(self.mock_url, self.mock_token),
             policy=AgentGrantPolicyEngine(["support", "ticket_writer"]),
             audit=PipelineSink(AuditPipeline(self.audit_file)),
+            checkpoints=_CHECKPOINTS,
             defer_approvals=self.defer,
             notifier=notifier,
         )
@@ -121,7 +113,8 @@ class SupportFlowAgent(BaseAgent):
             return None
         secret = os.environ.get(self.notify_secret_env or "", "")
         if not secret:
-            raise ValueError("notify webhook needs its secret environment variable")
+            logger.warning("notify webhook configured without a secret; notifications disabled")
+            return None
         return WebhookNotifier(self.notify_webhook_url, secret=secret)
 
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
