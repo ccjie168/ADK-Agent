@@ -1,0 +1,85 @@
+SLICE-309 售后专家接入 Claude Desktop（MCP）
+
+日期: 2026-11-27
+依据: 用户确认「WorkBuddy 用不了，先用 Claude Desktop 当入口验证平台」
+范围: `scripts/mcp_desktop_config.py`、`docs/demo/support-mcp.md`、
+      `docs/specs/SLICE-309-support-mcp.md`、新增 4 条用例
+
+一、红绿说明（如实记录）
+
+- `test_desktop_config_generator` 与 `test_support_mcp_doc_matches_config` 在 master 上必然
+  失败（生成器与文档不存在）；本轮两个文件与用例一起落地，没有单独抓红屏。
+- `test_support_agent_lists_over_mcp` 与 `test_support_agent_answer_over_mcp` 在实现前就会
+  通过：`serve --agent` 的 MCP 能力在平台里早已存在（SLICE-046 等），本切片只加配置与文档。
+  spec 的「反例」一节已如实写明。
+- 实现前的手工探针确认了工具名与参数：`('support_flow', ['request'])`，调用后审批成功并
+  返回结果。
+
+二、用例
+
+    $ python -m pytest tests/test_support_mcp_demo.py -q
+    ....                                                             [100%]
+    4 passed in 11.43s
+
+- `test_support_agent_lists_over_mcp`：stdio 客户端初始化、列工具，`support_flow` 带
+  `request` 参数
+- `test_support_agent_answer_over_mcp`：调用工具，测试线程在审批目录批准，回复含 `t-1`
+- `test_desktop_config_generator`：生成 `mcpServers.adk-support`，命令、参数、环境变量正确；
+  非回环 `--mock-url` 被拒绝
+- `test_support_mcp_doc_matches_config`：文档与生成器的参数、环境变量一致
+
+三、配置样例（生成器实际输出，节选）
+
+    {
+      "mcpServers": {
+        "adk-support": {
+          "command": "<venv>/python.exe",
+          "args": ["-m", "adk_agent", "serve", "--agent",
+                   "<repo>/scripts/support_a2a_agent.py"],
+          "env": {
+            "SUPPORT_MOCK_URL": "http://127.0.0.1:8055",
+            "SUPPORT_MOCK_TOKEN": "demo-token",
+            "SUPPORT_APPROVALS_DIR": "<workdir>/approvals",
+            "SUPPORT_AUDIT_FILE": "<workdir>/support-audit.jsonl",
+            "SUPPORT_WAIT_SECONDS": "120"
+          }
+        }
+      }
+    }
+
+四、实机：VS Code 里的 Claude Code
+
+用户按最初的文档注册后，`/mcp` 显示 `adk-support` 为 ✘。`claude mcp get adk-support`
+显示 `Command: \`、`Args:` 为空——PowerShell 不认行尾反斜杠续行，多行命令被拆开，
+只注册了反斜杠。改成一行重新注册后：
+
+    Status: ✔ Connected
+    Command: C:/AI_System/ADK-Agent/.venv/Scripts/python.exe
+    Args: -m adk_agent serve --agent C:/AI_System/ADK-Agent/scripts/support_a2a_agent.py
+
+文档已改成一行的命令并写明这个坑。因此 `claude mcp add` 不需要 Claude Desktop，
+VS Code 插件与 CLI 共用这套配置。
+
+五、门禁
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2408 passed, 105 skipped
+
+六、限制
+
+- 只验证到 stdio 本机；远程 MCP（streamable HTTP）与多用户鉴权不在本切片。
+- 审批同步阻塞：Claude 侧要等到批准或超时才拿到回复，最长约 `SUPPORT_WAIT_SECONDS + 60` 秒。
+- 控制台「审批」页要看到请求，控制台必须用同一个 `--approval-dir` 启动。
+- 配置里只有演示 token；工作目录与解释器路径按本机实际生成，粘到 Claude Desktop 前不要改成网络路径。
