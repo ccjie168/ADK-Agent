@@ -105,6 +105,7 @@
   <h2>目录</h2>
   <ol>
     <li><a href="#start">快速开始与登录</a></li>
+    <li><a href="#keys">键盘与命令面板</a></li>
     <li><a href="#map">导航地图</a></li>
     <li><a href="#overview">概览</a></li>
     <li><a href="#run">运行：运行、计划、会话、审批、聊天、Ask AI</a></li>
@@ -126,7 +127,15 @@
 </ul>
 <p>登录后右上角显示租户与主体名。左侧导航只显示你有能力访问的入口；看不到某个页面通常意味着当前角色缺少对应能力，而不是页面坏了。</p>
 
-<h2 id="map">2. 导航地图</h2>
+<h2 id="keys">2. 键盘与命令面板</h2>
+<p>按 <kbd>Ctrl</kbd>+<kbd>K</kbd>（macOS 上 <kbd>⌘</kbd>+<kbd>K</kbd>）打开命令面板，输入页面名或路径即可过滤：</p>
+<ul>
+  <li><kbd>↑</kbd> / <kbd>↓</kbd> 选择，<kbd>Enter</kbd> 跳转，<kbd>Esc</kbd> 或点遮罩关闭；</li>
+  <li>面板与左侧导航用同一份数据，只列出当前角色有能力的入口；「使用说明」这类外部链接不在面板里；</li>
+  <li>切换主题按钮仍在右上角；命令面板不改变任何权限判断，服务端授权照旧。</li>
+</ul>
+
+<h2 id="map">3. 导航地图</h2>
 <table class="map">
   <tr><th>分组</th><th>管什么</th><th>入口</th></tr>
   <tr><td>概览</td><td>平台状态与常用入口</td><td>总览、Agent、注册表</td></tr>
@@ -136,14 +145,14 @@
   <tr><td>设置</td><td>控制台自身</td><td>设置、使用说明</td></tr>
 </table>
 
-<h2 id="overview">3. 概览</h2>
+<h2 id="overview">4. 概览</h2>
 <section class="page" data-route="/">
   <h3>总览 <span class="route">/</span></h3>
   <p>平台运行概况与常用入口：待审批、已注册 Agent、工具与授权数量，以及最近活动。</p>
   <p class="meta">前提：需要 <code>ops.read</code> 或 <code>registry.read</code>。操作：点统计卡进入对应页面。</p>
 </section>
 
-<h2 id="run">4. 运行</h2>
+<h2 id="run">5. 运行</h2>
 <section class="page" data-route="/runs">
   <h3>运行 <span class="route">/runs</span></h3>
   <p>每一轮对话或触发的执行记录，含状态、耗时、租户与 trace。</p>
@@ -175,7 +184,7 @@
   <p class="meta">前提：<code>runs.read</code>；术语表为空时先到「语义层」导入。</p>
 </section>
 
-<h2 id="govern">5. 治理</h2>
+<h2 id="govern">6. 治理</h2>
 <h3>访问控制</h3>
 <section class="page" data-route="/policy">
   <h3>策略 <span class="route">/policy</span></h3>
@@ -247,7 +256,7 @@
   <p class="meta">前提：<code>ops.read</code>；配额来自 <code>--quota-config</code>，未配置时不受限。</p>
 </section>
 
-<h2 id="dev">6. 开发</h2>
+<h2 id="dev">7. 开发</h2>
 <section class="page" data-route="/agents">
   <h3>Agent 中心 <span class="route">/agents</span></h3>
   <p>注册、版本与生命周期。卡片展示每个 Agent 的版本与状态，可进入注册表或新建。</p>
@@ -288,7 +297,7 @@
   <p class="meta">前提：<code>runs.read</code>；写入需要 <code>registry.publish</code> 或 <code>semantics.write</code>。</p>
 </section>
 
-<h2 id="settings">7. 设置</h2>
+<h2 id="settings">8. 设置</h2>
 <section class="page" data-route="/settings">
   <h3>设置 <span class="route">/settings</span></h3>
   <p>控制台自身的偏好页（当前是占位页）。侧栏「设置」组里的「使用说明」另开页面展示这份手册。</p>
@@ -297,7 +306,7 @@
   <p class="meta">对所有登录主体可见。</p>
 </section>
 
-<h2 id="flows">8. 两条完整流程</h2>
+<h2 id="flows">9. 两条完整流程</h2>
 <h3>把已有 Agent 跑起来</h3>
 <ol>
   <li>在「注册表」找到目标版本，确认生命周期不是 retired。</li>
@@ -314,7 +323,7 @@
   <li>「审计」能看到 <code>agent.compose</code> 事件（不含指令原文）。</li>
 </ol>
 
-<h2 id="errors">9. 常见错误与处理</h2>
+<h2 id="errors">10. 常见错误与处理</h2>
 <table>
   <tr><th>界面提示</th><th>含义</th><th>处理</th></tr>
   <tr><td>连接器存储不可用</td><td>控制台没配置连接器存储</td><td>启动加 <code>--connectors-dir</code>，或用注册表的连接器接口</td></tr>
@@ -331,7 +340,7 @@
   <tr><td>401 unauthorized</td><td>没有令牌或令牌失效</td><td>重新登录；token 模式重新输入 Bearer token</td></tr>
 </table>
 
-<h2 id="mobile">10. 手机与窄屏</h2>
+<h2 id="mobile">11. 手机与窄屏</h2>
 <ul>
   <li>960px 以下左侧导航收成抽屉，点左上角菜单展开。</li>
   <li>600px 以下页面改为单列：表格可以左右滑动，聊天输入框固定在底部。</li>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterView } from "vue-router";
+import CommandPalette from "./components/CommandPalette.vue";
 import NavIcon from "./components/NavIcon.vue";
 import { router } from "./router";
 import { useAuthStore } from "./stores/auth";
@@ -8,6 +9,14 @@ import { useAuthStore } from "./stores/auth";
 const auth = useAuthStore();
 const tokenInput = ref("");
 const navOpen = ref(false);
+const paletteOpen = ref(false);
+
+function onKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    paletteOpen.value = !paletteOpen.value;
+  }
+}
 const booting = computed(() => auth.isAuthenticated && !auth.resolved);
 const theme = ref(
   typeof document !== "undefined" && document.documentElement.dataset.theme === "dark"
@@ -44,10 +53,15 @@ async function handleCallback() {
 }
 
 onMounted(async () => {
+  window.addEventListener("keydown", onKeydown);
   await auth.init();
   if (window.location.pathname === "/auth/callback") {
     await handleCallback();
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown);
 });
 </script>
 
@@ -249,5 +263,10 @@ onMounted(async () => {
       <p v-if="auth.loginError" class="login-msg">{{ auth.loginError }}</p>
     </div>
     <div v-else class="boot">正在加载…</div>
+    <CommandPalette
+      v-if="auth.isAuthenticated"
+      :open="paletteOpen"
+      @close="paletteOpen = false"
+    />
   </div>
 </template>

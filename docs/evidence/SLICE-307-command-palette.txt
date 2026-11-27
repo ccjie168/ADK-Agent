@@ -1,0 +1,85 @@
+SLICE-307 控制台命令面板
+
+日期: 2026-11-27
+依据: PROGRESS 第 16 节「命令面板仍未做」（ADR-0041 视觉改造最后一项）
+范围: `web/src/nav.ts`（面板的数据源，与侧边栏路由对齐）、
+      `web/src/components/CommandPalette.vue`、`web/src/App.vue`（快捷键与挂载）、
+      `web/src/style.css`、重建 `web/dist`、`docs/guides/console-ui.html`、新增 6 条用例
+
+一、反例：实现前跑用例
+
+    $ python -m pytest tests/test_console_vue_command_palette.py -q
+    FAILED test_nav_source_is_shared
+    FAILED test_palette_filters_by_capability
+    FAILED test_palette_keyboard_and_a11y
+    FAILED test_palette_shortcut_is_wired
+    FAILED test_palette_is_built
+    5 failed, 1 passed
+
+（`nav.ts` 与 `CommandPalette.vue` 不存在；通过的那条是文档用例，契约先改。）
+
+二、实现后
+
+    $ python -m pytest tests/test_console_vue_command_palette.py -q
+    ......                                                                 [100%]
+    6 passed in 0.08s
+
+用例映射：
+
+- `test_nav_source_is_shared`：`nav.ts` 的 26 个内部路由都在 router 里、能力名都在
+  `capabilities.ts` 里，`/guide` 标为外部链接；`nav.ts` 的内部路由集合与 `App.vue`
+  侧边栏的 27 个 `to` 完全相等，改一边漏另一边会红
+- `test_palette_filters_by_capability`：面板读 `NAV_GROUPS`、按 `capabilities` 与
+  `hasCapability` 过滤、跳过 `external`、无 `v-html`
+- `test_palette_keyboard_and_a11y`：`role="dialog"`、`aria-modal`、`aria-activedescendant`、
+  方向键/Enter/Esc、`nextTick` + `focus()`
+- `test_palette_shortcut_is_wired`：`Ctrl`/`⌘` + `k`，挂载与卸载监听
+- `test_palette_is_built`：`web/dist` 里含「命令面板」「跳转到页面」
+- `test_guide_documents_the_palette`：手册记录 Ctrl/⌘、Esc
+
+三、实机（headless Edge + CDP，本机 8031）
+
+控制台用 `--ui vue --role admin --auth-token-env ADK_MCP_AUTH_TOKEN` 起在
+`127.0.0.1:8031`，浏览器把 token 写进 `sessionStorage` 后重载：
+
+    NAV: 28                      # 侧边栏条目（27 个内部页面 + 使用说明）
+    OPTIONS: 27                  # 面板不列外部链接
+    FILTERED: 审计 /audit         # 输入「审计」只剩一条
+    HASH: #/audit                # Enter 跳转
+    CLOSED: True                 # 跳转后自动关闭
+
+截图：`docs/evidence/ui/SLICE-307-palette.png`（全量列表）与
+`docs/evidence/ui/SLICE-307-palette-filter.png`（过滤后）。
+
+四、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2399 passed, 105 skipped
+
+五、限制
+
+- 面板只跳转页面，不搜索 Agent、运行、审批等对象（需要新查询接口）。
+- 触屏没有手势入口，`Ctrl+K` 不适用；侧边栏保持原样。
+- 面板隐藏入口只是界面行为，服务端授权不变。
