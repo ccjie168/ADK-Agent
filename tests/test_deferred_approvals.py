@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -247,3 +248,21 @@ def test_executor_notifies_on_defer_and_decision(tmp_path):
     assert [notice.kind for notice in notifier.notices] == ["submitted", "decided"]
     assert notifier.notices[-1].approved is True
     assert notifier.notices[-1].approver == "tester"
+
+
+class SlowNotifier:
+    async def notify(self, notice):
+        await asyncio.sleep(5)
+
+
+def test_slow_notifier_does_not_delay_pending(tmp_path):
+    calls: list[str] = []
+    inbox = FileApprovalInbox(tmp_path / "approvals", poll_seconds=0.05)
+    executor = _executor(calls, notifier=SlowNotifier())
+
+    started = time.monotonic()
+    result = asyncio.run(executor.run(_plan(), _invocation(), approvals=inbox))
+    elapsed = time.monotonic() - started
+
+    assert isinstance(result, PlanPending)
+    assert elapsed < 2

@@ -23,8 +23,12 @@
   `X-ADK-Signature: sha256=<hmac>`，签名对象是请求体字节；非 2xx 与网络错误重试，
   用尽后抛 `NotifierError`。
 - `ApprovalResumer(inbox, handler, *, poll_seconds=1.0, batch=50)`：
-  `run_once()` 读 `inbox.history(limit=batch)`，对未见过的已决请求调用
-  `await handler(entry)`；回调异常记录并计入 `failed`，不阻塞其他请求。
+  `run_once()` 读 `inbox.history(limit=batch, oldest_first=True, since=水位)`，对未见过的
+  已决请求调用 `await handler(entry)`；回调异常记录并计入 `failed`，不阻塞其他请求。
+  `expired` 只标记已见、不回调（ADR-0049 决定 7）。文件与 Postgres 的 `history`
+  增加 `oldest_first` 与 `since` 两个可选参数，默认行为不变。
+- 通知有超时上限：执行器 `notify_timeout` 默认 1 秒，通知再慢也不拖住 `PlanPending`。
+- 4xx（429 除外）不重试。
 
 ## 完成判据
 
@@ -34,6 +38,10 @@
 - [ ] 恢复器每个请求只触发一次 -> `test_resumer_handles_each_decision_once`
 - [ ] 恢复回调异常不影响其他请求 -> `test_resumer_survives_handler_errors`
 - [ ] 延迟提交发 `submitted` 通知，批准后发 `decided` -> `test_executor_notifies_on_defer_and_decision`
+- [ ] 突发超过 batch 时分两次轮询也能排空 -> `test_resumer_drains_a_burst_across_polls`
+- [ ] 过期请求不交给恢复回调 -> `test_resumer_skips_expired`
+- [ ] 4xx 不重试 -> `test_webhook_rejected_is_not_retried`
+- [ ] 慢通知不拖慢延迟返回 -> `test_slow_notifier_does_not_delay_pending`
 - [ ] `--full` 门禁通过
 
 ## 反例

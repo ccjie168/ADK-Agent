@@ -15,11 +15,15 @@ from .core import ApprovalNotice
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MultiNotifier", "NotifierError", "WebhookNotifier"]
+__all__ = ["MultiNotifier", "NotifierError", "NotifierRejected", "WebhookNotifier"]
 
 
 class NotifierError(RuntimeError):
     """The notification could not be delivered."""
+
+
+class NotifierRejected(NotifierError):
+    """The receiver rejected the notice; retrying will not help."""
 
 
 class WebhookNotifier:
@@ -55,6 +59,8 @@ class WebhookNotifier:
             try:
                 await self._post(body, headers)
                 return
+            except NotifierRejected as exc:
+                raise NotifierError(f"webhook rejected: {exc}") from None
             except (httpx.HTTPError, NotifierError) as exc:
                 last = exc
                 if attempt < self.retries and self.backoff_seconds:
@@ -67,8 +73,10 @@ class WebhookNotifier:
         else:
             async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
                 response = await client.post(self.url, content=body, headers=headers)
-        if response.status_code >= 300:
+        if response.status_code == 429 or response.status_code >= 500:
             raise NotifierError(f"webhook returned {response.status_code}")
+        if response.status_code >= 300:
+            raise NotifierRejected(f"webhook returned {response.status_code}")
 
 
 class MultiNotifier:

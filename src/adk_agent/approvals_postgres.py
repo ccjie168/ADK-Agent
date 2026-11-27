@@ -123,9 +123,18 @@ SELECT * FROM (
 ) AS history
 WHERE ($1::text IS NULL OR tenant = $1)
   AND ($2::text IS NULL OR status = $2)
+  AND (
+    $4::timestamptz IS NULL
+    OR COALESCE(decided_at, expires_at, requested_at) > $4
+  )
 ORDER BY COALESCE(decided_at, expires_at, requested_at) DESC, request_id
 LIMIT $3
 """
+
+_SELECT_HISTORY_ASC = _SELECT_HISTORY.replace(
+    "ORDER BY COALESCE(decided_at, expires_at, requested_at) DESC, request_id",
+    "ORDER BY COALESCE(decided_at, expires_at, requested_at) ASC, request_id",
+)
 
 _UPDATE_DECIDE = """
 UPDATE adk_approvals
@@ -376,6 +385,8 @@ class PostgresApprovalInbox:
         tenant: str | None = None,
         status: str | None = None,
         limit: int = 50,
+        oldest_first: bool = False,
+        since: datetime | None = None,
     ) -> list[ApprovalHistoryEntry]:
         if status is not None and status not in HISTORY_STATUSES:
             raise ValueError(f"unknown approval history status: {status!r}")
@@ -383,7 +394,8 @@ class PostgresApprovalInbox:
         try:
             pool = await self._pool.get()
             async with pool.acquire() as conn:
-                rows = await conn.fetch(_SELECT_HISTORY, tenant, status, limit)
+                sql = _SELECT_HISTORY_ASC if oldest_first else _SELECT_HISTORY
+                rows = await conn.fetch(sql, tenant, status, limit, since)
         except ApprovalInboxError:
             raise
         except Exception as exc:  # noqa: BLE001

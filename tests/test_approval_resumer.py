@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import hmac
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -31,7 +31,8 @@ def _notice(**overrides) -> ApprovalNotice:
     return ApprovalNotice(**data)
 
 
-def _entry(request_id: str, status: str = "approved") -> ApprovalHistoryEntry:
+def _entry(request_id: str, status: str = "approved", minutes: int = 0) -> ApprovalHistoryEntry:
+    when = _NOW + timedelta(minutes=minutes)
     request = ApprovalRequest(
         request_id=request_id,
         run_id="run-1",
@@ -40,16 +41,16 @@ def _entry(request_id: str, status: str = "approved") -> ApprovalHistoryEntry:
         agent_ref=AgentRef(id="ticket_writer", version="1.0.0", digest="d" * 64),
         principal=Principal(tenant="local", subject="tester", kind="human"),
         input="x",
-        requested_at=_NOW,
+        requested_at=when,
     )
     decision = ApprovalDecision(
         request_id=request_id,
         approved=status == "approved",
         approver="tester",
-        decided_at=_NOW,
+        decided_at=when,
     )
     return ApprovalHistoryEntry(
-        request=request, decision=decision, status=status, archived=False, terminal_at=_NOW
+        request=request, decision=decision, status=status, archived=False, terminal_at=when
     )
 
 
@@ -113,9 +114,13 @@ class FakeInbox:
         self.entries = entries
         self.polls = 0
 
-    def history(self, *, limit=50):
+    def history(self, *, limit=50, oldest_first=False, since=None):
         self.polls += 1
-        return self.entries[:limit]
+        rows = self.entries
+        if since is not None:
+            rows = [entry for entry in rows if entry.terminal_at > since]
+        rows = sorted(rows, key=lambda entry: entry.terminal_at, reverse=not oldest_first)
+        return rows[:limit]
 
 
 def test_resumer_handles_each_decision_once():
@@ -152,3 +157,57 @@ def test_resumer_survives_handler_errors():
 def test_resumer_requires_history():
     with pytest.raises(ValueError):
         ApprovalResumer(object(), lambda entry: None)
+
+
+def test_resumer_drains_a_burst_across_polls():
+    entries = [
+        _entry("req-old", minutes=0),
+        _entry("req-mid", minutes=1),
+        _entry("req-new", minutes=2),
+    ]
+    handled: list[str] = []
+
+    async def handler(entry):
+        handled.append(entry.request.request_id)
+
+    resumer = ApprovalResumer(FakeInbox(entries), handler, batch=2)
+    asyncio.run(resumer.run_once())
+    asyncio.run(resumer.run_once())
+
+    assert handled == ["req-old", "req-mid", "req-new"]
+
+
+def test_resumer_skips_expired():
+    handled: list[str] = []
+
+    async def handler(entry):
+        handled.append(entry.request.request_id)
+
+    resumer = ApprovalResumer(
+        FakeInbox([_entry("req-expired", status="expired"), _entry("req-ok")]), handler
+    )
+    asyncio.run(resumer.run_once())
+
+    assert handled == ["req-ok"]
+    assert resumer.handled == 1
+
+
+def test_webhook_rejected_is_not_retried():
+    attempts: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        attempts.append(1)
+        return httpx.Response(404)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    notifier = WebhookNotifier(
+        "https://hook.example.test/approvals",
+        secret="s3cret",  # pragma: allowlist secret
+        client=client,
+        retries=2,
+        backoff_seconds=0,
+    )
+    with pytest.raises(NotifierError):
+        asyncio.run(notifier.notify(_notice()))
+    asyncio.run(client.aclose())
+    assert len(attempts) == 1

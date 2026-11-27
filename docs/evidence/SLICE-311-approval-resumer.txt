@@ -60,11 +60,24 @@ SLICE-311 审批恢复器与通知（ADR-0049 切片 2）
     ALL PASS
 
     $ python -m pytest -q
-    2423 passed, 106 skipped
+    2427 passed, 106 skipped
 
 （首轮 lint 失败：executor 的 import 顺序；`ruff check --fix` 后复跑全绿。）
 
-五、限制
+六、首轮验证修正（3 个 B）
+
+- **B1 轮询窗口漏决策**：`history(limit)` 只取最新一批，突发超过 batch 时最旧的决策
+  永远看不到。文件与 Postgres 的 `history` 增加 `oldest_first` 与 `since`（按
+  `terminal_at` 过滤）；恢复器从旧到新读并维护水位，分多轮排空。
+  用例 `test_resumer_drains_a_burst_across_polls`。
+- **B2 过期请求被恢复**：`expired` 原先也算可恢复，违反 ADR-0049「到期不恢复」。
+  现在只标记已见、不回调。用例 `test_resumer_skips_expired`。
+- **B3 通知拖慢延迟返回**：提交通知是内联 await，webhook 挂掉时最坏 15 秒才返回。
+  执行器增加 `notify_timeout`（默认 1 秒）。用例 `test_slow_notifier_does_not_delay_pending`。
+- 顺带：4xx（429 除外）不再重试（`test_webhook_rejected_is_not_retried`）；
+  `_seen` 上限 1 万条；`run_forever` 不再清掉先到的 `stop()`。
+
+七、限制
 
 - 只有库层：控制台 SSE、服务接线、A2A/MCP 协议面在 0049-3。
 - 恢复器状态在内存；进程重启后已处理过的请求可能被再次交给回调，

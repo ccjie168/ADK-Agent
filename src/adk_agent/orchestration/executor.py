@@ -119,6 +119,7 @@ class PlanExecutor:
         defer_approvals: bool = False,
         defer_ttl_seconds: float = 3600.0,
         notifier: ApprovalNotifier | None = None,
+        notify_timeout: float = 1.0,
     ) -> None:
         self.agents = dict(agents)
         self.policy = policy
@@ -128,6 +129,7 @@ class PlanExecutor:
         self.defer_approvals = defer_approvals
         self.defer_ttl_seconds = defer_ttl_seconds
         self.notifier = notifier
+        self.notify_timeout = max(0.05, notify_timeout)
 
     async def run(
         self,
@@ -1340,7 +1342,9 @@ class PlanExecutor:
             expires_at=request.expires_at,
         )
         try:
-            await self.notifier.notify(notice)
+            await asyncio.wait_for(self.notifier.notify(notice), timeout=self.notify_timeout)
+        except TimeoutError:
+            logger.warning("approval notification timed out")
         except Exception:  # noqa: BLE001  # notifications never fail the plan
             logger.warning("approval notification failed", exc_info=True)
 
