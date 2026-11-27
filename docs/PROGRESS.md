@@ -721,6 +721,16 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         5 条用例 + 1 条守卫用例。三轮验证（首轮 PASS 带 2 个 S：证据误列 `--fast` 的
         `sast`、文档称超时返回 JSON-RPC 错误；第二轮 PASS 带 3 个 N，修完后第三轮 PASS）。
         证据 `docs/evidence/SLICE-306-support-a2a.txt`。
+      - SLICE-307 控制台命令面板 ~~已合并 `f2bf4a8`~~（#361）：新增 `web/src/nav.ts`
+        （分组 → 子分组 → 条目，条目带任一口径 `capabilities` 与 `external`）与
+        `CommandPalette.vue`，`Ctrl+K`/`⌘K` 打开、输入过滤、方向键/Enter/Esc，
+        `role="dialog"` 与 `aria-activedescendant`，关闭后焦点还给触发元素、Tab 不逃出
+        对话框；面板不列外部链接，只列有能力的入口。`nav.ts` 的内部路由与侧边栏
+        `to` 集合由用例守卫相等。重建 `web/dist`，手册新增「键盘与命令面板」并顺延编号。
+        6 条用例。两轮验证（首轮 REJECT：新用例文件漏提交，干净检出会让 specs 步
+        报未知用例名；补交并补 a11y 后二轮 PASS）。截图
+        `docs/evidence/ui/SLICE-307-palette.png`；证据
+        `docs/evidence/SLICE-307-command-palette.txt`。ADR-0041 视觉改造至此全部完成。
         下一步：换真实 WorkBuddy Enterprise OpenAPI（需要操作员账号的 `ck_`/`pt_` 密钥）、
         夸克官方 Skill 与企微自建应用回调。
 
@@ -729,7 +739,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
 16. 2026-11-24 新增要求与 SLICE-272 的验证残余：
     - **安全聚合接口残余**：~~三项已由 SLICE-273（`2796404`）修复~~（scans 严格按 schema 校验、审计失败给 `audit_unavailable`、租户路径非法给 `credential_store_unavailable`）。`/api/credentials` 对调用方自身非法租户的同类问题~~已由 SLICE-283（`b02cb77`）修复~~（另有 disable 的 `credential_id` 校验）。
     - **控制台视觉改造**：~~SLICE-275 到 278 已全部合并~~。残余取舍：~~`.table-wrap` 无可滚动的最小宽度~~（已由 SLICE-285 `0acbc23` 加 720px 最小宽度）；
-      ~~深色主题~~ 已由 SLICE-302（`e1806f0`）交付；命令面板仍未做。
+      ~~深色主题~~ 已由 SLICE-302（`e1806f0`）交付；~~命令面板~~ 已由 SLICE-307（`f2bf4a8`）交付。
     - **同期发现的既有缺口（已修，282–287）**：`--audit-file` 裸事件读取由 SLICE-282 修复；
       `publisher` 缺 `ops.read` 由 SLICE-284 修复；同刻事件顺序由 SLICE-286 定为 `event_id` 升序；
       `/api/credentials` 调用方非法租户 500 由 SLICE-283 修复；`.table-wrap` 最小宽度由 SLICE-285 修复；
