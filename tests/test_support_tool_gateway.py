@@ -54,7 +54,7 @@ def test_support_demo_tool_gateway_path(tmp_path):
     assert ("tool.call", "mock-wecom") in calls
 
 
-def test_tool_gateway_denies_ungranted_tool(tmp_path):
+def test_tool_gateway_denies_unregistered_tool(tmp_path):
     import os
 
     os.environ["ADK_SECRET_MOCK_TOKEN"] = "demo-token"  # pragma: allowlist secret

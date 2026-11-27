@@ -28,8 +28,8 @@ SLICE-308 售后演示的写操作走工具网关
 
 - `test_support_demo_tool_gateway_path`：`--tool-gateway` 跑通，网关审计里同时有
   `tool.call` → `mock-itsm` 与 `mock-wecom`
-- `test_tool_gateway_denies_ungranted_tool`：网关只注册 `mock-itsm` 时调用 `mock-wecom`
-  返回 403 `tool_denied`
+- `test_tool_gateway_denies_unregistered_tool`：网关只注册 `mock-itsm` 时调用
+  `mock-wecom` 返回 403 `tool_denied`（工具未注册）
 - `test_support_demo_default_path_unchanged`：不传开关时仍是直接 HTTP，且不产生网关审计
 - `test_support_doc_mentions_tool_gateway`：文档与脚本参数一致
 - `test_json_body_is_sent`：连接器 POST 真正带 JSON 请求体
@@ -41,12 +41,14 @@ SLICE-308 售后演示的写操作走工具网关
    JSON 发送；无 `json_body` 的调用参数不变（原有 12 条连接器用例全过）。
 2. **`HttpxAdapter` 跟随本机代理**：本机 `HTTP_PROXY` 把回环请求送给 Privoxy（返回
    500 HTML）。新增 `trust_env` 开关（默认 `True`，行为不变），演示用 `False`。
-3. **`ToolGatewayClient.invoke` 没有幂等键参数**：连接器工具要求幂等键，网关返回 400
-   `idempotency_missing`。新增可选 `idempotency_key`。
+3. **`ToolGatewayClient.invoke` 没有幂等键参数**：L3 写连接器要求幂等键（本次演示的连接器
+   不要求，但平台允许），无参数时网关返回 400 `idempotency_missing`。新增可选
+   `idempotency_key`，演示里统一携带。
 
 四、设计取舍：工单连接器在网关里是 L2
 
-网关对 `needs_approval` 的工具直接拒绝（`approval_required`），平台没有工具级审批令牌。
+网关对 `needs_approval` 的工具直接拒绝（审计记 `approval_required`，HTTP 面统一返回
+403 `tool_denied`），平台没有工具级审批令牌。
 L3 审批已经在计划步骤完成，所以演示把连接器登记为 L2；这一点写进了文档。
 
 实机（`--tool-gateway`）输出：

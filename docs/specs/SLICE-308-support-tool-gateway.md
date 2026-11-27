@@ -16,23 +16,23 @@
 
 `docs/demo/support-agent.md` 新增「工具网关（试跑）」一节：
 
-- `prove_support_demo.py --tool-gateway`：自起 mock 后，写连接器与凭据到 `--workdir`
-  下的 `connectors/`、`credentials/`，用 `secret://local/mock_token`（env
-  `ADK_SECRET_LOCAL_MOCK_TOKEN` 由脚本设为演示 token），在回环空闲端口起网关，
-  计划里的两个写操作都经 `/v1/invoke`。
+- `prove_support_demo.py --tool-gateway`：自起 mock 后，在回环空闲端口起网关，
+  计划里的两个写操作都经 `/v1/invoke`。连接器凭据引用 `secret://mock/token`，
+  由脚本把 `ADK_SECRET_MOCK_TOKEN` 设为演示 token。
 - 连接器：`mock-itsm`（`/itsm/`，L2）、`mock-wecom`（`/wecom/`，L2）；网关只加载这两个。
   工单连接器在网关里是 L2，因为 L3 审批已在计划步骤完成；平台没有工具级审批令牌，
   L3 连接器会被网关以 `approval_required` 拒绝。
 - 平台侧三个小修（由本切片暴露）：
   - 连接器调用原先从不发送 `json_body`，POST 永远是空请求体；现在按 UTF-8 JSON 发送。
   - `HttpxAdapter` 增加 `trust_env` 开关，演示用 `False`，避免本机代理截走回环请求。
-  - `ToolGatewayClient.invoke` 增加可选 `idempotency_key`，连接器工具要求幂等键。
+  - `ToolGatewayClient.invoke` 增加可选 `idempotency_key`（连接器工具按需要求），
+    演示里统一携带。
 - 新增 `PASS tools went through the gateway`，网关审计写 `gateway-audit.jsonl`。
 
 ## 完成判据
 
 - [ ] 开启 `--tool-gateway` 时建单与微信都经网关 -> `test_support_demo_tool_gateway_path`
-- [ ] 网关拒绝未授权工具（不给 mock-wecom 授权时通知失败）-> `test_tool_gateway_denies_ungranted_tool`
+- [ ] 网关拒绝未注册的工具（只注册 mock-itsm 时调 mock-wecom 返回 403）-> `test_tool_gateway_denies_unregistered_tool`
 - [ ] 默认路径不变（不传开关时仍是直接 HTTP）-> `test_support_demo_default_path_unchanged`
 - [ ] 文档与脚本参数一致 -> `test_support_doc_mentions_tool_gateway`
 - [ ] 连接器 POST 真正发送 JSON 请求体 -> `test_json_body_is_sent`

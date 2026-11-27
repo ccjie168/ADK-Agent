@@ -129,7 +129,7 @@ export MOCK_TOKEN=demo-token
 | `mock-wecom` | `/wecom/` | L2 |
 
 工单连接器在网关里是 L2，因为 L3 审批已经发生在计划步骤上；平台目前没有「工具级审批令牌」，
-L3 连接器会被网关以 `approval_required` 拒绝。凭据引用 `secret://mock/token` 由脚本用
+L3 连接器会被网关拒绝（审计记 `approval_required`，HTTP 面返回 403 `tool_denied`）。凭据引用 `secret://mock/token` 由脚本用
 `ADK_SECRET_MOCK_TOKEN` 提供（值就是演示 token），网关只监听回环并开启
 `trust_caller_policy`。
 
