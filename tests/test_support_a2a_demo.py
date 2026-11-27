@@ -233,6 +233,7 @@ def test_support_a2a_doc_matches_cli():
 
     for variable in (
         "SUPPORT_MOCK_URL",
+        "SUPPORT_MOCK_TOKEN",
         "SUPPORT_APPROVALS_DIR",
         "SUPPORT_AUDIT_FILE",
         "SUPPORT_WAIT_SECONDS",

@@ -100,29 +100,33 @@ def _wait_ready(port: int, token: str) -> None:
 
 def _start_agent(port: int, workdir: Path, env: dict[str, str]) -> tuple[Any, Any]:
     log = (workdir / "a2a-server.log").open("w", encoding="utf-8")
-    process = subprocess.Popen(  # nosec B603
-        [
-            sys.executable,
-            "-m",
-            "adk_agent",
-            "serve-a2a",
-            "--agent",
-            str(_AGENT),
-            "--auth-token-env",
-            "SUPPORT_A2A_TOKEN",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--audit-file",
-            str(workdir / "a2a-audit.jsonl"),
-        ],
-        cwd=ROOT,
-        env=env,
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    try:
+        process = subprocess.Popen(  # nosec B603
+            [
+                sys.executable,
+                "-m",
+                "adk_agent",
+                "serve-a2a",
+                "--agent",
+                str(_AGENT),
+                "--auth-token-env",
+                "SUPPORT_A2A_TOKEN",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--audit-file",
+                str(workdir / "a2a-audit.jsonl"),
+            ],
+            cwd=ROOT,
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except OSError:
+        log.close()
+        raise
     return process, log
 
 

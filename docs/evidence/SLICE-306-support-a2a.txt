@@ -34,7 +34,7 @@ SLICE-306 售后演示的 A2A 入口（mock WorkBuddy 客户端）
   工单 404、微信 0 条
 - `test_support_a2a_requires_bearer_token`：无 `Authorization` 返回 401
 - `test_workbuddy_a2a_end_to_end`：子进程跑客户端脚本，含匿名拒绝与 `ALL PASS`
-- `test_support_a2a_doc_matches_cli`：四个环境变量与五个参数在脚本和文档里一致
+- `test_support_a2a_doc_matches_cli`：五个环境变量与五个参数在脚本和文档里一致
 - `test_install_guard_skips_agents_without_tool_callbacks`：自定义 `BaseAgent`
   不声明工具回调时守卫安装不报错，子代理照常接入
 
