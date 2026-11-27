@@ -47,7 +47,20 @@ SLICE-309 售后专家接入 Claude Desktop（MCP）
       }
     }
 
-四、门禁
+四、实机：VS Code 里的 Claude Code
+
+用户按最初的文档注册后，`/mcp` 显示 `adk-support` 为 ✘。`claude mcp get adk-support`
+显示 `Command: \`、`Args:` 为空——PowerShell 不认行尾反斜杠续行，多行命令被拆开，
+只注册了反斜杠。改成一行重新注册后：
+
+    Status: ✔ Connected
+    Command: C:/AI_System/ADK-Agent/.venv/Scripts/python.exe
+    Args: -m adk_agent serve --agent C:/AI_System/ADK-Agent/scripts/support_a2a_agent.py
+
+文档已改成一行的命令并写明这个坑。因此 `claude mcp add` 不需要 Claude Desktop，
+VS Code 插件与 CLI 共用这套配置。
+
+五、门禁
 
     $ python scripts/check.py --full
     [PASS] format
@@ -64,7 +77,7 @@ SLICE-309 售后专家接入 Claude Desktop（MCP）
     $ python -m pytest -q
     2408 passed, 105 skipped
 
-五、限制
+六、限制
 
 - 只验证到 stdio 本机；远程 MCP（streamable HTTP）与多用户鉴权不在本切片。
 - 审批同步阻塞：Claude 侧要等到批准或超时才拿到回复，最长约 `SUPPORT_WAIT_SECONDS + 60` 秒。

@@ -41,16 +41,54 @@ cd c:/AI_System/ADK-Agent
 | `--workdir DIR` | `~/.adk/state` | 审批与审计放在这个目录下 |
 | `--mock-url URL` | `http://127.0.0.1:8055` | mock 服务地址，只接受回环 |
 | `--wait-seconds N` | `120` | 等待人工审批的秒数 |
+| `--python PATH` | 当前解释器 | 写进 `command` 的解释器路径 |
 
 ## 装到哪里
 
 - **Claude Desktop（Windows）**：`%APPDATA%\Claude\claude_desktop_config.json`
 - **Claude Desktop（macOS）**：`~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Claude Code**：项目里用 `.mcp.json`，只写 `${VAR}` 引用环境变量，不要写明文密钥；
-  或者 `claude mcp add --transport stdio ...`。
+- **Claude Code（CLI 与 VS Code 插件共用）**：见下节。
 
 粘贴后重启 Claude Desktop。对话里问「客户登录不了怎么办」，Claude 会调用
 `support_flow` 工具。
+
+## Claude Code / VS Code 插件
+
+不需要 Claude Desktop。Claude Code 本身就是 MCP 客户端，VS Code 插件读同一套配置。
+用户级注册（不写进仓库）：
+
+写成一行，PowerShell 不认行尾反斜杠续行（照抄多行会把命令注册成 `\`）。
+
+```bash
+claude mcp add --scope user adk-support --env SUPPORT_MOCK_URL=http://127.0.0.1:8055 --env SUPPORT_APPROVALS_DIR=C:/Users/Jie/.adk/state/approvals --env SUPPORT_AUDIT_FILE=C:/Users/Jie/.adk/state/support-audit.jsonl --env SUPPORT_WAIT_SECONDS=120 -- C:/AI_System/ADK-Agent/.venv/Scripts/python.exe -m adk_agent serve --agent C:/AI_System/ADK-Agent/scripts/support_a2a_agent.py
+```
+
+注册后用 `claude mcp get adk-support` 确认 `Status: ✔ Connected`；`/mcp` 里该服务器
+显示 ✓ 与工具数。
+
+或者在项目根建 `.mcp.json`（会被提交，按项目规则只写 `${VAR}`）：
+
+```json
+{
+  "mcpServers": {
+    "adk-support": {
+      "type": "stdio",
+      "command": "C:/AI_System/ADK-Agent/.venv/Scripts/python.exe",
+      "args": ["-m", "adk_agent", "serve", "--agent",
+               "C:/AI_System/ADK-Agent/scripts/support_a2a_agent.py"],
+      "env": {
+        "SUPPORT_MOCK_URL": "${SUPPORT_MOCK_URL}",
+        "SUPPORT_APPROVALS_DIR": "${SUPPORT_APPROVALS_DIR}",
+        "SUPPORT_AUDIT_FILE": "${SUPPORT_AUDIT_FILE}",
+        "SUPPORT_WAIT_SECONDS": "120"
+      }
+    }
+  }
+}
+```
+
+注册后重载 VS Code 窗口，用 `/mcp` 确认 `adk-support` 为 connected；工具名形如
+`mcp__adk-support__support_flow`。Claude Code 与 VS Code 插件共用这套配置。
 
 ## 会发生什么
 

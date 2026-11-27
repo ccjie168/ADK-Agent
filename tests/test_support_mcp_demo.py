@@ -110,6 +110,10 @@ def test_support_agent_answer_over_mcp(tmp_path, mock):
     text = "".join(getattr(item, "text", "") or "" for item in result.content)
     assert "t-1" in text, text
 
+    from support_demo_flow import http
+
+    assert http("GET", f"{mock}/itsm/tickets/t-1")["status"] == "open"
+
 
 def test_desktop_config_generator(tmp_path):
     proc = subprocess.run(
@@ -139,14 +143,20 @@ def test_desktop_config_generator(tmp_path):
     assert env["SUPPORT_AUDIT_FILE"] == str(tmp_path / "support-audit.jsonl")
     assert env["SUPPORT_WAIT_SECONDS"].isdigit()
 
-    refused = subprocess.run(
-        [sys.executable, str(_CONFIG), "--mock-url", "http://example.com"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    assert refused.returncode != 0
+    for blocked in (
+        "http://example.com",
+        "http://127.0.0.1.evil.com",
+        "http://127.0.0.1@evil.com",
+    ):
+        refused = subprocess.run(
+            [sys.executable, str(_CONFIG), "--mock-url", blocked],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert refused.returncode != 0, blocked
+        assert "--mock-url must be a loopback http URL" in refused.stderr, blocked
 
 
 def test_support_mcp_doc_matches_config():
@@ -164,6 +174,8 @@ def test_support_mcp_doc_matches_config():
     ):
         assert variable in script
         assert variable in doc
-    for flag in ("--workdir", "--mock-url", "--wait-seconds"):
+    for flag in ("--workdir", "--mock-url", "--wait-seconds", "--python"):
         assert flag in script
         assert flag in doc
+    assert "claude mcp add" in doc
+    assert ".mcp.json" in doc
