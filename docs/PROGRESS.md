@@ -710,8 +710,19 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         2 个 N：登记脚本重复运行抛 `CredentialConflict`、超时残留请求 `expires_at`
         为空，修复后复验 PASS）。
         证据 `docs/evidence/SLICE-305-support-console.txt`。
-        下一步：把该链路接到 A2A（mock WorkBuddy 客户端），再换真实 WorkBuddy
-        Enterprise OpenAPI、夸克官方 Skill 与企微自建应用。
+      - SLICE-306 售后演示的 A2A 入口 ~~已合并 `9f044d8`~~（#359）：
+        `scripts/support_a2a_agent.py` 把同一计划包成 ADK `BaseAgent`
+        （`support_flow`，四个 `SUPPORT_*` 环境变量 + `SUPPORT_MOCK_TOKEN`），
+        拒绝与超时转成固定中文文本、HTTP 200 返回；`scripts/prove_workbuddy_a2a.py`
+        假 WorkBuddy 客户端自起 mock 与 `serve-a2a`，校验匿名 401、批准建单、
+        `--deny` 退出 2、`--interactive` 超时退出 3；`support_demo_flow.py` 抽出共用
+        计划与 agent。同切片修复平台缺陷：`install_tool_guard` 跳过未声明工具回调的
+        自定义 `BaseAgent`（原先 `serve-a2a --agent` 直接 `AttributeError` 退出）。
+        5 条用例 + 1 条守卫用例。三轮验证（首轮 PASS 带 2 个 S：证据误列 `--fast` 的
+        `sast`、文档称超时返回 JSON-RPC 错误；第二轮 PASS 带 3 个 N，修完后第三轮 PASS）。
+        证据 `docs/evidence/SLICE-306-support-a2a.txt`。
+        下一步：换真实 WorkBuddy Enterprise OpenAPI（需要操作员账号的 `ck_`/`pt_` 密钥）、
+        夸克官方 Skill 与企微自建应用回调。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
