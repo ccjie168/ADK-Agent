@@ -1,0 +1,73 @@
+SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）
+
+日期: 2026-11-28
+依据: ADR-0049 决定 9 已按用户选择改为「立即回执」，A2A 任务状态推迟
+范围: `scripts/support_a2a_agent.py`（延迟模式、进程内恢复器、可选通知）、
+      `docs/demo/support-mcp.md`（延迟审批一节）、新增 4 条用例
+
+一、红绿说明（如实记录）
+
+实现前 agent 只有同步路径、没有 `SUPPORT_DEFER`，四条用例在实现前都会失败或
+卡在等待审批（回执用例拿不到 request id，恢复用例等不到工单）。本轮先改实现再写
+用例，没有单独抓红屏。
+
+二、用例
+
+    $ python -m pytest tests/test_support_deferred_services.py -q
+    ....                                                             [100%]
+    4 passed in 17.49s
+
+- `test_mcp_deferred_call_returns_ack`：MCP 工具调用 2 秒内返回，文本含
+  `已提交` 与 `request_id=`，此时工单还没创建
+- `test_deferred_mcp_resumes_after_approval`：批准后服务进程里的恢复器继续计划，
+  工单 `t-1` 出现且为 `open`
+- `test_deferred_mcp_denial_leaves_no_ticket`：拒绝后 3 秒仍无工单
+- `test_deferred_doc_matches_env`：文档与脚本的三个环境变量一致
+
+三、实现要点
+
+- 延迟时把父调用按 request id 记在进程内，恢复器用同一 run_id、刷新后的截止时间
+  重跑计划；恢复失败只记日志，不向客户端报错。
+- 恢复器进程内单例，首次延迟时启动；MCP/A2A 服务退出即结束。
+- 通知可选：`SUPPORT_NOTIFY_WEBHOOK_URL` 与 `SUPPORT_NOTIFY_SECRET_ENV`，
+  缺密钥时启动即报错，不静默降级。
+
+四、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2431 passed, 106 skipped
+
+（首轮 lint 失败：import 顺序；`ruff check --fix` 后复跑全绿。）
+
+五、限制
+
+- 恢复器只在 MCP/A2A 服务进程存活期间工作；服务停止后，决策要等服务重启再恢复。
+- 结果不单独推送（只有提交与决定两类通知）；结果体现在工单与审计。
+- A2A `input-required` 与 MCP `support_status` 推迟，见 ADR-0049 决定 9。
+
+六、范围外
+
+- 独立的 HTTP 状态接口。
+- 跨进程的恢复调度（0049-4 的单赢家与运维）。

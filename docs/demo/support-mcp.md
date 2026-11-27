@@ -90,6 +90,21 @@ claude mcp add --scope user adk-support --env SUPPORT_MOCK_URL=http://127.0.0.1:
 注册后重载 VS Code 窗口，用 `/mcp` 确认 `adk-support` 为 connected；工具名形如
 `mcp__adk-support__support_flow`。Claude Code 与 VS Code 插件共用这套配置。
 
+## 延迟审批（不阻塞）
+
+默认调用会等到审批结束。设置 `SUPPORT_DEFER=1` 后，需要审批时工具立即返回
+「已提交，等待审批，request_id=…」，计划停在检查点；服务进程里的恢复器看到决策后
+继续执行，结果体现在工单与审计里，不再占用调用方的连接。
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `SUPPORT_DEFER` | `0` | `1` 时启用延迟审批 |
+| `SUPPORT_NOTIFY_WEBHOOK_URL` | 未设置 | 可选，提交与决定都推送 |
+| `SUPPORT_NOTIFY_SECRET_ENV` | 未设置 | webhook 的 HMAC 密钥所在环境变量名 |
+
+状态查询走控制台：「审批」页看决策，运行审计看步骤。A2A 的 `input-required` 任务状态
+按 ADR-0049 决定 9 推迟，等出现真实 A2A 客户端再实现。
+
 ## 会发生什么
 
 1. 工具参数是 `request`（字符串），就是你问的那句话。
