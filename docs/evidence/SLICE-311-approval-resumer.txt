@@ -1,0 +1,77 @@
+SLICE-311 审批恢复器与通知（ADR-0049 切片 2）
+
+日期: 2026-11-28
+依据: ADR-0049 已确认；切片 1（SLICE-310）已合并
+范围: `core/approval.py`（`ApprovalNotice`）、`core/ports.py`（`ApprovalNotifier`）、
+      `adk_agent/notify.py`（`WebhookNotifier`、`MultiNotifier`）、
+      `adk_agent/approval_resumer.py`（`ApprovalResumer`）、
+      `orchestration/executor.py`（延迟与决定时发通知）、新增 7 条用例
+
+一、红绿说明（如实记录）
+
+本轮先落实现再写用例，没有单独抓红屏。实现前 `ApprovalNotice`、`ApprovalNotifier`、
+`WebhookNotifier`、`ApprovalResumer` 都不存在，六条相关用例必然 `ImportError`；
+执行器没有 `notifier` 参数，通知用例同样会失败。
+
+二、用例
+
+    $ python -m pytest tests/test_deferred_approvals.py tests/test_approval_resumer.py -q
+    ...............                                                    [100%]
+    15 passed in 2.42s
+
+- `test_notice_roundtrip`：模型 JSON 往返一致；naive 时间被拒
+- `test_webhook_notifier_signs_and_retries`：首次 500、第二次 200，共两次请求；
+  `X-ADK-Signature` 等于请求体字节的 HMAC-SHA256
+- `test_webhook_notifier_gives_up`：持续 503，用尽重试后抛 `NotifierError`
+- `test_resumer_handles_each_decision_once`：两次轮询只处理一次
+- `test_resumer_survives_handler_errors`：一个回调失败不影响其他请求，`failed` 计数
+- `test_resumer_requires_history`：没有 `history()` 的存储直接报错
+- `test_executor_notifies_on_defer_and_decision`：延迟时发 `submitted`，批准恢复后发
+  `decided`（approved=true、approver 记录）
+
+三、设计要点
+
+- 通知失败一律吞掉并记日志，不影响计划，也不影响其他通知渠道（`MultiNotifier`）。
+- 恢复器按 request id 去重；回调失败标记已见，避免无限重试，`failed` 计数留给运维。
+- `WebhookNotifier` 默认 `trust_env=False`，与本机代理隔离；响应不解析，只看状态码。
+
+四、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2423 passed, 106 skipped
+
+（首轮 lint 失败：executor 的 import 顺序；`ruff check --fix` 后复跑全绿。）
+
+五、限制
+
+- 只有库层：控制台 SSE、服务接线、A2A/MCP 协议面在 0049-3。
+- 恢复器状态在内存；进程重启后已处理过的请求可能被再次交给回调，
+  幂等仍由检查点与计划恢复保证。
+- 单赢家抢占与过期强制在 0049-4。
+
+六、范围外
+
+- 控制台「审批」页的实时刷新。
+- IM 渠道通知。
