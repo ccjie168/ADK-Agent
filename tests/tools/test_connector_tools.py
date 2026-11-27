@@ -195,3 +195,25 @@ def test_cli_merges_connectors(tmp_path, monkeypatch):
     )
 
     assert captured["gateway"].registry.get("crm") is not None
+
+
+def test_json_body_is_sent():
+    """SLICE-308: a POST connector call carries its JSON body."""
+
+    class BodyAdapter(FakeAdapter):
+        async def request(self, *, method, url, headers, timeout, max_bytes=1024, body=None):
+            self.calls.append({"headers": headers, "body": body})
+            return ConnectorResponse(
+                status=201, content_type="application/json", body=b'{"id": "t-1"}'
+            )
+
+    adapter = BodyAdapter()
+    spec = _spec(methods=["GET", "POST"])
+    tool, _ = _tool(spec=spec, adapter=adapter)
+
+    output = asyncio.run(tool.handler(path="/v1/records", method="POST", json_body={"title": "x"}))
+
+    assert output == {"status": 201, "body": {"id": "t-1"}}
+    [call] = adapter.calls
+    assert call["body"] == b'{"title": "x"}'
+    assert call["headers"]["Content-Type"] == "application/json"

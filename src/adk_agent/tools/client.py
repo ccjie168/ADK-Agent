@@ -40,10 +40,11 @@ class ToolGatewayClient:
         args: dict[str, Any],
         *,
         grants: list[ToolGrant] | None = None,
+        idempotency_key: str | None = None,
     ) -> Any:
         body = ToolGatewayRequest(
             invocation=invocation,
-            request=ToolRequest(tool_id=tool_id, args=args),
+            request=ToolRequest(tool_id=tool_id, args=args, idempotency_key=idempotency_key),
             grants=list(grants or ()),
         ).model_dump(mode="json")
         headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}

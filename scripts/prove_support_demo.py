@@ -34,6 +34,7 @@ from support_demo_flow import (  # noqa: E402
     http,
     parent_invocation,
     require,
+    start_gateway,
     start_mock,
 )
 
@@ -121,6 +122,11 @@ def main() -> int:
     parser.add_argument(
         "--wait-seconds", type=float, default=300.0, help="interactive approval timeout"
     )
+    parser.add_argument(
+        "--tool-gateway",
+        action="store_true",
+        help="send the ticket and WeCom writes through a loopback tool gateway",
+    )
     args = parser.parse_args()
 
     workdir = Path(args.workdir) if args.workdir else Path(mkdtemp(prefix="adk-support-"))
@@ -128,6 +134,7 @@ def main() -> int:
     port = free_port()
     server = _start_mock(port)
     base = f"http://127.0.0.1:{port}"
+    gateway_server = None
     try:
         print("PASS mock services started")
         audit_path = Path(args.audit_file) if args.audit_file else workdir / "audit.jsonl"
@@ -144,8 +151,15 @@ def main() -> int:
             approvals, poll_seconds=0.05, ttl_seconds=ttl, on_submit=on_submit
         )
         pipeline = AuditPipeline(audit_path)
+        gateway = None
+        if args.tool_gateway:
+            gateway_port = free_port()
+            gateway_server = start_gateway(
+                gateway_port, base, _TOKEN, workdir / "gateway-audit.jsonl"
+            )
+            gateway = (f"http://127.0.0.1:{gateway_port}", _TOKEN)
         executor = PlanExecutor(
-            build_agents(base, _TOKEN),
+            build_agents(base, _TOKEN, gateway),
             policy=AgentGrantPolicyEngine(["support", "ticket_writer"]),
             audit=PipelineSink(pipeline),
         )
@@ -190,9 +204,13 @@ def main() -> int:
         }
         require("orchestration.approval" in actions, "missing approval audit")
         print(f"PASS audit verified ({count} records)")
+        if args.tool_gateway:
+            print("PASS tools went through the gateway")
         print("ALL PASS")
         return 0
     finally:
+        if gateway_server is not None:
+            gateway_server.should_exit = True
         server.should_exit = True
         time.sleep(0.2)
 
