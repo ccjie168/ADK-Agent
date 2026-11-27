@@ -758,7 +758,16 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         同步路径不变。8 条用例。两轮验证（首轮 PASS-with-notes，两个 S：非顺序策略
         泄漏内部异常、Postgres 丢字段；修完后二轮 PASS）。门禁 2416/106。
         证据 `docs/evidence/SLICE-310-deferred-approvals.txt`。
-        下一步：0049-2 resumer 与 `ApprovalNotifier`（SSE + HMAC webhook）。
+      - SLICE-311 审批恢复器与通知（ADR-0049 切片 2）~~已合并 `ffd4b87`~~（#368）：
+        `ApprovalNotice` 与 `ApprovalNotifier` 端口、`WebhookNotifier`（HMAC 签名、
+        有限重试、4xx 不重试）、`MultiNotifier`、`ApprovalResumer`（从旧到新读、
+        水位排空、过期不恢复、去重封顶）；执行器在延迟提交与决定时发通知，
+        `notify_timeout` 默认 1 秒。两轮验证（首轮 3 个 B：突发漏决策、过期被恢复、
+        通知拖慢返回；修完后二轮 PASS）。门禁 2427/106。
+        证据 `docs/evidence/SLICE-311-approval-resumer.txt`。
+        下一步：0049-3，A2A 任务状态与 MCP 状态工具。ADR-0049 第 9 条要求 A2A 用
+        `input-required`；ADK 的任务聚合器只在收到 `TaskStatusUpdateEvent` 时进入该状态，
+        平台需要自定义 A2A executor 钩子，或者改成「立即回执 + 状态查询」，后者要改 ADR。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
