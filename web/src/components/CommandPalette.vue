@@ -13,6 +13,7 @@ const auth = useAuthStore();
 const query = ref("");
 const active = ref(0);
 const input = ref<HTMLInputElement | null>(null);
+let returnFocus: HTMLElement | null = null;
 
 const entries = computed<NavItem[]>(() => {
   const items: NavItem[] = [];
@@ -46,7 +47,12 @@ watch(results, () => {
 watch(
   () => props.open,
   async (open) => {
-    if (!open) return;
+    if (!open) {
+      returnFocus?.focus();
+      returnFocus = null;
+      return;
+    }
+    returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     query.value = "";
     active.value = 0;
     await nextTick();
@@ -80,6 +86,8 @@ function onKey(event: KeyboardEvent) {
   } else if (event.key === "Escape") {
     event.preventDefault();
     emit("close");
+  } else if (event.key === "Tab") {
+    event.preventDefault();
   }
 }
 </script>

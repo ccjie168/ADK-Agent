@@ -26,7 +26,7 @@ SLICE-307 控制台命令面板
 
 用例映射：
 
-- `test_nav_source_is_shared`：`nav.ts` 的 26 个内部路由都在 router 里、能力名都在
+- `test_nav_source_is_shared`：`nav.ts` 的 27 个内部路由都在 router 里、能力名都在
   `capabilities.ts` 里，`/guide` 标为外部链接；`nav.ts` 的内部路由集合与 `App.vue`
   侧边栏的 27 个 `to` 完全相等，改一边漏另一边会红
 - `test_palette_filters_by_capability`：面板读 `NAV_GROUPS`、按 `capabilities` 与
@@ -50,6 +50,12 @@ SLICE-307 控制台命令面板
 
 截图：`docs/evidence/ui/SLICE-307-palette.png`（全量列表）与
 `docs/evidence/ui/SLICE-307-palette-filter.png`（过滤后）。
+
+焦点行为（同一 headless Edge 会话说）：
+
+    FOCUS_IN_INPUT: palette-input     # 打开后焦点在输入框
+    AFTER_TAB: palette-input          # Tab 不逃出对话框
+    RESTORED: theme-toggle            # Esc 关闭后焦点回到打开前的元素
 
 四、门禁
 
@@ -78,7 +84,14 @@ SLICE-307 控制台命令面板
     $ python -m pytest -q
     2399 passed, 105 skipped
 
-五、限制
+五、首轮验证修正
+
+- 阻断项：新用例文件 `tests/test_console_vue_command_palette.py` 当时没有提交，本机门禁
+  因为文件仍在磁盘上才通过；已随本切片补交。
+- 顺手补 a11y：关闭时把焦点还给打开前的元素，`Tab` 不再逃出对话框。
+- 证据笔误：内部路由数由「26」改为「27」。
+
+六、限制
 
 - 面板只跳转页面，不搜索 Agent、运行、审批等对象（需要新查询接口）。
 - 触屏没有手势入口，`Ctrl+K` 不适用；侧边栏保持原样。
