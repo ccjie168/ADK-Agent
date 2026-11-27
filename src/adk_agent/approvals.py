@@ -224,6 +224,8 @@ class FileApprovalInbox:
         tenant: str | None = None,
         status: str | None = None,
         limit: int = 50,
+        oldest_first: bool = False,
+        since: datetime | None = None,
     ) -> list[ApprovalHistoryEntry]:
         if status is not None and status not in HISTORY_STATUSES:
             raise ValueError(f"unknown approval history status: {status!r}")
@@ -275,9 +277,11 @@ class FileApprovalInbox:
                         terminal_at=terminal_at,
                     )
                 )
+        if since is not None:
+            found = [entry for entry in found if entry.terminal_at > since]
         found.sort(
             key=lambda entry: (entry.terminal_at, entry.request.request_id),
-            reverse=True,
+            reverse=not oldest_first,
         )
         return found[:limit]
 

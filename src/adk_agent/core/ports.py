@@ -8,7 +8,7 @@ from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
-from .approval import ApprovalDecision, ApprovalRequest
+from .approval import ApprovalDecision, ApprovalNotice, ApprovalRequest
 from .artifact import AgentArtifact
 from .audit import AuditEvent
 from .connector_requests import ConnectorRequest, ConnectorRequestStatus
@@ -253,6 +253,10 @@ class DeferredApprovalGate(Protocol):
     def submit(self, request: ApprovalRequest) -> Any: ...
 
     def get(self, request_id: str) -> Any: ...
+
+
+class ApprovalNotifier(Protocol):
+    async def notify(self, notice: ApprovalNotice) -> None: ...
 
 
 class SecretProvider(Protocol):

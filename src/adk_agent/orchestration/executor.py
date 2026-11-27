@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
@@ -15,6 +16,8 @@ from ..core import (
     AgentRef,
     ApprovalDecision,
     ApprovalGate,
+    ApprovalNotice,
+    ApprovalNotifier,
     ApprovalRequest,
     AuditEvent,
     AuditSink,
@@ -61,6 +64,7 @@ from .errors import (
 
 AgentCall = Callable[[Invocation], Awaitable[InvocationResult]]
 Status = Literal["ok", "error", "denied"]
+logger = logging.getLogger(__name__)
 
 
 async def _maybe_await(value: Any) -> Any:
@@ -114,6 +118,8 @@ class PlanExecutor:
         checkpoints: CheckpointStore | None = None,
         defer_approvals: bool = False,
         defer_ttl_seconds: float = 3600.0,
+        notifier: ApprovalNotifier | None = None,
+        notify_timeout: float = 1.0,
     ) -> None:
         self.agents = dict(agents)
         self.policy = policy
@@ -122,6 +128,8 @@ class PlanExecutor:
         self.checkpoints = checkpoints
         self.defer_approvals = defer_approvals
         self.defer_ttl_seconds = defer_ttl_seconds
+        self.notifier = notifier
+        self.notify_timeout = max(0.05, notify_timeout)
 
     async def run(
         self,
@@ -993,7 +1001,9 @@ class PlanExecutor:
             raise ApprovalRequired(f"step {step.id!r} needs approval")
 
         if self.defer_approvals:
-            await self._defer_or_resume(step, child, request, approvals, input_text, step_started)
+            await self._defer_or_resume(
+                step, child, request, approvals, input_text, step_started, parent
+            )
             return
 
         started = time.perf_counter()
@@ -1251,6 +1261,7 @@ class PlanExecutor:
         approvals: ApprovalGate,
         input_text: str,
         step_started: float,
+        parent: Invocation,
     ) -> None:
         getter = getattr(approvals, "get", None)
         record = await _maybe_await(getter(request.request_id)) if getter is not None else None
@@ -1268,6 +1279,9 @@ class PlanExecutor:
                         None,
                         step_started,
                     )
+                    await self._emit_notice(
+                        "decided", child, parent, request, decision.approved, decision.approver
+                    )
                     return
                 await self._audit_approval(
                     child,
@@ -1281,6 +1295,9 @@ class PlanExecutor:
                 )
                 await self._audit_step(
                     child, step, input_text, None, "denied", "approval_denied", step_started
+                )
+                await self._emit_notice(
+                    "decided", child, parent, request, decision.approved, decision.approver
                 )
                 raise ApprovalDenied(f"step {step.id!r} was not approved")
             saved = getattr(getattr(record, "request", None), "expires_at", None)
@@ -1300,7 +1317,36 @@ class PlanExecutor:
             )
             raise PlanExecutionError("approval", exc) from exc
         await self._audit_deferral(child, step, input_text, request.request_id, step_started)
+        await self._emit_notice("submitted", child, parent, request, None, None)
         raise ApprovalDeferred(step.id, request.request_id, request.expires_at)
+
+    async def _emit_notice(
+        self,
+        kind: Literal["submitted", "decided", "expired"],
+        child: Invocation,
+        parent: Invocation,
+        request: ApprovalRequest,
+        approved: bool | None,
+        approver: str | None,
+    ) -> None:
+        if self.notifier is None:
+            return
+        notice = ApprovalNotice(
+            kind=kind,
+            request_id=request.request_id,
+            tenant=child.principal.tenant,
+            run_id=parent.run_id,
+            step_id=request.step_id,
+            approved=approved,
+            approver=approver,
+            expires_at=request.expires_at,
+        )
+        try:
+            await asyncio.wait_for(self.notifier.notify(notice), timeout=self.notify_timeout)
+        except TimeoutError:
+            logger.warning("approval notification timed out")
+        except Exception:  # noqa: BLE001  # notifications never fail the plan
+            logger.warning("approval notification failed", exc_info=True)
 
     async def _audit_deferral(
         self,

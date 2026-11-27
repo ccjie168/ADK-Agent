@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .approval import ApprovalDecision, ApprovalRequest
+from .approval import ApprovalDecision, ApprovalNotice, ApprovalRequest
 from .artifact import MAX_ARTIFACT_BYTES, MEDIA_TYPE, AgentArtifact
 from .audit import AuditEvent, AuditRecord
 from .canary import CanaryPolicy
@@ -91,6 +91,7 @@ from .ports import (
     AgentLifecycleStore,
     AgentRegistry,
     ApprovalGate,
+    ApprovalNotifier,
     ArtifactLoader,
     ArtifactStore,
     AuditSink,
@@ -216,7 +217,9 @@ __all__ = [
     "ArtifactLoader",
     "ArtifactStore",
     "ApprovalDecision",
+    "ApprovalNotice",
     "ApprovalGate",
+    "ApprovalNotifier",
     "DeferredApprovalGate",
     "ApprovalRequest",
     "AuditEvent",

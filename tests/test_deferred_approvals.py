@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -62,7 +63,7 @@ def _invocation() -> Invocation:
     )
 
 
-def _executor(calls: list[str], *, defer: bool = True, audit=None) -> PlanExecutor:
+def _executor(calls: list[str], *, defer: bool = True, audit=None, notifier=None) -> PlanExecutor:
     async def support(invocation: Invocation) -> InvocationResult:
         calls.append("support")
         return InvocationResult(
@@ -87,6 +88,7 @@ def _executor(calls: list[str], *, defer: bool = True, audit=None) -> PlanExecut
         audit=audit,
         checkpoints=InMemoryCheckpointStore(),
         defer_approvals=defer,
+        notifier=notifier,
     )
 
 
@@ -218,3 +220,49 @@ def test_pending_expires_from_the_defer_ttl(tmp_path):
     assert isinstance(result, PlanPending)
     assert result.expires_at is not None
     assert (result.expires_at - datetime.now(timezone.utc)).total_seconds() <= 3600
+
+
+class FakeNotifier:
+    def __init__(self) -> None:
+        self.notices = []
+
+    async def notify(self, notice):
+        self.notices.append(notice)
+
+
+def test_executor_notifies_on_defer_and_decision(tmp_path):
+    calls: list[str] = []
+    inbox = FileApprovalInbox(tmp_path / "approvals", poll_seconds=0.05)
+    notifier = FakeNotifier()
+    executor = _executor(calls, notifier=notifier)
+
+    pending = asyncio.run(executor.run(_plan(), _invocation(), approvals=inbox))
+    [submitted] = notifier.notices
+    assert submitted.kind == "submitted"
+    assert submitted.request_id == pending.request_id
+    assert submitted.run_id == "run-1"
+
+    inbox.decide(pending.request_id, approved=True, approver="tester")
+    asyncio.run(executor.run(_plan(), _invocation(), approvals=inbox))
+
+    assert [notice.kind for notice in notifier.notices] == ["submitted", "decided"]
+    assert notifier.notices[-1].approved is True
+    assert notifier.notices[-1].approver == "tester"
+
+
+class SlowNotifier:
+    async def notify(self, notice):
+        await asyncio.sleep(5)
+
+
+def test_slow_notifier_does_not_delay_pending(tmp_path):
+    calls: list[str] = []
+    inbox = FileApprovalInbox(tmp_path / "approvals", poll_seconds=0.05)
+    executor = _executor(calls, notifier=SlowNotifier())
+
+    started = time.monotonic()
+    result = asyncio.run(executor.run(_plan(), _invocation(), approvals=inbox))
+    elapsed = time.monotonic() - started
+
+    assert isinstance(result, PlanPending)
+    assert elapsed < 2
