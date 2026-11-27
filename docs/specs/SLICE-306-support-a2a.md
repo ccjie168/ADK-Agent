@@ -21,6 +21,7 @@
 
 - `scripts/support_a2a_agent.py` 读取环境变量：
   - `SUPPORT_MOCK_URL`（默认 `http://127.0.0.1:8055`，只接受回环地址）：mock 服务基址；
+  - `SUPPORT_MOCK_TOKEN`（默认 `demo-token`）：mock 服务的 Bearer token；
   - `SUPPORT_APPROVALS_DIR`（默认 `support-approvals`）：审批请求目录，可与控制台共用；
   - `SUPPORT_AUDIT_FILE`（默认 `support-audit.jsonl`）：计划审计链文件；
   - `SUPPORT_WAIT_SECONDS`（默认 120）：等待审批的秒数，超时请求带 `expires_at`。
@@ -29,8 +30,8 @@
   `--wait-seconds N`（默认 300）、`--deny`、`--port N`。
   成功打印 `PASS` 行与 `ALL PASS` 退出 0；拒绝退出 2；`--interactive` 超时打印
   `TIMEOUT` 退出 3；A2A 未带 token 时打印 `PASS anonymous call rejected`。
-- A2A 调用是同步语义：HTTP 请求会一直等到审批完成或超时。超时后计划抛
-  `ApprovalExpired`，A2A 返回 JSON-RPC 错误；文档需注明真实 WorkBuddy 应设置客户端超时。
+- A2A 调用是同步语义：HTTP 请求会一直等到审批完成或超时。拒绝与超时都由 agent
+  转成固定的中文文本、以 HTTP 200 返回；真实 WorkBuddy 仍应设置客户端超时。
 
 ## 完成判据
 

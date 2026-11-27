@@ -77,7 +77,6 @@ agent 跳过，`sub_agents` 递归不变；`LlmAgent` 行为不变（原有 8 �
     [PASS] layering
     [PASS] specs
     [PASS] test
-    [PASS] sast
     [PASS] secrets
     ALL PASS
 
@@ -96,8 +95,14 @@ agent 跳过，`sub_agents` 递归不变；`LlmAgent` 行为不变（原有 8 �
     $ python -m pytest -q
     2393 passed, 105 skipped
 
-（首轮 lint 失败：测试里的 import 顺序；`ruff check --fix` 后复跑全绿。`--full`
-的 test 步与 `--fast` 跑的是同一套用例，计数同上。）
+（首轮 lint 失败：测试里的 import 顺序；`ruff check --fix` 后复跑全绿。`--fast`
+是 7 步，`sast`/`deps` 只在 `--full` 里。`--full` 的 test 步与 `--fast` 跑同一套
+用例，计数同上。）
+
+首轮独立验证结论 PASS-with-notes，两处事实性错误已修：本节 `--fast` 曾误列 `sast`；
+spec 与文档曾写「超时返回 JSON-RPC 错误」，实际是 agent 转成 200 + 中文文本。同时补
+`SUPPORT_MOCK_TOKEN` 到文档表格，并把 `PlanExecutionError`（建单失败）与审批超时拆成
+两条文案。
 
 七、限制
 
@@ -106,6 +111,8 @@ agent 跳过，`sub_agents` 递归不变；`LlmAgent` 行为不变（原有 8 �
 - 拒绝与超时都返回 200 + 一段文本（HTTP 错误码区分不了「机器错误」与「人拒绝」），
   客户端脚本按文本判断。
 - `ticket_writer` 直接走 HTTP 调 mock，不经过工具网关；连接器只登记未执行。
+- 工单步骤的输入是固定的演示文案，A2A 用户的实际提问只进父调用与 `answer` 步骤，
+  不进工单描述；真实接入时再按用户问题生成。
 
 八、范围外
 

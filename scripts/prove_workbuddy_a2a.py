@@ -98,8 +98,9 @@ def _wait_ready(port: int, token: str) -> None:
     raise SystemExit("FAIL a2a server did not start")
 
 
-def _start_agent(port: int, workdir: Path, env: dict[str, str]) -> Any:
-    return subprocess.Popen(  # nosec B603
+def _start_agent(port: int, workdir: Path, env: dict[str, str]) -> tuple[Any, Any]:
+    log = (workdir / "a2a-server.log").open("w", encoding="utf-8")
+    process = subprocess.Popen(  # nosec B603
         [
             sys.executable,
             "-m",
@@ -118,10 +119,11 @@ def _start_agent(port: int, workdir: Path, env: dict[str, str]) -> Any:
         ],
         cwd=ROOT,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=log,
+        stderr=subprocess.STDOUT,
         text=True,
     )
+    return process, log
 
 
 def main() -> int:
@@ -155,7 +157,7 @@ def main() -> int:
             "SUPPORT_A2A_TOKEN": token,
         }
     )
-    server = _start_agent(port, workdir, env)
+    server, server_log = _start_agent(port, workdir, env)
     try:
         _wait_ready(port, token)
         print("PASS agent card returned")
@@ -167,7 +169,10 @@ def main() -> int:
         result: dict[str, Any] = {}
 
         def call() -> None:
-            result["status"], result["body"] = _rpc(port, _QUESTION, token)
+            try:
+                result["status"], result["body"] = _rpc(port, _QUESTION, token)
+            except OSError:
+                result["cancelled"] = True
 
         thread = threading.Thread(target=call, daemon=True)
         thread.start()
@@ -249,6 +254,7 @@ def main() -> int:
             server.wait(timeout=10)
         except subprocess.TimeoutExpired:
             server.kill()
+        server_log.close()
         mock.should_exit = True
         time.sleep(0.2)
 

@@ -106,8 +106,10 @@ class SupportFlowAgent(BaseAgent):
             )
         except ApprovalDenied:
             text = "工单创建被拒绝，未执行。"
-        except (ApprovalTimeout, PlanExecutionError):
+        except ApprovalTimeout:
             text = "工单创建等待审批超时，请稍后在控制台处理。"
+        except PlanExecutionError:
+            text = "工单创建失败，请查看审计记录。"
         else:
             text = result.final_text
         yield Event(

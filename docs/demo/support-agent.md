@@ -120,6 +120,7 @@ export MOCK_TOKEN=demo-token
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `SUPPORT_MOCK_URL` | `http://127.0.0.1:8055` | mock 服务基址，只接受回环地址 |
+| `SUPPORT_MOCK_TOKEN` | `demo-token` | mock 服务的 Bearer token |
 | `SUPPORT_APPROVALS_DIR` | `support-approvals` | 审批请求目录，可与控制台共用 |
 | `SUPPORT_AUDIT_FILE` | `support-audit.jsonl` | 计划审计链文件 |
 | `SUPPORT_WAIT_SECONDS` | `120` | 等待审批的秒数，超时请求带 `expires_at` |
@@ -149,8 +150,8 @@ export SUPPORT_MOCK_URL=http://127.0.0.1:8055 SUPPORT_A2A_TOKEN=demo-token
 `PASS reply contains ticket`、`PASS ticket is open`、`PASS wecom notified`、
 `PASS audit verified` 与 `ALL PASS`，退出 0。
 
-调用是同步语义：`message/send` 会一直等到审批完成或超时。超时后计划抛
-`ApprovalExpired`，A2A 返回 JSON-RPC 错误；真实 WorkBuddy 客户端需要设置足够长的超时。
+调用是同步语义：`message/send` 会一直等到审批完成或超时。拒绝与超时都由 agent
+转成固定的中文文本、以 HTTP 200 返回；真实 WorkBuddy 客户端仍应设置足够长的超时。
 
 ## 后续切片
 
