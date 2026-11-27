@@ -740,8 +740,25 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         审批令牌（L3 连接器会被拒绝，审计记 `approval_required`）。4 条用例 + 1 条
         连接器用例。两轮验证（首轮 PASS 带 4 个 N 全是措辞，修完后二轮 PASS）。
         证据 `docs/evidence/SLICE-308-support-gateway.txt`。
-        下一步：换真实 WorkBuddy Enterprise OpenAPI（需要操作员账号的 `ck_`/`pt_` 密钥）、
-        夸克官方 Skill 与企微自建应用回调。
+      - SLICE-309 售后专家接入 Claude Desktop（MCP）~~已合并 `b5e2526`~~（#365）：
+        `scripts/mcp_desktop_config.py` 生成 `mcpServers` 片段，`docs/demo/support-mcp.md`
+        覆盖 Desktop 与 Claude Code（单行 `claude mcp add`，PowerShell 不认 `\` 续行），
+        4 条用例。实机在 Claude Code 里注册 `adk-support` 并跑通审批建单
+        （工单 t-1、t-2）。三轮验证（首轮 PASS 带 5 个 N；其中 PowerShell 坑来自实机）。
+        证据 `docs/evidence/SLICE-309-support-mcp.txt`。
+        WorkBuddy 企业版需要已认证的企业微信组织与席位，个人版无法开通，故改用 MCP 入口。
+      - ADR-0049（异步审批与通知）~~已确认 `docs/decisions/ADR-0049-deferred-approvals.md`~~
+        （2026-11-27 会话确认）：延迟模式、检查点即状态、resumer 轮询、通知端口、
+        单赢家恢复；四个切片。用户同时确认先业务可用性、后 ADK 隔离，并否决短期做
+        可视化画布与在线市场。
+      - SLICE-310 延迟审批（ADR-0049 切片 1）~~已合并 `f40f31b`~~（#366）：
+        `PlanPending`、`PlanExecutor(defer_approvals=True)`（仅 single/sequential）、
+        确定性 request id（父 run_id + step + tenant）、检查点 `approval_request_id`
+        （文件与 Postgres 两个后端）、默认 1 小时 TTL、审计 `orchestration.deferral`；
+        同步路径不变。8 条用例。两轮验证（首轮 PASS-with-notes，两个 S：非顺序策略
+        泄漏内部异常、Postgres 丢字段；修完后二轮 PASS）。门禁 2416/106。
+        证据 `docs/evidence/SLICE-310-deferred-approvals.txt`。
+        下一步：0049-2 resumer 与 `ApprovalNotifier`（SSE + HMAC webhook）。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
