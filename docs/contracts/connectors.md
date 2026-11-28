@@ -1,0 +1,68 @@
+# 连接器契约
+
+连接器是外部 HTTP API 的受治理声明：租户、`base_url`、方法/路径白名单、密钥引用、
+风险等级与审批继承。定义在 `adk_agent.core.connectors.ConnectorSpec`。
+
+## ConnectorSpec
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `connector_id` | string，`^[A-Za-z0-9][A-Za-z0-9._+-]*$` | 连接器 id，同时是连接器级工具名 |
+| `tenant` | string 或 null | 不填即全局 |
+| `kind` | `http` / `openapi` / `mcp` | 执行方式；`openapi` 与 `http` 目前同一执行路径 |
+| `base_url` | string | 必须 https，或回环 host 上的 http；禁止内嵌凭据 |
+| `auth_ref` | `secret://...` 或 null | Bearer 令牌的密钥引用 |
+| `methods` | 非空列表 | 允许的 HTTP 方法 |
+| `path_prefixes` | 非空列表 | 允许的路径前缀，不得含 `..` |
+| `data_classes` | 列表 | 数据分级 |
+| `timeout_seconds` / `max_response_bytes` | int | 请求限制 |
+| `risk_level` | `L1`..`L4` 或 null | 工具级风险；L3/L4 需要审批 |
+| `delegation` | `service` / `controlled-service` / `obo-later` | 委派模式 |
+| `enabled` | bool | 停用的连接器不生成工具 |
+| `operations` | 列表（additive，缺省 `[]`） | OpenAPI 导入产物，见下 |
+
+### operations（SLICE-320 新增）
+
+```json
+{"tool_id": "itsm.ticket.create", "path": "/tickets/{id}", "method": "POST"}
+```
+
+- `tool_id` 符合工具名规则，且以 `<connector_id>.` 开头。
+- `path` 以 `/` 开头，可含 `{name}` 形式的路径参数，不得含 `..` 或反斜杠。
+- `method` 是 `HttpMethod`。
+- 有 `operations` 的连接器在网关里为每个操作生成一个工具：工具名即 `tool_id`，
+  调用参数为 `query`、`path_params`、`json_body`；方法固定、路径参数 URL 编码后再过
+  连接器的 `path_prefixes` 校验。没有 `operations` 的连接器仍生成连接器级工具
+  （`path`、`method`、`query`、`json_body`）。
+
+## OpenAPI 导入
+
+```
+adk-agent connector import-openapi --spec FILE --connector-id ID \
+    [--tenant T] [--base-url URL] \
+    (--connectors-dir DIR | --registry-url URL) \
+    [--tool-catalog PATH] [--dry-run]
+```
+
+规则：
+
+- `base_url` 取 `--base-url`，否则 `servers[0].url`；相对地址或缺省即 `missing_server`。
+- 每个含 `operationId` 的操作生成一个工具：方法取操作键（`get`/`put`/`post`/`delete`/
+  `patch`/`head`），路径取文档路径（`{name}` 原样保留）。
+- `methods` 与 `path_prefixes` 取所有生成操作的集合；路径前缀截到第一个 `{` 之前。
+- `data_classes` 取操作或文档顶层的 `x-data-classes`（必须是合法分级）；否则 `internal`。
+- `risk_level` 取操作的 `x-risk-level`，否则 L2；L3/L4 的工具 `requires_approval=true`。
+- 没有 `operationId` 的操作跳过并在输出里列出（`skipped`）。
+- 超过 200 个生成操作即 `too_many_operations`，不写入任何东西。
+- `--dry-run` 只打印将写入的连接器与工具，不落盘。
+
+错误码（固定字符串）：`spec_unreadable`、`spec_invalid`、`missing_server`、
+`no_operations`、`too_many_operations`、`invalid_data_class`。
+
+## 工具目录合并
+
+`--tool-catalog PATH` 给出时，导入的工具条目合并进该文件的 `tools` 数组：
+
+- 相同 `tool_id` 且内容相同：幂等，不重复写入。
+- 相同 `tool_id` 但内容不同：`catalog_conflict`，整次导入失败，连接器也不写入。
+- 新文件：创建 `{"version": 1, "tools": [...]}`。

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .policy import DataClass, RiskLevel
 
@@ -39,6 +39,23 @@ class ConnectorStoreUnavailable(ConnectorStoreError):
     """The connector store backend cannot be reached."""
 
 
+class ConnectorOperation(BaseModel):
+    """One OpenAPI operation the connector exposes as its own tool."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tool_id: str = Field(pattern=_SAFE_NAME)
+    path: str = Field(min_length=1)
+    method: HttpMethod
+
+    @field_validator("path")
+    @classmethod
+    def _safe_path(cls, value: str) -> str:
+        if not value.startswith("/") or "\\" in value or ".." in value.split("/"):
+            raise ValueError("operation paths must start with / and contain no ..")
+        return value
+
+
 class ConnectorSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -55,6 +72,15 @@ class ConnectorSpec(BaseModel):
     risk_level: RiskLevel | None = None
     delegation: DelegationMode = "service"
     enabled: bool = True
+    operations: list[ConnectorOperation] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _operations_belong_to_connector(self) -> ConnectorSpec:
+        prefix = self.connector_id + "."
+        for operation in self.operations:
+            if not operation.tool_id.startswith(prefix):
+                raise ValueError(f"operation tool ids must start with {prefix!r}")
+        return self
 
     @field_validator("base_url")
     @classmethod
@@ -81,6 +107,7 @@ class ConnectorSpec(BaseModel):
 
 __all__ = [
     "ConnectorConflict",
+    "ConnectorOperation",
     "ConnectorKind",
     "ConnectorNotFound",
     "ConnectorSpec",

@@ -19,6 +19,7 @@ from .connectors import (
     ConnectorForbidden,
     ConnectorKind,
     ConnectorNotFound,
+    ConnectorOperation,
     ConnectorSpec,
     ConnectorStoreError,
     ConnectorStoreUnavailable,
@@ -192,6 +193,7 @@ from .user_bindings import (
 
 __all__ = [
     "ConnectorConflict",
+    "ConnectorOperation",
     "ConnectorForbidden",
     "ConnectorKind",
     "ConnectorNotFound",

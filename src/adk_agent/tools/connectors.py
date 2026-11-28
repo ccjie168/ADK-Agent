@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from ..core import ConnectorSpec, SecretProvider
 from ..secretstore import SecretNotFound
@@ -130,26 +131,80 @@ def _handler(spec: ConnectorSpec, secrets: SecretProvider, adapter: Any):
     return call
 
 
+_PATH_PARAM = re.compile(r"\{([^}]+)\}")
+
+
+def _fill_path(template: str, params: dict[str, Any]) -> str:
+    """Substitute ``{name}`` placeholders, rejecting anything path-like."""
+    out = template
+    for name in _PATH_PARAM.findall(template):
+        if name not in params:
+            raise ConnectorDenied("path_param_missing")
+        value = params[name]
+        if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+            raise ConnectorDenied("path_param_invalid")
+        text = str(value)
+        if "/" in text or "\\" in text or ".." in text:
+            raise ConnectorDenied("path_param_invalid")
+        out = out.replace("{" + name + "}", quote(text, safe=""))
+    return out
+
+
+def _operation_handler(spec: ConnectorSpec, operation: Any, secrets: SecretProvider, adapter: Any):
+    handler = _handler(spec, secrets, adapter)
+
+    async def call(
+        query: dict[str, str] | None = None,
+        path_params: dict[str, Any] | None = None,
+        json_body: Any = None,
+    ) -> dict[str, Any]:
+        path = _fill_path(operation.path, path_params or {})
+        return await handler(path, operation.method, query, json_body)
+
+    return call
+
+
 def build_connector_tools(
     specs: list[ConnectorSpec],
     *,
     secrets: SecretProvider,
     adapter: Any = None,
 ) -> list[ToolSpec]:
-    """Turn enabled connectors into third-party tools for the gateway."""
+    """Turn enabled connectors into third-party tools for the gateway.
+
+    A connector with imported ``operations`` contributes one tool per operation,
+    named by the operation's tool id; any other connector keeps the single
+    connector-level tool.
+    """
     http = adapter if adapter is not None else HttpxAdapter()
-    return [
-        ToolSpec(
-            tool_id=spec.connector_id,
-            handler=_handler(spec, secrets, http),
-            data_classes=tuple(spec.data_classes),
-            egress="third_party",
-            risk_level=spec.risk_level,
-            delegation=spec.delegation,
+    tools: list[ToolSpec] = []
+    for spec in specs:
+        if not spec.enabled:
+            continue
+        if spec.operations:
+            tools.extend(
+                ToolSpec(
+                    tool_id=operation.tool_id,
+                    handler=_operation_handler(spec, operation, secrets, http),
+                    data_classes=tuple(spec.data_classes),
+                    egress="third_party",
+                    risk_level=spec.risk_level,
+                    delegation=spec.delegation,
+                )
+                for operation in spec.operations
+            )
+            continue
+        tools.append(
+            ToolSpec(
+                tool_id=spec.connector_id,
+                handler=_handler(spec, secrets, http),
+                data_classes=tuple(spec.data_classes),
+                egress="third_party",
+                risk_level=spec.risk_level,
+                delegation=spec.delegation,
+            )
         )
-        for spec in specs
-        if spec.enabled
-    ]
+    return tools
 
 
 __all__ = ["ConnectorDenied", "ConnectorResponse", "HttpxAdapter", "build_connector_tools"]

@@ -1,0 +1,248 @@
+"""SLICE-320: OpenAPI documents become governed connectors (ADR-0047 1)."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+
+import pytest
+
+from adk_agent.core import ConnectorSpec
+from adk_agent.tools import (
+    ToolCatalog,
+    ToolCatalogConflict,
+    ToolEntry,
+    build_connector_tools,
+    import_openapi,
+    load_tool_catalog,
+    merge_tool_entries,
+)
+from adk_agent.tools.connectors import ConnectorDenied
+from adk_agent.tools.openapi_import import OpenApiImportError
+
+SOURCE = Path(__file__).resolve().parents[1] / "src" / "adk_agent"
+
+
+def _document() -> dict:
+    return {
+        "openapi": "3.0.0",
+        "info": {"title": "ITSM", "version": "1"},
+        "servers": [{"url": "http://127.0.0.1:8055"}],
+        "x-data-classes": ["internal"],
+        "paths": {
+            "/tickets": {
+                "get": {"operationId": "list", "summary": "List tickets"},
+                "post": {
+                    "operationId": "create",
+                    "summary": "Create ticket",
+                    "x-risk-level": "L3",
+                    "x-data-classes": ["confidential"],
+                },
+            },
+            "/tickets/{id}": {
+                "get": {"operationId": "get"},
+                "put": {"summary": "no id here"},
+            },
+        },
+    }
+
+
+def test_import_builds_connector_and_operations():
+    imported = import_openapi(_document(), "itsm", tenant="acme")
+
+    connector = imported.connector
+    assert connector.kind == "openapi"
+    assert connector.tenant == "acme"
+    assert connector.base_url == "http://127.0.0.1:8055"
+    assert connector.methods == ["GET", "POST"]
+    assert connector.path_prefixes == ["/tickets", "/tickets/"]
+    assert connector.operations == [
+        type(connector.operations[0])(tool_id="itsm.list", path="/tickets", method="GET"),
+        type(connector.operations[0])(tool_id="itsm.create", path="/tickets", method="POST"),
+        type(connector.operations[0])(tool_id="itsm.get", path="/tickets/{id}", method="GET"),
+    ]
+
+    by_id = {tool.tool_id: tool for tool in imported.tools}
+    assert by_id["itsm.create"].risk_level == "L3"
+    assert by_id["itsm.create"].requires_approval is True
+    assert by_id["itsm.create"].data_classes == ["confidential"]
+    assert by_id["itsm.list"].requires_approval is False
+    assert by_id["itsm.list"].write is False
+    assert by_id["itsm.create"].write is True
+    assert all(tool.source == "openapi" for tool in imported.tools)
+
+
+def test_import_skips_operations_without_id():
+    imported = import_openapi(_document(), "itsm")
+
+    assert imported.skipped == ["PUT /tickets/{id}"]
+    assert "itsm.create" in {tool.tool_id for tool in imported.tools}
+
+
+@pytest.mark.parametrize(
+    ("document", "code"),
+    [
+        ({"paths": {"/a": {"get": {"operationId": "a"}}}}, "missing_server"),
+        (
+            {"servers": [{"url": "/v1"}], "paths": {"/a": {"get": {"operationId": "a"}}}},
+            "missing_server",
+        ),
+        ({"servers": [{"url": "https://x.example"}]}, "spec_invalid"),
+        ("not a document", "spec_invalid"),
+        (
+            {
+                "servers": [{"url": "https://x.example"}],
+                "paths": {"/a": {"get": {"x-data-classes": ["secret"]}}},
+            },
+            "no_operations",
+        ),
+        (
+            {
+                "servers": [{"url": "https://x.example"}],
+                "paths": {"/a": {"get": {"operationId": "a", "x-data-classes": ["secret"]}}},
+            },
+            "invalid_data_class",
+        ),
+    ],
+)
+def test_import_rejects_bad_document(document, code):
+    with pytest.raises(OpenApiImportError) as exc:
+        import_openapi(document, "probe")
+
+    assert exc.value.code == code
+
+
+def test_import_caps_tool_count():
+    paths = {f"/p{i}": {"get": {"operationId": f"op{i}"}} for i in range(201)}
+    document = {"servers": [{"url": "https://x.example"}], "paths": paths}
+
+    with pytest.raises(OpenApiImportError) as exc:
+        import_openapi(document, "probe")
+
+    assert exc.value.code == "too_many_operations"
+
+
+def _tool_for(document: dict, tool_id: str):
+    imported = import_openapi(document, "itsm")
+    tools = build_connector_tools([imported.connector], secrets=None)  # type: ignore[arg-type]
+    return next(tool for tool in tools if tool.tool_id == tool_id)
+
+
+class _RecordingAdapter:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def request(self, **kwargs):
+        self.calls.append(kwargs)
+
+        class _Response:
+            status = 200
+            content_type = "application/json"
+            headers = {"content-type": "application/json"}
+            body = b'{"ok": true}'
+
+        return _Response()
+
+
+def test_operation_tool_calls_fixed_path():
+    document = {
+        "servers": [{"url": "https://itsm.example"}],
+        "paths": {"/tickets/{id}": {"get": {"operationId": "get"}}},
+    }
+    tool = _tool_for(document, "itsm.get")
+    adapter = _RecordingAdapter()
+
+    async def call():
+        spec = import_openapi(document, "itsm").connector
+        [built] = build_connector_tools([spec], secrets=None, adapter=adapter)  # type: ignore[arg-type]
+        return await built.handler(path_params={"id": "a b/c"})
+
+    with pytest.raises(ConnectorDenied):
+        asyncio.run(call())
+
+    async def ok_call():
+        spec = import_openapi(document, "itsm").connector
+        [built] = build_connector_tools([spec], secrets=None, adapter=adapter)  # type: ignore[arg-type]
+        return await built.handler(path_params={"id": "T-1"})
+
+    result = asyncio.run(ok_call())
+    assert result["status"] == 200
+    assert adapter.calls[-1]["method"] == "GET"
+    assert adapter.calls[-1]["url"] == "https://itsm.example/tickets/T-1"
+    assert tool.tool_id == "itsm.get"
+
+
+def test_operation_tool_rejects_traversal():
+    document = {
+        "servers": [{"url": "https://itsm.example"}],
+        "paths": {"/tickets/{id}": {"get": {"operationId": "get"}}},
+    }
+    spec = import_openapi(document, "itsm").connector
+    [built] = build_connector_tools([spec], secrets=None, adapter=_RecordingAdapter())  # type: ignore[arg-type]
+
+    for value in ("../admin", "a/b", "a\\b"):
+        with pytest.raises(ConnectorDenied) as exc:
+            asyncio.run(built.handler(path_params={"id": value}))
+        assert exc.value.error_code == "path_param_invalid"
+
+    with pytest.raises(ConnectorDenied):
+        asyncio.run(built.handler(path_params={}))
+
+
+def test_catalog_merge_rejects_conflict():
+    entry = ToolEntry(tool_id="itsm.list", description="List", source="openapi")
+    catalog = ToolCatalog(version=1, tools=[entry])
+
+    assert merge_tool_entries(catalog, [entry]).tools == [entry]
+
+    changed = ToolEntry(tool_id="itsm.list", description="Different", source="openapi")
+    with pytest.raises(ToolCatalogConflict):
+        merge_tool_entries(catalog, [changed])
+
+
+def test_cli_import_openapi_writes_connector_and_catalog(tmp_path, capsys):
+    from adk_agent.cli import main
+
+    spec_path = tmp_path / "itsm.json"
+    spec_path.write_text(json.dumps(_document()), encoding="utf-8")
+    connectors_dir = tmp_path / "connectors"
+    catalog_path = tmp_path / "catalog.json"
+
+    code = main(
+        [
+            "connectors",
+            "import-openapi",
+            "--spec",
+            str(spec_path),
+            "--connector-id",
+            "itsm",
+            "--tenant",
+            "acme",
+            "--connectors-dir",
+            str(connectors_dir),
+            "--tool-catalog",
+            str(catalog_path),
+        ]
+    )
+    assert code in (0, None)
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["connector"]["connector_id"] == "itsm"
+    assert len(payload["tools"]) == 3
+    assert payload["skipped"] == ["PUT /tickets/{id}"]
+
+    catalog = load_tool_catalog(catalog_path)
+    assert {tool.tool_id for tool in catalog.tools} == {"itsm.list", "itsm.create", "itsm.get"}
+
+    import adk_agent.registry.connectors as connectors_module
+
+    store = connectors_module.FileConnectorStore(str(connectors_dir))
+    stored = asyncio.run(store.get("itsm"))
+    assert isinstance(stored, ConnectorSpec)
+    assert stored.kind == "openapi"
+
+
+def test_source_has_no_helpers_outside_the_tools_package():
+    # Keep the import path free of ADK and of console code: it is a CLI-only feature.
+    text = (SOURCE / "tools" / "openapi_import.py").read_text(encoding="utf-8")
+    assert "google.adk" not in text
