@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Literal, cast
 from urllib.parse import urlsplit
 
@@ -31,6 +32,15 @@ class ConnectorNotFound(ConnectorStoreError):
 
 class ConnectorConflict(ConnectorStoreError):
     """The connector id already exists with a different definition."""
+
+
+class ConnectorToolIdConflict(ConnectorStoreError):
+    """A tool id the new connector would expose is owned by another connector."""
+
+    def __init__(self, tool_id: str, owner: str) -> None:
+        super().__init__(f"tool id {tool_id!r} is already owned by connector {owner!r}")
+        self.tool_id = tool_id
+        self.owner = owner
 
 
 class ConnectorForbidden(ConnectorStoreError):
@@ -142,3 +152,24 @@ __all__ = [
     "DelegationMode",
     "HttpMethod",
 ]
+
+
+def tool_ids(spec: ConnectorSpec) -> set[str]:
+    """Every tool name the connector exposes: its own id plus each operation."""
+    return {spec.connector_id} | {operation.tool_id for operation in spec.operations}
+
+
+def assert_tool_ids_free(spec: ConnectorSpec, others: Iterable[ConnectorSpec]) -> None:
+    """Reject a connector whose tool names another connector already owns.
+
+    Tool names are global in the tool gateway; a clash would stop it at startup.
+    """
+    owned: dict[str, str] = {}
+    for other in others:
+        if other.connector_id == spec.connector_id:
+            continue
+        for tool_id in tool_ids(other):
+            owned[tool_id] = other.connector_id
+    for tool_id in sorted(tool_ids(spec)):
+        if tool_id in owned:
+            raise ConnectorToolIdConflict(tool_id, owned[tool_id])

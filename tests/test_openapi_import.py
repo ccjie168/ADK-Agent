@@ -558,3 +558,44 @@ def test_bad_extension_types_get_fixed_codes():
     with pytest.raises(OpenApiImportError) as exc:
         import_openapi(bad_risk, "probe")
     assert exc.value.code == "invalid_risk_level"
+
+
+def test_store_rejects_cross_connector_tool_id(tmp_path):
+    from adk_agent.core import ConnectorToolIdConflict
+    from adk_agent.registry.connectors import FileConnectorStore
+
+    store = FileConnectorStore(str(tmp_path))
+    imported = import_openapi(_document(), "itsm")
+    asyncio.run(store.add(imported.connector))
+
+    clash = ConnectorSpec(
+        connector_id="itsm.list",
+        kind="http",
+        base_url="https://other.example",
+        methods=["GET"],
+    )
+    with pytest.raises(ConnectorToolIdConflict) as exc:
+        asyncio.run(store.add(clash))
+    assert exc.value.tool_id == "itsm.list"
+
+    # The reverse order is rejected too: a connector whose operation equals an
+    # existing connector id.
+    other = ConnectorSpec(
+        connector_id="pay",
+        kind="openapi",
+        base_url="https://pay.example",
+        methods=["GET"],
+        operations=[{"tool_id": "pay.itsm", "path": "/x", "method": "GET"}],
+    )
+    asyncio.run(store.add(other))
+    with pytest.raises(ConnectorToolIdConflict):
+        asyncio.run(
+            store.add(
+                ConnectorSpec(
+                    connector_id="pay.itsm",
+                    kind="http",
+                    base_url="https://other.example",
+                    methods=["GET"],
+                )
+            )
+        )

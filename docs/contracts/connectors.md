@@ -42,8 +42,11 @@
   幂等键（与工具目录展示的值一致）。连接器自身的 `risk_level`/`data_classes` 是下限：
   工具的有效风险取两者较高者，数据分级取并集（`ConnectorSpec.operation_governance`）。
 - 同一个连接器里 `operations` 的 `tool_id` 必须唯一，模型校验即拒绝重复。
-- 工具名在工具网关里全局唯一：导入时如果新连接器的 id 或任一操作 `tool_id` 已被另一个
-  连接器占用，导入报 `tool_id_conflict`，不写入任何东西。
+- 工具名在工具网关里全局唯一，由**存储层**保证：`FileConnectorStore.add` 与
+  `PostgresConnectorStore.add` 都会拒绝新连接器的 id 或任一操作 `tool_id` 已被另一个
+  连接器占用的情况（`ConnectorToolIdConflict`）。控制面 `POST /v1/connectors`、控制台
+  `POST /api/connectors` 与连接器申请批准都走 `add`，因此都被覆盖。
+  `connectors import-openapi` 在写入前再做一次预检，冲突报 `tool_id_conflict` 且不写入。
 - 有 `operations` 的连接器在网关里为每个操作生成一个工具：工具名即 `tool_id`，
   调用参数为 `query`、`path_params`、`json_body`；方法固定、路径参数拒绝 `/`、`\`、
   `..` 后 URL 编码，再过连接器的 `path_prefixes` 校验。没有 `operations` 的连接器仍

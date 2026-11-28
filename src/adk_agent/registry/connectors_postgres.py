@@ -12,6 +12,7 @@ from ..core import (
     ConnectorSpec,
     ConnectorStoreError,
     ConnectorStoreUnavailable,
+    assert_tool_ids_free,
 )
 from ..pg import LazyPool, normalize_dsn
 from .connectors import _definition
@@ -50,6 +51,13 @@ class PostgresConnectorStore:
         try:
             pool = await self._pool.get()
             async with pool.acquire() as conn:
+                rows = await conn.fetch("SELECT connector_id, definition FROM adk_connectors")
+                others = [
+                    self._parse(row["definition"], row["connector_id"])
+                    for row in rows
+                    if row["connector_id"] != spec.connector_id
+                ]
+                assert_tool_ids_free(spec, others)
                 await conn.execute(
                     "INSERT INTO adk_connectors (connector_id, tenant, definition, updated_at) "
                     "VALUES ($1, $2, $3::jsonb, $4) ON CONFLICT (connector_id) DO NOTHING",

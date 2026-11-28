@@ -5,7 +5,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
       与 `ConnectorSpec.operations`）、`tools/openapi_import.py`（新）、
       `tools/connectors.py`（逐操作工具）、`tools/catalog.py`（合并与写盘）、
       `tools/__init__.py`、`cli.py`（`connectors import-openapi`）、
-      新增 28 条用例
+      新增 29 条用例
 
 一、红绿说明
 
@@ -21,8 +21,8 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 二、用例
 
     $ python -m pytest tests/test_openapi_import.py -q
-    ............................                                     [100%]
-    28 passed in 1.95s
+    .............................                                    [100%]
+    29 passed in 2.6s
 
 - `test_import_builds_connector_and_operations`：连接器 kind/base_url/methods/
   path_prefixes/operations 与逐操作工具的 risk/data_class/write 都正确
@@ -94,7 +94,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
     ALL PASS
 
     $ python -m pytest -q
-    2498 passed, 106 skipped
+    2499 passed, 106 skipped
 
 六、首轮验证修正（REJECT 后）
 
@@ -149,6 +149,13 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 - N1 扩展值类型错误（`x-risk-level: ["L3"]`、`x-data-classes: [{...}]`）从
   `TypeError` 收敛为固定错误码；用例 `test_bad_extension_types_get_fixed_codes`。
 - N2 契约错误码清单补 `catalog_conflict` 与 `tool_id_conflict`。
+
+第四轮验证仍 REJECT：上一轮的跨连接器冲突检查只加在「CLI 导入 + 支持 `list_all` 的
+存储」上，`--registry-url`、控制面 POST、控制台 POST 与连接器申请批准都能绕过。现在
+把不变量下沉到存储层：`core.assert_tool_ids_free` + `ConnectorToolIdConflict`，
+`FileConnectorStore.add` 与 `PostgresConnectorStore.add` 写前校验（这四个入口最终都走
+`add`），CLI 导入保留预检。用例 `test_store_rejects_cross_connector_tool_id`
+（两个方向都测）。
 
 七、限制
 
