@@ -800,6 +800,21 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         证据 `docs/evidence/SLICE-314-adk-wall.txt`。
         下一步：0046-2a，把 MCP/A2A 入口构造搬进 `adapters.adk`，去掉
         `AuditedRunner.__class__` 伪装，改显式能力检查，基线相应缩短。
+      - SLICE-315 入口与运行时改走适配层（ADR-0046 切片 2a）~~已合并 `1e89bcf`~~（#375）：
+        `a2a`、`mcp.server`、`console`、`cli`、`runtime.execution`、`runtime.sessions`
+        不再直接 import ADK，全部经 `adapters.adk`（新增 `runner`/`sessions`/`mcp`/
+        `a2a`/`agents`/`llm` 六个模块）；`AuditedRunner` 删除 `__class__` 伪装，A2A
+        执行器改收 `RunnerFacade`（真 `Runner` 子类，属性读写与 `run_async` 全委托）；
+        墙的基线从 20 缩到 14；兼容演练新增 `runner-gate`（门面被原样接受、非
+        `Runner` 被 `TypeError` 拒绝）。7 条用例，先红后绿。三轮验证（首轮 PASS 带
+        S1 门控检查空洞、S2 证据不实；第二轮 REJECT 因 asyncpg 说法错误；改证据后
+        第三轮 PASS）。实机 `prove_workbuddy_a2a.py` 全 PASS（真实执行器 + 4 条审计）、
+        MCP stdio 握手正常。门禁 2450/106。
+        证据 `docs/evidence/SLICE-315-adk-entry-runtime.txt`。
+        后续项：`SESSION_URL=postgresql+asyncpg://` 缺 asyncpg 时仍是裸 `ValueError`
+        （修法按 `__cause__` 判 ImportError，不要只看 URL，否则坏 DSN 也会被误报成
+        缺驱动）。
+        下一步：0046-2b（事件边界），再 0046-3（加载与组合，基线归零）。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
