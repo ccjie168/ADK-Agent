@@ -1,0 +1,70 @@
+SLICE-313 延迟审批的运维收口（ADR-0049 切片 4）
+
+日期: 2026-11-28
+依据: ADR-0049 决定 7、8 与切片 4
+范围: `orchestration/executor.py`（恢复前检查到期）、`approval_resumer.py`
+      （`claim_dir` 单赢家、安全 id 校验）、`docs/guides/deferred-approvals.md`、
+      新增 4 条用例
+
+一、红绿说明
+
+实现前执行器不检查 `expires_at`，恢复器没有 `claim_dir`，手册不存在。本轮先改实现再写
+用例，没有单独抓红屏；四条用例在实现前分别会失败（过期决定被采纳、两个恢复器都执行、
+非法 id 不报错、手册缺失）。
+
+二、用例
+
+    $ python -m pytest tests/test_approval_resumer.py tests/test_deferred_approvals.py -q
+    .......................                                          [100%]
+    23 passed in 2.99s
+
+- `test_expired_decision_is_not_resumed`：已过期的批准不会被采纳，抛 `ApprovalTimeout`，
+  写操作不发生
+- `test_claim_dir_allows_one_winner`：两个恢复器共享 claim 目录，只有一个回调，另一个
+  `skipped=1`
+- `test_claim_rejects_unsafe_request_ids`：`../escape` 这类 id 直接 `ValueError`
+- `test_runbook_documents_deferred_approvals`：手册覆盖组件、开启、单赢家与到期
+
+三、实现要点
+
+- 到期检查放在采纳决定之前，审计记 `approval_timeout`；同一路径也覆盖拒绝。
+- claim 用 `os.O_CREAT|os.O_EXCL` 建 `.resume-<id>.lock`；request id 白名单
+  `[A-Za-z0-9._-]{1,128}`，防止路径穿越。默认 `claim_dir=None` 时行为不变。
+- 手册写明 Postgres 多副本没有跨主机锁，接多副本前必须补数据库条件抢占。
+
+四、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2437 passed, 106 skipped
+
+五、限制
+
+- 单赢家只在共享文件目录的部署成立；Postgres 多副本是已知缺口，已写进手册。
+- 计数字段（`handled/failed/skipped`）没有接入 Prometheus。
+- 锁文件不自动清理；与审批记录一起按运维周期归档。
+
+六、范围外
+
+- 数据库条件抢占与 Prometheus 指标。

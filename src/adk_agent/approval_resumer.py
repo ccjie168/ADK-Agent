@@ -5,8 +5,11 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import os
+import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from .approvals import ApprovalHistoryEntry
@@ -16,6 +19,7 @@ logger = logging.getLogger(__name__)
 _RESUMABLE = frozenset({"approved", "denied"})
 _SKIPPED = frozenset({"expired"})
 _TERMINAL = _RESUMABLE | _SKIPPED
+_SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 __all__ = ["ApprovalResumer"]
 
@@ -40,6 +44,7 @@ class ApprovalResumer:
         *,
         poll_seconds: float = 1.0,
         batch: int = 50,
+        claim_dir: str | Path | None = None,
     ) -> None:
         if getattr(inbox, "history", None) is None:
             raise ValueError("approval inbox must provide history()")
@@ -50,6 +55,8 @@ class ApprovalResumer:
         self._seen: dict[str, None] = {}
         self.max_seen = 10_000
         self._watermark: datetime | None = None
+        self.claim_dir = Path(claim_dir) if claim_dir is not None else None
+        self.skipped = 0
         self._stop = asyncio.Event()
         self.handled = 0
         self.failed = 0
@@ -68,6 +75,9 @@ class ApprovalResumer:
                 self._watermark = entry.terminal_at
             if entry.status in _SKIPPED:
                 continue
+            if not self._claim(request_id):
+                self.skipped += 1
+                continue
             try:
                 result = self.handler(entry)
                 if inspect.isawaitable(result):
@@ -79,6 +89,21 @@ class ApprovalResumer:
             self.handled += 1
             handled += 1
         return handled
+
+    def _claim(self, request_id: str) -> bool:
+        """Take a per-request lock file so two resumers never both resume."""
+        if self.claim_dir is None:
+            return True
+        if not _SAFE_ID.match(request_id):
+            raise ValueError("request id is not safe for a claim file")
+        self.claim_dir.mkdir(parents=True, exist_ok=True)
+        path = self.claim_dir / f".resume-{request_id}.lock"
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            return False
+        os.close(fd)
+        return True
 
     def _remember(self, request_id: str) -> None:
         self._seen[request_id] = None

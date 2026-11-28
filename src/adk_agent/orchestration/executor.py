@@ -1268,6 +1268,18 @@ class PlanExecutor:
         if record is not None:
             decision = getattr(record, "decision", None)
             if isinstance(decision, ApprovalDecision):
+                expires = getattr(getattr(record, "request", None), "expires_at", None)
+                if expires is not None and datetime.now(timezone.utc) >= expires:
+                    await self._audit_step(
+                        child,
+                        step,
+                        input_text,
+                        None,
+                        "error",
+                        "approval_timeout",
+                        step_started,
+                    )
+                    raise ApprovalTimeout(f"approval for step {step.id!r} expired")
                 if decision.approved:
                     await self._audit_approval(
                         child,
