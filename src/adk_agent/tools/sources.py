@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..adapters.adk import tools as adk_tools
 from ..config import OpenApiConfig
 from ..core import SecretProvider
 from ..secretstore import secret_header_provider
@@ -19,8 +20,6 @@ def load_openapi_spec(path: str) -> dict[str, Any]:
 
 
 def openapi_toolset_from_config(cfg: OpenApiConfig, secrets: SecretProvider) -> Any:
-    from google.adk.tools.openapi_tool import OpenAPIToolset
-
     kwargs: dict[str, Any] = {"spec_dict": load_openapi_spec(cfg.spec_path)}
     if cfg.tool_filter:
         kwargs["tool_filter"] = cfg.tool_filter
@@ -28,7 +27,7 @@ def openapi_toolset_from_config(cfg: OpenApiConfig, secrets: SecretProvider) -> 
         kwargs["tool_name_prefix"] = cfg.tool_name_prefix
     if cfg.header_secrets:
         kwargs["header_provider"] = secret_header_provider(secrets, cfg.header_secrets)
-    return OpenAPIToolset(**kwargs)
+    return adk_tools.openapi_toolset(**kwargs)
 
 
 def toolset_tool_ids(toolset: Any) -> set[str]:

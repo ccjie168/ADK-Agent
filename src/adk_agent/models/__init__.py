@@ -32,6 +32,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ..adapters.adk import models as adk_models
 from ..config import ModelConfig
 from .breaker import BreakerProvider
 from .gateway import ModelUnavailable
@@ -39,7 +40,7 @@ from .http_gateway import HttpModelGateway, ModelGatewayError
 from .service import build_model_gateway_app, build_providers
 
 if TYPE_CHECKING:  # pragma: no cover
-    from google.adk.models import BaseLlm
+    from ..adapters.adk.models import BaseLlm
 
 _PROVIDER_PREFIXES = ("gemini", "litellm", "claude", "vertex")
 
@@ -101,19 +102,15 @@ def build_model(spec: str | ModelConfig | None = None) -> BaseLlm:
     cfg = resolve_model_config(spec)
 
     if cfg.provider == "gemini":
-        from google.adk.models import Gemini
-
         kwargs = dict(cfg.kwargs)
         if cfg.api_key:
             kwargs.setdefault("client_kwargs", {"api_key": cfg.api_key})
-        return Gemini(model=cfg.name, **kwargs)
+        return adk_models.gemini_model(cfg.name, **kwargs)
 
     if cfg.provider == "claude":
-        # NB: google.adk.models.Claude is the *Vertex AI* variant. The plain
+        # NB: ADK's ``Claude`` class is the *Vertex AI* variant. The plain
         # Anthropic-API adapter (used for Anthropic and Anthropic-compatible
-        # endpoints such as DeepSeek's /anthropic) is AnthropicLlm.
-        from google.adk.models.anthropic_llm import AnthropicLlm
-
+        # endpoints such as DeepSeek's /anthropic) is ``AnthropicLlm``.
         kwargs = dict(cfg.kwargs)
         # AnthropicLlm takes an Anthropic *client*, not api_key/base_url. With
         # neither set it builds AsyncAnthropic(), which reads ANTHROPIC_API_KEY,
@@ -127,22 +124,18 @@ def build_model(spec: str | ModelConfig | None = None) -> BaseLlm:
             if cfg.api_base:
                 client_kwargs["base_url"] = cfg.api_base
             kwargs.setdefault("client", AsyncAnthropic(**client_kwargs))
-        return AnthropicLlm(model=cfg.name, **kwargs)
+        return adk_models.claude_llm(cfg.name, **kwargs)
 
     if cfg.provider == "vertex":
-        from google.adk.models import Claude
-
-        return Claude(model=cfg.name, **cfg.kwargs)
+        return adk_models.vertex_claude(cfg.name, **cfg.kwargs)
 
     # LiteLLM is the general escape hatch: deepseek/, openai/, anthropic/, ...
-    from google.adk.models import LiteLlm
-
     kwargs = dict(cfg.kwargs)
     if cfg.api_key:
         kwargs.setdefault("api_key", cfg.api_key)
     if cfg.api_base:
         kwargs.setdefault("api_base", cfg.api_base)
-    return LiteLlm(model=cfg.name, **kwargs)
+    return adk_models.litellm_model(cfg.name, **kwargs)
 
 
 def disable_thinking() -> Any:

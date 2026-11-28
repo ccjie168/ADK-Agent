@@ -6,10 +6,7 @@ import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from google.adk.models import BaseLlm
-from google.adk.models.llm_request import LlmRequest
-from google.adk.models.llm_response import LlmResponse
-
+from ..adapters.adk.models import BaseLlm, LlmRequest, LlmResponse
 from ..audit.hashing import hash_json, hash_text
 from ..core import ModelPolicy
 from ..core.context import current_invocation
