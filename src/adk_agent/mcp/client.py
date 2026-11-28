@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..adapters.adk import mcp_tools as adk_mcp_tools
 from ..config import McpServerConfig
 from ..core import SecretProvider
 from ..secretstore import secret_header_provider
@@ -16,19 +17,13 @@ def toolset_from_config(cfg: McpServerConfig, secrets: SecretProvider | None = N
     reaches a streamable-HTTP MCP server over the network. ``header_secrets``
     are resolved per request through ``secrets``.
     """
-    from google.adk.tools.mcp_tool import (
-        McpToolset,
-        StdioConnectionParams,
-        StreamableHTTPConnectionParams,
-    )
-
     params: Any
     if cfg.transport == "stdio":
         from mcp import StdioServerParameters
 
         if not cfg.command:
             raise ValueError("stdio MCP server config needs a `command`")
-        params = StdioConnectionParams(
+        params = adk_mcp_tools.stdio_params(
             server_params=StdioServerParameters(
                 command=cfg.command,
                 args=cfg.args,
@@ -39,7 +34,7 @@ def toolset_from_config(cfg: McpServerConfig, secrets: SecretProvider | None = N
     else:
         if not cfg.url:
             raise ValueError("http MCP server config needs a `url`")
-        params = StreamableHTTPConnectionParams(
+        params = adk_mcp_tools.http_params(
             url=cfg.url,
             headers=cfg.headers,
             timeout=cfg.timeout,
@@ -56,4 +51,4 @@ def toolset_from_config(cfg: McpServerConfig, secrets: SecretProvider | None = N
             raise ValueError("header_secrets need a SecretProvider")
         kwargs["header_provider"] = secret_header_provider(secrets, cfg.header_secrets)
 
-    return McpToolset(**kwargs)
+    return adk_mcp_tools.mcp_toolset(**kwargs)

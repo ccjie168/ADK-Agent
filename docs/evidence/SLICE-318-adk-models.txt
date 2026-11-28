@@ -1,0 +1,100 @@
+SLICE-318 模型与工具源迁入适配层（ADR-0046 切片 3b）
+
+日期: 2026-11-28
+范围: `adapters/adk/models.py`、`adapters/adk/mcp_tools.py`、`adapters/adk/tools.py`（新）、
+      `models/__init__.py`、`models/gateway_llm.py`、`mcp/client.py`、`tools/sources.py`、
+      `scripts/adk_wall.py`（基线 11 → 7）、新增 5 条用例、按已批准的只增不减模式
+      把 SLICE-317 的基线用例改为 `<=`
+
+一、红屏（先跑新用例）
+
+    $ python -m pytest tests/test_adk_models.py -q
+    FFFF.  ->  4 failed in 3.79s
+
+- 四个模块仍在基线里、基线仍是 11 项
+- `adapters.adk.models` / `adapters.adk.tools` 不存在
+- `test_mcp_toolset_builds_through_the_adapter` 实现前就是绿的（行为未变），照实记录
+
+（`test_openapi_toolset_builds_through_the_adapter` 首版用空响应对象，ADK 的
+OpenAPI 解析器要求响应是 `Response`，补 `description` 后通过。）
+
+二、用例
+
+    $ python -m pytest tests/test_adk_models.py tests/test_adk_loading.py tests/test_adk_boundary.py tests/test_adk_entry_adapter.py -q
+    .......................                                          [100%]
+    23 passed in 12.62s
+
+- `test_model_and_tool_modules_leave_the_wall`：四个模块不再 import ADK
+- `test_baseline_is_sandbox_and_guards`：基线恰好剩 7 项
+- `test_model_builders_return_adk_models`：适配层构造器与 `build_model` 都返回真
+  `BaseLlm`
+- `test_mcp_toolset_builds_through_the_adapter`：`toolset_from_config` 建出
+  ADK `McpToolset`
+- `test_openapi_toolset_builds_through_the_adapter`：适配层建出 ADK `OpenAPIToolset`
+
+三、实现要点
+
+- `adapters/adk/models.py`：`BaseLlm`/`LlmRequest`/`LlmResponse` 类型导出，四个 provider
+  构造器（`gemini_model`、`claude_llm`、`vertex_claude`、`litellm_model`）保留惰性导入，
+  缺可选包时仍抛 `ImportError`。
+- `adapters/adk/mcp_tools.py`：`stdio_params`、`http_params`、`mcp_toolset`。
+  `timeout` 默认 60 秒与 ADK 的 `StdioConnectionParams` 签名一致（mypy 报错后改的）。
+- `adapters/adk/tools.py`：`openapi_toolset`。
+- 模型选择逻辑、key 注入方式、网关包装与策略审计都没动。
+- 墙的基线 11 → 7；SLICE-317 的账本用例按用户已批准的「只增不减」模式改成
+  `BASELINE <= 11 项旧集合`，当前 7 项由本切片用例精确固定。
+
+实机输出：
+
+    $ python scripts/adk_wall.py
+    [PASS] adk wall: 7 grandfathered importers, 0 new
+
+四、实机验证
+
+    $ python scripts/probe_mcp.py -- .venv/Scripts/python.exe -m adk_agent serve \
+          --agent examples/minimal/agent.py
+    server: name='minimal_agent' ...
+    protocol: 2025-11-25
+    tools: 1
+
+真实路径：配置 → `factory.build_agent` → `build_model`（适配层构造器）→ MCP 服务，
+工具列表完整。
+
+五、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2465 passed, 106 skipped
+
+六、限制
+
+- 基线剩 7 项：`sandbox.*`（5 个）、`tools.enforcement`、`tools.guard`；3c 迁。
+- `models/gateway_llm.py` 仍是 `BaseLlm` 子类并消费 ADK 的 `LlmRequest`/`LlmResponse`
+  类型，只是 import 改走适配层；模型网关的协议本身没有平台化（不在本 ADR 范围）。
+- 四个 provider 构造器只做转发，provider 的类名/参数语义随 ADK 版本变化，兼容演练的
+  `model-providers` 尚未单独检查（见 3c 的升级手册）。
+
+七、范围外
+
+- 沙箱与工具守卫（3c）、ADK 升级手册（3c 收尾）。
