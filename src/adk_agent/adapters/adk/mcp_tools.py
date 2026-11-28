@@ -7,7 +7,7 @@ from typing import Any
 __all__ = ["http_params", "mcp_toolset", "stdio_params"]
 
 
-def stdio_params(*, server_params: Any, timeout: float = 60.0) -> Any:
+def stdio_params(*, server_params: Any, timeout: float = 5.0) -> Any:
     from google.adk.tools.mcp_tool import StdioConnectionParams
 
     return StdioConnectionParams(server_params=server_params, timeout=timeout)

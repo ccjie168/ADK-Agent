@@ -38,7 +38,8 @@ OpenAPI 解析器要求响应是 `Response`，补 `description` 后通过。）
   构造器（`gemini_model`、`claude_llm`、`vertex_claude`、`litellm_model`）保留惰性导入，
   缺可选包时仍抛 `ImportError`。
 - `adapters/adk/mcp_tools.py`：`stdio_params`、`http_params`、`mcp_toolset`。
-  `timeout` 默认 60 秒与 ADK 的 `StdioConnectionParams` 签名一致（mypy 报错后改的）。
+  `timeout` 默认 5 秒，与 ADK 的 `StdioConnectionParams`（2.14.0：`timeout: float = 5.0`）
+  和平台 `McpServerConfig.timeout` 一致（首版误写 60，验证时改回 5）。
 - `adapters/adk/tools.py`：`openapi_toolset`。
 - 模型选择逻辑、key 注入方式、网关包装与策略审计都没动。
 - 墙的基线 11 → 7；SLICE-317 的账本用例按用户已批准的「只增不减」模式改成
