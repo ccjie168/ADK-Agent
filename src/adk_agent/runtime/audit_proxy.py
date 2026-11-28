@@ -14,6 +14,7 @@ from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+from ..adapters.adk.events import to_run_event
 from ..audit.hashing import hash_text
 from ..core import (
     AgentRef,
@@ -135,10 +136,9 @@ class AuditedRunner:
                     if block:
                         kwargs = _prefixed(kwargs, block)
                 async for event in self._inner.run_async(**kwargs):
-                    if event.is_final_response() and event.content and event.content.parts:
-                        for part in event.content.parts:
-                            if not part.thought and part.text:
-                                reply_parts.append(part.text)
+                    run_event = to_run_event(event)
+                    if run_event.final:
+                        reply_parts.append(run_event.text)
                     yield event
             except Exception as exc:
                 await self._emit(

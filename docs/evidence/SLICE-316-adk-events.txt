@@ -1,0 +1,124 @@
+SLICE-316 事件边界（ADR-0046 切片 2b）
+
+日期: 2026-11-28
+范围: `core/run_event.py`（新）、`core/__init__.py`、`adapters/adk/events.py`（新）、
+      `runtime/execution.py`、`runtime/audit_proxy.py`、`scripts/export_contracts.py`、
+      `docs/contracts/run_event.schema.json`（新）、新增 5 条用例
+
+一、红屏（先跑新用例）
+
+    $ python -m pytest tests/test_adk_events.py -q
+    .....  ->  5 failed in 2.56s
+
+- `core.RunEvent` 与 `adapters.adk.events` 不存在
+- 给 `AgentRuntime` 喂平台事件会因缺 `is_final_response()` 抛 `AttributeError`
+- 源码扫描命中 `runtime/execution.py`、`runtime/audit_proxy.py` 的 ADK 字段读取
+
+（首版扫描正则把 `tools/guard.py` 的 `function_call_id` 误判成事件字段，改成
+`function_call(?!_|\w)` 后只剩真实命中。）
+
+二、用例
+
+    $ python -m pytest tests/test_adk_events.py -q
+    .....                                                            [100%]
+    5 passed in 1.76s
+
+- `test_run_event_conversion_extracts_parts`：文本、工具调用、工具结果按序提取，
+  `RunEvent.text` 拼接；`to_run_event` 对平台事件幂等
+- `test_run_event_drops_thought_parts`：思考片段不进平台事件
+- `test_agent_runtime_consumes_platform_events`：运行时只吃 `RunEvent`，
+  进度仍发 `model.text`，结果取最终文本
+- `test_audit_proxy_extracts_final_text_from_run_events`：审计代理用平台事件取
+  最终文本（`result_hash == hash_text("done")`），原始事件仍逐个透传
+- `test_only_the_adapter_reads_adk_event_fields`：`adapters/` 与 `sandbox/` 之外
+  没有 `is_final_response`、`content.parts`、`function_call` 读取
+
+三、实现要点
+
+- `core.RunEvent(author, final, parts)`、`core.RunPart(kind, text, name)`，
+  frozen + `extra="forbid"`；`RunEvent.text` 只拼文本片段。
+- `adapters/adk/events.py::to_run_event` 是唯一转换点：跳过 `thought` 片段，
+  `function_call`/`function_response` 转成 `tool_call`/`tool_result`，
+  平台事件原样返回。
+- `runtime/execution.py` 每次收到事件先转换，再发进度、再取最终文本；
+  `_emit_progress` 的入参改成 `RunEvent`。
+- `runtime/audit_proxy.py` 同样转换后取最终文本，但**仍然逐条透传原始事件**，
+  MCP 的 `_run_agent` 与 A2A 执行器依赖原始事件。
+- `docs/contracts/run_event.schema.json` 由 `scripts/export_contracts.py` 生成。
+
+四、实机验证（不是替身）
+
+    $ python scripts/prove_workbuddy_a2a.py
+    PASS agent card returned
+    PASS anonymous call rejected
+    PASS reply contains ticket
+    PASS ticket is open
+    PASS wecom notified
+    PASS audit verified (4 records)
+    ALL PASS
+
+    $ python scripts/prove_support_demo.py
+    PASS mock services started
+    PASS approval requested
+    PASS plan answered
+    PASS ticket created t-1
+    PASS ticket is open
+    PASS wecom notified
+    PASS audit verified (4 records)
+    ALL PASS
+
+两条真实路径都经过 `AuditedRunner` → `to_run_event`：审计里 `agent.run` 的
+`result_hash` 来自平台事件拼接的文本。
+
+五、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2455 passed, 106 skipped
+
+六、首轮验证修正
+
+首轮 PASS，按 N2 收紧：兼容演练的 `events` 一项现在要求
+`Event.is_final_response` 仍是普通方法（`inspect.isfunction`）。如果 ADK 把它改成
+property、改成 async 或改名，`to_run_event` 会回落到不存在的 `Event.final`（全部判成
+非最终，结果文本为空）或拿到协程（全部判成最终，文本重复），`result_hash` 变成
+`hash_text("")` 或错误文本的哈希，全程不报错；这条检查让升级时先红。
+
+其余 N 项记录不修：源码扫描用正则，`get_function_calls()`、`getattr(content, "parts")`
+这类改写会漏检（当前树干净）；扫描暂时排除整个 `adapters/`，目前只有 `adapters/adk`；
+`RunPart` 只承载文本与工具名，ADK 片段里的 `inline_data`/`file_data` 不映射，
+要用时在适配层扩。
+
+七、限制
+
+- `sandbox/` 仍读 ADK 事件与模型类型（manifest 侧、worker 侧），0046-3 迁；
+  扫描用例暂时排除该目录，证据如实记录。
+- 转换只覆盖平台用到的字段（author、final、文本、工具名）；ADK 事件里更大的
+  `content`（图片、文件引用）不进平台类型，未来要用时在适配层扩展。
+- `RunEvent` 不进任何 HTTP 载荷，schema 只是边界文档；控制台 SSE 仍发
+  `ProgressEvent`。
+
+八、范围外
+
+- 加载与组合迁移（0046-3）。
