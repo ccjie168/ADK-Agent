@@ -821,6 +821,8 @@ MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和�
 
 配额表启用了 Postgres RLS，策略依赖 `app.tenant_id`。生产连接必须是表的属主，不能用超级用户或 `BYPASSRLS` 角色，否则策略不生效。建表步骤会自动 `ENABLE` 和 `FORCE`，连接角色没有 `ALTER TABLE` 权限时启动会失败。
 
+已知缺口（SLICE-315 验证时确认，master 相同）：`SESSION_URL=postgresql+asyncpg://...` 但没装 asyncpg 时，ADK 的 `DatabaseSessionService` 把 `ImportError` 包成 `ValueError`，用户拿到裸 `ValueError` 而不是带安装提示的 `SessionStoreUnavailable`。缺 greenlet 已收敛（构造期 `ImportError` 在 try 内）。修法是捕获构造期的 `ValueError` 并按 URL 判定是否缺驱动，需要一条真实缺 asyncpg 的用例。
+
 ## 恢复步骤
 
 1. 读 `CLAUDE.md`、`docs/specs/ROADMAP.md`、本文件。

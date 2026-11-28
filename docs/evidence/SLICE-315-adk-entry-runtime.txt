@@ -125,9 +125,13 @@ MCP stdio 握手与工具列表照常。
 - S1：`runner-gate` 现在真的验证门控——用 `A2aAgentExecutor(runner=RunnerFacade(...))`
   调 `_resolve_runner` 必须原样返回门面，用 `A2aAgentExecutor(runner=object())` 必须
   抛 `TypeError`。只断言 `isinstance` 或 `_resolve_runner` 存在会漏掉门控方式漂移。
-- S2：Postgres session 服务的构造期 `ImportError`（缺 sqlalchemy/greenlet/asyncpg）
-  以前漏成裸 `ImportError`，现在与导入期一起收敛成 `SessionStoreUnavailable`；这是
-  对既有契约（`docs/contracts` 与 `runtime.sessions` 文档）的修正，记在这里。
+- S2：Postgres session 服务的构造期 `ImportError` 现在也在 try 内。实测只对
+  greenlet 有效：缺 greenlet 时模块能导入、构造抛 `ImportError`，本轮起映射成
+  `SessionStoreUnavailable`，以前是裸 `ImportError`。缺 sqlalchemy 时模块导入本身就
+  失败，旧代码已在 try 内，行为不变。**缺 asyncpg 不在其列**：ADK 的
+  `DatabaseSessionService` 把 `create_async_engine` 的 `ImportError` 包成
+  `ValueError`，仍然是裸 `ValueError`，虽然平台安装提示点名 asyncpg。这是既有缺口，
+  master 相同，记为后续项（见 PROGRESS），不在本切片改契约。
 - N1：门面测试补写属性断言（`facade.app_name = ...` 写穿到目标）。
 - N5：`mcp/server.py` 的 `serve_many` 文档串改指适配层的 `run_agent`。
 
