@@ -609,3 +609,36 @@ def test_registry_maps_tool_id_conflict_to_409():
 
     assert response.status_code == 409
     assert b"tool_id_conflict" in response.body
+
+
+def test_console_register_reports_tool_id_conflict(tmp_path):
+    from fastapi.testclient import TestClient
+    from google.adk.agents import LlmAgent
+
+    from adk_agent.console import build_console_app
+    from adk_agent.registry import FileConnectorStore
+
+    store = FileConnectorStore(str(tmp_path / "connectors"))
+    asyncio.run(store.add(import_openapi(_document(), "itsm").connector))
+    app = build_console_app(
+        {"probe": LlmAgent(name="probe", model="gemini-2.5-pro", instruction="x")},
+        auth_token="secret",
+        roles=("admin",),
+        connectors=store,
+    )
+    auth = {"Authorization": "Bearer secret"}
+    body = {
+        "connector_id": "itsm.list",
+        "tenant": "local",
+        "kind": "http",
+        "base_url": "https://other.example",
+        "methods": ["GET"],
+        "path_prefixes": ["/"],
+    }
+
+    with TestClient(app) as client:
+        response = client.post("/api/connectors", json=body, headers=auth)
+
+    assert response.status_code == 409
+    assert response.json()["error"] == "tool_id_conflict"
+    assert not (tmp_path / "connectors" / "itsm.list.json").exists()
