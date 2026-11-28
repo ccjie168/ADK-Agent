@@ -2276,6 +2276,18 @@ def main(argv: list[str] | None = None) -> None:
     p_cl_disable.add_argument("--id", required=True)
     _add_registry_client_args(p_cl_disable)
 
+    p_cl_import = connectors_sub.add_parser(
+        "import-openapi", help="register a connector and its tools from an OpenAPI document"
+    )
+    p_cl_import.add_argument("--spec", required=True, help="path to the OpenAPI JSON document")
+    p_cl_import.add_argument("--connector-id", required=True)
+    p_cl_import.add_argument("--tenant", default=None)
+    p_cl_import.add_argument("--base-url", default=None, help="override servers[0].url")
+    p_cl_import.add_argument("--connectors-dir", default=None)
+    p_cl_import.add_argument("--tool-catalog", default=None)
+    p_cl_import.add_argument("--dry-run", action="store_true")
+    _add_registry_client_args(p_cl_import)
+
     p_cl_check = connectors_sub.add_parser("check", help="probe a connector's health")
     p_cl_check.add_argument("--connectors-dir", default=None)
     p_cl_check.add_argument("--id", required=True)
@@ -3897,6 +3909,8 @@ def main(argv: list[str] | None = None) -> None:
             HttpMethod,
         )
         from .registry import ConnectorForbidden, ConnectorNotFound
+        from .tools import ToolCatalogConflict
+        from .tools.openapi_import import OpenApiImportError
 
         store = _connector_store(args)
         if store is None:
@@ -3920,6 +3934,66 @@ def main(argv: list[str] | None = None) -> None:
                     return await check_connector(spec)
                 if args.connectors_cmd == "disable":
                     return await store.disable(args.id, by="cli")
+                if args.connectors_cmd == "import-openapi":
+                    from .tools import (
+                        ToolCatalog,
+                        import_openapi,
+                        load_tool_catalog,
+                        merge_tool_entries,
+                        write_tool_catalog,
+                    )
+
+                    try:
+                        document = json.loads(Path(args.spec).read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        raise OpenApiImportError("spec_unreadable", args.spec) from None
+                    imported = import_openapi(
+                        document,
+                        args.connector_id,
+                        tenant=args.tenant or None,
+                        base_url=args.base_url,
+                    )
+                    list_all = getattr(store, "list_all", None)
+                    if list_all is not None:
+                        existing: set[str] = set()
+                        for spec in await list_all():
+                            existing.add(spec.connector_id)
+                            existing.update(op.tool_id for op in spec.operations)
+                        incoming = {imported.connector.connector_id} | {
+                            op.tool_id for op in imported.connector.operations
+                        }
+                        clash = sorted(existing & incoming)
+                        if clash:
+                            raise OpenApiImportError("tool_id_conflict", clash[0])
+                    catalog = ToolCatalog(version=1)
+                    if args.tool_catalog:
+                        catalog_path = Path(args.tool_catalog)
+                        if catalog_path.exists():
+                            try:
+                                catalog = load_tool_catalog(catalog_path)
+                            except Exception:  # noqa: BLE001
+                                raise OpenApiImportError(
+                                    "catalog_unreadable", args.tool_catalog
+                                ) from None
+                        try:
+                            catalog = merge_tool_entries(catalog, imported.tools)
+                        except ToolCatalogConflict as exc:
+                            raise OpenApiImportError("catalog_conflict", exc.tool_id) from None
+                    if args.dry_run:
+                        return {
+                            "connector": imported.connector.model_dump(mode="json"),
+                            "tools": [tool.model_dump(mode="json") for tool in imported.tools],
+                            "skipped": imported.skipped,
+                            "dry_run": True,
+                        }
+                    await store.add(imported.connector)
+                    if args.tool_catalog:
+                        write_tool_catalog(args.tool_catalog, catalog)
+                    return {
+                        "connector": imported.connector.model_dump(mode="json"),
+                        "tools": [tool.model_dump(mode="json") for tool in imported.tools],
+                        "skipped": imported.skipped,
+                    }
                 spec = ConnectorSpec(
                     connector_id=args.id,
                     tenant=args.tenant or None,
@@ -3953,6 +4027,8 @@ def main(argv: list[str] | None = None) -> None:
             ConnectorForbidden,
             ConnectorNotFound,
             CredentialStoreError,
+            ToolCatalogConflict,
+            OpenApiImportError,
             ValidationError,
             ValueError,
         ) as exc:
@@ -3961,6 +4037,8 @@ def main(argv: list[str] | None = None) -> None:
 
         if args.connectors_cmd == "list":
             print(json.dumps([record.model_dump(mode="json") for record in result]))
+        elif isinstance(result, dict):
+            print(json.dumps(result))
         else:
             print(json.dumps(result.model_dump(mode="json")))
     elif args.cmd == "credentials":

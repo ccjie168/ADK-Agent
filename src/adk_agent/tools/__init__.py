@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from .catalog import (
     ToolCatalog,
+    ToolCatalogConflict,
     ToolCatalogError,
     ToolEntry,
     connector_tool_entries,
     load_tool_catalog,
+    merge_tool_entries,
+    write_tool_catalog,
 )
 from .connectors import ConnectorDenied, ConnectorResponse, build_connector_tools
 from .enforcement import declared_tool_ids, install_declared_guards
@@ -16,6 +19,7 @@ from .guard import ToolGuard, install_tool_guard
 from .http_gateway import HttpToolGateway, ToolGatewayError
 from .idempotency import FileToolIdempotencyStore
 from .idempotency_postgres import PostgresToolIdempotencyStore
+from .openapi_import import OpenApiImport, OpenApiImportError, import_openapi
 from .policy import GrantPolicyEngine
 from .registry import FunctionRegistry, ToolSpec
 from .service import build_tool_gateway_app
@@ -33,6 +37,7 @@ __all__ = [
     "HttpToolGateway",
     "PostgresToolIdempotencyStore",
     "ToolCatalog",
+    "ToolCatalogConflict",
     "ToolCatalogError",
     "ToolDenied",
     "ToolEntry",
@@ -45,6 +50,11 @@ __all__ = [
     "install_tool_guard",
     "load_openapi_spec",
     "load_tool_catalog",
+    "merge_tool_entries",
+    "OpenApiImport",
+    "OpenApiImportError",
+    "import_openapi",
     "openapi_toolset_from_config",
     "toolset_tool_ids",
+    "write_tool_catalog",
 ]

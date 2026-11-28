@@ -20,6 +20,14 @@ class ToolCatalogError(Exception):
     """The tool catalog file is missing, malformed, or has duplicate ids."""
 
 
+class ToolCatalogConflict(ToolCatalogError):
+    """An existing tool id would be replaced with a different definition."""
+
+    def __init__(self, tool_id: str) -> None:
+        super().__init__(f"tool id {tool_id!r} already exists with a different definition")
+        self.tool_id = tool_id
+
+
 class ToolEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -72,20 +80,40 @@ def load_tool_catalog(path: str | Path) -> ToolCatalog:
 
 
 def connector_tool_entries(specs: Iterable[ConnectorSpec]) -> list[ToolEntry]:
-    return [
-        ToolEntry(
-            tool_id=spec.connector_id,
-            description=f"{spec.kind} connector to {spec.base_url}",
-            source="connector",
-            data_classes=list(spec.data_classes),
-            requires_approval=False,
-            tenant=spec.tenant,
-            risk_level=spec.risk_level,
-            delegation=spec.delegation,
+    entries: list[ToolEntry] = []
+    for spec in specs:
+        if not spec.enabled:
+            continue
+        if spec.operations:
+            for operation in spec.operations:
+                risk, classes = spec.operation_governance(operation)
+                entries.append(
+                    ToolEntry(
+                        tool_id=operation.tool_id,
+                        description=f"{operation.method} {operation.path} on {spec.base_url}",
+                        source="connector",
+                        data_classes=list(classes),
+                        requires_approval=risk in ("L3", "L4"),
+                        tenant=spec.tenant,
+                        risk_level=risk,
+                        write=operation.write,
+                        delegation=spec.delegation,
+                    )
+                )
+            continue
+        entries.append(
+            ToolEntry(
+                tool_id=spec.connector_id,
+                description=f"{spec.kind} connector to {spec.base_url}",
+                source="connector",
+                data_classes=list(spec.data_classes),
+                requires_approval=False,
+                tenant=spec.tenant,
+                risk_level=spec.risk_level,
+                delegation=spec.delegation,
+            )
         )
-        for spec in specs
-        if spec.enabled
-    ]
+    return entries
 
 
 __all__ = [
@@ -96,3 +124,24 @@ __all__ = [
     "connector_tool_entries",
     "load_tool_catalog",
 ]
+
+
+def merge_tool_entries(catalog: ToolCatalog, entries: list[ToolEntry]) -> ToolCatalog:
+    """Merge imported tools; identical duplicates are idempotent, others conflict."""
+    by_id = {tool.tool_id: tool for tool in catalog.tools}
+    for entry in entries:
+        existing = by_id.get(entry.tool_id)
+        if existing is None:
+            by_id[entry.tool_id] = entry
+        elif existing != entry:
+            raise ToolCatalogConflict(entry.tool_id)
+    return ToolCatalog(version=1, tools=sorted(by_id.values(), key=lambda tool: tool.tool_id))
+
+
+def write_tool_catalog(path: str | Path, catalog: ToolCatalog) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    payload = json.dumps(catalog.model_dump(mode="json"), indent=2, ensure_ascii=False)
+    tmp.write_text(payload + "\n", encoding="utf-8")
+    tmp.replace(target)

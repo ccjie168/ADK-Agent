@@ -19,11 +19,15 @@ from .connectors import (
     ConnectorForbidden,
     ConnectorKind,
     ConnectorNotFound,
+    ConnectorOperation,
     ConnectorSpec,
     ConnectorStoreError,
     ConnectorStoreUnavailable,
+    ConnectorToolIdConflict,
     DelegationMode,
     HttpMethod,
+    assert_tool_ids_free,
+    tool_ids,
 )
 from .credentials import (
     CredentialBinding,
@@ -192,6 +196,7 @@ from .user_bindings import (
 
 __all__ = [
     "ConnectorConflict",
+    "ConnectorOperation",
     "ConnectorForbidden",
     "ConnectorKind",
     "ConnectorNotFound",
@@ -205,6 +210,9 @@ __all__ = [
     "ConnectorSpec",
     "ConnectorStore",
     "ConnectorStoreError",
+    "ConnectorToolIdConflict",
+    "assert_tool_ids_free",
+    "tool_ids",
     "ConnectorStoreUnavailable",
     "DelegationMode",
     "HttpMethod",

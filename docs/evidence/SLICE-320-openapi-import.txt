@@ -1,0 +1,190 @@
+SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
+
+日期: 2026-11-28
+范围: `docs/contracts/connectors.md`（新）、`core/connectors.py`（`ConnectorOperation`
+      与 `ConnectorSpec.operations`）、`tools/openapi_import.py`（新）、
+      `tools/connectors.py`（逐操作工具）、`tools/catalog.py`（合并与写盘）、
+      `tools/__init__.py`、`cli.py`（`connectors import-openapi`）、
+      新增 31 条用例
+
+一、红绿说明
+
+本轮先写 spec 与契约，然后写实现，最后补用例：**没有单独抓红屏**。实现前
+`tools/openapi_import.py`、`ConnectorSpec.operations`、逐操作工具与 CLI 子命令都不存在，
+用例必然 ImportError 或断言失败；如实记录这次顺序偏差（与 SLICE-314 同）。
+
+首轮跑用例时抓到 6 处问题并修正：`methods` 只统计被采用的操作用户预期多了 PUT、
+参数化用例的 `missing_server`/`spec_invalid` 先后、假响应缺 `content_type`、
+`ConnectorDenied` 的属性名是 `error_code`、CLI 对 dict 结果仍调 `model_dump`、
+无参数的路径前缀被算成 `/` 导致调用被拒。
+
+二、用例
+
+    $ python -m pytest tests/test_openapi_import.py -q
+    .............................                                    [100%]
+    31 passed in 2.28s
+
+- `test_import_builds_connector_and_operations`：连接器 kind/base_url/methods/
+  path_prefixes/operations 与逐操作工具的 risk/data_class/write 都正确
+- `test_import_skips_operations_without_id`：缺 `operationId` 记入 `skipped`
+- `test_import_rejects_bad_document`（6 组参数）：`missing_server`/`spec_invalid`/
+  `no_operations`/`invalid_data_class`
+- `test_import_caps_tool_count`：201 个操作 → `too_many_operations`
+- `test_operation_tool_calls_fixed_path`：生成工具按固定方法与路径调用，路径参数编码
+- `test_operation_tool_rejects_traversal`：`../admin`、`a/b`、`a\b` 被拒；
+  缺参数也是 `path_param_invalid`/`path_param_missing`
+- `test_catalog_merge_rejects_conflict`：相同条目幂等，不同定义冲突
+- `test_cli_import_openapi_writes_connector_and_catalog`：CLI 写入连接器与目录
+- `test_source_has_no_helpers_outside_the_tools_package`：导入模块不碰 ADK
+
+    $ python -m pytest tests/test_openapi_import.py tests/tools -q
+    92 passed in 10.27s
+
+三、实现要点
+
+- `ConnectorSpec.operations`（additive，缺省空）：`{tool_id, path, method}`；
+  模型校验 `tool_id` 以 `<connector_id>.` 开头、路径以 `/` 开头且无 `..`。
+- `tools/openapi_import.py` 纯函数：`servers[0].url`（或 `--base-url`）→ `base_url`；
+  每个 `operationId` 一个工具；`x-data-classes`/`x-risk-level` 扩展；上限 200；
+  `skipped` 列出无 id 的接口。错误码见契约。
+- 网关：有 `operations` 的连接器为每个操作生成一个 `ToolSpec`（工具名即 `tool_id`），
+  参数是 `query`/`path_params`/`json_body`；路径参数拒绝 `/`、`\`、`..` 后再 URL 编码，
+  仍过 `_path_allowed` 与出站 host 校验。没有 `operations` 的连接器行为不变。
+- 工具目录：`merge_tool_entries`（幂等或冲突）、`write_tool_catalog`（临时文件 +
+  原子替换）。
+- CLI：`connectors import-openapi --spec --connector-id [--tenant] [--base-url]
+  [--connectors-dir|--registry-url] [--tool-catalog] [--dry-run]`。
+
+四、实机验证
+
+    $ python -m adk_agent connectors import-openapi --spec .../itsm.json \
+          --connector-id itsm --tenant local --connectors-dir ... --tool-catalog ...
+    {"connector": {"connector_id": "itsm", ..., "operations": [
+      {"tool_id": "itsm.list", "path": "/tickets", "method": "GET"},
+      {"tool_id": "itsm.create", "path": "/tickets", "method": "POST"}]}, "tools": [...]}
+
+    $ 查看落盘
+    catalog: [('itsm.create', 'L3', True), ('itsm.list', 'L2', False)]
+    ops: ['itsm.list', 'itsm.create']
+
+同一命令重跑：退出码 0，工具目录仍是 2 条（幂等）。
+
+五、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2501 passed, 106 skipped
+
+六、首轮验证修正（REJECT 后）
+
+首轮验证 REJECT，两个阻断项与若干 N，均已修：
+
+- **S1（安全）**：逐操作的 `risk_level`/`data_classes`/`write` 原先没传到网关
+  `ToolSpec`，连接器级固定 L2/internal，导致 `x-risk-level: L3` 的写操作在网关上
+  不需要审批也不要求幂等。`ConnectorOperation` 现在自带这三项，网关与工具目录都按
+  操作取值；新增 `test_gateway_tool_carries_operation_governance` 与实机核对
+  （`pay.refund` → risk=L3, approval=True, idem=True, classes=('confidential',)）。
+- **B1**：重复 `operationId` 会产出重复 `tool_id`，工具网关启动时直接拒绝。导入期
+  现在报 `duplicate_operation_id`，写入前就失败；用例
+  `test_import_rejects_duplicate_operation_ids`。
+- **B2（回滚）**：`ConnectorSpec` 是 `extra="forbid"`，旧版本读到带 `operations` 的记录
+  会让 `FileConnectorStore.list()` 整体失败。本次不改存储行为，契约新增「回滚注意」
+  一节写明回退前要删除或用旧版重新登记，并把“文件存储逐条容错”记为后续项。
+- N1 路径前缀截取改为 `{` 之前（`/tickets{id}` → `/tickets`），用例
+  `test_prefix_stops_before_the_first_placeholder`。
+- N2 非法 `x-risk-level` 给 `invalid_risk_level`；`base_url` 不合规由
+  `ConnectorSpec` 抛出的校验错误收敛成 `spec_invalid`；目录不可读给
+  `catalog_unreadable`。用例 `test_import_rejects_bad_risk_level_and_host`。
+- N3 `connector_tool_entries()` 对含 operations 的连接器按操作展开，不再出现
+  网关没有的连接器级“幽灵工具”；用例 `test_connector_tool_entries_mirror_operations`。
+- N4 补了编码正例（`T 1` → `T%201`）：`test_operation_tool_encodes_path_params`。
+- N7 契约对 `..` 的措辞改为“路径段不得为 `..`”，与代码一致。
+
+第二轮验证又 REJECT 两处，继续修：
+
+- **B1 残留**：上一轮只拦导入入口，`ConnectorSpec` 模型本身仍接受重复
+  `operation.tool_id`，控制面 POST 可写入并让工具网关启动失败。模型校验现在拒绝
+  重复；用例 `test_model_rejects_duplicate_operation_tool_ids`。
+- **S1 残留**：`x-risk-level` 只读操作对象，写在 path item 或文档顶层会被静默降级成
+  L2；连接器级 `risk_level`/`data_classes` 不兜底。现在三个层级都会回退读取（与
+  `x-data-classes` 对称），且 `ConnectorSpec.operation_governance` 把连接器级风险与
+  分级当作下限（取较高风险、分级并集），网关与工具目录都用它；用例
+  `test_path_item_risk_level_is_honoured`、`test_connector_risk_floor_raises_operation_tools`。
+- N1 目录冲突现在有稳定码 `catalog_conflict`；N2 补 `catalog_unreadable` 与
+  `catalog_conflict` 的 CLI 用例（同时断言不写入连接器）。
+
+第三轮验证又 REJECT 三处，继续修：
+
+- **B2（同类残留）**：连接器 `a` 的操作 `b` 产出工具 `a.b`，同时另一个连接器就叫
+  `a.b`，两者都能合法入库，网关启动时 `duplicate tool_id` 退出。导入现在取全部既有
+  连接器的工具名做全局冲突检查，冲突报 `tool_id_conflict` 且不写入；用例
+  `test_cli_rejects_a_tool_id_owned_by_another_connector`。
+- **S2（治理降级）**：操作层写 `x-risk-level: null` 时，`get(key, fallback)` 直接跳过
+  path item。现在按“操作 → path item → 文档”逐层取第一个非 `null` 值；用例
+  `test_operation_annotation_null_falls_back_to_path_item`。
+- **S3（目录与网关不一致）**：导入写出的 `ToolEntry` 直接用操作值，网关却套连接器
+  下限。现在 `import_openapi` 的目录条目统一由 `operation_governance` 计算；用例
+  `test_import_catalog_matches_the_gateway`。
+- N1 扩展值类型错误（`x-risk-level: ["L3"]`、`x-data-classes: [{...}]`）从
+  `TypeError` 收敛为固定错误码；用例 `test_bad_extension_types_get_fixed_codes`。
+- N2 契约错误码清单补 `catalog_conflict` 与 `tool_id_conflict`。
+
+第四轮验证仍 REJECT：上一轮的跨连接器冲突检查只加在「CLI 导入 + 支持 `list_all` 的
+存储」上，`--registry-url`、控制面 POST、控制台 POST 与连接器申请批准都能绕过。现在
+把不变量下沉到存储层：`core.assert_tool_ids_free` + `ConnectorToolIdConflict`，
+`FileConnectorStore.add` 与 `PostgresConnectorStore.add` 写前校验（这四个入口最终都走
+`add`），CLI 导入保留预检。用例 `test_store_rejects_cross_connector_tool_id`
+（两个方向都测）。
+
+七、限制
+
+- `x-data-classes`/`x-risk-level` 是平台扩展，操作、path item、文档三层都没有时按
+  `internal`/L2 处理；连接器级 `data_classes` 固定 `internal` 作为下限，逐工具取并集。
+- 路径前缀取自文档的静态部分；由于逐操作工具的方法与路径是固定的、路径参数又被限制，
+  前缀略宽不会带来调用方可选的路径。
+- `--registry-url` 路径把带 `operations` 的连接器发给控制面，要求服务端同版本；
+  未做版本协商。
+- 文档里 `$ref` 参数/安全方案不解析；导入只依赖 `paths`、`servers` 与两个扩展字段。
+
+八、第五轮验证修正（PASS 后）
+
+第五轮验证 PASS，两个 S 一并修掉：
+
+- 控制面与控制台把 `ConnectorToolIdConflict` 映射成 409 `tool_id_conflict`（以前落到
+  502/503「store unavailable」），连接器申请批准同理；用例
+  `test_registry_maps_tool_id_conflict_to_409`。契约相应写明 `--registry-url` 路径由
+  服务端拒绝。
+- 文件存储的 `_readable_specs` 也吞掉 `OSError`（不可读条目不能拥有工具名）。
+- spec 的完成判据补上存储层不变量用例。
+- 第六轮 PASS 的建议项：补一条控制台注册的 409 用例
+  （`test_console_register_reports_tool_id_conflict`）。
+
+仍记为后续项（不阻断）：文件/PG 的检查与写入之间没有事务（并发写可同时通过，PG 需
+advisory lock）；带外写入的冲突数据只在网关启动时报 `duplicate tool_id`，可在
+`connectors check` 里加重复报告；`--registry-url` 导入对冲突给出的是 409 而非
+`tool_id_conflict` 错误码文本（CLI 透传为 `ConnectorStoreUnavailable` 以外的 409 文本）。
+
+九、范围外
+
+- MCP 连接器（0047-2）、插件入口（0047-3）。

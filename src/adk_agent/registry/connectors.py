@@ -10,7 +10,12 @@ import tempfile
 import threading
 from pathlib import Path
 
-from ..core import ConnectorConflict, ConnectorNotFound, ConnectorSpec
+from ..core import (
+    ConnectorConflict,
+    ConnectorNotFound,
+    ConnectorSpec,
+    assert_tool_ids_free,
+)
 from .paths import safe_join
 
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
@@ -38,6 +43,7 @@ class FileConnectorStore:
         with self._lock:
             if path.exists():
                 return self._resolve_existing(path, spec)
+            assert_tool_ids_free(spec, self._readable_specs())
             payload = json.dumps(spec.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
             with tempfile.NamedTemporaryFile(
                 "w", encoding="utf-8", dir=path.parent, delete=False
@@ -53,6 +59,16 @@ class FileConnectorStore:
             finally:
                 tmp_path.unlink(missing_ok=True)
         return spec
+
+    def _readable_specs(self) -> list[ConnectorSpec]:
+        """Every stored connector; unreadable files cannot own a tool id."""
+        specs: list[ConnectorSpec] = []
+        for path in self.root.glob("*.json"):
+            try:
+                specs.append(ConnectorSpec.model_validate_json(path.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                continue
+        return specs
 
     async def get(self, connector_id: str) -> ConnectorSpec | None:
         path = self._path(connector_id)
