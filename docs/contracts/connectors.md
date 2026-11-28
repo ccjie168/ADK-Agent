@@ -39,7 +39,9 @@
 - `method` 是 `HttpMethod`。
 - `risk_level` / `data_classes` / `write` 是操作的治理属性；网关注册的工具有同样的
   `risk_level`、`data_classes`、`write`、`requires_approval`，L3/L4 需要 HITL 审批与
-  幂等键（与工具目录展示的值一致）。
+  幂等键（与工具目录展示的值一致）。连接器自身的 `risk_level`/`data_classes` 是下限：
+  工具的有效风险取两者较高者，数据分级取并集（`ConnectorSpec.operation_governance`）。
+- 同一个连接器里 `operations` 的 `tool_id` 必须唯一，模型校验即拒绝重复。
 - 有 `operations` 的连接器在网关里为每个操作生成一个工具：工具名即 `tool_id`，
   调用参数为 `query`、`path_params`、`json_body`；方法固定、路径参数拒绝 `/`、`\`、
   `..` 后 URL 编码，再过连接器的 `path_prefixes` 校验。没有 `operations` 的连接器仍
@@ -63,8 +65,10 @@ adk-agent connector import-openapi --spec FILE --connector-id ID \
   `patch`/`head`），路径取文档路径（`{name}` 原样保留）。
 - `methods` 与 `path_prefixes` 取所有生成操作的集合；路径前缀截到第一个 `{` 之前
   （`/tickets{id}` → `/tickets`，`/tickets/{id}` → `/tickets/`）。
-- `data_classes` 取操作或文档顶层的 `x-data-classes`（必须是合法分级）；否则 `internal`。
-- `risk_level` 取操作的 `x-risk-level`，否则 L2；L3/L4 的工具 `requires_approval=true`。
+- `data_classes` 取操作、path item、文档顶层的 `x-data-classes`（必须是合法分级）；
+  否则 `internal`。
+- `risk_level` 取操作、path item、文档顶层的 `x-risk-level`，都没有则 L2；
+  L3/L4 的工具 `requires_approval=true`。
 - 没有 `operationId` 的操作跳过并在输出里列出（`skipped`）；同一个文档里两次出现
   同一个 `operationId` 即 `duplicate_operation_id`。
 - 超过 200 个生成操作即 `too_many_operations`，不写入任何东西。
@@ -80,6 +84,7 @@ adk-agent connector import-openapi --spec FILE --connector-id ID \
 
 - 相同 `tool_id` 且内容相同：幂等，不重复写入。
 - 相同 `tool_id` 但内容不同：`catalog_conflict`，整次导入失败，连接器也不写入。
+- 目录文件不是合法 JSON：`catalog_unreadable`，同样不写入连接器。
 - 新文件：创建 `{"version": 1, "tools": [...]}`。
 
 ## 回滚注意

@@ -263,7 +263,7 @@ def test_gateway_tool_carries_operation_governance():
     assert create.requires_approval is True
     assert create.needs_approval is True
     assert create.requires_idempotency is True
-    assert create.data_classes == ("confidential",)
+    assert create.data_classes == ("internal", "confidential")
     assert create.write is True
 
     listing = by_id["itsm.list"]
@@ -337,3 +337,114 @@ def test_import_rejects_bad_risk_level_and_host():
     with pytest.raises(OpenApiImportError) as exc:
         import_openapi(bad_host, "probe")
     assert exc.value.code == "spec_invalid"
+
+
+def test_connector_risk_floor_raises_operation_tools():
+    spec = ConnectorSpec(
+        connector_id="pay",
+        kind="openapi",
+        base_url="https://pay.example",
+        methods=["POST"],
+        risk_level="L4",
+        data_classes=["restricted"],
+        operations=[{"tool_id": "pay.refund", "path": "/r", "method": "POST"}],
+    )
+
+    [tool] = build_connector_tools([spec], secrets=None)  # type: ignore[arg-type]
+    assert tool.risk_level == "L4"
+    assert tool.needs_approval is True
+    assert tool.requires_idempotency is True
+    assert tool.data_classes == ("internal", "restricted")
+
+
+def test_model_rejects_duplicate_operation_tool_ids():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ConnectorSpec(
+            connector_id="pay",
+            kind="openapi",
+            base_url="https://pay.example",
+            methods=["POST"],
+            operations=[
+                {"tool_id": "pay.refund", "path": "/r", "method": "POST"},
+                {"tool_id": "pay.refund", "path": "/s", "method": "POST"},
+            ],
+        )
+
+
+def test_path_item_risk_level_is_honoured():
+    document = {
+        "servers": [{"url": "https://x.example"}],
+        "x-risk-level": "L3",
+        "paths": {"/refund": {"x-risk-level": "L3", "post": {"operationId": "refund"}}},
+    }
+    imported = import_openapi(document, "pay")
+
+    tool = imported.tools[0]
+    assert tool.tool_id == "pay.refund"
+    assert tool.risk_level == "L3"
+    assert tool.requires_approval is True
+
+
+def test_cli_reports_catalog_unreadable_and_catalog_conflict(tmp_path, capsys):
+    from adk_agent.cli import main
+
+    spec_path = tmp_path / "itsm.json"
+    spec_path.write_text(json.dumps(_document()), encoding="utf-8")
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text("{not json", encoding="utf-8")
+    connectors_dir = tmp_path / "connectors"
+
+    with pytest.raises(SystemExit) as exc:
+        main(
+            [
+                "connectors",
+                "import-openapi",
+                "--spec",
+                str(spec_path),
+                "--connector-id",
+                "itsm",
+                "--connectors-dir",
+                str(connectors_dir),
+                "--tool-catalog",
+                str(catalog_path),
+            ]
+        )
+    assert exc.value.code == 1
+    assert "catalog_unreadable" in capsys.readouterr().err
+    assert not (connectors_dir / "itsm.json").exists()
+
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "tools": [
+                    {
+                        "tool_id": "itsm.list",
+                        "description": "different",
+                        "source": "openapi",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as exc:
+        main(
+            [
+                "connectors",
+                "import-openapi",
+                "--spec",
+                str(spec_path),
+                "--connector-id",
+                "itsm",
+                "--connectors-dir",
+                str(connectors_dir),
+                "--tool-catalog",
+                str(catalog_path),
+            ]
+        )
+    assert exc.value.code == 1
+    assert "catalog_conflict" in capsys.readouterr().err
+    assert not (connectors_dir / "itsm.json").exists()

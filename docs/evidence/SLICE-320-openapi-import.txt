@@ -5,7 +5,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
       与 `ConnectorSpec.operations`）、`tools/openapi_import.py`（新）、
       `tools/connectors.py`（逐操作工具）、`tools/catalog.py`（合并与写盘）、
       `tools/__init__.py`、`cli.py`（`connectors import-openapi`）、
-      新增 20 条用例
+      新增 24 条用例
 
 一、红绿说明
 
@@ -21,8 +21,8 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 二、用例
 
     $ python -m pytest tests/test_openapi_import.py -q
-    ....................                                             [100%]
-    20 passed in 1.91s
+    ........................                                         [100%]
+    24 passed in 2.66s
 
 - `test_import_builds_connector_and_operations`：连接器 kind/base_url/methods/
   path_prefixes/operations 与逐操作工具的 risk/data_class/write 都正确
@@ -37,8 +37,8 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 - `test_cli_import_openapi_writes_connector_and_catalog`：CLI 写入连接器与目录
 - `test_source_has_no_helpers_outside_the_tools_package`：导入模块不碰 ADK
 
-    $ python -m pytest tests/test_openapi_import.py tests/tools tests/test_console_connectors.py -q
-    98 passed in 9.88s
+    $ python -m pytest tests/test_openapi_import.py tests/tools -q
+    92 passed in 10.27s
 
 三、实现要点
 
@@ -94,7 +94,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
     ALL PASS
 
     $ python -m pytest -q
-    2490 passed, 106 skipped
+    2494 passed, 106 skipped
 
 六、首轮验证修正（REJECT 后）
 
@@ -120,6 +120,19 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
   网关没有的连接器级“幽灵工具”；用例 `test_connector_tool_entries_mirror_operations`。
 - N4 补了编码正例（`T 1` → `T%201`）：`test_operation_tool_encodes_path_params`。
 - N7 契约对 `..` 的措辞改为“路径段不得为 `..`”，与代码一致。
+
+第二轮验证又 REJECT 两处，继续修：
+
+- **B1 残留**：上一轮只拦导入入口，`ConnectorSpec` 模型本身仍接受重复
+  `operation.tool_id`，控制面 POST 可写入并让工具网关启动失败。模型校验现在拒绝
+  重复；用例 `test_model_rejects_duplicate_operation_tool_ids`。
+- **S1 残留**：`x-risk-level` 只读操作对象，写在 path item 或文档顶层会被静默降级成
+  L2；连接器级 `risk_level`/`data_classes` 不兜底。现在三个层级都会回退读取（与
+  `x-data-classes` 对称），且 `ConnectorSpec.operation_governance` 把连接器级风险与
+  分级当作下限（取较高风险、分级并集），网关与工具目录都用它；用例
+  `test_path_item_risk_level_is_honoured`、`test_connector_risk_floor_raises_operation_tools`。
+- N1 目录冲突现在有稳定码 `catalog_conflict`；N2 补 `catalog_unreadable` 与
+  `catalog_conflict` 的 CLI 用例（同时断言不写入连接器）。
 
 七、限制
 

@@ -43,8 +43,12 @@ def _server_url(document: dict[str, Any], override: str | None) -> str:
     return url
 
 
-def _operation_data_classes(operation: dict[str, Any], document: dict[str, Any]) -> list[DataClass]:
-    raw = operation.get("x-data-classes", document.get("x-data-classes"))
+def _operation_data_classes(
+    operation: dict[str, Any], path_item: dict[str, Any], document: dict[str, Any]
+) -> list[DataClass]:
+    raw = operation.get("x-data-classes", path_item.get("x-data-classes"))
+    if raw is None:
+        raw = document.get("x-data-classes")
     if raw is None:
         return ["internal"]
     if not isinstance(raw, list) or not raw:
@@ -55,8 +59,12 @@ def _operation_data_classes(operation: dict[str, Any], document: dict[str, Any])
     return sorted(set(raw))  # type: ignore[return-value]
 
 
-def _risk_level(operation: dict[str, Any]) -> RiskLevel:
-    raw = operation.get("x-risk-level", "L2")
+def _risk_level(
+    operation: dict[str, Any], path_item: dict[str, Any], document: dict[str, Any]
+) -> RiskLevel:
+    raw = operation.get("x-risk-level", path_item.get("x-risk-level"))
+    if raw is None:
+        raw = document.get("x-risk-level", "L2")
     if raw not in _RISK_LEVELS:
         raise OpenApiImportError("invalid_risk_level", f"x-risk-level {raw!r}")
     return raw  # type: ignore[return-value]
@@ -108,8 +116,8 @@ def import_openapi(
                 raise OpenApiImportError("too_many_operations", f"more than {MAX_OPERATIONS}")
             method = key.upper()
             tool_id = f"{connector_id}.{operation_id.strip()}"
-            risk = _risk_level(operation)
-            data_classes = _operation_data_classes(operation, document)
+            risk = _risk_level(operation, item, document)
+            data_classes = _operation_data_classes(operation, item, document)
             if any(operation_entry["tool_id"] == tool_id for operation_entry in operations):
                 raise OpenApiImportError("duplicate_operation_id", tool_id)
             operations.append(

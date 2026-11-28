@@ -182,19 +182,20 @@ def build_connector_tools(
         if not spec.enabled:
             continue
         if spec.operations:
-            tools.extend(
-                ToolSpec(
-                    tool_id=operation.tool_id,
-                    handler=_operation_handler(spec, operation, secrets, http),
-                    data_classes=tuple(operation.data_classes),
-                    requires_approval=operation.requires_approval,
-                    egress="third_party",
-                    write=operation.write,
-                    risk_level=operation.risk_level,
-                    delegation=spec.delegation,
+            for operation in spec.operations:
+                risk, classes = spec.operation_governance(operation)
+                tools.append(
+                    ToolSpec(
+                        tool_id=operation.tool_id,
+                        handler=_operation_handler(spec, operation, secrets, http),
+                        data_classes=tuple(classes),
+                        requires_approval=risk in ("L3", "L4"),
+                        egress="third_party",
+                        write=operation.write,
+                        risk_level=risk,
+                        delegation=spec.delegation,
+                    )
                 )
-                for operation in spec.operations
-            )
             continue
         tools.append(
             ToolSpec(

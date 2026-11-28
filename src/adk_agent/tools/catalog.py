@@ -85,20 +85,21 @@ def connector_tool_entries(specs: Iterable[ConnectorSpec]) -> list[ToolEntry]:
         if not spec.enabled:
             continue
         if spec.operations:
-            entries.extend(
-                ToolEntry(
-                    tool_id=operation.tool_id,
-                    description=f"{operation.method} {operation.path} on {spec.base_url}",
-                    source="connector",
-                    data_classes=list(operation.data_classes),
-                    requires_approval=operation.requires_approval,
-                    tenant=spec.tenant,
-                    risk_level=operation.risk_level,
-                    write=operation.write,
-                    delegation=spec.delegation,
+            for operation in spec.operations:
+                risk, classes = spec.operation_governance(operation)
+                entries.append(
+                    ToolEntry(
+                        tool_id=operation.tool_id,
+                        description=f"{operation.method} {operation.path} on {spec.base_url}",
+                        source="connector",
+                        data_classes=list(classes),
+                        requires_approval=risk in ("L3", "L4"),
+                        tenant=spec.tenant,
+                        risk_level=risk,
+                        write=operation.write,
+                        delegation=spec.delegation,
+                    )
                 )
-                for operation in spec.operations
-            )
             continue
         entries.append(
             ToolEntry(

@@ -3963,7 +3963,10 @@ def main(argv: list[str] | None = None) -> None:
                                 raise OpenApiImportError(
                                     "catalog_unreadable", args.tool_catalog
                                 ) from None
-                        catalog = merge_tool_entries(catalog, imported.tools)
+                        try:
+                            catalog = merge_tool_entries(catalog, imported.tools)
+                        except ToolCatalogConflict as exc:
+                            raise OpenApiImportError("catalog_conflict", exc.tool_id) from None
                     if args.dry_run:
                         return {
                             "connector": imported.connector.model_dump(mode="json"),
