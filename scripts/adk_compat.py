@@ -62,6 +62,36 @@ def _agent_to_mcp() -> None:
         raise AssertionError(f"_agent_to_mcp lost {sorted(missing)}")
 
 
+@check("runner-gate")
+def _runner_gate() -> None:
+    """ADK's executor still accepts a Runner subclass and rejects anything else."""
+    import asyncio
+
+    from adk_agent.adapters.adk.runner import RunnerFacade
+
+    try:
+        from google.adk.a2a.executor import a2a_agent_executor
+    except ModuleNotFoundError as exc:
+        if (exc.name or "").startswith("a2a"):
+            raise SkipCheck("a2a-sdk is not installed") from None
+        raise
+
+    executor_cls = a2a_agent_executor.A2aAgentExecutor
+    if not hasattr(executor_cls, "_resolve_runner"):
+        raise AssertionError("A2aAgentExecutor lost _resolve_runner; re-read ADR-0046")
+
+    facade = RunnerFacade(object())
+    resolved = asyncio.run(executor_cls(runner=facade)._resolve_runner())
+    if resolved is not facade:
+        raise AssertionError("the executor no longer returns the injected Runner as-is")
+
+    try:
+        asyncio.run(executor_cls(runner=object())._resolve_runner())
+    except TypeError:
+        return
+    raise AssertionError("the executor no longer rejects non-Runner objects")
+
+
 @check("a2a-executor")
 def _a2a() -> None:
     try:

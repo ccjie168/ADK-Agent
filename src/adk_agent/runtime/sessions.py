@@ -10,6 +10,7 @@ from contextvars import ContextVar, Token
 from pathlib import Path
 from typing import Any
 
+from ..adapters.adk import sessions as adk_sessions
 from ..core import Principal
 from ..core.context import current_invocation
 
@@ -119,17 +120,14 @@ def build_session_service(
         raise ValueError("session RLS requires a postgresql SESSION_URL")
     if url:
         if url == "memory://":
-            from google.adk.sessions import InMemorySessionService
-
-            return InMemorySessionService()
+            return adk_sessions.in_memory_session_service()
         if url.startswith("postgresql://"):
             url = "postgresql+asyncpg://" + url[len("postgresql://") :]
         if url.startswith("postgresql+asyncpg://"):
             try:
-                module = _import_module("google.adk.sessions.database_session_service")
+                service = adk_sessions.database_session_service(url, importer=_import_module)
             except ImportError as exc:
                 raise SessionStoreUnavailable(_INSTALL_HINT) from exc
-            service = module.DatabaseSessionService(url)
             if rls:
                 from .session_rls import install_session_rls
 
@@ -142,14 +140,10 @@ def build_session_service(
         )
 
     if sqlite_path:
-        from google.adk.sessions.sqlite_session_service import SqliteSessionService
-
         Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
-        return SqliteSessionService(sqlite_path)
+        return adk_sessions.sqlite_session_service(sqlite_path)
 
-    from google.adk.sessions import InMemorySessionService
-
-    return InMemorySessionService()
+    return adk_sessions.in_memory_session_service()
 
 
 def configured_session_service(session_db: str | None, *, rls: bool = False) -> Any | None:

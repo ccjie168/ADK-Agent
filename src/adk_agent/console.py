@@ -24,9 +24,9 @@ from typing import TYPE_CHECKING, Any, cast
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from google.adk.models import BaseLlm
 from pydantic import ValidationError
 
+from .adapters.adk import BaseLlm
 from .approvals import HISTORY_STATUSES, ApprovalConflict, ApprovalExpired, ApprovalNotFound
 from .approvals_postgres import ApprovalInboxUnavailable
 from .audit import AuditQuery, AuditQueryUnavailable, ListAuditSink, query_events
@@ -162,8 +162,7 @@ from .tools import ToolCatalog, ToolEntry, connector_tool_entries, install_decla
 from .tracing import resolve_trace_id
 
 if TYPE_CHECKING:  # pragma: no cover
-    from google.adk.agents import BaseAgent
-
+    from .adapters.adk.agents import BaseAgent
     from .approvals import FileApprovalInbox
     from .approvals_postgres import PostgresApprovalInbox
 
@@ -2693,9 +2692,9 @@ def _session_service(session_db: str | None, *, rls: bool = False) -> Any:
     if service is not None:
         return service
 
-    from google.adk.sessions import InMemorySessionService
+    from .adapters.adk import in_memory_session_service
 
-    return InMemorySessionService()
+    return in_memory_session_service()
 
 
 async def _session_id_for(session_service: Any, app_name: str, raw: object, user_id: str) -> str:
@@ -3105,7 +3104,7 @@ def build_console_app(
     else:
         secrets = PrefixedEnvSecretProvider()
 
-    from google.adk.runners import Runner
+    from .adapters.adk import make_runner
 
     service = (
         session_service
@@ -3192,7 +3191,7 @@ def build_console_app(
         return sorted(events, key=lambda event: (event.timestamp, event.event_id))
 
     sandbox_policy = sandbox or SandboxPolicy()
-    runners: dict[str, Runner] = {}
+    runners: dict[str, Any] = {}
     runtimes: dict[str, AgentRuntime] = {}
 
     def _register(name: str, agent: Any, manifest: AgentManifest | None = None) -> None:
@@ -3200,7 +3199,7 @@ def build_console_app(
             _wrap_model(agent, audit)
             install_tool_sandbox(agent, ToolSandbox(sandbox_policy))
             install_declared_guards(agent, audit, overlay=tool_grants)
-        runner = Runner(app_name=name, agent=agent, session_service=service)
+        runner = make_runner(app_name=name, agent=agent, session_service=service)
         agents[name] = agent
         runners[name] = runner
         # Only registry manifests can opt into retrieval; file-loaded agents cannot.

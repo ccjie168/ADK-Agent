@@ -3115,8 +3115,7 @@ def main(argv: list[str] | None = None) -> None:
             print("--trigger-attempts must be at least 1", file=sys.stderr)
             raise SystemExit(1)
         rate_limit = _rate_limit(args)
-        from google.adk.sessions import InMemorySessionService
-
+        from .adapters.adk import in_memory_session_service
         from .mcp.http import resolve_port
         from .registry import (
             FileTriggerFireStore,
@@ -3193,7 +3192,8 @@ def main(argv: list[str] | None = None) -> None:
             audit=_audit_sink(args),
             quota=quota,
             quota_config=quota_config,
-            session_service=configured_session_service(args.session_db) or InMemorySessionService(),
+            session_service=configured_session_service(args.session_db)
+            or in_memory_session_service(),
             rate_limit=rate_limit,
             fire_store=fire_store,
             sandbox=sandbox,
@@ -4614,9 +4614,7 @@ def main(argv: list[str] | None = None) -> None:
         if stored.artifact is not None:
             print(f"artifact {stored.artifact.digest}")
     elif args.cmd == "eval":
-        from google.adk.runners import Runner
-        from google.adk.sessions import InMemorySessionService
-
+        from .adapters.adk import in_memory_session_service, make_runner
         from .core import EvalSuiteSpec, Invocation, InvocationResult, Principal
         from .eval import EvalRunner
         from .runtime import AgentRuntime, dev_agent_ref
@@ -4628,8 +4626,10 @@ def main(argv: list[str] | None = None) -> None:
             print(f"unknown agent: {suite.agent!r}", file=sys.stderr)
             raise SystemExit(1)
 
-        service = InMemorySessionService()
-        runtime = AgentRuntime(Runner(app_name=suite.agent, agent=target, session_service=service))
+        service = in_memory_session_service()
+        runtime = AgentRuntime(
+            make_runner(app_name=suite.agent, agent=target, session_service=service)
+        )
 
         async def call(invocation: Invocation) -> InvocationResult:
             session = await service.create_session(app_name=suite.agent, user_id="eval")

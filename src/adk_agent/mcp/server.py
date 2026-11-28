@@ -7,16 +7,23 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from google.adk.dependencies._mcp import Context, ServerSession
-
+from ..adapters.adk.mcp import (
+    Context,
+    ServerSession,
+    build_runner,
+    is_in_memory_sessions,
+    new_server,
+    reap_orphaned_sessions,
+    run_agent,
+    to_mcp_server,
+)
 from ..core import Principal
 from ..runtime.sessions import scoped_user_id, session_tenant
 from ..tracing import trace_id_from_traceparent
 from .runtime import wrap_runner
 
 if TYPE_CHECKING:  # pragma: no cover
-    from google.adk.agents import BaseAgent
-
+    from ..adapters.adk.agents import BaseAgent
     from ..core import AuditSink, IdentityProvider, QuotaConfig, QuotaManager
     from ..metrics import MetricsRegistry
     from ..ratelimit import RateLimit
@@ -214,8 +221,6 @@ def serve_agent(
     ``runner`` to plug in persistent session / artifact / memory services for a
     long-lived server.
     """
-    from google.adk.tools.mcp_tool import to_mcp_server
-
     if rate_limit is not None and transport != "streamable-http":
         raise ValueError("rate limit requires streamable-http")
 
@@ -296,7 +301,7 @@ def serve_many(
     Each key in ``agents`` becomes one MCP tool that runs that agent. Sessions,
     progress notifications and multimodal output behave exactly as in
     :func:`serve_agent`, because this reuses ADK's per-connection runner logic
-    (``_run_agent`` in ``google.adk.tools.mcp_tool._agent_to_mcp``).
+    (``adapters.adk.mcp.run_agent`` over ``_agent_to_mcp._run_agent``).
 
     ``runner_factory`` lets you inject persistent services per agent, e.g.
     ``lambda agent: Runner(app_name=agent.name, agent=agent,
@@ -306,24 +311,16 @@ def serve_many(
     which are stable across the pinned ``google-adk>=2,<3`` range but are not
     public API.
     """
-    from google.adk.dependencies._mcp import FastMCP
-    from google.adk.sessions.in_memory_session_service import InMemorySessionService
-    from google.adk.tools.mcp_tool._agent_to_mcp import (
-        _build_runner,
-        _reap_orphaned_sessions,
-        _run_agent,
-    )
-
     if not agents:
         raise ValueError("serve_many needs at least one agent")
     if rate_limit is not None and transport != "streamable-http":
         raise ValueError("rate limit requires streamable-http")
 
-    server = FastMCP(name=name, instructions=instructions)
+    server = new_server(name, instructions)
 
     for tool_name, agent in agents.items():
-        runner = runner_factory(agent) if runner_factory else _build_runner(agent)
-        reap = isinstance(runner.session_service, InMemorySessionService)
+        runner = runner_factory(agent) if runner_factory else build_runner(agent)
+        reap = is_in_memory_sessions(runner.session_service)
         rag = rag_for(tool_name) if rag_for is not None else None
 
         # One session map per tool, so separate tools keep separate conversations.
@@ -357,7 +354,7 @@ def serve_many(
                     scoped_runner = _PrincipalRunner(_runner, principal, tenant_scope=_tenant_scope)
                 if _reap:
                     if principal is None:
-                        await _reap_orphaned_sessions(
+                        await reap_orphaned_sessions(
                             _runner,
                             state.sessions,
                             state.created,
@@ -395,7 +392,7 @@ def serve_many(
                         require_context=_tool_guard,
                         rag=_rag,
                     )
-                return await _run_agent(
+                return await run_agent(
                     scoped_runner,
                     request,
                     ctx,

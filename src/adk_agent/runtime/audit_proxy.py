@@ -80,13 +80,6 @@ class AuditedRunner:
         self._require_context = require_context
         self._rag = rag
 
-    @property  # type: ignore[misc]
-    def __class__(self) -> type[Any]:
-        # ADK's A2A executor gates on ``isinstance(runner, Runner)``.  A proxy
-        # that reports the inner runner's class passes that gate while every
-        # attribute still resolves through ``__getattr__``.
-        return object.__getattribute__(self, "_inner").__class__
-
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
 

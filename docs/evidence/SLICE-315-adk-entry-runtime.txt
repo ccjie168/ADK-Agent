@@ -1,0 +1,155 @@
+SLICE-315 入口与运行时改走适配层（ADR-0046 切片 2a）
+
+日期: 2026-11-28
+范围: `src/adk_agent/adapters/adk/`（runner/sessions/mcp/a2a/agents/llm）、
+      `a2a.py`、`mcp/server.py`、`console.py`、`cli.py`、`runtime/execution.py`、
+      `runtime/sessions.py`、`runtime/audit_proxy.py`、`scripts/adk_wall.py`、
+      `scripts/adk_compat.py`、新增 7 条用例
+
+一、红屏（先跑新用例）
+
+    $ python -m pytest tests/test_adk_entry_adapter.py -q
+    FFFFFFF                                                          [100%]
+    7 failed in 6.58s
+
+- 六个入口/运行时模块仍在墙的基线里
+- `AuditedRunner` 仍带 `__class__` property
+- `adapters.adk.runner` 不存在（门面与 session 工厂 ImportError）
+- 兼容演练没有 `runner-gate`
+
+二、用例
+
+    $ python -m pytest tests/test_adk_entry_adapter.py tests/test_adk_boundary.py -q
+    .............                                                    [100%]
+    13 passed in 12.01s
+
+- `test_entry_modules_leave_the_wall`：a2a/cli/console/mcp.server/runtime.execution/
+  runtime.sessions 不再 import `google.adk`
+- `test_baseline_is_only_composition_and_tools`：基线只剩 14 个组合与工具侧模块
+- `test_audited_runner_no_longer_fakes_its_class`：`__class__` 已删除
+- `test_runner_facade_is_a_real_runner`：门面是真 `Runner`，属性读、写与
+  `run_async` 都委托
+- `test_a2a_hands_the_executor_a_real_runner`：执行器拿到的是 `RunnerFacade`，
+  内层仍是 `AuditedRunner`
+- `test_session_factories_go_through_the_adapter`：适配层工厂与
+  `build_session_service` 返回同一批 ADK 服务类型
+- `test_adk_compat_drill_checks_the_runner_gate`：演练新增门控检查（门面被接受，
+  非 `Runner` 被 `TypeError` 拒绝）
+
+三、实现要点
+
+- `adapters/adk/runner.py`：`make_runner`、`build_runner`（ADK 内部
+  `_agent_to_mcp._build_runner`）、`run_config`、`RunnerFacade`、`as_runner`。
+  门面用 `__getattribute__` 显式委托 `Runner` 自己声明的 10 个属性（`__getattr__`
+  对它们不生效），写属性也转发给目标。
+- `adapters/adk/sessions.py`：内存/SQLite/Postgres 三个工厂；Postgres 工厂接收
+  调用方的 `importer`，缺驱动仍由 `runtime.sessions` 映射成 `SessionStoreUnavailable`。
+- `adapters/adk/mcp.py`：`FastMCP`、`Context`、`ServerSession`、`to_mcp_server`、
+  `_build_runner`、`_run_agent`、`_reap_orphaned_sessions`、内存 session 判定。
+  内部函数按调用时从 ADK 模块取，现有用例对 `google.adk..._run_agent` 和
+  `to_mcp_server` 的 monkeypatch 继续生效。
+- `adapters/adk/a2a.py`：A2A 模块路径与安装提示；`a2a.py` 保留
+  `_import_module`/`_to_a2a`/`_remote_a2a_agent` 作为测试接缝，内部委托适配层。
+- `a2a.py` 在审计代理外面套 `as_runner(...)`，删除 `AuditedRunner.__class__`。
+- 墙的 `importers()` 现在只统计适配层之外的模块（基线账本的含义），
+  `violations()` 相应简化。
+
+实机输出：
+
+    $ python scripts/adk_wall.py
+    [PASS] adk wall: 14 grandfathered importers, 0 new
+
+    $ python scripts/adk_compat.py
+    PASS runner
+    PASS events
+    PASS mcp
+    PASS agent-to-mcp
+    PASS runner-gate
+    PASS a2a-executor
+    ALL PASS
+
+四、实机验证（不是替身）
+
+    $ python scripts/prove_workbuddy_a2a.py
+    PASS agent card returned
+    PASS anonymous call rejected
+    PASS reply contains ticket
+    PASS ticket is open
+    PASS wecom notified
+    PASS audit verified (4 records)
+    ALL PASS
+
+这是真实 `serve-a2a --audit-file` 路径：执行器拿到 `RunnerFacade`，内层审计代理
+记录 4 条审计，审批建单与微信通知都通过。
+
+    $ python scripts/probe_mcp.py -- .venv/Scripts/python.exe -m adk_agent serve \
+          --agent examples/minimal/agent.py
+    server: name='minimal_agent' ...
+    protocol: 2025-11-25
+    tools: 1
+     - minimal_agent
+
+MCP stdio 握手与工具列表照常。
+
+五、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2450 passed, 106 skipped
+
+六、首轮验证修正
+
+首轮 PASS，按 S/N 收紧：
+
+- S1：`runner-gate` 现在真的验证门控——用 `A2aAgentExecutor(runner=RunnerFacade(...))`
+  调 `_resolve_runner` 必须原样返回门面，用 `A2aAgentExecutor(runner=object())` 必须
+  抛 `TypeError`。只断言 `isinstance` 或 `_resolve_runner` 存在会漏掉门控方式漂移。
+- S2：Postgres session 服务的构造期 `ImportError` 现在也在 try 内。实测只对
+  greenlet 有效：缺 greenlet 时模块能导入、构造抛 `ImportError`，本轮起映射成
+  `SessionStoreUnavailable`，以前是裸 `ImportError`。缺 sqlalchemy 时模块导入本身就
+  失败，旧代码已在 try 内，行为不变。**缺 asyncpg 不在其列**：ADK 的
+  `DatabaseSessionService` 把 `create_async_engine` 的 `ImportError` 包成
+  `ValueError`，仍然是裸 `ValueError`，虽然平台安装提示点名 asyncpg。这是既有缺口，
+  master 相同，记为后续项（见 PROGRESS），不在本切片改契约。
+- N1：门面测试补写属性断言（`facade.app_name = ...` 写穿到目标）。
+- N5：`mcp/server.py` 的 `serve_many` 文档串改指适配层的 `run_agent`。
+
+七、限制
+
+- 事件仍是 ADK 类型：`runtime/execution.py` 消费 `Event`，0046-2b 才收口。
+- 基线还剩 14 个组合与工具侧模块（`factory`、`models`、`sandbox.*`、`tools.*`、
+  `registry.loader`、`mcp.client`、`triggers_service`），0046-3 迁。
+- 门面只覆盖执行器实际用到的属性；ADK 若新增 `Runner` 类属性，需要在
+  `_DELEGATED` 里补登记，兼容演练的 `runner-gate` 会在门控方式变化时提示。
+- `google.genai` 类型（`Content`、`Part`）仍在墙外使用。
+- `a2a.build_a2a_app` 只在审计分支套门面（N3）：调用方传入已包装的代理、又不设
+  audit/quota/require_context/rag 时，执行器会以 `TypeError` 拒绝。这是去掉
+  `__class__` 伪造的预期后果，仓库内没有这种调用方。
+- `a2a` 与 `runtime.sessions` 现在在模块导入时就加载 `adapters.adk`（进而加载 ADK
+  的 runner/agents/models），以前这两个模块更懒（N4）。ADK 是核心依赖，行为无变化；
+  依赖 a2a-sdk 的模块仍是懒加载。
+
+八、范围外
+
+- 事件模型（0046-2b）、加载与组合迁移（0046-3）。
