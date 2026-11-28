@@ -38,6 +38,10 @@ def _events() -> None:
     missing = {"author", "content", "invocation_id"} - fields
     if missing:
         raise AssertionError(f"Event lost {sorted(missing)}")
+    # to_run_event calls this method; if it became a property or was renamed,
+    # the conversion would silently mark every event non-final.
+    if not inspect.isfunction(Event.is_final_response):
+        raise AssertionError("Event.is_final_response is no longer a plain method")
 
 
 @check("mcp")

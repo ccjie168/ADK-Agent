@@ -97,7 +97,18 @@ SLICE-316 事件边界（ADR-0046 切片 2b）
     $ python -m pytest -q
     2455 passed, 106 skipped
 
-六、限制
+六、首轮验证修正
+
+首轮 PASS，按 N2 收紧：兼容演练的 `events` 一项现在要求
+`Event.is_final_response` 仍是普通方法（`inspect.isfunction`）。如果 ADK 把它改成
+property 或改名，`to_run_event` 会回落到不存在的 `Event.final`，所有事件都被判成非
+最终事件、结果文本与 `result_hash` 变成空串且不报错；这条检查让升级时先红。
+
+其余 N 项记录不修：源码扫描用正则，`get_function_calls()`、`getattr(content, "parts")`
+这类改写会漏检（当前树干净）；扫描暂时排除整个 `adapters/`，目前只有 `adapters/adk`；
+`RunPart` 不含 `part.text/thought` 之外的字段，截图/文件类内容要用时再扩。
+
+七、限制
 
 - `sandbox/` 仍读 ADK 事件与模型类型（manifest 侧、worker 侧），0046-3 迁；
   扫描用例暂时排除该目录，证据如实记录。
@@ -106,6 +117,6 @@ SLICE-316 事件边界（ADR-0046 切片 2b）
 - `RunEvent` 不进任何 HTTP 载荷，schema 只是边界文档；控制台 SSE 仍发
   `ProgressEvent`。
 
-七、范围外
+八、范围外
 
 - 加载与组合迁移（0046-3）。
