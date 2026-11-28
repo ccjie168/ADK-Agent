@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from google.genai import types
 
+from ..adapters.adk.events import to_run_event
 from ..adapters.adk.runner import run_config
 from ..core import (
     AgentRef,
@@ -24,6 +25,7 @@ from ..core import (
     QuotaExceeded,
     QuotaManager,
     QuotaPolicy,
+    RunEvent,
 )
 from ..core.context import reset_invocation, set_invocation
 from ..metrics import MetricsRegistry
@@ -189,11 +191,10 @@ class AgentRuntime:
                 new_message=new_message,
                 run_config=config,
             ):
-                await self._emit_progress(progress, event)
-                if event.is_final_response() and event.content and event.content.parts:
-                    for part in event.content.parts:
-                        if not part.thought and part.text:
-                            reply_parts.append(part.text)
+                run_event = to_run_event(event)
+                await self._emit_progress(progress, run_event)
+                if run_event.final:
+                    reply_parts.append(run_event.text)
         except Exception as exc:
             await self._audit(
                 invocation,
@@ -222,21 +223,14 @@ class AgentRuntime:
             text=text,
         )
 
-    async def _emit_progress(self, progress: _Progress, event: Any) -> None:
-        author = getattr(event, "author", None)
-        content = getattr(event, "content", None)
-        for part in getattr(content, "parts", None) or ():
-            if getattr(part, "thought", False):
-                continue
-            call = getattr(part, "function_call", None)
-            if call is not None and getattr(call, "name", None):
-                await progress.emit("tool.call", author=author, tool=call.name)
-            response = getattr(part, "function_response", None)
-            if response is not None and getattr(response, "name", None):
-                await progress.emit("tool.result", author=author, tool=response.name)
-            text = getattr(part, "text", None)
-            if text:
-                await progress.emit("model.text", author=author, text=text)
+    async def _emit_progress(self, progress: _Progress, event: RunEvent) -> None:
+        for part in event.parts:
+            if part.kind == "tool_call":
+                await progress.emit("tool.call", author=event.author, tool=part.name)
+            elif part.kind == "tool_result":
+                await progress.emit("tool.result", author=event.author, tool=part.name)
+            elif part.text:
+                await progress.emit("model.text", author=event.author, text=part.text)
 
     async def _audit(
         self,

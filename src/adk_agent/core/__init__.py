@@ -145,6 +145,7 @@ from .roles import (
     RoleStoreUnavailable,
     seed_builtin_roles,
 )
+from .run_event import RunEvent, RunPart, RunPartKind
 from .tool import ToolGatewayRequest, ToolRequest, ToolResponse
 from .tool_grants import (
     GrantRequestConflict,
@@ -288,6 +289,9 @@ __all__ = [
     "Principal",
     "ProgressEvent",
     "ProgressKind",
+    "RunEvent",
+    "RunPart",
+    "RunPartKind",
     "PublishedAgent",
     "QuotaConfig",
     "QuotaExceeded",

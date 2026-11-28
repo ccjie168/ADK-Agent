@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "RunPart": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "text",
+            "tool_call",
+            "tool_result"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "RunPart",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "author": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Author"
+    },
+    "final": {
+      "default": false,
+      "title": "Final",
+      "type": "boolean"
+    },
+    "parts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RunPart"
+      },
+      "title": "Parts",
+      "type": "array"
+    }
+  },
+  "title": "RunEvent",
+  "type": "object"
+}

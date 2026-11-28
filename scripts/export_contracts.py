@@ -32,6 +32,7 @@ from adk_agent.core import (  # noqa: E402
     Principal,
     ProgressEvent,
     QuotaConfig,
+    RunEvent,
     SupervisorDecision,
     ToolGatewayRequest,
 )
@@ -60,6 +61,7 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "model_gateway_request.schema.json": ModelGatewayRequest,
     "tool_gateway_request.schema.json": ToolGatewayRequest,
     "progress_event.schema.json": ProgressEvent,
+    "run_event.schema.json": RunEvent,
     "quota_config.schema.json": QuotaConfig,
     "oidc_config.schema.json": OidcConfig,
 }
