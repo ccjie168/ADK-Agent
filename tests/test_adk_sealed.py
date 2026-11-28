@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -79,3 +81,21 @@ def test_upgrade_runbook_covers_the_drill():
 
     for needle in ("scripts/adk_compat.py", "scripts/check.py --full", "ADR-0046", "adk_wall"):
         assert needle in text, needle
+
+
+def test_sandbox_worker_keeps_text_across_empty_final_events():
+    from adk_agent.sandbox.agent_worker import _collect_reply
+
+    def event(text, final):
+        parts = [] if text is None else [SimpleNamespace(text=text, thought=False)]
+        return SimpleNamespace(
+            author="agent",
+            content=SimpleNamespace(parts=parts),
+            is_final_response=lambda: final,
+        )
+
+    async def events():
+        yield event("hello", True)
+        yield event(None, True)
+
+    assert asyncio.run(_collect_reply(events())) == "hello"
