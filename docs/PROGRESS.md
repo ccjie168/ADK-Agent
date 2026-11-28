@@ -865,6 +865,26 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         运行时、事件边界、加载/组合/沙箱迁移与升级手册。墙基线为空。
         下一步：写 ADR-0047（OpenAPI 导入、插件入口、MCP 连接器类型）与 ADR-0048
         （场景模板与业务视图）正文，交用户确认。
+      - ADR-0047（连接器导入、MCP 连接器与插件入口）与 ADR-0048（场景模板与业务视图）
+        ~~已确认~~（2026-11-28 会话「确定」）：连接器 OpenAPI 导入、MCP 连接器种类、
+        entry-point 插件（默认关闭、产出工具默认 L3）；场景模板一键实例化与业务视图，
+        不做画布与在线市场。切片顺序 0047-1..3 → 0048-1..3。
+      - SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）~~已合并 `757a33b`~~（#386）：
+        `connectors import-openapi` 把文档变成 `kind=openapi` 连接器，每个 `operationId`
+        一个工具（`<connector-id>.<operationId>`），方法/路径固定，路径参数拒绝
+        `/`、`\`、`..` 后编码；`x-data-classes`/`x-risk-level` 按操作 → path item →
+        文档回退；连接器级风险与分级是下限（取较高风险、分级并集）；工具名全局唯一由
+        存储层保证（文件与 Postgres 的 `add` 都校验，冲突 409 `tool_id_conflict`）；
+        目录合并幂等/冲突有稳定错误码；新增 `docs/contracts/connectors.md`。
+        31 条用例。**六轮验证**：首轮 S1（逐操作治理属性没进网关，L3 写操作无审批）+
+        B1（重复 operationId 让网关起不来）；二轮模型层重复仍可写入 + 标注层级被静默
+        降级；三轮跨连接器工具名冲突仍可入库 + null 回退 + 目录与网关取值不一致；
+        四轮冲突检查只覆盖 CLI 路径；五轮 PASS 后修 409 映射与 OSError；六轮补控制台
+        用例后 PASS。门禁 2501/106。证据 `docs/evidence/SLICE-320-openapi-import.txt`。
+        后续项：检查与写入之间无事务（并发可双写，PG 需 advisory lock）；带外写入的冲突
+        只在网关启动时报 `duplicate tool_id`；`--registry-url` 的 CLI 只显示 409 文本；
+        连接器申请批准路径的 409 分支还没有用例。
+        下一步：0047-2（MCP 连接器种类）。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
