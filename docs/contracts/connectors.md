@@ -42,6 +42,8 @@
   幂等键（与工具目录展示的值一致）。连接器自身的 `risk_level`/`data_classes` 是下限：
   工具的有效风险取两者较高者，数据分级取并集（`ConnectorSpec.operation_governance`）。
 - 同一个连接器里 `operations` 的 `tool_id` 必须唯一，模型校验即拒绝重复。
+- 工具名在工具网关里全局唯一：导入时如果新连接器的 id 或任一操作 `tool_id` 已被另一个
+  连接器占用，导入报 `tool_id_conflict`，不写入任何东西。
 - 有 `operations` 的连接器在网关里为每个操作生成一个工具：工具名即 `tool_id`，
   调用参数为 `query`、`path_params`、`json_body`；方法固定、路径参数拒绝 `/`、`\`、
   `..` 后 URL 编码，再过连接器的 `path_prefixes` 校验。没有 `operations` 的连接器仍
@@ -76,7 +78,7 @@ adk-agent connector import-openapi --spec FILE --connector-id ID \
 
 错误码（固定字符串）：`spec_unreadable`、`spec_invalid`、`missing_server`、
 `no_operations`、`too_many_operations`、`invalid_data_class`、`invalid_risk_level`、
-`duplicate_operation_id`、`catalog_unreadable`。
+`duplicate_operation_id`、`catalog_unreadable`、`catalog_conflict`、`tool_id_conflict`。
 
 ## 工具目录合并
 

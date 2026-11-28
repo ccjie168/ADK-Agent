@@ -3953,6 +3953,18 @@ def main(argv: list[str] | None = None) -> None:
                         tenant=args.tenant or None,
                         base_url=args.base_url,
                     )
+                    list_all = getattr(store, "list_all", None)
+                    if list_all is not None:
+                        existing: set[str] = set()
+                        for spec in await list_all():
+                            existing.add(spec.connector_id)
+                            existing.update(op.tool_id for op in spec.operations)
+                        incoming = {imported.connector.connector_id} | {
+                            op.tool_id for op in imported.connector.operations
+                        }
+                        clash = sorted(existing & incoming)
+                        if clash:
+                            raise OpenApiImportError("tool_id_conflict", clash[0])
                     catalog = ToolCatalog(version=1)
                     if args.tool_catalog:
                         catalog_path = Path(args.tool_catalog)

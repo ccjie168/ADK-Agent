@@ -5,7 +5,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
       与 `ConnectorSpec.operations`）、`tools/openapi_import.py`（新）、
       `tools/connectors.py`（逐操作工具）、`tools/catalog.py`（合并与写盘）、
       `tools/__init__.py`、`cli.py`（`connectors import-openapi`）、
-      新增 24 条用例
+      新增 28 条用例
 
 一、红绿说明
 
@@ -21,8 +21,8 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 二、用例
 
     $ python -m pytest tests/test_openapi_import.py -q
-    ........................                                         [100%]
-    24 passed in 2.66s
+    ............................                                     [100%]
+    28 passed in 1.95s
 
 - `test_import_builds_connector_and_operations`：连接器 kind/base_url/methods/
   path_prefixes/operations 与逐操作工具的 risk/data_class/write 都正确
@@ -94,7 +94,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
     ALL PASS
 
     $ python -m pytest -q
-    2494 passed, 106 skipped
+    2498 passed, 106 skipped
 
 六、首轮验证修正（REJECT 后）
 
@@ -134,10 +134,26 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 - N1 目录冲突现在有稳定码 `catalog_conflict`；N2 补 `catalog_unreadable` 与
   `catalog_conflict` 的 CLI 用例（同时断言不写入连接器）。
 
+第三轮验证又 REJECT 三处，继续修：
+
+- **B2（同类残留）**：连接器 `a` 的操作 `b` 产出工具 `a.b`，同时另一个连接器就叫
+  `a.b`，两者都能合法入库，网关启动时 `duplicate tool_id` 退出。导入现在取全部既有
+  连接器的工具名做全局冲突检查，冲突报 `tool_id_conflict` 且不写入；用例
+  `test_cli_rejects_a_tool_id_owned_by_another_connector`。
+- **S2（治理降级）**：操作层写 `x-risk-level: null` 时，`get(key, fallback)` 直接跳过
+  path item。现在按“操作 → path item → 文档”逐层取第一个非 `null` 值；用例
+  `test_operation_annotation_null_falls_back_to_path_item`。
+- **S3（目录与网关不一致）**：导入写出的 `ToolEntry` 直接用操作值，网关却套连接器
+  下限。现在 `import_openapi` 的目录条目统一由 `operation_governance` 计算；用例
+  `test_import_catalog_matches_the_gateway`。
+- N1 扩展值类型错误（`x-risk-level: ["L3"]`、`x-data-classes: [{...}]`）从
+  `TypeError` 收敛为固定错误码；用例 `test_bad_extension_types_get_fixed_codes`。
+- N2 契约错误码清单补 `catalog_conflict` 与 `tool_id_conflict`。
+
 七、限制
 
-- `x-data-classes`/`x-risk-level` 是平台扩展，标准 OpenAPI 文档没有这两项时统一按
-  `internal`/L2 处理；连接器级 `data_classes` 固定 `internal`，逐工具的取值在目录里。
+- `x-data-classes`/`x-risk-level` 是平台扩展，操作、path item、文档三层都没有时按
+  `internal`/L2 处理；连接器级 `data_classes` 固定 `internal` 作为下限，逐工具取并集。
 - 路径前缀取自文档的静态部分；由于逐操作工具的方法与路径是固定的、路径参数又被限制，
   前缀略宽不会带来调用方可选的路径。
 - `--registry-url` 路径把带 `operations` 的连接器发给控制面，要求服务端同版本；

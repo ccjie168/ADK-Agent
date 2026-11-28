@@ -71,7 +71,7 @@ def test_import_builds_connector_and_operations():
     by_id = {tool.tool_id: tool for tool in imported.tools}
     assert by_id["itsm.create"].risk_level == "L3"
     assert by_id["itsm.create"].requires_approval is True
-    assert by_id["itsm.create"].data_classes == ["confidential"]
+    assert by_id["itsm.create"].data_classes == ["internal", "confidential"]
     assert by_id["itsm.list"].requires_approval is False
     assert by_id["itsm.list"].write is False
     assert by_id["itsm.create"].write is True
@@ -448,3 +448,113 @@ def test_cli_reports_catalog_unreadable_and_catalog_conflict(tmp_path, capsys):
     assert exc.value.code == 1
     assert "catalog_conflict" in capsys.readouterr().err
     assert not (connectors_dir / "itsm.json").exists()
+
+
+def test_cli_rejects_a_tool_id_owned_by_another_connector(tmp_path, capsys):
+    from adk_agent.cli import main
+
+    connectors_dir = tmp_path / "connectors"
+    first = tmp_path / "first.json"
+    first.write_text(
+        json.dumps(
+            {
+                "servers": [{"url": "https://a.example"}],
+                "paths": {"/b": {"get": {"operationId": "b"}}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert main(
+        [
+            "connectors",
+            "import-openapi",
+            "--spec",
+            str(first),
+            "--connector-id",
+            "a",
+            "--connectors-dir",
+            str(connectors_dir),
+        ]
+    ) in (0, None)
+    capsys.readouterr()
+
+    # A connector literally named "a.b" would collide with the tool "a.b".
+    second = tmp_path / "second.json"
+    second.write_text(
+        json.dumps(
+            {
+                "servers": [{"url": "https://c.example"}],
+                "paths": {"/x": {"get": {"operationId": "x"}}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as exc:
+        main(
+            [
+                "connectors",
+                "import-openapi",
+                "--spec",
+                str(second),
+                "--connector-id",
+                "a.b",
+                "--connectors-dir",
+                str(connectors_dir),
+            ]
+        )
+    assert exc.value.code == 1
+    assert "tool_id_conflict" in capsys.readouterr().err
+    assert not (connectors_dir / "a.b.json").exists()
+
+
+def test_operation_annotation_null_falls_back_to_path_item():
+    document = {
+        "servers": [{"url": "https://x.example"}],
+        "paths": {
+            "/refund": {
+                "x-risk-level": "L3",
+                "x-data-classes": ["restricted"],
+                "post": {"operationId": "refund", "x-risk-level": None, "x-data-classes": None},
+            }
+        },
+    }
+    imported = import_openapi(document, "pay")
+
+    tool = imported.tools[0]
+    assert tool.risk_level == "L3"
+    assert "restricted" in tool.data_classes
+    tool_specs = build_connector_tools([imported.connector], secrets=None)  # type: ignore[arg-type]
+    assert tool_specs[0].needs_approval is True
+
+
+def test_import_catalog_matches_the_gateway(tmp_path):
+    imported = import_openapi(_document(), "itsm")
+    catalog = {entry.tool_id: entry for entry in imported.tools}
+    gateway = {
+        tool.tool_id: tool
+        for tool in build_connector_tools([imported.connector], secrets=None)  # type: ignore[arg-type]
+    }
+
+    assert set(catalog) == set(gateway)
+    for tool_id, entry in catalog.items():
+        assert entry.risk_level == gateway[tool_id].risk_level
+        assert entry.requires_approval == gateway[tool_id].needs_approval
+        assert tuple(entry.data_classes) == gateway[tool_id].data_classes
+
+
+def test_bad_extension_types_get_fixed_codes():
+    bad_classes = {
+        "servers": [{"url": "https://x.example"}],
+        "paths": {"/a": {"get": {"operationId": "a", "x-data-classes": [{"a": 1}]}}},
+    }
+    with pytest.raises(OpenApiImportError) as exc:
+        import_openapi(bad_classes, "probe")
+    assert exc.value.code == "invalid_data_class"
+
+    bad_risk = {
+        "servers": [{"url": "https://x.example"}],
+        "paths": {"/a": {"get": {"operationId": "a", "x-risk-level": ["L3"]}}},
+    }
+    with pytest.raises(OpenApiImportError) as exc:
+        import_openapi(bad_risk, "probe")
+    assert exc.value.code == "invalid_risk_level"
