@@ -30,6 +30,7 @@ from ..core import (
     ConnectorStore,
     ConnectorStoreError,
     ConnectorStoreUnavailable,
+    ConnectorToolIdConflict,
     CredentialBinding,
     CredentialConflict,
     CredentialNotFound,
@@ -113,6 +114,8 @@ def _read_error(exc: RegistryError) -> JSONResponse:
 def _connector_spec_error(exc: ConnectorStoreError) -> JSONResponse:
     if isinstance(exc, ConnectorConflict):
         return _error("connector_conflict", 409)
+    if isinstance(exc, ConnectorToolIdConflict):
+        return _error("tool_id_conflict", 409)
     if isinstance(exc, ConnectorNotFound):
         return _error("connector_not_found", 404)
     if isinstance(exc, ConnectorStoreUnavailable):

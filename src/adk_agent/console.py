@@ -64,6 +64,7 @@ from .core import (
     ConnectorStore,
     ConnectorStoreError,
     ConnectorStoreUnavailable,
+    ConnectorToolIdConflict,
     CredentialBinding,
     CredentialConflict,
     CredentialNotFound,
@@ -4890,6 +4891,8 @@ def build_console_app(
                 return JSONResponse({"error": "credential_unbound"}, status_code=400)
         try:
             stored = await connectors.add(spec)
+        except ConnectorToolIdConflict:
+            return JSONResponse({"error": "tool_id_conflict"}, status_code=409)
         except ConnectorConflict:
             return JSONResponse({"error": "connector_conflict"}, status_code=409)
         except ConnectorStoreUnavailable:
@@ -5114,6 +5117,8 @@ def build_console_app(
                     return JSONResponse({"error": "credential_unbound"}, status_code=400)
             try:
                 registered = await connectors.add(record.spec)
+            except ConnectorToolIdConflict:
+                return JSONResponse({"error": "tool_id_conflict"}, status_code=409)
             except ConnectorConflict:
                 return JSONResponse({"error": "connector_conflict"}, status_code=409)
             except ConnectorStoreError:

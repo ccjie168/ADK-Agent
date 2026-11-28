@@ -599,3 +599,13 @@ def test_store_rejects_cross_connector_tool_id(tmp_path):
                 )
             )
         )
+
+
+def test_registry_maps_tool_id_conflict_to_409():
+    from adk_agent.core import ConnectorToolIdConflict
+    from adk_agent.registry.service import _connector_spec_error
+
+    response = _connector_spec_error(ConnectorToolIdConflict("a.b", "a"))
+
+    assert response.status_code == 409
+    assert b"tool_id_conflict" in response.body

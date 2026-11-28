@@ -26,6 +26,7 @@
 - [ ] 生成的工具按固定方法与路径调用，路径参数被编码 -> `test_operation_tool_calls_fixed_path`
 - [ ] 路径参数里的穿越尝试被拒 -> `test_operation_tool_rejects_traversal`
 - [ ] 目录合并冲突拒绝 -> `test_catalog_merge_rejects_conflict`
+- [ ] 存储层拒绝跨连接器工具名冲突 -> `test_store_rejects_cross_connector_tool_id`
 - [ ] CLI 写入连接器与工具目录 -> `test_cli_import_openapi_writes_connector_and_catalog`
 - [ ] `--full` 门禁通过
 

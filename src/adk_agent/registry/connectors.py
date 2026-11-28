@@ -66,7 +66,7 @@ class FileConnectorStore:
         for path in self.root.glob("*.json"):
             try:
                 specs.append(ConnectorSpec.model_validate_json(path.read_text(encoding="utf-8")))
-            except ValueError:
+            except (OSError, ValueError):
                 continue
         return specs
 

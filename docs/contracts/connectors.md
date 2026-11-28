@@ -46,7 +46,9 @@
   `PostgresConnectorStore.add` 都会拒绝新连接器的 id 或任一操作 `tool_id` 已被另一个
   连接器占用的情况（`ConnectorToolIdConflict`）。控制面 `POST /v1/connectors`、控制台
   `POST /api/connectors` 与连接器申请批准都走 `add`，因此都被覆盖。
-  `connectors import-openapi` 在写入前再做一次预检，冲突报 `tool_id_conflict` 且不写入。
+  `connectors import-openapi` 在存储支持列出全部连接器时（文件目录）写入前再预检一次，
+  冲突报 `tool_id_conflict` 且不写入；走 `--registry-url` 时由服务端拒绝，返回
+  409 `tool_id_conflict`，导入命令同样不写入。
 - 有 `operations` 的连接器在网关里为每个操作生成一个工具：工具名即 `tool_id`，
   调用参数为 `query`、`path_params`、`json_body`；方法固定、路径参数拒绝 `/`、`\`、
   `..` 后 URL 编码，再过连接器的 `path_prefixes` 校验。没有 `operations` 的连接器仍

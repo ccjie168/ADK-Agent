@@ -5,7 +5,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
       与 `ConnectorSpec.operations`）、`tools/openapi_import.py`（新）、
       `tools/connectors.py`（逐操作工具）、`tools/catalog.py`（合并与写盘）、
       `tools/__init__.py`、`cli.py`（`connectors import-openapi`）、
-      新增 29 条用例
+      新增 30 条用例
 
 一、红绿说明
 
@@ -22,7 +22,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 
     $ python -m pytest tests/test_openapi_import.py -q
     .............................                                    [100%]
-    29 passed in 2.6s
+    30 passed in 2.04s
 
 - `test_import_builds_connector_and_operations`：连接器 kind/base_url/methods/
   path_prefixes/operations 与逐操作工具的 risk/data_class/write 都正确
@@ -94,7 +94,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
     ALL PASS
 
     $ python -m pytest -q
-    2499 passed, 106 skipped
+    2500 passed, 106 skipped
 
 六、首轮验证修正（REJECT 后）
 
@@ -167,6 +167,22 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
   未做版本协商。
 - 文档里 `$ref` 参数/安全方案不解析；导入只依赖 `paths`、`servers` 与两个扩展字段。
 
-八、范围外
+八、第五轮验证修正（PASS 后）
+
+第五轮验证 PASS，两个 S 一并修掉：
+
+- 控制面与控制台把 `ConnectorToolIdConflict` 映射成 409 `tool_id_conflict`（以前落到
+  502/503「store unavailable」），连接器申请批准同理；用例
+  `test_registry_maps_tool_id_conflict_to_409`。契约相应写明 `--registry-url` 路径由
+  服务端拒绝。
+- 文件存储的 `_readable_specs` 也吞掉 `OSError`（不可读条目不能拥有工具名）。
+- spec 的完成判据补上存储层不变量用例。
+
+仍记为后续项（不阻断）：文件/PG 的检查与写入之间没有事务（并发写可同时通过，PG 需
+advisory lock）；带外写入的冲突数据只在网关启动时报 `duplicate tool_id`，可在
+`connectors check` 里加重复报告；`--registry-url` 导入对冲突给出的是 409 而非
+`tool_id_conflict` 错误码文本（CLI 透传为 `ConnectorStoreUnavailable` 以外的 409 文本）。
+
+九、范围外
 
 - MCP 连接器（0047-2）、插件入口（0047-3）。
