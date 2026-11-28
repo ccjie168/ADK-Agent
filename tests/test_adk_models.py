@@ -37,7 +37,8 @@ def test_model_and_tool_modules_leave_the_wall():
 
 
 def test_baseline_is_sandbox_and_guards():
-    assert adk_wall.BASELINE == REMAINING
+    # Slice 3b left these 7 importers; later slices may only remove them.
+    assert adk_wall.BASELINE <= REMAINING
 
 
 def test_model_builders_return_adk_models():

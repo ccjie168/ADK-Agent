@@ -7,8 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
-from google.adk.tools import BaseTool
-
+from ..adapters.adk.tools import BaseTool
 from ..audit.hashing import safe_hash_json
 from ..core import AuditEvent, AuditSink, DataClass, Invocation, PolicyEngine
 from ..core.context import current_invocation

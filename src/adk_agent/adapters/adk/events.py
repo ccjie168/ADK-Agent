@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from google.adk.events import Event
+
 from ...core.run_event import RunEvent, RunPart
 
-__all__ = ["to_run_event"]
+__all__ = ["Event", "to_run_event"]
 
 
 def _final(event: Any) -> bool:

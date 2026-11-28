@@ -142,7 +142,7 @@ def test_only_the_adapter_reads_adk_event_fields():
     offenders = []
     for path in SOURCE.rglob("*.py"):
         rel = path.relative_to(SOURCE).as_posix()
-        if rel.startswith("adapters/") or rel.startswith("sandbox/"):
+        if rel.startswith("adapters/"):
             continue
         for match in _ADK_EVENT_ACCESS.finditer(path.read_text(encoding="utf-8")):
             offenders.append(f"{rel}: {match.group(0)}")
