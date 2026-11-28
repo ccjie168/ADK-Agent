@@ -57,15 +57,21 @@ def test_baseline_is_empty():
 
 
 def test_adapter_exports_the_sandbox_types():
+    from google.adk.agents import BaseAgent as AdkBaseAgent
+    from google.adk.agents.invocation_context import InvocationContext as AdkContext
+    from google.adk.events import Event as AdkEvent
+    from google.adk.tools import BaseTool as AdkTool
+    from google.adk.tools.base_toolset import BaseToolset as AdkToolset
+
     from adk_agent.adapters.adk.agents import BaseAgent, InvocationContext
     from adk_agent.adapters.adk.events import Event
     from adk_agent.adapters.adk.tools import BaseTool, BaseToolset
 
-    assert issubclass(BaseAgent, object)
-    assert InvocationContext is not None
-    assert issubclass(Event, object)
-    assert BaseTool is not None
-    assert BaseToolset is not None
+    assert BaseAgent is AdkBaseAgent
+    assert InvocationContext is AdkContext
+    assert Event is AdkEvent
+    assert BaseTool is AdkTool
+    assert BaseToolset is AdkToolset
 
 
 def test_upgrade_runbook_covers_the_drill():

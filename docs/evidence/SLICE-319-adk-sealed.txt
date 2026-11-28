@@ -26,7 +26,7 @@ SLICE-319 沙箱与工具守卫迁入适配层，墙归零（ADR-0046 切片 3c�
     32 passed in 14.35s
 
 - `test_no_module_imports_adk_outside_the_adapter`：`importers()` 为空，且用 AST 扫全仓
-  （不受基线影响）确认 `adapters/adk` 之外没有 `google.adk` 导入
+  （不受基线影响，扫描 `src/adk_agent` 全树）确认 `adapters/adk` 之外没有 `google.adk` 导入
 - `test_baseline_is_empty`：基线是空集
 - `test_adapter_exports_the_sandbox_types`：`BaseAgent`/`InvocationContext`/`Event`/
   `BaseTool`/`BaseToolset` 都可从适配层取
@@ -93,20 +93,32 @@ SLICE-319 沙箱与工具守卫迁入适配层，墙归零（ADR-0046 切片 3c�
     $ python -m pytest -q
     2469 passed, 106 skipped
 
-六、测试判据说明
+六、首轮验证修正
+
+首轮 PASS，按 N 收紧：
+
+- `sandbox/agent_worker.py`：最终文本从「每个最终事件覆盖」改成「追加后拼接」，与
+  `AgentRuntime` 一致；覆盖写法在“最后一个最终事件没有 content”时会把先前文本清空。
+  同时丢掉 thought 片段，修复了旧沙箱把思维链泄漏给调用方的路径。
+- `test_adapter_exports_the_sandbox_types` 改为与 `google.adk` 的类做同一性比较，
+  原断言 `issubclass(X, object)` 恒真。
+- ADR-0046 补上决定 6 引用、但正文缺失的「升级记录」小节；手册第 5 条关于
+  `google.genai` 的措辞限定到新增代码；证据里的扫描范围写明是 `src/adk_agent`。
+
+七、测试判据说明
 
 - SLICE-316 的事件扫描去掉 `sandbox/` 豁免：这是把它当初写下的“0046-3 再收”兑现，属于
   收紧，不是放宽。
 - SLICE-318 的账本用例改成 `BASELINE <= 7 项旧集合`，与本切片前两刀已批准的只增不减
   模式一致；当前空基线由本切片的 `test_baseline_is_empty` 精确固定。
 
-七、限制
+八、限制
 
 - `sandbox/proxy.py` 仍构造 ADK `Event`（BaseAgent 合约），仍读 `InvocationContext` 的
   `user_content`；这些是 ADK 扩展点本身，不是可平台化的边界。
 - `google.genai` 的 `Content`/`Part` 仍在沙箱与运行时使用；ADR-0046 只隔离 `google.adk`。
 - 升级手册的“升级记录”一节要求人工写结论，演练脚本只保证机械检查通过。
 
-八、范围外
+九、范围外
 
 - 无：ADR-0046 的四个切片到此全部交付。

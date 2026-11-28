@@ -97,14 +97,14 @@ async def _run(agent: Any, input_text: str, sandbox_channel: Any = None) -> str:
         runner = make_runner(app_name=agent.name, agent=agent, session_service=service)
         session = await service.create_session(app_name=agent.name, user_id="sandbox")
         message = types.Content(role="user", parts=[types.Part(text=input_text)])
-        text = ""
+        reply_parts: list[str] = []
         async for event in runner.run_async(
             user_id="sandbox", session_id=str(session.id), new_message=message
         ):
             run_event = to_run_event(event)
             if run_event.final:
-                text = run_event.text
-        return text
+                reply_parts.append(run_event.text)
+        return "".join(reply_parts)
     finally:
         if sandbox_channel is not None:
             sandbox_channel.close()

@@ -51,4 +51,5 @@ python scripts/check.py --full
 
 - 不要在适配层之外直接 import `google.adk`（墙会红）。
 - 不要用类型伪装（`__class__` property 等）绕过 ADK 的 isinstance 门控；用适配层的真子类。
-- 不要把 `google.genai` 类型铺到上层；事件与消息在适配层转换。
+- 不要在新代码里继续直接使用 `google.genai` 的 `Content`/`Part`（现有运行时与沙箱
+  已有使用，属记录在案的边界外依赖）；新的事件/消息转换放在适配层。
