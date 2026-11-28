@@ -15,9 +15,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
-from google.adk.models.base_llm import BaseLlm
-from google.adk.models.llm_request import LlmRequest
-
+from ..adapters.adk.models import BaseLlm, LlmRequest
 from ..core import AgentArtifact, AgentManifest
 from .agent import SandboxResult, SandboxToolError
 from .errors import SandboxCrashed, SandboxTimeout, SandboxViolation

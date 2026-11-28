@@ -1,0 +1,101 @@
+"""SLICE-319: google.adk lives only in the adapter (ADR-0046 3c)."""
+
+from __future__ import annotations
+
+import ast
+import asyncio
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import adk_wall  # noqa: E402
+
+SOURCE = ROOT / "src" / "adk_agent"
+ADAPTER = SOURCE / "adapters" / "adk"
+
+SANDBOX_MODULES = frozenset(
+    {
+        "adk_agent.sandbox.agent_channel",
+        "adk_agent.sandbox.agent_process",
+        "adk_agent.sandbox.agent_worker",
+        "adk_agent.sandbox.proxy",
+        "adk_agent.sandbox.runner",
+        "adk_agent.tools.enforcement",
+        "adk_agent.tools.guard",
+    }
+)
+
+
+def _imports_adk(path: Path) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(alias.name.startswith("google.adk") for alias in node.names):
+                return True
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if node.module.startswith("google.adk"):
+                return True
+            if node.module == "google" and any(alias.name == "adk" for alias in node.names):
+                return True
+    return False
+
+
+def test_no_module_imports_adk_outside_the_adapter():
+    assert adk_wall.importers() == {}
+    offenders = [
+        path.relative_to(ROOT).as_posix()
+        for path in SOURCE.rglob("*.py")
+        if ADAPTER not in path.parents and _imports_adk(path)
+    ]
+    assert offenders == []
+
+
+def test_baseline_is_empty():
+    assert frozenset() == adk_wall.BASELINE
+    assert SANDBOX_MODULES.isdisjoint(adk_wall.importers())
+
+
+def test_adapter_exports_the_sandbox_types():
+    from google.adk.agents import BaseAgent as AdkBaseAgent
+    from google.adk.agents.invocation_context import InvocationContext as AdkContext
+    from google.adk.events import Event as AdkEvent
+    from google.adk.tools import BaseTool as AdkTool
+    from google.adk.tools.base_toolset import BaseToolset as AdkToolset
+
+    from adk_agent.adapters.adk.agents import BaseAgent, InvocationContext
+    from adk_agent.adapters.adk.events import Event
+    from adk_agent.adapters.adk.tools import BaseTool, BaseToolset
+
+    assert BaseAgent is AdkBaseAgent
+    assert InvocationContext is AdkContext
+    assert Event is AdkEvent
+    assert BaseTool is AdkTool
+    assert BaseToolset is AdkToolset
+
+
+def test_upgrade_runbook_covers_the_drill():
+    text = (ROOT / "docs" / "guides" / "adk-upgrade.md").read_text(encoding="utf-8")
+
+    for needle in ("scripts/adk_compat.py", "scripts/check.py --full", "ADR-0046", "adk_wall"):
+        assert needle in text, needle
+
+
+def test_sandbox_worker_keeps_text_across_empty_final_events():
+    from adk_agent.sandbox.agent_worker import _collect_reply
+
+    def event(text, final):
+        parts = [] if text is None else [SimpleNamespace(text=text, thought=False)]
+        return SimpleNamespace(
+            author="agent",
+            content=SimpleNamespace(parts=parts),
+            is_final_response=lambda: final,
+        )
+
+    async def events():
+        yield event("hello", True)
+        yield event(None, True)
+
+    assert asyncio.run(_collect_reply(events())) == "hello"

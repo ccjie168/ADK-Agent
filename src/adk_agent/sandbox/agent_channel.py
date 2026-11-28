@@ -6,10 +6,7 @@ import asyncio
 import json
 from typing import Any, BinaryIO
 
-from google.adk.models.base_llm import BaseLlm
-from google.adk.models.llm_request import LlmRequest
-from google.adk.models.llm_response import LlmResponse
-
+from ..adapters.adk.models import BaseLlm, LlmRequest, LlmResponse
 from .agent import SandboxToolError
 from .frames import FrameError, read_frame, write_frame
 

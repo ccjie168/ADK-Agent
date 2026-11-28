@@ -5,11 +5,10 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from google.adk.agents import BaseAgent
-from google.adk.agents.invocation_context import InvocationContext
-from google.adk.events import Event
 from google.genai import types
 
+from ..adapters.adk.agents import BaseAgent, InvocationContext
+from ..adapters.adk.events import Event
 from ..core import AgentArtifact, AgentManifest
 from .agent import AgentSandboxBackend, SandboxResult
 

@@ -78,3 +78,13 @@
 ## 与其他 ADR 的关系
 
 在本 ADR 之后：ADR-0047（连接器与插件加载）复用这里定的适配层边界。
+
+## 升级记录
+
+每次升级 `google-adk` 的次版本都在这里加一行：版本、日期、`scripts/adk_compat.py`
+结果、`python scripts/check.py --full` 结果、人工复核结论。步骤见
+`docs/guides/adk-upgrade.md`。当前记录：
+
+| ADK 版本 | 日期 | 演练 | 门禁 | 复核结论 |
+| --- | --- | --- | --- | --- |
+| 2.14.0 | 2026-11-28 | ALL PASS（六项） | ALL PASS | 首次收口到空基线，无漂移 |

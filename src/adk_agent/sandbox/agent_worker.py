@@ -84,25 +84,33 @@ def _is_guard_violation(exc: BaseException) -> bool:
     return False
 
 
+async def _collect_reply(events: Any) -> str:
+    """Join every final event's text, as ``AgentRuntime`` does."""
+    from ..adapters.adk.events import to_run_event
+
+    reply_parts: list[str] = []
+    async for event in events:
+        run_event = to_run_event(event)
+        if run_event.final:
+            reply_parts.append(run_event.text)
+    return "".join(reply_parts).strip()
+
+
 async def _run(agent: Any, input_text: str, sandbox_channel: Any = None) -> str:
-    from google.adk.runners import Runner
-    from google.adk.sessions import InMemorySessionService
     from google.genai import types
+
+    from ..adapters.adk import in_memory_session_service, make_runner
 
     if sandbox_channel is not None:
         sandbox_channel.start()
     try:
-        service = InMemorySessionService()
-        runner = Runner(app_name=agent.name, agent=agent, session_service=service)
+        service = in_memory_session_service()
+        runner = make_runner(app_name=agent.name, agent=agent, session_service=service)
         session = await service.create_session(app_name=agent.name, user_id="sandbox")
         message = types.Content(role="user", parts=[types.Part(text=input_text)])
-        text = ""
-        async for event in runner.run_async(
-            user_id="sandbox", session_id=str(session.id), new_message=message
-        ):
-            if event.is_final_response() and event.content and event.content.parts:
-                text = "".join(part.text or "" for part in event.content.parts)
-        return text
+        return await _collect_reply(
+            runner.run_async(user_id="sandbox", session_id=str(session.id), new_message=message)
+        )
     finally:
         if sandbox_channel is not None:
             sandbox_channel.close()

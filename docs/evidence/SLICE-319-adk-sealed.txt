@@ -1,0 +1,127 @@
+SLICE-319 沙箱与工具守卫迁入适配层，墙归零（ADR-0046 切片 3c）
+
+日期: 2026-11-28
+范围: `adapters/adk/agents.py`（`InvocationContext`）、`adapters/adk/events.py`（`Event`）、
+      `adapters/adk/tools.py`（`BaseTool`/`BaseToolset`）、`adapters/adk/__init__.py`、
+      `sandbox/agent_channel.py`、`sandbox/agent_process.py`、`sandbox/agent_worker.py`、
+      `sandbox/proxy.py`、`sandbox/runner.py`、`tools/guard.py`、`tools/enforcement.py`、
+      `scripts/adk_wall.py`（基线清零）、`docs/guides/adk-upgrade.md`（新）、
+      新增 5 条用例、SLICE-316 的事件扫描去掉 `sandbox/` 豁免、SLICE-318 的账本用例
+      改成只增不减（沿用已批准的模式）
+
+一、红屏（先跑新用例）
+
+    $ python -m pytest tests/test_adk_sealed.py -q
+    FFFF  ->  4 failed in 2.34s
+
+- 基线仍是 7 项、`importers()` 非空
+- `adapters.adk.events.Event` 与 `adapters.adk.tools.BaseTool` 不存在
+- `docs/guides/adk-upgrade.md` 不存在
+
+二、用例
+
+    $ python -m pytest tests/test_adk_sealed.py tests/test_adk_events.py tests/test_adk_models.py \
+          tests/test_adk_loading.py tests/test_adk_boundary.py tests/test_adk_entry_adapter.py -q
+    ................................                                 [100%]
+    33 passed in 12.95s
+
+- `test_no_module_imports_adk_outside_the_adapter`：`importers()` 为空，且用 AST 扫全仓
+  （不受基线影响，扫描 `src/adk_agent` 全树）确认 `adapters/adk` 之外没有 `google.adk` 导入
+- `test_baseline_is_empty`：基线是空集
+- `test_adapter_exports_the_sandbox_types`：`BaseAgent`/`InvocationContext`/`Event`/
+  `BaseTool`/`BaseToolset` 都可从适配层取
+- `test_upgrade_runbook_covers_the_drill`：手册包含演练脚本、`--full`、ADR-0046 与导入墙
+- `test_sandbox_worker_keeps_text_across_empty_final_events`：空最终事件不清空先前文本
+- `test_only_the_adapter_reads_adk_event_fields`（SLICE-316）去掉 `sandbox/` 豁免后仍通过：
+  `sandbox/agent_worker.py` 改用 `to_run_event`
+
+三、实现要点
+
+- `sandbox/agent_worker.py` 的最终文本改用 `adapters.adk.events.to_run_event`，补上 2b
+  留下的沙箱缺口；模型帧协议（`agent_channel`/`agent_process`）只换了类型来源。
+- `sandbox/proxy.py` 仍构造 ADK `Event` 作为回复（BaseAgent 合约要求），只是不再直接
+  import。
+- `tools.guard`/`tools.enforcement` 的 isinstance 检查与回调签名不变。
+- 墙的基线改为空集，注释写明“必须保持为空”。
+- `docs/guides/adk-upgrade.md`：六项演练、墙与全门禁、升级记录要求、常见漂移对应的
+  适配层位置、三条禁止项。
+
+实机输出：
+
+    $ python scripts/adk_wall.py
+    [PASS] adk wall: 0 grandfathered importers, 0 new
+
+四、实机验证
+
+    $ python -m pytest tests/sandbox -q
+    75 passed, 8 skipped；加上 `tests/test_adk_sealed.py` 一共 80 passed
+
+沙箱代理、进程、帧协议与 worker 用例在 Windows 上实跑（跳过的是需要 POSIX RLIMIT
+的 8 条）。
+
+    $ python scripts/prove_workbuddy_a2a.py
+    PASS ticket is open
+    PASS wecom notified
+    PASS audit verified (4 records)
+    ALL PASS
+
+真实 A2A 路径（执行器 → 审计代理 → 事件转换 → 工具守卫）全通。
+
+五、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2470 passed, 106 skipped
+
+六、首轮验证修正
+
+首轮 PASS，按 N 收紧：
+
+- `sandbox/agent_worker.py`：最终文本从「每个最终事件覆盖」改成「追加后拼接并
+  `strip()`」，与 `AgentRuntime` 完全一致；覆盖写法在“最后一个最终事件没有 content”
+  时会把先前文本清空。新增 `test_sandbox_worker_keeps_text_across_empty_final_events`
+  固定这个语义。thought 片段之所以不再泄漏给调用方，是 0455aa3 起改用 SLICE-316 的
+  `to_run_event` 带来的（不是本条提交改的），这里一并记录。
+- `test_adapter_exports_the_sandbox_types` 改为与 `google.adk` 的类做同一性比较，
+  原断言 `issubclass(X, object)` 恒真。
+- ADR-0046 补上决定 6 引用、但正文缺失的「升级记录」小节；手册第 5 条关于
+  `google.genai` 的措辞限定到新增代码；证据里的扫描范围写明是 `src/adk_agent`。
+
+七、测试判据说明
+
+- SLICE-316 的事件扫描去掉 `sandbox/` 豁免：这是把它当初写下的“0046-3 再收”兑现，属于
+  收紧，不是放宽。
+- SLICE-318 的账本用例改成 `BASELINE <= 7 项旧集合`，与本切片前两刀已批准的只增不减
+  模式一致；当前空基线由本切片的 `test_baseline_is_empty` 精确固定。
+
+八、限制
+
+- `sandbox/proxy.py` 仍构造 ADK `Event`（BaseAgent 合约），仍读 `InvocationContext` 的
+  `user_content`；这些是 ADK 扩展点本身，不是可平台化的边界。
+- `google.genai` 的 `Content`/`Part` 仍在沙箱与运行时使用；ADR-0046 只隔离 `google.adk`。
+- 升级手册的“升级记录”一节要求人工写结论，演练脚本只保证机械检查通过。
+
+九、范围外
+
+- 无：ADR-0046 的四个切片到此全部交付。

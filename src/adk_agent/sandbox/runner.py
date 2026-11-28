@@ -153,8 +153,7 @@ def sandboxed_callable(handler: Callable[..., Any], sandbox: ToolSandbox) -> Cal
 def _plain_callable(value: Any) -> bool:
     if not callable(value):
         return False
-    from google.adk.tools import BaseTool
-    from google.adk.tools.base_toolset import BaseToolset
+    from ..adapters.adk.tools import BaseTool, BaseToolset
 
     return not isinstance(value, (BaseTool, BaseToolset))
 

@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from google.adk.agents import BaseAgent
-from google.adk.tools import BaseTool
-from google.adk.tools.base_toolset import BaseToolset
-
+from ..adapters.adk.agents import BaseAgent
+from ..adapters.adk.tools import BaseTool, BaseToolset
 from ..core import AuditSink, ToolGrant, ToolGrantStore
 from .guard import ToolGuard, install_tool_guard
 from .policy import GrantPolicyEngine

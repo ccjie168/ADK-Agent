@@ -10,20 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "adk_agent"
 ALLOWED_PREFIX = "adk_agent.adapters.adk"
 
-# Importers grandfathered by ADR-0046 slices 1 through 3b. Slice 3c moves the
-# sandbox and tool-guard modules behind the adapter and empties this list; it
-# may never grow.
-BASELINE = frozenset(
-    {
-        "adk_agent.sandbox.agent_channel",
-        "adk_agent.sandbox.agent_process",
-        "adk_agent.sandbox.agent_worker",
-        "adk_agent.sandbox.proxy",
-        "adk_agent.sandbox.runner",
-        "adk_agent.tools.enforcement",
-        "adk_agent.tools.guard",
-    }
-)
+# ADR-0046 slices 1 through 3c migrated every importer behind the adapter.
+# This ledger starts empty and must stay empty: any module that imports
+# ``google.adk`` outside ``adk_agent.adapters.adk`` is a violation.
+BASELINE: frozenset[str] = frozenset()
 
 
 def _module_name(path: Path, root: Path = SOURCE) -> str:
