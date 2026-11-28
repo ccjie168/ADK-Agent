@@ -1,0 +1,105 @@
+SLICE-317 加载与触发服务迁入适配层（ADR-0046 切片 3a）
+
+日期: 2026-11-28
+范围: `factory.py`、`registry/loader.py`、`triggers_service.py`、
+      `adapters/adk/agents.py`（新增 `LlmAgent`）、`adapters/adk/__init__.py`、
+      `scripts/adk_wall.py`（基线 14 → 11）、新增 5 条用例、按用户批准把
+      SLICE-315 的基线用例改成只增不减的不变量
+
+一、红绿说明
+
+先写用例再实现：
+
+    $ python -m pytest tests/test_adk_loading.py -q
+    FFFF.  ->  4 failed（首版用例把 `model` 传成字符串，`AgentConfig` 校验失败；
+    改用默认 `ModelConfig` 后剩 3 条红）
+
+    FFF..  ->  3 failed in 3.31s
+
+红的是三条账本/扫描断言（模块仍在基线、基线仍是 14 项、源码仍有 `google.adk`
+字样）；两条行为用例在实现前就是绿的，照实记录。
+
+二、用例
+
+    $ python -m pytest tests/test_adk_loading.py tests/test_adk_boundary.py tests/test_adk_entry_adapter.py -q
+    ..................                                               [100%]
+    18 passed in 13.13s
+
+- `test_loading_modules_leave_the_wall`：三个模块不再 import ADK
+- `test_baseline_is_models_tools_and_sandbox`：基线恰好剩 11 项
+- `test_loading_modules_have_no_adk_text`：三个文件里连 `google.adk` 字样都没有
+- `test_build_agent_returns_an_adk_agent`：配置构建出的仍是 ADK `BaseAgent`
+- `test_build_runner_uses_the_adapter_runner`：`build_runner` 返回真 `Runner`
+
+三、实现要点
+
+- `adapters/adk/agents.py` 新增 `LlmAgent` 导出；`factory.build_agent` 用它。
+- `factory.build_runner` 改成 `make_runner(...)`，`None` 语义（交给 ADK 默认内存会话）
+  不变。
+- `registry/loader.py` 的 artifact 类型检查用适配层的 `BaseAgent`。
+- `triggers_service` 的内存 session 与默认 runner 工厂改走适配层；`session_service`
+  注入路径不变。
+- 墙的基线 14 → 11；按用户批准（会话内选择「改成只增不减的不变量」）把 SLICE-315 的
+  `test_baseline_is_only_composition_and_tools` 改成 `BASELINE <= 14 项旧集合`，
+  本切片新增的用例固定当前 11 项。任何新增导入仍会让墙与两条用例都红。
+
+实机输出：
+
+    $ python scripts/adk_wall.py
+    [PASS] adk wall: 11 grandfathered importers, 0 new
+
+四、实机验证
+
+    $ python scripts/probe_mcp.py -- .venv/Scripts/python.exe -m adk_agent serve \
+          --agent examples/minimal/agent.py
+    server: name='minimal_agent' ...
+    protocol: 2025-11-25
+    tools: 1
+     - minimal_agent
+
+这是 `factory.build_agent` 的真实路径（配置 → `LlmAgent` → MCP 工具）。
+
+    $ python scripts/prove_support_demo.py
+    PASS ticket is open
+    PASS wecom notified
+    PASS audit verified (4 records)
+    ALL PASS
+
+计划执行与审计不受影响。
+
+五、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2460 passed, 106 skipped
+
+六、限制
+
+- 基线剩 11 项：`models`、`models.gateway_llm`、`mcp.client`、`sandbox.*`（6 个）、
+  `tools.enforcement`、`tools.guard`、`tools.sources`；3b、3c 继续迁。
+- `triggers_service` 的 runner 工厂仍接受注入的任意对象，类型检查交给 `AgentRuntime`。
+
+七、范围外
+
+- 模型与工具源（3b）、沙箱与工具守卫（3c）、ADK 升级手册。

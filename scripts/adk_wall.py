@@ -10,16 +10,14 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "adk_agent"
 ALLOWED_PREFIX = "adk_agent.adapters.adk"
 
-# Importers grandfathered by ADR-0046 slices 1 and 2a. The list must shrink as
-# slice 3 moves the composition and tool modules behind the adapter; it may
-# never grow.
+# Importers grandfathered by ADR-0046 slices 1 through 3a. The list must shrink
+# as slices 3b and 3c move the model, tool-source and sandbox modules behind the
+# adapter; it may never grow.
 BASELINE = frozenset(
     {
-        "adk_agent.factory",
         "adk_agent.mcp.client",
         "adk_agent.models",
         "adk_agent.models.gateway_llm",
-        "adk_agent.registry.loader",
         "adk_agent.sandbox.agent_channel",
         "adk_agent.sandbox.agent_process",
         "adk_agent.sandbox.agent_worker",
@@ -28,7 +26,6 @@ BASELINE = frozenset(
         "adk_agent.tools.enforcement",
         "adk_agent.tools.guard",
         "adk_agent.tools.sources",
-        "adk_agent.triggers_service",
     }
 )
 

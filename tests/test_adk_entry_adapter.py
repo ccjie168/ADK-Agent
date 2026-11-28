@@ -50,7 +50,8 @@ def test_entry_modules_leave_the_wall():
 
 
 def test_baseline_is_only_composition_and_tools():
-    assert adk_wall.BASELINE == COMPOSITION_MODULES
+    # Slice 2a left these 14 importers; later slices may only remove them.
+    assert adk_wall.BASELINE <= COMPOSITION_MODULES
 
 
 def test_audited_runner_no_longer_fakes_its_class():

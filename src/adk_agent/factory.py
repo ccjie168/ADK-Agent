@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from google.adk.agents import LlmAgent
 from google.genai import types
 
+from .adapters.adk.agents import LlmAgent
+from .adapters.adk.runner import make_runner
 from .config import AgentConfig, FrameworkConfig
 from .core import SecretProvider
 from .mcp.client import toolset_from_config
@@ -16,8 +17,8 @@ from .secretstore import EnvSecretProvider
 from .tools.sources import load_openapi_spec, openapi_toolset_from_config
 
 if TYPE_CHECKING:  # pragma: no cover
-    from google.adk.agents import BaseAgent
-    from google.adk.runners import Runner
+    from .adapters.adk.agents import BaseAgent
+    from .adapters.adk.runner import Runner
 
 
 def _check_egress(spec: AgentConfig) -> None:
@@ -89,6 +90,4 @@ def build_runner(
     if service is None:
         return None
 
-    from google.adk.runners import Runner
-
-    return Runner(app_name=agent.name, agent=agent, session_service=service)
+    return make_runner(app_name=agent.name, agent=agent, session_service=service)
