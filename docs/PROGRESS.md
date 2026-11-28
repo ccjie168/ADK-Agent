@@ -847,7 +847,24 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         证据后二轮 PASS）。实机 MCP 工厂路径（配置 → 模型 → 工具）正常。
         门禁 2465/106。证据 `docs/evidence/SLICE-318-adk-models.txt`。
         下一步：3c（`sandbox.*` 5 个模块、`tools.guard`、`tools.enforcement`），
-        基线归零并补 ADK 升级手册，收口 ADR-0046。
+        基线归零并补 ADR 升级手册，收口 ADR-0046。
+      - SLICE-319 沙箱与工具守卫迁入适配层，墙归零（ADR-0046 切片 3c）~~已合并 `48d3993`~~（#383）：
+        `sandbox.*` 五个模块与 `tools.guard`/`tools.enforcement` 全部改走适配层；
+        `sandbox/agent_worker.py` 的最终文本改用 `to_run_event` 累积（对齐运行时，
+        并首次丢掉 thought 片段，堵住沙箱把思维链返回给调用方的路径）；
+        墙基线清零，`importers()` 为空且必须保持为空；SLICE-316 的事件扫描去掉
+        `sandbox/` 豁免（兑现当时的“0046-3 再收”）。新增
+        `docs/guides/adk-upgrade.md`（六项演练、墙与全门禁、升级记录、漂移对照表、
+        三条禁止项），ADR-0046 补上决定 6 引用的「升级记录」小节并记入 2.14.0。
+        5 条用例。三轮验证（首轮 PASS 带 6 个 N，其中 worker 覆盖式取文本会清空回复、
+        手册指向不存在的章节；修复后二轮 PASS 带 S1：缺回归用例；补 `_collect_reply`
+        与用例后三轮 PASS，另修证据归属）。实机沙箱套件 80 passed（Windows 跳过 8 条
+        POSIX 用例）与 A2A 演示全 PASS。门禁 2470/106。
+        证据 `docs/evidence/SLICE-319-adk-sealed.txt`。
+        **ADR-0046（Agent 运行时端口与 ADK 隔离）至此全部交付**：端口、导入墙、入口/
+        运行时、事件边界、加载/组合/沙箱迁移与升级手册。墙基线为空。
+        下一步：写 ADR-0047（OpenAPI 导入、插件入口、MCP 连接器类型）与 ADR-0048
+        （场景模板与业务视图）正文，交用户确认。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
