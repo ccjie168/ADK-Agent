@@ -785,6 +785,21 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         通知、单赢家与运维手册。已知缺口：Postgres 多副本没有跨主机锁；恢复器计数
         未接 Prometheus。
         下一步：写 ADR-0046（Agent 运行时端口与 ADK 隔离）正文待用户确认。
+      - ADR-0046（Agent 运行时端口与 ADK 隔离）~~已确认~~（2026-11-28）：只有
+        `adk_agent.adapters.adk` 允许 import `google.adk`；旧导入方进基线账本只能减；
+        切片 2 拆成 2a（入口与运行能力）与 2b（事件边界）。风险集中面见
+        `docs/decisions/ADR-0046-adk-isolation.md`。
+      - SLICE-314 ADK 导入墙与兼容演练（ADR-0046 切片 1）~~已合并 `f5de2d6`~~（#373）：
+        新增 `adk_agent.adapters.adk` 包（唯一豁免目录）与 `core.AgentRuntime` 端口
+        （`load`/`run`）；`scripts/adk_wall.py` 用 AST 扫真实 `google.adk` 导入，现有
+        20 个导入方进基线白名单，接进门禁 `layering` 步之前；`scripts/adk_compat.py`
+        五项演练（Runner 签名、Event 字段、`_mcp`、`_agent_to_mcp`、A2A 执行器），
+        `a2a-sdk` 缺失时该项 SKIP。6 条用例。三轮验证（首轮 PASS 带 3 个 N，补父包
+        导入 `from google import adk` 与 `.importlinter` 的 `adapters` 名单；CI 因缺
+        `a2a-sdk` 变红后改为 SKIP，第三轮 PASS）。行为未变。门禁 2443/106。
+        证据 `docs/evidence/SLICE-314-adk-wall.txt`。
+        下一步：0046-2a，把 MCP/A2A 入口构造搬进 `adapters.adk`，去掉
+        `AuditedRunner.__class__` 伪装，改显式能力检查，基线相应缩短。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
