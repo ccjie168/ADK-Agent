@@ -10,21 +10,16 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src" / "adk_agent"
 ALLOWED_PREFIX = "adk_agent.adapters.adk"
 
-# Importers grandfathered by ADR-0046 slice 1. The list must shrink as slices
-# 2a and 3 move them behind the adapter; it may never grow.
+# Importers grandfathered by ADR-0046 slices 1 and 2a. The list must shrink as
+# slice 3 moves the composition and tool modules behind the adapter; it may
+# never grow.
 BASELINE = frozenset(
     {
-        "adk_agent.a2a",
-        "adk_agent.cli",
-        "adk_agent.console",
         "adk_agent.factory",
         "adk_agent.mcp.client",
-        "adk_agent.mcp.server",
         "adk_agent.models",
         "adk_agent.models.gateway_llm",
         "adk_agent.registry.loader",
-        "adk_agent.runtime.execution",
-        "adk_agent.runtime.sessions",
         "adk_agent.sandbox.agent_channel",
         "adk_agent.sandbox.agent_process",
         "adk_agent.sandbox.agent_worker",
@@ -46,10 +41,17 @@ def _module_name(path: Path, root: Path = SOURCE) -> str:
     return ".".join(parts)
 
 
+def _is_allowed(name: str) -> bool:
+    return name == ALLOWED_PREFIX or name.startswith(ALLOWED_PREFIX + ".")
+
+
 def importers(root: Path = SOURCE) -> dict[str, list[str]]:
-    """Map every module that imports ``google.adk`` to the imported names."""
+    """Map every module outside the adapter that imports ``google.adk``."""
     found: dict[str, list[str]] = {}
     for path in root.rglob("*.py"):
+        name = _module_name(path, root)
+        if _is_allowed(name):
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         imported: set[str] = set()
         for node in ast.walk(tree):
@@ -63,19 +65,13 @@ def importers(root: Path = SOURCE) -> dict[str, list[str]]:
                 elif node.module == "google" and any(alias.name == "adk" for alias in node.names):
                     imported.add("google.adk")
         if imported:
-            found[_module_name(path, root)] = sorted(imported)
+            found[name] = sorted(imported)
     return found
 
 
 def violations(root: Path = SOURCE) -> list[str]:
     """Modules that import ``google.adk`` outside the adapter or the baseline."""
-    return sorted(
-        name
-        for name in importers(root)
-        if name != ALLOWED_PREFIX
-        and not name.startswith(ALLOWED_PREFIX + ".")
-        and name not in BASELINE
-    )
+    return sorted(name for name in importers(root) if name not in BASELINE)
 
 
 def main() -> int:

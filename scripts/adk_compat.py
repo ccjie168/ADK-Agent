@@ -62,6 +62,27 @@ def _agent_to_mcp() -> None:
         raise AssertionError(f"_agent_to_mcp lost {sorted(missing)}")
 
 
+@check("runner-gate")
+def _runner_gate() -> None:
+    """ADK still gates injected runners on ``isinstance(..., Runner)``."""
+    from google.adk.runners import Runner
+
+    from adk_agent.adapters.adk.runner import RunnerFacade
+
+    if not isinstance(RunnerFacade(object()), Runner):
+        raise AssertionError("RunnerFacade is not a Runner subclass")
+
+    try:
+        from google.adk.a2a.executor import a2a_agent_executor
+    except ModuleNotFoundError as exc:
+        if (exc.name or "").startswith("a2a"):
+            raise SkipCheck("a2a-sdk is not installed") from None
+        raise
+
+    if not hasattr(a2a_agent_executor.A2aAgentExecutor, "_resolve_runner"):
+        raise AssertionError("A2aAgentExecutor lost _resolve_runner; re-read ADR-0046")
+
+
 @check("a2a-executor")
 def _a2a() -> None:
     try:

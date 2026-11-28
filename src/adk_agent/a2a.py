@@ -22,6 +22,8 @@ from .a2a_peer import (
     PeerTokenMiddleware,
     current_peer_principal,
 )
+from .adapters.adk import a2a as adk_a2a
+from .adapters.adk.runner import as_runner, build_runner
 from .audit.hashing import hash_text
 from .auth import BearerAuthMiddleware, OidcAuthMiddleware, resolve_http_auth
 from .core import AgentRef, Principal
@@ -31,15 +33,10 @@ from .runtime.audit_proxy import wrap_runner
 from .tracing import resolve_trace_id
 
 if TYPE_CHECKING:  # pragma: no cover
-    from google.adk.agents import BaseAgent
-
+    from .adapters.adk.agents import BaseAgent
     from .core import AgentManifest, AuditSink, IdentityProvider, QuotaConfig, QuotaManager
 
-_INSTALL_HINT = (
-    "A2A support needs the optional dependency; install it with "
-    "`pip install 'a2a-sdk[http-server]>=0.3.4,<2'` "
-    "(the range ADK 2.x declares for its a2a extra)."
-)
+A2aUnavailable = adk_a2a.A2aUnavailable
 
 _A2A_USER_ID = "a2a_user"
 _A2A_TENANT = "local"
@@ -63,27 +60,17 @@ def _peer_quota_policy(quota_config: QuotaConfig | None) -> Any:
 _current_trace_id: ContextVar[str | None] = ContextVar("a2a_trace_id", default=None)
 
 
-class A2aUnavailable(RuntimeError):
-    """The optional A2A dependency is not installed."""
-
-
 def _import_module(name: str) -> Any:
     """Indirection so tests can simulate a missing optional dependency."""
     return importlib.import_module(name)
 
 
 def _to_a2a() -> Any:
-    try:
-        return _import_module("google.adk.a2a.utils.agent_to_a2a").to_a2a
-    except ImportError as exc:
-        raise A2aUnavailable(_INSTALL_HINT) from exc
+    return adk_a2a.to_a2a(_import_module)
 
 
 def _remote_a2a_agent() -> Any:
-    try:
-        return _import_module("google.adk.a2a.agent._remote_a2a_agent").RemoteA2aAgent
-    except ImportError as exc:
-        raise A2aUnavailable(_INSTALL_HINT) from exc
+    return adk_a2a.remote_a2a_agent(_import_module)
 
 
 class _TraceContextMiddleware:
@@ -139,9 +126,7 @@ def build_a2a_app(
     audited = audit is not None or quota is not None or require_context or rag is not None
     if audited:
         if runner is None:
-            from google.adk.tools.mcp_tool._agent_to_mcp import _build_runner
-
-            runner = _build_runner(agent)
+            runner = build_runner(agent)
         principal: Any
         quota_policy: Any
         if peer_mode:
@@ -163,6 +148,9 @@ def build_a2a_app(
             require_context=require_context,
             rag=rag,
         )
+        # The executor only accepts a real ``Runner``; the facade keeps the
+        # audit proxy inside a type ADK accepts (ADR-0046 decision 3).
+        runner = as_runner(runner)
     app = _to_a2a()(
         agent,
         host=host,

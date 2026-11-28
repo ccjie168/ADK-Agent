@@ -817,7 +817,7 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
       `tests/test_console_me.py` 两处字面量断言已落地。密钥托管、轮换与最小权限的运维手册由
       SLICE-287（`634b22b`）交付，见上方「缺口清理（282–287）」。
 
-MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查，代理靠 `__class__` property 通过，升级 ADK 时要复核。
+MCP 和 A2A 路径都已经通过 `AuditedRunner` 补上 `agent.run` 审计和配额。A2A 消费方的出站调用由 `a2a_egress.AuditTransport` 审计，见 SLICE-095。A2A 的 executor 用 `isinstance(runner, Runner)` 检查；SLICE-315 起审计代理由 `adapters.adk.runner.RunnerFacade` 包成真正的 `Runner` 子类（不再伪造 `__class__`），门控方式变化由兼容演练的 `runner-gate` 提示。
 
 配额表启用了 Postgres RLS，策略依赖 `app.tenant_id`。生产连接必须是表的属主，不能用超级用户或 `BYPASSRLS` 角色，否则策略不生效。建表步骤会自动 `ENABLE` 和 `FORCE`，连接角色没有 `ALTER TABLE` 权限时启动会失败。
 

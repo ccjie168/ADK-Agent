@@ -10,9 +10,9 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
-from google.adk.agents.run_config import RunConfig
 from google.genai import types
 
+from ..adapters.adk.runner import run_config
 from ..core import (
     AgentRef,
     AuditEvent,
@@ -166,8 +166,8 @@ class AgentRuntime:
         started: float,
         progress: _Progress,
     ) -> InvocationResult:
-        run_config = RunConfig(
-            custom_metadata={
+        config = run_config(
+            {
                 "run_id": invocation.run_id,
                 "trace_id": invocation.trace_id,
                 "principal": invocation.principal.model_dump(mode="json"),
@@ -187,7 +187,7 @@ class AgentRuntime:
                 user_id=user_id,
                 session_id=session_id,
                 new_message=new_message,
-                run_config=run_config,
+                run_config=config,
             ):
                 await self._emit_progress(progress, event)
                 if event.is_final_response() and event.content and event.content.parts:
