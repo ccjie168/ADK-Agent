@@ -1,0 +1,87 @@
+SLICE-314 ADK 导入墙与兼容演练（ADR-0046 切片 1）
+
+日期: 2026-11-28
+依据: ADR-0046 已确认，切片 2 拆成 2a（入口与运行能力）与 2b（事件边界）
+范围: `src/adk_agent/adapters/`（新包）、`core/ports.py`（`AgentRuntime`）、
+      `scripts/adk_wall.py`、`scripts/check_layering.py`、`scripts/adk_compat.py`、
+      新增 5 条用例
+
+一、红绿说明
+
+实现前没有 `adapters` 包、`adk_wall.py`、`adk_compat.py` 与 `AgentRuntime`，五条用例
+会 `ImportError` 或断言失败。本轮先改实现再写用例，没有单独抓红屏（与前几刀一致，
+在此如实记录）。
+
+二、用例
+
+    $ python -m pytest tests/test_adk_boundary.py -q
+    .....                                                            [100%]
+    5 passed in 6.02s
+
+- `test_adk_wall_has_no_unlisted_importers`：墙外没有新的 ADK 导入方
+- `test_adk_wall_baseline_matches_reality`：基线白名单与现状一致，新增导入会立刻红
+- `test_adapter_package_is_the_only_allowed_importer`：只有 `adk_agent.adapters.adk` 豁免
+- `test_adk_compat_drill_passes`：五项检查全部 PASS
+- `test_agent_runtime_port_is_exported`：端口可导入且有 `load`/`run`
+
+三、实现要点
+
+- 墙用 AST 扫描真实的 `import google.adk`，不看字符串；现有 20 个导入方进基线，
+  只能减少不能增加。
+- 兼容演练检查 `Runner.run_async` 参数、`Event` 字段、`google.adk.dependencies._mcp`
+  的三个名字、`_agent_to_mcp` 的三个辅助函数、A2A 执行器类。
+- 墙接在门禁的 layering 步之前；演练脚本单独可跑，供升级时使用。
+
+实机输出：
+
+    $ python scripts/adk_compat.py
+    PASS runner
+    PASS events
+    PASS mcp
+    PASS agent-to-mcp
+    PASS a2a-executor
+    ALL PASS
+
+    $ python scripts/adk_wall.py
+    [PASS] adk wall: 20 grandfathered importers, 0 new
+
+四、门禁
+
+    $ python scripts/check.py --fast
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] secrets
+    ALL PASS
+
+    $ python scripts/check.py --full
+    [PASS] format
+    [PASS] lint
+    [PASS] types
+    [PASS] layering
+    [PASS] specs
+    [PASS] test
+    [PASS] sast
+    [PASS] deps
+    [PASS] secrets
+    ALL PASS
+
+    $ python -m pytest -q
+    2442 passed, 106 skipped
+
+（首轮 lint 失败：`check_layering.py` 的 import 顺序；`ruff check --fix` 后复跑全绿。）
+
+五、限制
+
+- 基线 20 个模块在 0046-2a/3 里逐步迁走，每迁一个都要同步缩短白名单，否则
+  `test_adk_wall_baseline_matches_reality` 会红；这是有意的账本。
+- 墙只覆盖 `google.adk`，不覆盖 `google.genai` 类型（事件转换时再定）。
+- 兼容演练是静态检查，不能保证运行期语义不变。
+
+六、范围外
+
+- 入口迁移（0046-2a）与事件模型（0046-2b）。
+- import-linter 的新契约（本切片用 AST 脚本承担，现有 `core` 隔离契约未动）。
