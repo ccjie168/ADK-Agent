@@ -15,7 +15,7 @@ from .connector_requests import ConnectorRequest, ConnectorRequestStatus
 from .credentials import CredentialBinding
 from .eval import EvalReport
 from .identity import Principal
-from .invocation import Invocation
+from .invocation import Invocation, InvocationResult
 from .lifecycle import AgentLifecycle, LifecycleStatus
 from .manifest import AgentRef, ModelPolicy, PublishedAgent
 from .model import EmbeddingRequest, EmbeddingResponse, ModelRequest, ModelResponse
@@ -257,6 +257,14 @@ class DeferredApprovalGate(Protocol):
 
 class ApprovalNotifier(Protocol):
     async def notify(self, notice: ApprovalNotice) -> None: ...
+
+
+class AgentRuntime(Protocol):
+    """Load and run an agent without leaking the engine's types (ADR-0046)."""
+
+    def load(self, path: str) -> Any: ...
+
+    async def run(self, agent: Any, invocation: Invocation) -> InvocationResult: ...
 
 
 class SecretProvider(Protocol):

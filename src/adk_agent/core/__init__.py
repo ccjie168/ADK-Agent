@@ -90,6 +90,7 @@ from .policy import DataClass, PolicyDecision, RiskLevel, ToolGrant
 from .ports import (
     AgentLifecycleStore,
     AgentRegistry,
+    AgentRuntime,
     ApprovalGate,
     ApprovalNotifier,
     ArtifactLoader,
@@ -212,6 +213,7 @@ __all__ = [
     "AgentLifecycleStore",
     "AgentManifest",
     "AgentRef",
+    "AgentRuntime",
     "AgentRegistry",
     "AgentTrigger",
     "ArtifactLoader",
