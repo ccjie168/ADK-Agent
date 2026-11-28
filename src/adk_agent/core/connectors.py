@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -47,6 +47,13 @@ class ConnectorOperation(BaseModel):
     tool_id: str = Field(pattern=_SAFE_NAME)
     path: str = Field(min_length=1)
     method: HttpMethod
+    risk_level: RiskLevel = "L2"
+    data_classes: list[DataClass] = Field(default_factory=lambda: [cast("DataClass", "internal")])
+    write: bool = False
+
+    @property
+    def requires_approval(self) -> bool:
+        return self.risk_level in ("L3", "L4")
 
     @field_validator("path")
     @classmethod

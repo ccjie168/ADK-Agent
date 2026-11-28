@@ -80,20 +80,39 @@ def load_tool_catalog(path: str | Path) -> ToolCatalog:
 
 
 def connector_tool_entries(specs: Iterable[ConnectorSpec]) -> list[ToolEntry]:
-    return [
-        ToolEntry(
-            tool_id=spec.connector_id,
-            description=f"{spec.kind} connector to {spec.base_url}",
-            source="connector",
-            data_classes=list(spec.data_classes),
-            requires_approval=False,
-            tenant=spec.tenant,
-            risk_level=spec.risk_level,
-            delegation=spec.delegation,
+    entries: list[ToolEntry] = []
+    for spec in specs:
+        if not spec.enabled:
+            continue
+        if spec.operations:
+            entries.extend(
+                ToolEntry(
+                    tool_id=operation.tool_id,
+                    description=f"{operation.method} {operation.path} on {spec.base_url}",
+                    source="connector",
+                    data_classes=list(operation.data_classes),
+                    requires_approval=operation.requires_approval,
+                    tenant=spec.tenant,
+                    risk_level=operation.risk_level,
+                    write=operation.write,
+                    delegation=spec.delegation,
+                )
+                for operation in spec.operations
+            )
+            continue
+        entries.append(
+            ToolEntry(
+                tool_id=spec.connector_id,
+                description=f"{spec.kind} connector to {spec.base_url}",
+                source="connector",
+                data_classes=list(spec.data_classes),
+                requires_approval=False,
+                tenant=spec.tenant,
+                risk_level=spec.risk_level,
+                delegation=spec.delegation,
+            )
         )
-        for spec in specs
-        if spec.enabled
-    ]
+    return entries
 
 
 __all__ = [

@@ -5,7 +5,7 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
       与 `ConnectorSpec.operations`）、`tools/openapi_import.py`（新）、
       `tools/connectors.py`（逐操作工具）、`tools/catalog.py`（合并与写盘）、
       `tools/__init__.py`、`cli.py`（`connectors import-openapi`）、
-      新增 14 条用例
+      新增 20 条用例
 
 一、红绿说明
 
@@ -21,8 +21,8 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 二、用例
 
     $ python -m pytest tests/test_openapi_import.py -q
-    ..............                                                   [100%]
-    14 passed in 1.77s
+    ....................                                             [100%]
+    20 passed in 1.91s
 
 - `test_import_builds_connector_and_operations`：连接器 kind/base_url/methods/
   path_prefixes/operations 与逐操作工具的 risk/data_class/write 都正确
@@ -37,8 +37,8 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
 - `test_cli_import_openapi_writes_connector_and_catalog`：CLI 写入连接器与目录
 - `test_source_has_no_helpers_outside_the_tools_package`：导入模块不碰 ADK
 
-    $ python -m pytest tests/test_openapi_import.py tests/tools -q
-    82 passed in 9.71s
+    $ python -m pytest tests/test_openapi_import.py tests/tools tests/test_console_connectors.py -q
+    98 passed in 9.88s
 
 三、实现要点
 
@@ -94,9 +94,34 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
     ALL PASS
 
     $ python -m pytest -q
-    2484 passed, 106 skipped
+    2490 passed, 106 skipped
 
-六、限制
+六、首轮验证修正（REJECT 后）
+
+首轮验证 REJECT，两个阻断项与若干 N，均已修：
+
+- **S1（安全）**：逐操作的 `risk_level`/`data_classes`/`write` 原先没传到网关
+  `ToolSpec`，连接器级固定 L2/internal，导致 `x-risk-level: L3` 的写操作在网关上
+  不需要审批也不要求幂等。`ConnectorOperation` 现在自带这三项，网关与工具目录都按
+  操作取值；新增 `test_gateway_tool_carries_operation_governance` 与实机核对
+  （`pay.refund` → risk=L3, approval=True, idem=True, classes=('confidential',)）。
+- **B1**：重复 `operationId` 会产出重复 `tool_id`，工具网关启动时直接拒绝。导入期
+  现在报 `duplicate_operation_id`，写入前就失败；用例
+  `test_import_rejects_duplicate_operation_ids`。
+- **B2（回滚）**：`ConnectorSpec` 是 `extra="forbid"`，旧版本读到带 `operations` 的记录
+  会让 `FileConnectorStore.list()` 整体失败。本次不改存储行为，契约新增「回滚注意」
+  一节写明回退前要删除或用旧版重新登记，并把“文件存储逐条容错”记为后续项。
+- N1 路径前缀截取改为 `{` 之前（`/tickets{id}` → `/tickets`），用例
+  `test_prefix_stops_before_the_first_placeholder`。
+- N2 非法 `x-risk-level` 给 `invalid_risk_level`；`base_url` 不合规由
+  `ConnectorSpec` 抛出的校验错误收敛成 `spec_invalid`；目录不可读给
+  `catalog_unreadable`。用例 `test_import_rejects_bad_risk_level_and_host`。
+- N3 `connector_tool_entries()` 对含 operations 的连接器按操作展开，不再出现
+  网关没有的连接器级“幽灵工具”；用例 `test_connector_tool_entries_mirror_operations`。
+- N4 补了编码正例（`T 1` → `T%201`）：`test_operation_tool_encodes_path_params`。
+- N7 契约对 `..` 的措辞改为“路径段不得为 `..`”，与代码一致。
+
+七、限制
 
 - `x-data-classes`/`x-risk-level` 是平台扩展，标准 OpenAPI 文档没有这两项时统一按
   `internal`/L2 处理；连接器级 `data_classes` 固定 `internal`，逐工具的取值在目录里。
@@ -106,6 +131,6 @@ SLICE-320 OpenAPI 导入生成连接器（ADR-0047 切片 1）
   未做版本协商。
 - 文档里 `$ref` 参数/安全方案不解析；导入只依赖 `paths`、`servers` 与两个扩展字段。
 
-七、范围外
+八、范围外
 
 - MCP 连接器（0047-2）、插件入口（0047-3）。

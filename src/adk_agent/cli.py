@@ -3960,7 +3960,9 @@ def main(argv: list[str] | None = None) -> None:
                             try:
                                 catalog = load_tool_catalog(catalog_path)
                             except Exception:  # noqa: BLE001
-                                raise ToolCatalogConflict("tool catalog is unreadable") from None
+                                raise OpenApiImportError(
+                                    "catalog_unreadable", args.tool_catalog
+                                ) from None
                         catalog = merge_tool_entries(catalog, imported.tools)
                     if args.dry_run:
                         return {

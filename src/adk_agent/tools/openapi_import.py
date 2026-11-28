@@ -58,18 +58,16 @@ def _operation_data_classes(operation: dict[str, Any], document: dict[str, Any])
 def _risk_level(operation: dict[str, Any]) -> RiskLevel:
     raw = operation.get("x-risk-level", "L2")
     if raw not in _RISK_LEVELS:
-        raise OpenApiImportError("invalid_data_class", f"x-risk-level {raw!r}")
+        raise OpenApiImportError("invalid_risk_level", f"x-risk-level {raw!r}")
     return raw  # type: ignore[return-value]
 
 
 def _prefix_for(path: str) -> str:
     """The static part of an operation path; callers cannot choose the path."""
-    if "{" not in path:
-        return path
     head = path.split("{", 1)[0]
-    if head.endswith("/"):
-        return head
-    return head.rsplit("/", 1)[0] + "/"
+    if not head:
+        return "/"
+    return head
 
 
 def import_openapi(
@@ -87,7 +85,7 @@ def import_openapi(
         raise OpenApiImportError("spec_invalid", "document has no paths")
     url = _server_url(document, base_url)
 
-    operations: list[dict[str, str]] = []
+    operations: list[dict[str, Any]] = []
     tools: list[ToolEntry] = []
     skipped: list[str] = []
     methods: set[HttpMethod] = set()
@@ -112,7 +110,18 @@ def import_openapi(
             tool_id = f"{connector_id}.{operation_id.strip()}"
             risk = _risk_level(operation)
             data_classes = _operation_data_classes(operation, document)
-            operations.append({"tool_id": tool_id, "path": raw_path, "method": method})
+            if any(operation_entry["tool_id"] == tool_id for operation_entry in operations):
+                raise OpenApiImportError("duplicate_operation_id", tool_id)
+            operations.append(
+                {
+                    "tool_id": tool_id,
+                    "path": raw_path,
+                    "method": method,
+                    "risk_level": risk,
+                    "data_classes": list(data_classes),
+                    "write": method not in ("GET", "HEAD"),
+                }
+            )
             methods.add(method)  # type: ignore[arg-type]
             prefixes.add(_prefix_for(raw_path))
             tools.append(
@@ -131,17 +140,20 @@ def import_openapi(
     if not tools:
         raise OpenApiImportError("no_operations", "no operation has an operationId")
 
-    connector = ConnectorSpec(
-        connector_id=connector_id,
-        tenant=tenant,
-        kind="openapi",
-        base_url=url,
-        methods=sorted(methods),
-        path_prefixes=sorted(prefixes),
-        data_classes=["internal"],
-        risk_level="L2",
-        operations=operations,  # type: ignore[arg-type]
-    )
+    try:
+        connector = ConnectorSpec(
+            connector_id=connector_id,
+            tenant=tenant,
+            kind="openapi",
+            base_url=url,
+            methods=sorted(methods),
+            path_prefixes=sorted(prefixes),
+            data_classes=["internal"],
+            risk_level="L2",
+            operations=operations,  # type: ignore[arg-type]
+        )
+    except ValueError as exc:
+        raise OpenApiImportError("spec_invalid", "connector rejected: " + str(exc)) from None
     return OpenApiImport(connector=connector, tools=tools, skipped=skipped)
 
 

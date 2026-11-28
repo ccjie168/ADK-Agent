@@ -24,16 +24,28 @@
 ### operations（SLICE-320 新增）
 
 ```json
-{"tool_id": "itsm.ticket.create", "path": "/tickets/{id}", "method": "POST"}
+{
+  "tool_id": "itsm.ticket.create",
+  "path": "/tickets/{id}",
+  "method": "POST",
+  "risk_level": "L3",
+  "data_classes": ["confidential"],
+  "write": true
+}
 ```
 
-- `tool_id` 符合工具名规则，且以 `<connector_id>.` 开头。
-- `path` 以 `/` 开头，可含 `{name}` 形式的路径参数，不得含 `..` 或反斜杠。
+- `tool_id` 符合工具名规则，且以 `<connector_id>.` 开头；同一次导入里不得重复。
+- `path` 以 `/` 开头，可含 `{name}` 形式的路径参数；路径段不得为 `..`，不得含反斜杠。
 - `method` 是 `HttpMethod`。
+- `risk_level` / `data_classes` / `write` 是操作的治理属性；网关注册的工具有同样的
+  `risk_level`、`data_classes`、`write`、`requires_approval`，L3/L4 需要 HITL 审批与
+  幂等键（与工具目录展示的值一致）。
 - 有 `operations` 的连接器在网关里为每个操作生成一个工具：工具名即 `tool_id`，
-  调用参数为 `query`、`path_params`、`json_body`；方法固定、路径参数 URL 编码后再过
-  连接器的 `path_prefixes` 校验。没有 `operations` 的连接器仍生成连接器级工具
-  （`path`、`method`、`query`、`json_body`）。
+  调用参数为 `query`、`path_params`、`json_body`；方法固定、路径参数拒绝 `/`、`\`、
+  `..` 后 URL 编码，再过连接器的 `path_prefixes` 校验。没有 `operations` 的连接器仍
+  生成连接器级工具（`path`、`method`、`query`、`json_body`）。
+- `connector_tool_entries()` 对含 `operations` 的连接器同样按操作展开，不再产出
+  连接器级条目。
 
 ## OpenAPI 导入
 
@@ -49,15 +61,18 @@ adk-agent connector import-openapi --spec FILE --connector-id ID \
 - `base_url` 取 `--base-url`，否则 `servers[0].url`；相对地址或缺省即 `missing_server`。
 - 每个含 `operationId` 的操作生成一个工具：方法取操作键（`get`/`put`/`post`/`delete`/
   `patch`/`head`），路径取文档路径（`{name}` 原样保留）。
-- `methods` 与 `path_prefixes` 取所有生成操作的集合；路径前缀截到第一个 `{` 之前。
+- `methods` 与 `path_prefixes` 取所有生成操作的集合；路径前缀截到第一个 `{` 之前
+  （`/tickets{id}` → `/tickets`，`/tickets/{id}` → `/tickets/`）。
 - `data_classes` 取操作或文档顶层的 `x-data-classes`（必须是合法分级）；否则 `internal`。
 - `risk_level` 取操作的 `x-risk-level`，否则 L2；L3/L4 的工具 `requires_approval=true`。
-- 没有 `operationId` 的操作跳过并在输出里列出（`skipped`）。
+- 没有 `operationId` 的操作跳过并在输出里列出（`skipped`）；同一个文档里两次出现
+  同一个 `operationId` 即 `duplicate_operation_id`。
 - 超过 200 个生成操作即 `too_many_operations`，不写入任何东西。
 - `--dry-run` 只打印将写入的连接器与工具，不落盘。
 
 错误码（固定字符串）：`spec_unreadable`、`spec_invalid`、`missing_server`、
-`no_operations`、`too_many_operations`、`invalid_data_class`。
+`no_operations`、`too_many_operations`、`invalid_data_class`、`invalid_risk_level`、
+`duplicate_operation_id`、`catalog_unreadable`。
 
 ## 工具目录合并
 
@@ -66,3 +81,10 @@ adk-agent connector import-openapi --spec FILE --connector-id ID \
 - 相同 `tool_id` 且内容相同：幂等，不重复写入。
 - 相同 `tool_id` 但内容不同：`catalog_conflict`，整次导入失败，连接器也不写入。
 - 新文件：创建 `{"version": 1, "tools": [...]}`。
+
+## 回滚注意
+
+`operations` 是 additive 字段，但 `ConnectorSpec` 是 `extra="forbid"`：回退到不认识该
+字段的版本后，导入过的连接器记录会让 `FileConnectorStore.list()` 整体失败（一条坏记录
+连坐全部），`serve-tool-gateway` 与 `connectors list` 都会起不来。回退前先删除或用
+旧版重新登记这些连接器；更长期的修法是让文件存储逐条容错（记录为后续项）。

@@ -186,9 +186,11 @@ def build_connector_tools(
                 ToolSpec(
                     tool_id=operation.tool_id,
                     handler=_operation_handler(spec, operation, secrets, http),
-                    data_classes=tuple(spec.data_classes),
+                    data_classes=tuple(operation.data_classes),
+                    requires_approval=operation.requires_approval,
                     egress="third_party",
-                    risk_level=spec.risk_level,
+                    write=operation.write,
+                    risk_level=operation.risk_level,
                     delegation=spec.delegation,
                 )
                 for operation in spec.operations

@@ -57,11 +57,16 @@ def test_import_builds_connector_and_operations():
     assert connector.base_url == "http://127.0.0.1:8055"
     assert connector.methods == ["GET", "POST"]
     assert connector.path_prefixes == ["/tickets", "/tickets/"]
-    assert connector.operations == [
-        type(connector.operations[0])(tool_id="itsm.list", path="/tickets", method="GET"),
-        type(connector.operations[0])(tool_id="itsm.create", path="/tickets", method="POST"),
-        type(connector.operations[0])(tool_id="itsm.get", path="/tickets/{id}", method="GET"),
+    assert [(op.tool_id, op.path, op.method) for op in connector.operations] == [
+        ("itsm.list", "/tickets", "GET"),
+        ("itsm.create", "/tickets", "POST"),
+        ("itsm.get", "/tickets/{id}", "GET"),
     ]
+    create = connector.operations[1]
+    assert create.risk_level == "L3"
+    assert create.data_classes == ["confidential"]
+    assert create.write is True
+    assert create.requires_approval is True
 
     by_id = {tool.tool_id: tool for tool in imported.tools}
     assert by_id["itsm.create"].risk_level == "L3"
@@ -246,3 +251,89 @@ def test_source_has_no_helpers_outside_the_tools_package():
     # Keep the import path free of ADK and of console code: it is a CLI-only feature.
     text = (SOURCE / "tools" / "openapi_import.py").read_text(encoding="utf-8")
     assert "google.adk" not in text
+
+
+def test_gateway_tool_carries_operation_governance():
+    imported = import_openapi(_document(), "itsm")
+    tools = build_connector_tools([imported.connector], secrets=None)  # type: ignore[arg-type]
+    by_id = {tool.tool_id: tool for tool in tools}
+
+    create = by_id["itsm.create"]
+    assert create.risk_level == "L3"
+    assert create.requires_approval is True
+    assert create.needs_approval is True
+    assert create.requires_idempotency is True
+    assert create.data_classes == ("confidential",)
+    assert create.write is True
+
+    listing = by_id["itsm.list"]
+    assert listing.risk_level == "L2"
+    assert listing.needs_approval is False
+    assert listing.requires_idempotency is False
+
+
+def test_import_rejects_duplicate_operation_ids():
+    document = {
+        "servers": [{"url": "https://x.example"}],
+        "paths": {
+            "/a": {"get": {"operationId": "dup"}},
+            "/b": {"post": {"operationId": "dup"}},
+        },
+    }
+
+    with pytest.raises(OpenApiImportError) as exc:
+        import_openapi(document, "probe")
+
+    assert exc.value.code == "duplicate_operation_id"
+
+
+def test_connector_tool_entries_mirror_operations():
+    from adk_agent.tools import connector_tool_entries
+
+    imported = import_openapi(_document(), "itsm")
+    entries = connector_tool_entries([imported.connector])
+
+    assert {entry.tool_id for entry in entries} == {"itsm.list", "itsm.create", "itsm.get"}
+    assert "itsm" not in {entry.tool_id for entry in entries}
+
+
+def test_prefix_stops_before_the_first_placeholder():
+    document = {
+        "servers": [{"url": "https://x.example"}],
+        "paths": {"/tickets{id}/history": {"get": {"operationId": "history"}}},
+    }
+    imported = import_openapi(document, "probe")
+
+    assert imported.connector.path_prefixes == ["/tickets"]
+
+
+def test_operation_tool_encodes_path_params():
+    document = {
+        "servers": [{"url": "https://itsm.example"}],
+        "paths": {"/tickets/{id}": {"get": {"operationId": "get"}}},
+    }
+    adapter = _RecordingAdapter()
+    spec = import_openapi(document, "itsm").connector
+    [built] = build_connector_tools([spec], secrets=None, adapter=adapter)  # type: ignore[arg-type]
+
+    asyncio.run(built.handler(path_params={"id": "T 1"}))
+
+    assert adapter.calls[-1]["url"] == "https://itsm.example/tickets/T%201"
+
+
+def test_import_rejects_bad_risk_level_and_host():
+    bad_risk = {
+        "servers": [{"url": "https://x.example"}],
+        "paths": {"/a": {"get": {"operationId": "a", "x-risk-level": "L9"}}},
+    }
+    with pytest.raises(OpenApiImportError) as exc:
+        import_openapi(bad_risk, "probe")
+    assert exc.value.code == "invalid_risk_level"
+
+    bad_host = {
+        "servers": [{"url": "http://api.example"}],
+        "paths": {"/a": {"get": {"operationId": "a"}}},
+    }
+    with pytest.raises(OpenApiImportError) as exc:
+        import_openapi(bad_host, "probe")
+    assert exc.value.code == "spec_invalid"
