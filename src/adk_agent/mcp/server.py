@@ -301,7 +301,7 @@ def serve_many(
     Each key in ``agents`` becomes one MCP tool that runs that agent. Sessions,
     progress notifications and multimodal output behave exactly as in
     :func:`serve_agent`, because this reuses ADK's per-connection runner logic
-    (``_run_agent`` in ``google.adk.tools.mcp_tool._agent_to_mcp``).
+    (``adapters.adk.mcp.run_agent`` over ``_agent_to_mcp._run_agent``).
 
     ``runner_factory`` lets you inject persistent services per agent, e.g.
     ``lambda agent: Runner(app_name=agent.name, agent=agent,

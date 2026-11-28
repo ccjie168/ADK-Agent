@@ -27,13 +27,14 @@ SLICE-315 入口与运行时改走适配层（ADR-0046 切片 2a）
   runtime.sessions 不再 import `google.adk`
 - `test_baseline_is_only_composition_and_tools`：基线只剩 14 个组合与工具侧模块
 - `test_audited_runner_no_longer_fakes_its_class`：`__class__` 已删除
-- `test_runner_facade_is_a_real_runner`：门面是真 `Runner`，属性、写属性与
+- `test_runner_facade_is_a_real_runner`：门面是真 `Runner`，属性读、写与
   `run_async` 都委托
 - `test_a2a_hands_the_executor_a_real_runner`：执行器拿到的是 `RunnerFacade`，
   内层仍是 `AuditedRunner`
 - `test_session_factories_go_through_the_adapter`：适配层工厂与
   `build_session_service` 返回同一批 ADK 服务类型
-- `test_adk_compat_drill_checks_the_runner_gate`：演练新增门控检查
+- `test_adk_compat_drill_checks_the_runner_gate`：演练新增门控检查（门面被接受，
+  非 `Runner` 被 `TypeError` 拒绝）
 
 三、实现要点
 
@@ -117,7 +118,20 @@ MCP stdio 握手与工具列表照常。
     $ python -m pytest -q
     2450 passed, 106 skipped
 
-六、限制
+六、首轮验证修正
+
+首轮 PASS，按 S/N 收紧：
+
+- S1：`runner-gate` 现在真的验证门控——用 `A2aAgentExecutor(runner=RunnerFacade(...))`
+  调 `_resolve_runner` 必须原样返回门面，用 `A2aAgentExecutor(runner=object())` 必须
+  抛 `TypeError`。只断言 `isinstance` 或 `_resolve_runner` 存在会漏掉门控方式漂移。
+- S2：Postgres session 服务的构造期 `ImportError`（缺 sqlalchemy/greenlet/asyncpg）
+  以前漏成裸 `ImportError`，现在与导入期一起收敛成 `SessionStoreUnavailable`；这是
+  对既有契约（`docs/contracts` 与 `runtime.sessions` 文档）的修正，记在这里。
+- N1：门面测试补写属性断言（`facade.app_name = ...` 写穿到目标）。
+- N5：`mcp/server.py` 的 `serve_many` 文档串改指适配层的 `run_agent`。
+
+七、限制
 
 - 事件仍是 ADK 类型：`runtime/execution.py` 消费 `Event`，0046-2b 才收口。
 - 基线还剩 14 个组合与工具侧模块（`factory`、`models`、`sandbox.*`、`tools.*`、
@@ -125,7 +139,13 @@ MCP stdio 握手与工具列表照常。
 - 门面只覆盖执行器实际用到的属性；ADK 若新增 `Runner` 类属性，需要在
   `_DELEGATED` 里补登记，兼容演练的 `runner-gate` 会在门控方式变化时提示。
 - `google.genai` 类型（`Content`、`Part`）仍在墙外使用。
+- `a2a.build_a2a_app` 只在审计分支套门面（N3）：调用方传入已包装的代理、又不设
+  audit/quota/require_context/rag 时，执行器会以 `TypeError` 拒绝。这是去掉
+  `__class__` 伪造的预期后果，仓库内没有这种调用方。
+- `a2a` 与 `runtime.sessions` 现在在模块导入时就加载 `adapters.adk`（进而加载 ADK
+  的 runner/agents/models），以前这两个模块更懒（N4）。ADK 是核心依赖，行为无变化；
+  依赖 a2a-sdk 的模块仍是懒加载。
 
-七、范围外
+八、范围外
 
 - 事件模型（0046-2b）、加载与组合迁移（0046-3）。

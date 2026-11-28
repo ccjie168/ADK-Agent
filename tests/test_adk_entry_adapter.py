@@ -91,6 +91,10 @@ def test_runner_facade_is_a_real_runner():
     assert target.calls == [{"user_id": "u"}]
     assert facade.target is target
 
+    facade.app_name = "other"
+    assert target.app_name == "other"
+    assert facade.app_name == "other"
+
 
 def test_a2a_hands_the_executor_a_real_runner(monkeypatch):
     from google.adk.runners import Runner
