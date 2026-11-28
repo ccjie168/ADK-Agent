@@ -838,6 +838,16 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         门禁 2460/106。证据 `docs/evidence/SLICE-317-adk-loading.txt`。
         下一步：3b（`models`、`models.gateway_llm`、`mcp.client`、`tools.sources`），
         然后 3c（`sandbox.*`、`tools.guard`、`tools.enforcement`，基线归零 + 升级手册）。
+      - SLICE-318 模型与工具源迁入适配层（ADR-0046 切片 3b）~~已合并 `e97024e`~~（#381）：
+        `models`、`models.gateway_llm`、`mcp.client`、`tools.sources` 不再直接 import ADK；
+        适配层新增 `models`（类型 + gemini/claude/vertex/litellm 四个惰性构造器）、
+        `mcp_tools`（连接参数与工具集）、`tools`（OpenAPI 工具集）。墙的基线 11 → 7。
+        5 条用例。SLICE-317 的账本用例沿用已批准的只增不减模式。两轮验证（首轮 PASS
+        带 S1：`stdio_params` 默认 timeout 写成 60，ADK 与平台配置都是 5；改回并订正
+        证据后二轮 PASS）。实机 MCP 工厂路径（配置 → 模型 → 工具）正常。
+        门禁 2465/106。证据 `docs/evidence/SLICE-318-adk-models.txt`。
+        下一步：3c（`sandbox.*` 5 个模块、`tools.guard`、`tools.enforcement`），
+        基线归零并补 ADK 升级手册，收口 ADR-0046。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
