@@ -211,3 +211,39 @@ def test_webhook_rejected_is_not_retried():
         asyncio.run(notifier.notify(_notice()))
     asyncio.run(client.aclose())
     assert len(attempts) == 1
+
+
+def test_claim_dir_allows_one_winner(tmp_path):
+    entries = [_entry("req-1")]
+    handled: list[str] = []
+
+    async def handler(entry):
+        handled.append(entry.request.request_id)
+
+    first = ApprovalResumer(FakeInbox(entries), handler, claim_dir=tmp_path)
+    second = ApprovalResumer(FakeInbox(entries), handler, claim_dir=tmp_path)
+    asyncio.run(first.run_once())
+    asyncio.run(second.run_once())
+
+    assert handled == ["req-1"]
+    assert first.handled == 1
+    assert second.handled == 0
+    assert second.skipped == 1
+
+
+def test_claim_rejects_unsafe_request_ids(tmp_path):
+    inbox = FakeInbox([_entry("../escape")])
+    resumer = ApprovalResumer(inbox, lambda entry: None, claim_dir=tmp_path)
+    with pytest.raises(ValueError):
+        asyncio.run(resumer.run_once())
+
+
+def test_runbook_documents_deferred_approvals():
+    from pathlib import Path as _Path
+
+    runbook = _Path(__file__).resolve().parents[1] / "docs" / "guides" / "deferred-approvals.md"
+    text = runbook.read_text(encoding="utf-8")
+
+    for phrase in ("ApprovalResumer", "claim_dir", "expires_at", "skipped", "Postgres"):
+        assert phrase in text, phrase
+    assert "单赢家" in text

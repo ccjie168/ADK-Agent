@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -266,3 +266,33 @@ def test_slow_notifier_does_not_delay_pending(tmp_path):
 
     assert isinstance(result, PlanPending)
     assert elapsed < 2
+
+
+def test_expired_decision_is_not_resumed(monkeypatch):
+    from types import SimpleNamespace
+
+    from adk_agent.core import ApprovalDecision
+
+    calls: list[str] = []
+    expired_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    decision = ApprovalDecision(
+        request_id="expired-1",
+        approved=True,
+        approver="tester",
+        decided_at=expired_at,
+    )
+    record = SimpleNamespace(decision=decision, request=SimpleNamespace(expires_at=expired_at))
+
+    class ExpiredGate:
+        def get(self, request_id):
+            return record
+
+        async def request(self, request):
+            raise AssertionError("deferred mode must not block")
+
+    executor = _executor(calls, defer=True)
+    from adk_agent.orchestration import ApprovalTimeout
+
+    with pytest.raises(ApprovalTimeout):
+        asyncio.run(executor.run(_plan(), _invocation(), approvals=ExpiredGate()))
+    assert calls == ["support"]
