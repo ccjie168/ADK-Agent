@@ -4,7 +4,7 @@ Every other module reaches ADK through these names.  ``scripts/adk_wall.py``
 enforces the rule in the gate's layering step.
 """
 
-from .agents import BaseAgent
+from .agents import BaseAgent, LlmAgent
 from .llm import BaseLlm
 from .runner import Runner, RunnerFacade, as_runner, build_runner, make_runner, run_config
 from .sessions import (
@@ -16,6 +16,7 @@ from .sessions import (
 __all__ = [
     "BaseAgent",
     "BaseLlm",
+    "LlmAgent",
     "Runner",
     "RunnerFacade",
     "as_runner",

@@ -84,7 +84,7 @@ def load_artifact_agent(artifact: AgentArtifact, data: bytes) -> Any:
         agent = namespace.get("root_agent")
     if agent is None:
         raise ArtifactLoadError("artifact module exposes no agent")
-    from google.adk.agents import BaseAgent
+    from ..adapters.adk.agents import BaseAgent
 
     if not isinstance(agent, BaseAgent):
         raise ArtifactLoadError("artifact agent is not an ADK agent")

@@ -18,8 +18,8 @@ from typing import Any, Literal, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from google.adk.sessions import InMemorySessionService
 
+from .adapters.adk import in_memory_session_service, make_runner
 from .audit.hashing import hash_text
 from .core import (
     AgentLifecycleStore,
@@ -518,12 +518,10 @@ def build_triggers_app(
         quota_policy = quota_config.tenants.get(tenant) if quota_config is not None else None
 
         try:
-            service = session_service or InMemorySessionService()
+            service = session_service or in_memory_session_service()
 
             def default_runner(built: Any) -> Any:
-                from google.adk.runners import Runner
-
-                return Runner(app_name=built.name, agent=built, session_service=service)
+                return make_runner(app_name=built.name, agent=built, session_service=service)
 
             session = await service.create_session(app_name=agent.name, user_id=principal.subject)
             runner = (runner_factory or default_runner)(agent)
