@@ -38,8 +38,8 @@ BASELINE = frozenset(
 )
 
 
-def _module_name(path: Path) -> str:
-    rel = path.relative_to(SOURCE).with_suffix("")
+def _module_name(path: Path, root: Path = SOURCE) -> str:
+    rel = path.relative_to(root).with_suffix("")
     parts = ["adk_agent", *rel.parts]
     if parts[-1] == "__init__":
         parts.pop()
@@ -57,14 +57,13 @@ def importers(root: Path = SOURCE) -> dict[str, list[str]]:
                 imported.update(
                     alias.name for alias in node.names if alias.name.startswith("google.adk")
                 )
-            elif (
-                isinstance(node, ast.ImportFrom)
-                and node.module
-                and node.module.startswith("google.adk")
-            ):
-                imported.add(node.module)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                if node.module.startswith("google.adk"):
+                    imported.add(node.module)
+                elif node.module == "google" and any(alias.name == "adk" for alias in node.names):
+                    imported.add("google.adk")
         if imported:
-            found[_module_name(path)] = sorted(imported)
+            found[_module_name(path, root)] = sorted(imported)
     return found
 
 

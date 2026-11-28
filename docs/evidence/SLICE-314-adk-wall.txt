@@ -16,7 +16,7 @@ SLICE-314 ADK 导入墙与兼容演练（ADR-0046 切片 1）
 
     $ python -m pytest tests/test_adk_boundary.py -q
     .....                                                            [100%]
-    5 passed in 6.02s
+    6 passed in 10.28s
 
 - `test_adk_wall_has_no_unlisted_importers`：墙外没有新的 ADK 导入方
 - `test_adk_wall_baseline_matches_reality`：基线白名单与现状一致，新增导入会立刻红
@@ -70,18 +70,31 @@ SLICE-314 ADK 导入墙与兼容演练（ADR-0046 切片 1）
     ALL PASS
 
     $ python -m pytest -q
-    2442 passed, 106 skipped
+    2443 passed, 106 skipped
 
 （首轮 lint 失败：`check_layering.py` 的 import 顺序；`ruff check --fix` 后复跑全绿。）
 
-五、限制
+五、首轮验证修正
+
+首轮 PASS，三条 N 中的两条已收紧：
+
+- 墙现在也识别 `from google import adk`（父包导入），新增用例
+  `test_adk_wall_catches_parent_package_import`；`import google` 后属性访问与
+  `importlib.import_module` 仍是静态扫描的已知漏检，写进限制。
+- `.importlinter` 的 core 契约补上 `adk_agent.adapters`，契约名与内容一致。
+- 基线仍按模块记账（白名单模块内新增 import 不触发），2a/2b 收紧时改为逐条计数。
+
+六、限制
 
 - 基线 20 个模块在 0046-2a/3 里逐步迁走，每迁一个都要同步缩短白名单，否则
   `test_adk_wall_baseline_matches_reality` 会红；这是有意的账本。
 - 墙只覆盖 `google.adk`，不覆盖 `google.genai` 类型（事件转换时再定）。
+- 已知规避：`from google import adk` 已纳入扫描；`import google` 后访问
+  `google.adk.X` 与 `importlib.import_module("google.adk")` 仍漏检，属静态扫描局限。
+- 基线只按模块记账：已白名单模块内新增 ADK import 不会触发，2a/2b 收紧时改为逐条计数。
 - 兼容演练是静态检查，不能保证运行期语义不变。
 
-六、范围外
+七、范围外
 
 - 入口迁移（0046-2a）与事件模型（0046-2b）。
 - import-linter 的新契约（本切片用 AST 脚本承担，现有 `core` 隔离契约未动）。

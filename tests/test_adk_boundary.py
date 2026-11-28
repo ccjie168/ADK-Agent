@@ -45,3 +45,10 @@ def test_agent_runtime_port_is_exported():
 
     assert hasattr(AgentRuntime, "load")
     assert hasattr(AgentRuntime, "run")
+
+
+def test_adk_wall_catches_parent_package_import(tmp_path):
+    module = tmp_path / "bad.py"
+    module.write_text("from google import adk\n", encoding="utf-8")
+
+    assert adk_wall.violations(tmp_path) == ["adk_agent.bad"]

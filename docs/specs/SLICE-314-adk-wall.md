@@ -27,6 +27,7 @@
 - [ ] 适配包是唯一豁免 -> `test_adapter_package_is_the_only_allowed_importer`
 - [ ] 兼容演练通过 -> `test_adk_compat_drill_passes`
 - [ ] 端口已导出 -> `test_agent_runtime_port_is_exported`
+- [ ] `from google import adk` 也被墙捕获 -> `test_adk_wall_catches_parent_package_import`
 - [ ] `--full` 门禁通过
 
 ## 反例
