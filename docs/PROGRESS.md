@@ -827,6 +827,17 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         已知缺口：`sandbox/agent_worker.py` 仍读 ADK 事件字段（0046-3）；扫描正则是
         启发式，`get_function_calls()`、`getattr(content, "parts")` 这类改写会漏检。
         下一步：0046-3（加载与组合迁移，基线归零，补 ADK 升级手册）。
+      - SLICE-317 加载与触发服务迁入适配层（ADR-0046 切片 3a）~~已合并 `03ec8d6`~~（#379）：
+        `factory`、`registry.loader`、`triggers_service` 不再直接 import ADK；
+        适配层新增 `LlmAgent` 导出，`build_runner`/触发器默认 runner 用
+        `make_runner`，内存 session 用适配层工厂。墙的基线 14 → 11。5 条用例。
+        按用户批准，SLICE-315 的基线用例改成只增不减的不变量
+        （`BASELINE <= 14 项旧集合`），当前 11 项由本切片用例精确固定；验证代理确认
+        重引 ADK 仍会被 `violations()`、layering 步与本切片用例三重拦截。一轮验证
+        PASS（3 个 N，均为说明性）。实机 MCP 工厂路径与计划演示全 PASS。
+        门禁 2460/106。证据 `docs/evidence/SLICE-317-adk-loading.txt`。
+        下一步：3b（`models`、`models.gateway_llm`、`mcp.client`、`tools.sources`），
+        然后 3c（`sandbox.*`、`tools.guard`、`tools.enforcement`，基线归零 + 升级手册）。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
