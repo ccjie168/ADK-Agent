@@ -768,6 +768,23 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         下一步：0049-3，A2A 任务状态与 MCP 状态工具。ADR-0049 第 9 条要求 A2A 用
         `input-required`；ADK 的任务聚合器只在收到 `TaskStatusUpdateEvent` 时进入该状态，
         平台需要自定义 A2A executor 钩子，或者改成「立即回执 + 状态查询」，后者要改 ADR。
+      - SLICE-312 延迟审批接入演示服务（ADR-0049 切片 3）~~已合并 `dd5c390`~~（#370）：
+        ADR-0049 决定 9 按用户选择改为「立即回执」，A2A `input-required` 明确推迟并写下
+        触发条件。`support_a2a_agent.py` 支持 `SUPPORT_DEFER=1`：MCP/A2A 调用 2 秒内
+        返回 `request_id`，进程内恢复器在批准后继续计划，共享检查点跳过已完成步骤；
+        可选 webhook 通知，缺密钥只降级。6 条用例。三轮验证（首轮 2 个 S：恢复没接
+        检查点、缺密钥丢单；修完后 PASS；CI 的 secrets 步另修一次 fixture allowlist）。
+        证据 `docs/evidence/SLICE-312-deferred-demo-services.txt`。
+      - SLICE-313 延迟审批的运维收口（ADR-0049 切片 4）~~已合并 `6a0c545`~~（#371）：
+        恢复前拒绝已过期的决定（`approval_timeout`）；`ApprovalResumer(claim_dir=...)`
+        用独占锁文件实现文件部署的单赢家，request id 白名单；新增运维手册
+        `docs/guides/deferred-approvals.md`。4 条用例。一轮验证 PASS-with-notes
+        （6 个 N，其中「4xx 不重试」措辞偏粗、claim 失败仍标 seen 两点记为后续修）。
+        门禁 2437/106。证据 `docs/evidence/SLICE-313-deferred-ops.txt`。
+        **ADR-0049（异步审批与通知）至此全部交付**：延迟模式、检查点、恢复器、
+        通知、单赢家与运维手册。已知缺口：Postgres 多副本没有跨主机锁；恢复器计数
+        未接 Prometheus。
+        下一步：写 ADR-0046（Agent 运行时端口与 ADK 隔离）正文待用户确认。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
