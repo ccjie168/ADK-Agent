@@ -8,6 +8,10 @@ import inspect
 _CHECKS = []
 
 
+class SkipCheck(Exception):
+    """The optional dependency for this check is not installed."""
+
+
 def check(name: str):
     def register(fn):
         _CHECKS.append((name, fn))
@@ -60,7 +64,12 @@ def _agent_to_mcp() -> None:
 
 @check("a2a-executor")
 def _a2a() -> None:
-    from google.adk.a2a.executor import a2a_agent_executor
+    try:
+        from google.adk.a2a.executor import a2a_agent_executor
+    except ModuleNotFoundError as exc:
+        if (exc.name or "").startswith("a2a"):
+            raise SkipCheck("a2a-sdk is not installed") from None
+        raise
 
     if not hasattr(a2a_agent_executor, "A2aAgentExecutor"):
         raise AssertionError("A2aAgentExecutor is gone")
@@ -71,6 +80,8 @@ def main() -> int:
     for name, fn in _CHECKS:
         try:
             fn()
+        except SkipCheck as exc:
+            print(f"SKIP {name}: {exc}")
         except Exception as exc:  # noqa: BLE001  # every failure is reported the same way
             failed += 1
             print(f"FAIL {name}: {type(exc).__name__}: {exc}")

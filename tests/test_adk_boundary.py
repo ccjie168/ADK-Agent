@@ -35,8 +35,9 @@ def test_adk_compat_drill_passes():
     )
 
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    for name in ("runner", "events", "mcp", "agent-to-mcp", "a2a-executor"):
+    for name in ("runner", "events", "mcp", "agent-to-mcp"):
         assert f"PASS {name}" in proc.stdout, name
+    assert "PASS a2a-executor" in proc.stdout or "SKIP a2a-executor" in proc.stdout
     assert "ALL PASS" in proc.stdout
 
 

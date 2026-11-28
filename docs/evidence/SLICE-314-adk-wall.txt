@@ -93,6 +93,8 @@ SLICE-314 ADK 导入墙与兼容演练（ADR-0046 切片 1）
   `google.adk.X` 与 `importlib.import_module("google.adk")` 仍漏检，属静态扫描局限。
 - 基线只按模块记账：已白名单模块内新增 ADK import 不会触发，2a/2b 收紧时改为逐条计数。
 - 兼容演练是静态检查，不能保证运行期语义不变。
+- `a2a-sdk` 是可选依赖：CI 未安装时 `a2a-executor` 一项输出 SKIP 而不是失败；
+  本地装了就要求 PASS。
 
 七、范围外
 
