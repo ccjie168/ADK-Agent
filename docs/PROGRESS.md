@@ -815,6 +815,18 @@ adk-agent restore --archive ./backup.tar.gz --dest ./restored
         （修法按 `__cause__` 判 ImportError，不要只看 URL，否则坏 DSN 也会被误报成
         缺驱动）。
         下一步：0046-2b（事件边界），再 0046-3（加载与组合，基线归零）。
+      - SLICE-316 事件边界（ADR-0046 切片 2b）~~已合并 `2d73c7c`~~（#377）：
+        新增 `core.RunEvent`/`RunPart` 与 `docs/contracts/run_event.schema.json`，
+        `adapters.adk.events.to_run_event` 成为唯一转换点；`AgentRuntime` 与
+        `AuditedRunner` 不再读 `is_final_response`/`content.parts`/`function_call`，
+        原始事件仍逐条透传给 MCP 与 A2A。5 条用例（含源码扫描，`sandbox/` 除外）。
+        三轮验证（首轮 PASS 带 N，指出转换后 `is_final_response` 若变 property/async
+        会静默产生空文本；补演练检查，第二轮 PASS 带证据措辞 N，改完后第三轮 PASS）。
+        实机 A2A 与计划演示全 PASS。门禁 2455/106。
+        证据 `docs/evidence/SLICE-316-adk-events.txt`。
+        已知缺口：`sandbox/agent_worker.py` 仍读 ADK 事件字段（0046-3）；扫描正则是
+        启发式，`get_function_calls()`、`getattr(content, "parts")` 这类改写会漏检。
+        下一步：0046-3（加载与组合迁移，基线归零，补 ADK 升级手册）。
 
 其余方向从 `docs/specs/ROADMAP.md` 的里程碑状态里选。
 
